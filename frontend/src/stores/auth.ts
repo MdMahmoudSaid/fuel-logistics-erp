@@ -1,11 +1,18 @@
 import { defineStore } from 'pinia'
 import axios from 'axios'
 
+interface RoleDetail {
+  id: number
+  name: string
+  permissions: Record<string, string[]>
+}
+
 interface User {
   id: number
   email: string
   full_name: string
-  role: string
+  role: number | null
+  role_detail: RoleDetail | null
 }
 
 // Plain axios instance (not api/client.ts) so login/refresh never recurse
@@ -21,6 +28,8 @@ export const useAuthStore = defineStore('auth', {
 
   getters: {
     isAuthenticated: (state) => !!state.accessToken,
+    can: (state) => (module: string, action: string) =>
+      (state.user?.role_detail?.permissions[module] ?? []).includes(action),
   },
 
   actions: {

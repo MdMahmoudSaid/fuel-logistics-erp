@@ -32,4 +32,23 @@ describe('auth store', () => {
     expect(auth.user).toBeNull()
     expect(localStorage.getItem('access_token')).toBeNull()
   })
+
+  it('can() reflects the role permission matrix', () => {
+    const auth = useAuthStore()
+    auth.user = {
+      id: 1,
+      email: 'ops@example.com',
+      full_name: '',
+      role: 3,
+      role_detail: { id: 3, name: 'Operations', permissions: { operations: ['view', 'create'] } },
+    }
+
+    expect(auth.can('operations', 'create')).toBe(true)
+    expect(auth.can('finance', 'view')).toBe(false)
+  })
+
+  it('can() returns false when there is no authenticated user', () => {
+    const auth = useAuthStore()
+    expect(auth.can('operations', 'view')).toBe(false)
+  })
 })
