@@ -23,9 +23,7 @@ function onLogout() {
       </div>
     </header>
     <main class="p-6">
-      <p class="text-slate-500">
-        Dashboard and module navigation land here as each roadmap phase is implemented.
-      </p>
+      <router-view />
     </main>
   </div>
 </template>
