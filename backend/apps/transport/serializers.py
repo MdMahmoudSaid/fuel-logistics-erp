@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Driver, Transporter
+from .models import Driver, Transporter, Truck
 
 
 class TransporterSerializer(serializers.ModelSerializer):
@@ -21,3 +21,14 @@ class DriverSerializer(serializers.ModelSerializer):
             "created_at", "updated_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
+
+
+class TruckSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Truck
+        fields = [
+            "id", "internal_id", "tractor_registration", "tanker_registration",
+            "capacity_litres", "ownership_type", "owner_transporter", "default_driver",
+            "status", "notes", "created_at", "updated_at",
+        ]
+        read_only_fields = ["id", "status", "created_at", "updated_at"]
