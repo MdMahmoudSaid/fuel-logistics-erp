@@ -1,2 +1,8 @@
-# Populated in Phase 1 implementation. See roadmap/phase_1_foundation.md.
-urlpatterns = []
+from rest_framework.routers import DefaultRouter
+
+from .views import CustomerViewSet
+
+router = DefaultRouter()
+router.register("customers", CustomerViewSet, basename="customer")
+
+urlpatterns = router.urls
