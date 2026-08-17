@@ -1,0 +1,100 @@
+import pytest
+from rest_framework.test import APIClient
+
+from apps.accounts.models import Role, User
+from apps.finance.models import BankAccount, CashAccount
+
+
+@pytest.mark.django_db
+def test_bank_account_current_balance_defaults_to_opening_balance():
+    account = BankAccount.objects.create(
+        name="Main BOA Account", bank_name="Bank of Africa", opening_balance="1000000.00"
+    )
+    # No TreasuryTransaction model exists until Phase 5 — current_balance is
+    # opening_balance alone for now, and will sum real transactions later.
+    assert account.current_balance == account.opening_balance
+
+
+@pytest.mark.django_db
+def test_cash_account_currency_defaults_to_xof():
+    account = CashAccount.objects.create(name="Main Cash", location="Dakar office")
+    assert account.currency == "XOF"
+
+
+@pytest.fixture
+def finance_client():
+    role = Role.objects.get(name=Role.NAME_FINANCE)
+    user = User.objects.create_user(email="fin@example.com", password="testpass123", role=role)
+    client = APIClient()
+    client.force_authenticate(user)
+    return client
+
+
+@pytest.mark.django_db
+def test_bank_account_crud_via_api(finance_client):
+    created = finance_client.post(
+        "/api/bank-accounts/", {"name": "Main BOA Account", "bank_name": "Bank of Africa", "opening_balance": "1000000.00"}
+    )
+    assert created.status_code == 201
+
+    listed = finance_client.get("/api/bank-accounts/")
+    assert listed.status_code == 200
+    assert listed.data["count"] == 1
+
+    account_id = created.data["id"]
+    retrieved = finance_client.get(f"/api/bank-accounts/{account_id}/")
+    assert retrieved.status_code == 200
+    assert retrieved.data["current_balance"] == "1000000.00"
+
+    updated = finance_client.patch(f"/api/bank-accounts/{account_id}/", {"account_number": "SN001"})
+    assert updated.status_code == 200
+    assert updated.data["account_number"] == "SN001"
+
+
+@pytest.mark.django_db
+def test_cash_account_crud_via_api(finance_client):
+    created = finance_client.post(
+        "/api/cash-accounts/", {"name": "Main Cash", "location": "Dakar office", "opening_balance": "500000.00"}
+    )
+    assert created.status_code == 201
+
+    listed = finance_client.get("/api/cash-accounts/")
+    assert listed.status_code == 200
+    assert listed.data["count"] == 1
+
+    account_id = created.data["id"]
+    retrieved = finance_client.get(f"/api/cash-accounts/{account_id}/")
+    assert retrieved.status_code == 200
+    assert retrieved.data["current_balance"] == "500000.00"
+
+    updated = finance_client.patch(f"/api/cash-accounts/{account_id}/", {"location": "Bamako office"})
+    assert updated.status_code == 200
+    assert updated.data["location"] == "Bamako office"
+
+
+@pytest.mark.django_db
+def test_operations_role_can_create_truck_but_not_bank_account():
+    """Mandatory scenario from roadmap/phase_1_foundation.md: an Operations
+    user must be able to create a Truck (operations module) but must be
+    denied creating a BankAccount (finance module)."""
+    role = Role.objects.get(name=Role.NAME_OPERATIONS)
+    user = User.objects.create_user(email="ops@example.com", password="testpass123", role=role)
+    client = APIClient()
+    client.force_authenticate(user)
+
+    truck_response = client.post(
+        "/api/trucks/",
+        {
+            "internal_id": "TRK-100",
+            "tractor_registration": "EE-345-SN",
+            "tanker_registration": "FF-678-SN",
+            "capacity_litres": "45000.00",
+            "ownership_type": "COMPANY_OWNED",
+        },
+    )
+    assert truck_response.status_code == 201
+
+    bank_response = client.post(
+        "/api/bank-accounts/", {"name": "Main BOA Account", "opening_balance": "1000000.00"}
+    )
+    assert bank_response.status_code == 403
