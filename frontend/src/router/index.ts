@@ -35,6 +35,8 @@ const router = createRouter({
           name: 'cash-accounts',
           component: () => import('@/modules/finance/CashAccountView.vue'),
         },
+        { path: 'users', name: 'users', component: () => import('@/modules/users/UserView.vue') },
+        { path: 'roles', name: 'roles', component: () => import('@/modules/roles/RoleListView.vue') },
       ],
     },
   ],

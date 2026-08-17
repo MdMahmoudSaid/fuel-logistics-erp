@@ -18,7 +18,9 @@ const formValue = ref<Record<string, unknown>>({})
 const error = ref('')
 
 const columns = computed(() =>
-  props.fields.filter((f) => f.type !== 'textarea').map((f) => ({ key: f.key, label: f.label })),
+  props.fields
+    .filter((f) => f.type !== 'textarea' && f.type !== 'password')
+    .map((f) => ({ key: f.key, label: f.label })),
 )
 
 async function load() {

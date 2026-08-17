@@ -23,7 +23,7 @@ function setField(key: string, value: unknown) {
       <label class="text-sm font-medium text-slate-600" :for="field.key">{{ field.label }}</label>
 
       <input
-        v-if="field.type === 'text' || field.type === 'number'"
+        v-if="field.type === 'text' || field.type === 'number' || field.type === 'password'"
         :id="field.key"
         :type="field.type"
         :required="field.required"

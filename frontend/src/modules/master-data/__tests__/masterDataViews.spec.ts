@@ -9,6 +9,7 @@ import DriverView from '@/modules/drivers/DriverView.vue'
 import TruckView from '@/modules/trucks/TruckView.vue'
 import BankAccountView from '@/modules/finance/BankAccountView.vue'
 import CashAccountView from '@/modules/finance/CashAccountView.vue'
+import UserView from '@/modules/users/UserView.vue'
 
 const views = [
   ['ProductView', ProductView, 'Products'],
@@ -19,6 +20,7 @@ const views = [
   ['TruckView', TruckView, 'Trucks'],
   ['BankAccountView', BankAccountView, 'Bank Accounts'],
   ['CashAccountView', CashAccountView, 'Cash Accounts'],
+  ['UserView', UserView, 'Users'],
 ] as const
 
 describe('master-data thin wrapper views', () => {
