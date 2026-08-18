@@ -12,11 +12,19 @@ from apps.sales.services import CustomerOrderService
 from apps.suppliers.models import Supplier
 from apps.transport.models import Transporter, Truck
 from apps.trips.models import Trip, TripStatusHistory
+from apps.trips.serializers import TripSerializer, TripStatusHistorySerializer
 from apps.trips.services import (
     InvalidTripTransition,
     TripWorkflowService,
     TruckAvailabilityService,
 )
+
+
+class _FakeRequest:
+    """Minimal stand-in for a DRF Request - serializers only read .user."""
+
+    def __init__(self, user):
+        self.user = user
 
 # Full happy-path sequence starting right after ASSIGNED (the default status
 # a newly created Trip already has).
@@ -393,3 +401,133 @@ def test_repeated_truck_scenario_450000_litres_two_rounds():
     for truck in reused_trucks:
         trip_refs = set(Trip.objects.filter(truck=truck).values_list("reference", flat=True))
         assert len(trip_refs) == 2
+
+
+def _trip_payload(fx, truck, reference, quantity=Decimal("45000.00"), **overrides):
+    payload = {
+        "reference": reference,
+        "truck": truck.id,
+        "transporter": fx["transporter"].id,
+        "supplier": fx["supplier"].id,
+        "supplier_order": fx["supplier_order"].id,
+        "cession_letter": fx["cession"].id,
+        "product": fx["product"].id,
+        "quantity_loaded": quantity,
+        "loading_date": "2026-08-18",
+        "bl_reference": f"BL-{reference}",
+    }
+    payload.update(overrides)
+    return payload
+
+
+@pytest.mark.django_db
+def test_trip_serializer_rejects_quantity_over_cession_remaining():
+    fx = _setup_fixtures("SER-QTY")
+    fx["cession"].authorized_quantity = Decimal("45000.00")
+    fx["cession"].save(update_fields=["authorized_quantity"])
+    truck_a = _make_truck("TRK-SER-QTY-A")
+    truck_b = _make_truck("TRK-SER-QTY-B")
+
+    _make_trip(fx, truck_a, "TRIP-SER-QTY-001", quantity=Decimal("40000.00"))
+
+    serializer = TripSerializer(
+        data=_trip_payload(fx, truck_b, "TRIP-SER-QTY-002", quantity=Decimal("10000.00")),
+        context={"request": _FakeRequest(fx["admin_user"])},
+    )
+    assert not serializer.is_valid()
+    assert "quantity_loaded" in serializer.errors
+
+
+@pytest.mark.django_db
+def test_trip_serializer_accepts_quantity_within_cession_remaining():
+    fx = _setup_fixtures("SER-OK")
+    fx["cession"].authorized_quantity = Decimal("45000.00")
+    fx["cession"].save(update_fields=["authorized_quantity"])
+    truck = _make_truck("TRK-SER-OK")
+
+    serializer = TripSerializer(
+        data=_trip_payload(fx, truck, "TRIP-SER-OK-001", quantity=Decimal("45000.00")),
+        context={"request": _FakeRequest(fx["admin_user"])},
+    )
+    assert serializer.is_valid(), serializer.errors
+    assert "force" not in serializer.validated_data
+
+
+@pytest.mark.django_db
+def test_trip_serializer_rejects_active_truck_without_force():
+    fx = _setup_fixtures("SER-LOCK")
+    truck = _make_truck("TRK-SER-LOCK")
+    _make_trip(fx, truck, "TRIP-SER-LOCK-001")
+
+    serializer = TripSerializer(
+        data=_trip_payload(fx, truck, "TRIP-SER-LOCK-002"),
+        context={"request": _FakeRequest(fx["admin_user"])},
+    )
+    assert not serializer.is_valid()
+    assert "truck" in serializer.errors
+
+
+@pytest.mark.django_db
+def test_trip_serializer_rejects_force_from_non_admin():
+    fx = _setup_fixtures("SER-NOADMIN")
+    ops_role = Role.objects.get(name=Role.NAME_OPERATIONS)
+    ops_user = User.objects.create_user(
+        email="ops-ser@example.com", password="testpass123", role=ops_role
+    )
+    truck = _make_truck("TRK-SER-NOADMIN")
+    _make_trip(fx, truck, "TRIP-SER-NOADMIN-001")
+
+    serializer = TripSerializer(
+        data=_trip_payload(fx, truck, "TRIP-SER-NOADMIN-002", force=True),
+        context={"request": _FakeRequest(ops_user)},
+    )
+    assert not serializer.is_valid()
+    assert "truck" in serializer.errors
+
+
+@pytest.mark.django_db
+def test_trip_serializer_allows_force_override_by_admin():
+    fx = _setup_fixtures("SER-FORCE")
+    truck = _make_truck("TRK-SER-FORCE")
+    _make_trip(fx, truck, "TRIP-SER-FORCE-001")
+
+    serializer = TripSerializer(
+        data=_trip_payload(fx, truck, "TRIP-SER-FORCE-002", force=True),
+        context={"request": _FakeRequest(fx["admin_user"])},
+    )
+    assert serializer.is_valid(), serializer.errors
+    assert "force" not in serializer.validated_data
+
+
+@pytest.mark.django_db
+def test_trip_serializer_update_without_truck_change_skips_availability_check():
+    fx = _setup_fixtures("SER-UPD")
+    truck = _make_truck("TRK-SER-UPD")
+    trip = _make_trip(fx, truck, "TRIP-SER-UPD-001")
+
+    # This trip's own truck is (unsurprisingly) "active" right now - editing
+    # an unrelated field must not require force=true just because of that.
+    serializer = TripSerializer(
+        instance=trip,
+        data={"notes": "updated notes"},
+        partial=True,
+        context={"request": _FakeRequest(fx["admin_user"])},
+    )
+    assert serializer.is_valid(), serializer.errors
+
+
+@pytest.mark.django_db
+def test_trip_status_history_serializer_is_fully_read_only():
+    fx = _setup_fixtures("SER-HIST")
+    truck = _make_truck("TRK-SER-HIST")
+    trip = _make_trip(fx, truck, "TRIP-SER-HIST-001")
+    TripWorkflowService.transition_trip(
+        trip.id, Trip.Status.SENT_FOR_LOADING, fx["admin_user"], notes="go"
+    )
+    entry = trip.status_history.get()
+
+    serializer = TripStatusHistorySerializer(entry)
+    assert serializer.data["new_status"] == Trip.Status.SENT_FOR_LOADING
+    assert set(TripStatusHistorySerializer.Meta.read_only_fields) == set(
+        TripStatusHistorySerializer.Meta.fields
+    )

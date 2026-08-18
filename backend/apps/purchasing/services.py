@@ -15,9 +15,16 @@ from apps.purchasing.models import CessionLetter, SupplierOrder
 class SupplierStockService:
     @staticmethod
     def get_purchase_loaded_quantity(purchase: SupplierOrder) -> Decimal:
-        # Phase 2 stub: always 0 because Phase-3 loadings/trips don't exist
-        # yet. Will become SUM(trips.quantity_loaded) for this order.
-        return Decimal("0.00")
+        """SUM(trips.quantity_loaded) for this order, excluding cancelled
+        trips (Phase 3: apps.trips.Trip now exists). Imported lazily to keep
+        purchasing - a lower layer than trips in the dependency graph - free
+        of a module-level import on a higher layer (guide §5.1: derive from
+        source transactions, never a mutable cached field)."""
+        from apps.trips.models import Trip
+
+        return Trip.objects.filter(supplier_order=purchase).exclude(
+            status=Trip.Status.CANCELLED
+        ).aggregate(total=Sum("quantity_loaded"))["total"] or Decimal("0.00")
 
     @staticmethod
     def get_purchase_reliquat(purchase: SupplierOrder) -> Decimal:
@@ -33,10 +40,16 @@ class SupplierStockService:
 
     @staticmethod
     def get_cession_remaining(cession: CessionLetter) -> Decimal:
-        # Phase 2 stub: no loadings/trips exist yet, so the full authorized
-        # quantity is still available. Phase 3: authorized_quantity -
-        # SUM(trips.quantity_loaded for this cession).
-        return cession.authorized_quantity
+        """authorized_quantity - SUM(trips.quantity_loaded against this
+        cession), excluding cancelled trips - never a stored/mutable field
+        (guide §5.3: "Do not make remaining_quantity the authoritative
+        value")."""
+        from apps.trips.models import Trip
+
+        loaded = Trip.objects.filter(cession_letter=cession).exclude(
+            status=Trip.Status.CANCELLED
+        ).aggregate(total=Sum("quantity_loaded"))["total"] or Decimal("0.00")
+        return cession.authorized_quantity - loaded
 
     @staticmethod
     @transaction.atomic
@@ -71,3 +84,40 @@ class SupplierStockService:
                 f"disponible ({available_reliquat} L)."
             )
         return purchase
+
+    @staticmethod
+    @transaction.atomic
+    def validate_and_lock_cession_quantity(
+        cession_id: int, requested_qty: Decimal, exclude_trip_id: int | None = None
+    ) -> CessionLetter:
+        """Lock the CessionLetter row and validate quantity_loaded against
+        its own remaining balance - the Phase 3 counterpart of
+        validate_and_lock_reliquat(), guarding Trip creation instead of
+        CessionLetter creation (docs/PHASE_3_PLAN.md Etape 5;
+        ERP_Implementation_Experience_Guide.md §5.4's concurrency scenario
+        applied to loading rather than to issuing the cession itself).
+
+        Cession remaining and purchase reliquat are two different balances
+        (guide §1.3) - this never touches SupplierOrder.
+        """
+        from apps.trips.models import Trip
+
+        cession = CessionLetter.objects.select_for_update().get(pk=cession_id)
+
+        queryset = Trip.objects.filter(cession_letter=cession).exclude(
+            status=Trip.Status.CANCELLED
+        )
+        if exclude_trip_id:
+            queryset = queryset.exclude(pk=exclude_trip_id)
+
+        loaded_sum = queryset.aggregate(total=Sum("quantity_loaded"))[
+            "total"
+        ] or Decimal("0.00")
+        remaining = cession.authorized_quantity - loaded_sum
+
+        if requested_qty > remaining:
+            raise ValueError(
+                f"Quantité chargée demandée ({requested_qty} L) supérieure au "
+                f"reliquat de la cession ({remaining} L)."
+            )
+        return cession

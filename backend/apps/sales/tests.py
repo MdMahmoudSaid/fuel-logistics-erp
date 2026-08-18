@@ -8,6 +8,7 @@ from apps.core.models import Product
 from apps.customers.models import Customer
 from apps.purchasing.models import CessionLetter, SupplierOrder
 from apps.sales.models import CustomerOrder
+from apps.sales.serializers import CustomerOrderSerializer
 from apps.sales.services import CustomerOrderService
 from apps.suppliers.models import Supplier
 from apps.transport.models import Transporter, Truck
@@ -149,3 +150,55 @@ def test_remaining_quantity_tracks_delivered_not_assigned():
     # Assigned but not yet delivered: remaining should still be the full amount.
     _make_trip(fx, order, "TRIP-REMAIN-001", Decimal("100000.00"), Trip.Status.ASSIGNED)
     assert CustomerOrderService.get_remaining_quantity(order) == Decimal("100000.00")
+
+
+@pytest.mark.django_db
+def test_customer_order_serializer_exposes_computed_quantities():
+    fx = _setup_fixtures("SER-QTY")
+    order = CustomerOrder.objects.create(
+        customer=fx["customer"],
+        product=fx["product"],
+        quantity_ordered=Decimal("100000.00"),
+        status=CustomerOrder.Status.CONFIRMED,
+    )
+    _make_trip(fx, order, "TRIP-SER-QTY-001", Decimal("40000.00"), Trip.Status.ASSIGNED)
+    _make_trip(fx, order, "TRIP-SER-QTY-002", Decimal("30000.00"), Trip.Status.DELIVERED)
+
+    data = CustomerOrderSerializer(order).data
+
+    assert data["assigned_quantity"] == "70000.00"
+    assert data["delivered_quantity"] == "30000.00"
+    assert data["remaining_quantity"] == "70000.00"
+    assert data["customer_detail"]["id"] == fx["customer"].id
+    assert data["product_detail"]["id"] == fx["product"].id
+
+
+@pytest.mark.django_db
+def test_customer_order_serializer_rejects_direct_derived_status():
+    fx = _setup_fixtures("SER-STATUS")
+
+    serializer = CustomerOrderSerializer(
+        data={
+            "customer": fx["customer"].id,
+            "product": fx["product"].id,
+            "quantity_ordered": "100000.00",
+            "status": CustomerOrder.Status.DELIVERED,
+        }
+    )
+    assert not serializer.is_valid()
+    assert "status" in serializer.errors
+
+
+@pytest.mark.django_db
+def test_customer_order_serializer_allows_manual_confirm():
+    fx = _setup_fixtures("SER-CONFIRM")
+
+    serializer = CustomerOrderSerializer(
+        data={
+            "customer": fx["customer"].id,
+            "product": fx["product"].id,
+            "quantity_ordered": "100000.00",
+            "status": CustomerOrder.Status.CONFIRMED,
+        }
+    )
+    assert serializer.is_valid(), serializer.errors
