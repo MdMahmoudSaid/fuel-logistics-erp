@@ -62,3 +62,23 @@ def test_product_create_denied_without_operations_permission():
 
     response = client.post("/api/products/", {"name": "Diesel Premium", "code": "diesel-premium"})
     assert response.status_code == 403
+
+
+@pytest.mark.django_db
+def test_product_list_readable_by_a_role_scoped_only_to_purchasing():
+    # Regression test for a gap the Phase 2 Section 3.B manual UAT run
+    # caught: a role holding only "purchasing" rights (no "operations")
+    # couldn't load the product dropdown when creating a SupplierOrder,
+    # because ProductViewSet.list was gated entirely behind "operations".
+    role = Role.objects.create(name="Purchasing Only", permissions={"purchasing": ["view", "create"]})
+    user = User.objects.create_user(email="purchasing-only@example.com", password="testpass123", role=role)
+    client = APIClient()
+    client.force_authenticate(user)
+
+    list_response = client.get("/api/products/")
+    assert list_response.status_code == 200
+    assert list_response.data["count"] >= 2  # at least the seeded Gasoil/Essence
+
+    # Writes remain operations-only even for this role.
+    create_response = client.post("/api/products/", {"name": "Kerosene", "code": "kerosene"})
+    assert create_response.status_code == 403
