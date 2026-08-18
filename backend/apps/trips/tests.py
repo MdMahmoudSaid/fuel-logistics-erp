@@ -2,6 +2,9 @@ from decimal import Decimal
 
 import pytest
 from django.db import IntegrityError, transaction
+from django.urls import resolve
+from django.urls.exceptions import Resolver404
+from rest_framework.test import APIClient
 
 from apps.accounts.models import Role, User
 from apps.core.models import Product
@@ -531,3 +534,225 @@ def test_trip_status_history_serializer_is_fully_read_only():
     assert set(TripStatusHistorySerializer.Meta.read_only_fields) == set(
         TripStatusHistorySerializer.Meta.fields
     )
+
+
+# ---------------------------------------------------------------------------
+# Etape 7: integration/acceptance tests through the actual DRF endpoints
+# (views.py / urls.py from Etape 6). The equivalent scenarios already
+# exercised at the model/service layer in block 1 stay in place above; these
+# confirm the same rules hold end-to-end through HTTP + permissions.
+# ---------------------------------------------------------------------------
+
+_FORWARD_SEQUENCE_STATUS_NAMES = [
+    "SENT_FOR_LOADING",
+    "LOADING",
+    "LOADED",
+    "IN_TRANSIT",
+    "BORDER",
+    "CUSTOMS",
+    "GOING_TO_CLIENT",
+    "ARRIVED_AT_CLIENT",
+    "QUANTITY_CONTROL",
+    "DELIVERED",
+    "COMPLETED",
+]
+
+
+def _api_trip_payload(fx, truck, quantity="45000.00", **overrides):
+    payload = {
+        "truck": truck.id,
+        "transporter": fx["transporter"].id,
+        "supplier": fx["supplier"].id,
+        "supplier_order": fx["supplier_order"].id,
+        "cession_letter": fx["cession"].id,
+        "product": fx["product"].id,
+        "quantity_loaded": quantity,
+        "loading_date": "2026-08-18",
+        "bl_reference": f"BL-{truck.internal_id}",
+    }
+    payload.update(overrides)
+    return payload
+
+
+@pytest.mark.django_db
+def test_api_repeated_truck_scenario_450000_litres():
+    """Mandatory recette scenario (spec Section 44 / plan Etape 7), this time
+    driven entirely through POST /api/trips/, POST /api/trips/{id}/status/
+    and GET /api/customer-orders/{id}/ - the model/service-layer version of
+    the same scenario is
+    test_repeated_truck_scenario_450000_litres_two_rounds above."""
+    fx = _setup_fixtures("API-450K")
+    fx["cession"].authorized_quantity = Decimal("500000.00")
+    fx["cession"].save(update_fields=["authorized_quantity"])
+    customer = Customer.objects.create(name="Client API")
+
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+
+    order_response = client.post(
+        "/api/customer-orders/",
+        {
+            "customer": customer.id,
+            "product": fx["product"].id,
+            "quantity_ordered": "450000.00",
+            "status": CustomerOrder.Status.CONFIRMED,
+        },
+    )
+    assert order_response.status_code == 201, order_response.data
+    order_id = order_response.data["id"]
+
+    trucks = [_make_truck(f"TRK-API-450K-{letter}") for letter in "ABCDEF"]
+
+    round_one_trip_ids = []
+    for truck in trucks:
+        response = client.post(
+            "/api/trips/",
+            _api_trip_payload(
+                fx, truck, customer_order=order_id, bl_reference=f"BL-{truck.internal_id}-R1"
+            ),
+        )
+        assert response.status_code == 201, response.data
+        assert response.data["reference"].startswith("TRIP-")
+        round_one_trip_ids.append(response.data["id"])
+
+    for trip_id in round_one_trip_ids:
+        for target in _FORWARD_SEQUENCE_STATUS_NAMES:
+            response = client.post(f"/api/trips/{trip_id}/status/", {"new_status": target})
+            assert response.status_code == 200, response.data
+
+    order_after_round_one = client.get(f"/api/customer-orders/{order_id}/").data
+    assert order_after_round_one["delivered_quantity"] == "270000.00"
+    assert order_after_round_one["status"] == "PARTIALLY_DELIVERED"
+
+    reused_trucks = trucks[:4]
+    round_two_trip_ids = []
+    for truck in reused_trucks:
+        response = client.post(
+            "/api/trips/",
+            _api_trip_payload(
+                fx,
+                truck,
+                customer_order=order_id,
+                loading_date="2026-08-19",
+                bl_reference=f"BL-{truck.internal_id}-R2",
+            ),
+        )
+        assert response.status_code == 201, response.data
+        round_two_trip_ids.append(response.data["id"])
+
+    for trip_id in round_two_trip_ids:
+        for target in _FORWARD_SEQUENCE_STATUS_NAMES:
+            response = client.post(f"/api/trips/{trip_id}/status/", {"new_status": target})
+            assert response.status_code == 200, response.data
+
+    final_order = client.get(f"/api/customer-orders/{order_id}/").data
+    assert final_order["delivered_quantity"] == "450000.00"
+    assert final_order["remaining_quantity"] == "0.00"
+    assert final_order["status"] == "DELIVERED"
+
+    order_trips = client.get(f"/api/customer-orders/{order_id}/trips/").data
+    assert len(order_trips) == 10
+
+    for truck in reused_trucks:
+        truck_trips = client.get(f"/api/trucks/{truck.id}/trips/").data
+        assert len(truck_trips) == 2
+        assert len({t["reference"] for t in truck_trips}) == 2
+
+
+@pytest.mark.django_db
+def test_api_truck_lock_rejected_then_admin_force_succeeds():
+    fx = _setup_fixtures("API-LOCK")
+    truck = _make_truck("TRK-API-LOCK")
+    _make_trip(fx, truck, "TRIP-API-LOCK-SEED")  # pre-existing active trip
+
+    ops_role = Role.objects.get(name=Role.NAME_OPERATIONS)
+    ops_user = User.objects.create_user(
+        email="ops-api-lock@example.com", password="testpass123", role=ops_role
+    )
+    payload = _api_trip_payload(fx, truck, quantity="10000.00")
+
+    ops_client = APIClient()
+    ops_client.force_authenticate(ops_user)
+    response = ops_client.post("/api/trips/", payload)
+    assert response.status_code == 400
+    assert "truck" in response.data
+
+    admin_client = APIClient()
+    admin_client.force_authenticate(fx["admin_user"])
+    response = admin_client.post("/api/trips/", {**payload, "force": True})
+    assert response.status_code == 201, response.data
+
+
+@pytest.mark.django_db
+def test_api_direct_sale_trip_without_customer_order():
+    fx = _setup_fixtures("API-DIRECT")
+    truck = _make_truck("TRK-API-DIRECT")
+    customer = Customer.objects.create(name="Direct Client")
+
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+
+    response = client.post(
+        "/api/trips/", _api_trip_payload(fx, truck, quantity="20000.00", client=customer.id)
+    )
+    assert response.status_code == 201, response.data
+    assert response.data["customer_order"] is None
+    assert response.data["client"] == customer.id
+
+
+@pytest.mark.django_db
+def test_api_trip_status_history_immutable_no_mutation_endpoint():
+    fx = _setup_fixtures("API-HIST")
+    truck = _make_truck("TRK-API-HIST")
+    trip = _make_trip(fx, truck, "TRIP-API-HIST-001")
+    TripWorkflowService.transition_trip(
+        trip.id, Trip.Status.SENT_FOR_LOADING, fx["admin_user"]
+    )
+    entry = trip.status_history.get()
+
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+
+    history_response = client.get(f"/api/trips/{trip.id}/history/")
+    assert history_response.status_code == 200
+    assert len(history_response.data) == 1
+    assert history_response.data[0]["new_status"] == Trip.Status.SENT_FOR_LOADING
+
+    # No ModelViewSet is registered for TripStatusHistory - it is exposed
+    # strictly read-only, nested under a trip (GET /api/trips/{id}/history/).
+    # A guessed direct-mutation URL must not resolve to any view at all -
+    # confirmed via the resolver directly (rather than a live PATCH request,
+    # whose 404 error page rendering hits an unrelated Django/Python 3.14
+    # template-context-copy bug in this environment). The real immutability
+    # enforcement is at the model level (see test_trip_status_history_is_immutable).
+    with pytest.raises(Resolver404):
+        resolve(f"/api/trip-status-history/{entry.id}/")
+
+    # Confirm the DB row genuinely never changed either way.
+    assert TripStatusHistory.objects.get(pk=entry.pk).notes == ""
+
+
+@pytest.mark.django_db
+def test_api_customer_order_permissions_gate_on_sales_module():
+    fx = _setup_fixtures("API-PERM")
+    customer = Customer.objects.create(name="Perm Client")
+    payload = {
+        "customer": customer.id,
+        "product": fx["product"].id,
+        "quantity_ordered": "10000.00",
+    }
+
+    ops_role = Role.objects.get(name=Role.NAME_OPERATIONS)
+    ops_user = User.objects.create_user(
+        email="ops-perm@example.com", password="testpass123", role=ops_role
+    )
+
+    client = APIClient()
+    client.force_authenticate(ops_user)
+    # Operations role only has "view" on the sales module.
+    response = client.post("/api/customer-orders/", payload)
+    assert response.status_code == 403
+
+    client.force_authenticate(fx["admin_user"])
+    response = client.post("/api/customer-orders/", payload)
+    assert response.status_code == 201, response.data

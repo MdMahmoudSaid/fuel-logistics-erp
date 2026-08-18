@@ -5,9 +5,16 @@ ACTION_MAP = {
     "retrieve": "view",
     "ledger": "view",
     "reliquat": "view",
+    "trips": "view",
+    "history": "view",
     "create": "create",
     "update": "edit",
     "partial_update": "edit",
+    # Trip status transitions (docs/PHASE_3_PLAN.md Etape 6) are routine
+    # day-to-day operations work, not a "validate" business action - map to
+    # "edit" so the Operations role (which has edit but not validate on the
+    # operations module) can drive a trip through its lifecycle.
+    "status": "edit",
     "destroy": "cancel",
 }
 
