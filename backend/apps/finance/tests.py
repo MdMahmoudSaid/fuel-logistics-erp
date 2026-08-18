@@ -6,8 +6,16 @@ from rest_framework.test import APIClient
 
 from apps.accounts.models import Role, User
 from apps.core.models import Product
-from apps.finance.models import BankAccount, CashAccount, TransportDeduction
+from apps.customers.models import Customer
+from apps.finance.models import (
+    BankAccount,
+    CashAccount,
+    CustomerPayment,
+    PaymentAllocation,
+    TransportDeduction,
+)
 from apps.purchasing.models import CessionLetter, SupplierOrder
+from apps.sales.models import Invoice, Sale
 from apps.suppliers.models import Supplier
 from apps.transport.models import Transporter, Truck
 from apps.trips.models import Trip
@@ -189,3 +197,188 @@ def test_transport_deduction_requires_positive_chargeable_quantity():
                 chargeable_quantity=Decimal("0.00"),
                 unit_price=Decimal("600.0000"),
             )
+
+
+# ---------------------------------------------------------------------------
+# Phase 5 Etape 1: CustomerPayment / PaymentAllocation
+# (docs/PHASE_5_PLAN.md; guide Section 8.2/8.3/1.7)
+# ---------------------------------------------------------------------------
+
+
+def _make_invoice_for_payment(suffix):
+    admin_role = Role.objects.get(name=Role.NAME_ADMIN)
+    admin_user = User.objects.create_user(
+        email=f"admin-payment-{suffix}@example.com",
+        password="testpass123",
+        role=admin_role,
+    )
+    product = Product.objects.get(code="gasoil")
+    supplier = Supplier.objects.create(name="Total", country="Senegal")
+    transporter = Transporter.objects.create(name="Trans SA")
+    customer = Customer.objects.create(name=f"Client {suffix}")
+    supplier_order = SupplierOrder.objects.create(
+        reference=f"SO-PAY-{suffix}",
+        supplier=supplier,
+        product=product,
+        purchase_date="2026-08-18",
+        quantity_litres=Decimal("500000.00"),
+        unit_price=Decimal("600.0000"),
+        created_by=admin_user,
+    )
+    cession = CessionLetter.objects.create(
+        reference=f"CL-PAY-{suffix}",
+        supplier_order=supplier_order,
+        authorized_quantity=Decimal("500000.00"),
+        issue_date="2026-08-18",
+        created_by=admin_user,
+    )
+    truck = Truck.objects.create(
+        internal_id=f"TRK-PAY-{suffix}",
+        tractor_registration=f"{suffix}-TRACTOR",
+        tanker_registration=f"{suffix}-TANKER",
+        capacity_litres=Decimal("45000.00"),
+    )
+    trip = Trip.objects.create(
+        reference=f"TRIP-PAY-{suffix}",
+        truck=truck,
+        transporter=transporter,
+        supplier=supplier,
+        supplier_order=supplier_order,
+        cession_letter=cession,
+        product=product,
+        quantity_loaded=Decimal("45000.00"),
+        loading_date="2026-08-18",
+        bl_reference=f"BL-PAY-{suffix}",
+        status=Trip.Status.DELIVERED,
+        created_by=admin_user,
+    )
+    sale = Sale.objects.create(
+        trip=trip,
+        customer=customer,
+        product=product,
+        delivered_quantity=Decimal("44850.00"),
+        unit_selling_price=Decimal("650.0000"),
+    )
+    invoice = Invoice.objects.create(
+        invoice_number=f"INV-PAY-{suffix}",
+        sale=sale,
+        total_amount=sale.subtotal,
+        issued_date="2026-08-18",
+    )
+    return admin_user, customer, invoice
+
+
+@pytest.mark.django_db
+def test_customer_payment_requires_positive_amount():
+    admin_user, customer, _invoice = _make_invoice_for_payment("AMT")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+
+    with pytest.raises(IntegrityError):
+        with transaction.atomic():
+            CustomerPayment.objects.create(
+                customer=customer,
+                amount=Decimal("0.00"),
+                payment_date="2026-08-18",
+                method=CustomerPayment.Method.CASH,
+                cash_account=cash_account,
+                recorded_by=admin_user,
+            )
+
+
+@pytest.mark.django_db
+def test_customer_payment_cannot_set_both_accounts():
+    admin_user, customer, _invoice = _make_invoice_for_payment("BOTH")
+    bank_account = BankAccount.objects.create(name="Main BOA Account")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+
+    with pytest.raises(IntegrityError):
+        with transaction.atomic():
+            CustomerPayment.objects.create(
+                customer=customer,
+                amount=Decimal("1000000.00"),
+                payment_date="2026-08-18",
+                method=CustomerPayment.Method.BANK_TRANSFER,
+                bank_account=bank_account,
+                cash_account=cash_account,
+                recorded_by=admin_user,
+            )
+
+
+@pytest.mark.django_db
+def test_indirect_customer_payment_requires_no_treasury_account():
+    admin_user, customer, _invoice = _make_invoice_for_payment("IND")
+
+    payment = CustomerPayment.objects.create(
+        customer=customer,
+        amount=Decimal("5000000.00"),
+        payment_date="2026-08-18",
+        method=CustomerPayment.Method.OTHER,
+        is_indirect=True,
+        recorded_by=admin_user,
+    )
+
+    assert payment.bank_account is None
+    assert payment.cash_account is None
+    assert payment.is_indirect is True
+
+
+@pytest.mark.django_db
+def test_payment_allocation_requires_positive_amount():
+    admin_user, customer, invoice = _make_invoice_for_payment("ALLOC-NEG")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+    payment = CustomerPayment.objects.create(
+        customer=customer,
+        amount=Decimal("10000000.00"),
+        payment_date="2026-08-18",
+        method=CustomerPayment.Method.CASH,
+        cash_account=cash_account,
+        recorded_by=admin_user,
+    )
+
+    with pytest.raises(IntegrityError):
+        with transaction.atomic():
+            PaymentAllocation.objects.create(
+                payment=payment, invoice=invoice, amount=Decimal("0.00")
+            )
+
+
+@pytest.mark.django_db
+def test_payment_allocation_links_payment_to_invoice():
+    admin_user, customer, invoice = _make_invoice_for_payment("ALLOC-LINK")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+    payment = CustomerPayment.objects.create(
+        customer=customer,
+        amount=Decimal("10000000.00"),
+        payment_date="2026-08-18",
+        method=CustomerPayment.Method.CASH,
+        cash_account=cash_account,
+        recorded_by=admin_user,
+    )
+
+    allocation = PaymentAllocation.objects.create(
+        payment=payment, invoice=invoice, amount=Decimal("10000000.00")
+    )
+
+    assert payment.allocations.count() == 1
+    assert invoice.allocations.first() == allocation
+
+
+@pytest.mark.django_db
+def test_payment_allocation_invoice_null_means_unallocated_credit():
+    admin_user, customer, _invoice = _make_invoice_for_payment("ALLOC-CREDIT")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+    payment = CustomerPayment.objects.create(
+        customer=customer,
+        amount=Decimal("2000000.00"),
+        payment_date="2026-08-18",
+        method=CustomerPayment.Method.CASH,
+        cash_account=cash_account,
+        recorded_by=admin_user,
+    )
+
+    allocation = PaymentAllocation.objects.create(
+        payment=payment, invoice=None, amount=Decimal("2000000.00")
+    )
+
+    assert allocation.invoice is None
+    assert payment.allocations.get().invoice is None
