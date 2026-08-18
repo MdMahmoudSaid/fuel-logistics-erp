@@ -353,6 +353,8 @@ class TransportPayment(TimeStampedModel):
             self.base_amount - self.deduction_amount - advance_amount
         ).quantize(Decimal("0.01"))
         super().save(*args, **kwargs)
+        if self.advance_applied_id and not self.advance_applied.settled:
+            TransporterAdvance.objects.filter(pk=self.advance_applied_id).update(settled=True)
 
 
 class Expense(TimeStampedModel):

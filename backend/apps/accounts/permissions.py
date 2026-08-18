@@ -25,6 +25,11 @@ ACTION_MAP = {
     # A correction only ever applies to an already-VALIDATED invoice, so it
     # requires the same "validate" tier rather than plain "edit".
     "correct": "validate",
+    # Both create new financial records via a dedicated service rather than
+    # a plain model create, but are still "create" tier from a permissions
+    # standpoint (docs/PHASE_5_PLAN.md Etape 6/8).
+    "transfer": "create",
+    "record_indirect": "create",
 }
 
 

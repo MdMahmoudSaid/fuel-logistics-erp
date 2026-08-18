@@ -55,6 +55,19 @@ class SupplierViewSet(viewsets.ModelViewSet):
                 }
             )
 
+        # Imported lazily: apps.suppliers sits below apps.finance in the app
+        # dependency graph (apps.finance.models references
+        # "suppliers.Supplier" only via string FK), so a module-level import
+        # here would run the dependency the wrong way round
+        # (docs/PHASE_5_PLAN.md Etape 8: "achats + acomptes/avances fournisseurs").
+        from apps.finance.serializers import SupplierPaymentSerializer
+
+        payments = supplier.payments.select_related(
+            "supplier_order", "bank_account", "cash_account", "recorded_by"
+        )
+        total_paid = sum((p.amount for p in payments), Decimal("0.00"))
+        total_purchased = sum((o.total_amount for o in orders), Decimal("0.00"))
+
         return Response(
             {
                 "supplier": {
@@ -63,6 +76,12 @@ class SupplierViewSet(viewsets.ModelViewSet):
                 },
                 "orders": orders_serialized,
                 "reliquat_summary": reliquat_summary,
+                "payments": SupplierPaymentSerializer(
+                    payments, many=True, context={"request": request}
+                ).data,
+                "total_purchased": f"{total_purchased:.2f}",
+                "total_paid": f"{total_paid:.2f}",
+                "outstanding_balance": f"{total_purchased - total_paid:.2f}",
             }
         )
 
