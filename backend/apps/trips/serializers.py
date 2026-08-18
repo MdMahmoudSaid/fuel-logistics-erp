@@ -1,15 +1,17 @@
 import logging
+from decimal import Decimal
 
 from rest_framework import serializers
 
-from apps.accounts.models import Role
+from apps.accounts.models import Role, User
 from apps.accounts.serializers import UserSerializer
 from apps.core.serializers import ProductSerializer
 from apps.customers.serializers import CustomerSerializer
+from apps.documents.models import Document
 from apps.purchasing.services import SupplierStockService
 from apps.suppliers.serializers import SupplierSerializer
 from apps.transport.serializers import DriverSerializer, TransporterSerializer, TruckSerializer
-from apps.trips.models import Trip, TripStatusHistory
+from apps.trips.models import DeliveryControl, Trip, TripStatusHistory
 from apps.trips.services import TruckAvailabilityService
 
 # Dedicated logger for the force-override audit trail (docs/PHASE_3_PLAN.md
@@ -164,3 +166,69 @@ class TripSerializer(serializers.ModelSerializer):
             active_trip.reference if active_trip else None,
             user.email,
         )
+
+
+class DeliveryControlSerializer(serializers.ModelSerializer):
+    """Read-only representation of a confirmed DeliveryControl
+    (docs/PHASE_4_PLAN.md Etape 6). Entirely produced by
+    DeliveryService.record_delivery() via TripViewSet.delivery_control() -
+    see DeliveryControlRequestSerializer below for the write path."""
+
+    controller_detail = UserSerializer(source="controller", read_only=True)
+    anomaly_confirmed_by_detail = UserSerializer(
+        source="anomaly_confirmed_by", read_only=True
+    )
+
+    class Meta:
+        model = DeliveryControl
+        fields = [
+            "id",
+            "trip",
+            "loaded_quantity",
+            "received_quantity",
+            "loss_quantity",
+            "chargeable_loss_quantity",
+            "tolerance_quantity",
+            "control_date",
+            "controller",
+            "controller_detail",
+            "method",
+            "document",
+            "notes",
+            "anomaly_confirmed_by",
+            "anomaly_confirmed_by_detail",
+            "anomaly_confirmed_at",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+
+class DeliveryControlRequestSerializer(serializers.Serializer):
+    """Input validation for POST /api/trips/{id}/delivery-control/.
+
+    Not a ModelSerializer: the actual DeliveryControl (plus its
+    TransportDeduction/Sale/Invoice side effects) is created exclusively by
+    DeliveryService.record_delivery() under a Trip row lock (guide Section
+    13/15) - this only validates and type-converts the request body before
+    the view hands it to that service.
+
+    The reçu > chargé anomaly gate itself is intentionally NOT re-checked
+    here: DeliveryService already raises DeliveryAnomalyConfirmationRequired
+    for it, and duplicating that rule here would risk the two drifting
+    apart (guide Section 5.5 - never duplicate a formula/rule across
+    serializers and services).
+    """
+
+    received_quantity = serializers.DecimalField(
+        max_digits=14, decimal_places=2, min_value=Decimal("0")
+    )
+    control_date = serializers.DateField()
+    method = serializers.ChoiceField(choices=DeliveryControl.Method.choices)
+    anomaly_confirmed_by = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(), required=False, allow_null=True
+    )
+    document = serializers.PrimaryKeyRelatedField(
+        queryset=Document.objects.all(), required=False, allow_null=True
+    )
+    notes = serializers.CharField(required=False, allow_blank=True, default="")

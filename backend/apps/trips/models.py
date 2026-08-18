@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.db import models
 
 from apps.core.models import TimeStampedModel
@@ -141,3 +143,90 @@ class TripStatusHistory(models.Model):
         raise ValueError(
             "TripStatusHistory records are immutable and cannot be deleted."
         )
+
+
+class DeliveryControl(TimeStampedModel):
+    """Quantity control recorded at discharge, the source of commercial
+    truth for the whole downstream chain (docs/PHASE_4_PLAN.md Etape 2;
+    ERP_Implementation_Experience_Guide.md Section 7.2/7.3: "Delivery is not
+    simply trip.status = DELIVERED - it should record evidence and
+    operational data").
+
+    loss_quantity and chargeable_loss_quantity are always recomputed from
+    loaded/received/tolerance on save() (same pattern as
+    SupplierOrder.total_amount) rather than trusted as caller input, so they
+    can never drift from the three source values.
+
+    tolerance_quantity freezes the LossToleranceConfig value that was in
+    effect at confirmation time (guide Section 7.2's "gel historique" rule):
+    once written here it must never be touched again even if the global
+    default changes later.
+    """
+
+    class Method(models.TextChoices):
+        MANUAL_GAUGE = "MANUAL_GAUGE", "Manual gauge"
+        METER = "METER", "Meter"
+
+    trip = models.OneToOneField(
+        Trip, on_delete=models.PROTECT, related_name="delivery_control"
+    )
+    loaded_quantity = models.DecimalField(max_digits=14, decimal_places=2)
+    received_quantity = models.DecimalField(max_digits=14, decimal_places=2)
+    loss_quantity = models.DecimalField(
+        max_digits=14, decimal_places=2, editable=False
+    )
+    tolerance_quantity = models.DecimalField(max_digits=10, decimal_places=2)
+    chargeable_loss_quantity = models.DecimalField(
+        max_digits=14, decimal_places=2, editable=False
+    )
+    control_date = models.DateField()
+    controller = models.ForeignKey(
+        "accounts.User", on_delete=models.PROTECT, related_name="delivery_controls"
+    )
+    method = models.CharField(max_length=20, choices=Method.choices)
+    document = models.ForeignKey(
+        "documents.Document",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="delivery_controls",
+    )
+    notes = models.TextField(blank=True)
+    anomaly_confirmed_by = models.ForeignKey(
+        "accounts.User",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="confirmed_delivery_anomalies",
+    )
+    anomaly_confirmed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(loaded_quantity__gt=0),
+                name="trips_deliverycontrol_loaded_quantity_positive",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(received_quantity__gte=0),
+                name="trips_deliverycontrol_received_quantity_non_negative",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(tolerance_quantity__gte=0),
+                name="trips_deliverycontrol_tolerance_non_negative",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"Delivery control for {self.trip.reference}"
+
+    def save(self, *args, **kwargs):
+        # Quantity Formula (guide Section 7.3): loss can go negative when
+        # received > loaded (the anomaly case) - chargeable_loss floors at 0
+        # either way, it is never a debt owed by the client.
+        loss = self.loaded_quantity - self.received_quantity
+        self.loss_quantity = loss
+        self.chargeable_loss_quantity = max(
+            loss - self.tolerance_quantity, Decimal("0.00")
+        )
+        super().save(*args, **kwargs)

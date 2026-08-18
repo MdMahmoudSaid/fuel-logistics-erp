@@ -8,8 +8,18 @@ from rest_framework.response import Response
 from apps.accounts.permissions import HasModulePermission
 
 from .models import Trip
-from .serializers import TripSerializer, TripStatusHistorySerializer
-from .services import InvalidTripTransition, TripWorkflowService
+from .serializers import (
+    DeliveryControlRequestSerializer,
+    DeliveryControlSerializer,
+    TripSerializer,
+    TripStatusHistorySerializer,
+)
+from .services import (
+    DeliveryAnomalyConfirmationRequired,
+    DeliveryService,
+    InvalidTripTransition,
+    TripWorkflowService,
+)
 
 # Trip records use TripWorkflowService transitions (CANCELLED included)
 # instead of physical deletion, per ERP_Implementation_Experience_Guide.md
@@ -123,3 +133,47 @@ class TripViewSet(viewsets.ModelViewSet):
         trip = self.get_object()
         history = trip.status_history.all()
         return Response(TripStatusHistorySerializer(history, many=True).data)
+
+    @action(detail=True, methods=["post"], url_path="delivery-control")
+    def delivery_control(self, request, pk=None):
+        """Confirm discharge/quantity control for this trip and finalize
+        delivery (docs/PHASE_4_PLAN.md Etape 6): creates the DeliveryControl,
+        the TransportDeduction (if any chargeable loss), the Sale and its
+        DRAFT Invoice, and transitions the trip to DELIVERED - all inside
+        DeliveryService.record_delivery()'s single atomic transaction.
+
+        POST /api/trips/{id}/delivery-control/
+        """
+        trip = self.get_object()
+        input_serializer = DeliveryControlRequestSerializer(data=request.data)
+        input_serializer.is_valid(raise_exception=True)
+        data = input_serializer.validated_data
+
+        try:
+            control = DeliveryService.record_delivery(
+                trip_id=trip.id,
+                received_qty=data["received_quantity"],
+                control_date=data["control_date"],
+                method=data["method"],
+                controller=request.user,
+                anomaly_confirmed_by=data.get("anomaly_confirmed_by"),
+                document=data.get("document"),
+                notes=data.get("notes", ""),
+            )
+        except DeliveryAnomalyConfirmationRequired as exc:
+            # Plan Section 1.D: reçu > chargé without an authorized
+            # confirmation stops automatic validation - 422, not 400/500.
+            return Response(
+                {"detail": str(exc)},
+                status=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
+        except ValueError as exc:
+            # Covers SellingPriceNotConfigured and InvalidTripTransition too
+            # (both are ValueError subclasses) - anything else that stops
+            # confirmation before the anomaly gate is a plain 400.
+            return Response({"detail": str(exc)}, status=http_status.HTTP_400_BAD_REQUEST)
+
+        return Response(
+            DeliveryControlSerializer(control, context={"request": request}).data,
+            status=http_status.HTTP_201_CREATED,
+        )

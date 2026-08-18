@@ -11,9 +11,10 @@
 
 from decimal import Decimal
 
+from django.db import transaction
 from django.db.models import Sum
 
-from apps.sales.models import CustomerOrder
+from apps.sales.models import CustomerOrder, Invoice, InvoiceCorrection
 
 ZERO = Decimal("0.00")
 
@@ -98,3 +99,89 @@ class CustomerOrderService:
             order.status = target
             order.save(update_fields=["status", "updated_at"])
         return order
+
+
+class InvoiceValidationError(ValueError):
+    """Raised when validate_invoice() is called on an invoice that isn't
+    DRAFT (e.g. already validated)."""
+
+
+class InvoiceNotValidated(ValueError):
+    """Raised when correct_invoice() is called on an invoice that hasn't
+    been validated yet - a DRAFT invoice's fields should just be edited
+    directly instead of going through the audited correction workflow
+    (docs/PHASE_4_PLAN.md Section 1.E)."""
+
+
+class UnsupportedCorrectionField(ValueError):
+    """Raised when correct_invoice() is asked to correct a field it doesn't
+    know how to apply/recompute."""
+
+
+class InvoiceService:
+    """Owns Invoice validation and post-validation corrections
+    (docs/PHASE_4_PLAN.md Etape 5;
+    ERP_Implementation_Experience_Guide.md Section 7.9/Section 21: "do not
+    silently rewrite quantity/price - record correction/reversal with
+    reason and actor").
+    """
+
+    @staticmethod
+    @transaction.atomic
+    def validate_invoice(invoice_id, actor) -> Invoice:
+        """Freeze `invoice_id`'s operational amounts by moving it to
+        VALIDATED. Past this point, only correct_invoice() may touch its
+        financial data."""
+        invoice = Invoice.objects.select_for_update().get(pk=invoice_id)
+
+        if invoice.status != Invoice.Status.DRAFT:
+            raise InvoiceValidationError(
+                f"Invoice {invoice.invoice_number} is already "
+                f"{invoice.status} and cannot be validated again."
+            )
+
+        invoice.status = Invoice.Status.VALIDATED
+        invoice.save(update_fields=["status", "updated_at"])
+        return invoice
+
+    @staticmethod
+    @transaction.atomic
+    def correct_invoice(invoice_id, field, new_value, reason, actor) -> Invoice:
+        """Adjust a validated invoice's financial data under audit
+        (docs/PHASE_4_PLAN.md Section 1.E). Only usable once VALIDATED - a
+        DRAFT invoice's serializer should accept direct field edits instead,
+        with no correction trail needed for data that was never frozen."""
+        invoice = Invoice.objects.select_for_update().get(pk=invoice_id)
+
+        if invoice.status != Invoice.Status.VALIDATED:
+            raise InvoiceNotValidated(
+                f"Invoice {invoice.invoice_number} must be VALIDATED before "
+                "it can be corrected; edit it directly while it is DRAFT."
+            )
+
+        sale = invoice.sale
+
+        if field == "unit_selling_price":
+            previous_value = str(sale.unit_selling_price)
+            sale.unit_selling_price = Decimal(str(new_value))
+            sale.save()  # recomputes subtotal via Sale.save()
+            invoice.total_amount = sale.subtotal
+            invoice.save(update_fields=["total_amount", "updated_at"])
+        elif field == "total_amount":
+            previous_value = str(invoice.total_amount)
+            invoice.total_amount = Decimal(str(new_value))
+            invoice.save(update_fields=["total_amount", "updated_at"])
+        else:
+            raise UnsupportedCorrectionField(
+                f"'{field}' is not a correctable invoice field."
+            )
+
+        InvoiceCorrection.objects.create(
+            invoice=invoice,
+            field_name=field,
+            previous_value=previous_value,
+            new_value=str(new_value),
+            corrected_by=actor,
+            reason=reason,
+        )
+        return invoice

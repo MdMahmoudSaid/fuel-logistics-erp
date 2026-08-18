@@ -1,8 +1,9 @@
 from rest_framework import serializers
 
+from apps.accounts.serializers import UserSerializer
 from apps.core.serializers import ProductSerializer
 from apps.customers.serializers import CustomerSerializer
-from apps.sales.models import CustomerOrder
+from apps.sales.models import CustomerOrder, Invoice, InvoiceCorrection, Sale
 from apps.sales.services import CustomerOrderService
 
 # Statuses a caller may set directly via the API. PARTIALLY_ASSIGNED /
@@ -68,3 +69,118 @@ class CustomerOrderSerializer(serializers.ModelSerializer):
                 "trajets et ne peut pas etre defini directement."
             )
         return value
+
+
+class SaleSerializer(serializers.ModelSerializer):
+    """Read-only representation (docs/PHASE_4_PLAN.md Etape 6;
+    ERP_Implementation_Experience_Guide.md Section 7.6/§19): a Sale is
+    created exclusively by DeliveryService.record_delivery() so
+    delivered_quantity can never drift from the confirming
+    DeliveryControl.received_quantity - see SaleViewSet for the enforcement.
+
+    trip_reference (a plain string) is exposed instead of a nested
+    TripSerializer: apps.sales sits below apps.trips in the app dependency
+    graph (apps.trips.services already imports apps.sales.services/models),
+    so a module-level import of apps.trips.serializers here would run the
+    dependency the wrong way round.
+    """
+
+    customer_detail = CustomerSerializer(source="customer", read_only=True)
+    product_detail = ProductSerializer(source="product", read_only=True)
+    trip_reference = serializers.CharField(source="trip.reference", read_only=True)
+
+    class Meta:
+        model = Sale
+        fields = [
+            "id",
+            "trip",
+            "trip_reference",
+            "customer",
+            "customer_detail",
+            "product",
+            "product_detail",
+            "delivered_quantity",
+            "unit_selling_price",
+            "currency",
+            "subtotal",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+
+class InvoiceCorrectionSerializer(serializers.ModelSerializer):
+    """Read-only audit trail entry (guide Section 21) - always written by
+    InvoiceService.correct_invoice(), never directly through the API."""
+
+    corrected_by_detail = UserSerializer(source="corrected_by", read_only=True)
+
+    class Meta:
+        model = InvoiceCorrection
+        fields = [
+            "id",
+            "field_name",
+            "previous_value",
+            "new_value",
+            "corrected_by",
+            "corrected_by_detail",
+            "corrected_at",
+            "reason",
+        ]
+        read_only_fields = fields
+
+
+class InvoiceSerializer(serializers.ModelSerializer):
+    """docs/PHASE_4_PLAN.md Etape 6.
+
+    invoice_number/sale/status are read-only: invoice_number and sale are
+    fixed at creation by DeliveryService, and status only ever moves through
+    InvoiceViewSet's validate action (InvoiceService.validate_invoice) -
+    same "no direct write to a state machine field" convention as
+    Trip.status/TripWorkflowService.
+
+    total_amount/issued_date stay directly editable while DRAFT (plan
+    Section 1.E: only a *validated* invoice's financial data is frozen) -
+    validate() below is what enforces that boundary.
+    """
+
+    sale_detail = SaleSerializer(source="sale", read_only=True)
+    corrections = InvoiceCorrectionSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Invoice
+        fields = [
+            "id",
+            "invoice_number",
+            "sale",
+            "sale_detail",
+            "status",
+            "total_amount",
+            "issued_date",
+            "corrections",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "invoice_number",
+            "sale",
+            "sale_detail",
+            "status",
+            "corrections",
+            "created_at",
+            "updated_at",
+        ]
+
+    def validate(self, data):
+        if (
+            self.instance
+            and self.instance.status == Invoice.Status.VALIDATED
+            and data
+        ):
+            raise serializers.ValidationError(
+                "Cette facture est validee - toute modification directe est "
+                "bloquee. Utilisez POST /api/invoices/{id}/correct/ pour "
+                "l'ajuster sous audit."
+            )
+        return data

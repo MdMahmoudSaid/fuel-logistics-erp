@@ -1,3 +1,4 @@
+import itertools
 from decimal import Decimal
 
 import pytest
@@ -7,17 +8,21 @@ from django.urls.exceptions import Resolver404
 from rest_framework.test import APIClient
 
 from apps.accounts.models import Role, User
-from apps.core.models import Product
+from apps.core.models import LossToleranceConfig, Product
 from apps.customers.models import Customer
+from apps.finance.models import TransportDeduction
 from apps.purchasing.models import CessionLetter, SupplierOrder
-from apps.sales.models import CustomerOrder
+from apps.sales.models import CustomerOrder, ProductSellingPriceHistory
 from apps.sales.services import CustomerOrderService
 from apps.suppliers.models import Supplier
 from apps.transport.models import Transporter, Truck
-from apps.trips.models import Trip, TripStatusHistory
+from apps.trips.models import DeliveryControl, Trip, TripStatusHistory
 from apps.trips.serializers import TripSerializer, TripStatusHistorySerializer
 from apps.trips.services import (
+    DeliveryAnomalyConfirmationRequired,
+    DeliveryService,
     InvalidTripTransition,
+    SellingPriceNotConfigured,
     TripWorkflowService,
     TruckAvailabilityService,
 )
@@ -119,6 +124,15 @@ def _make_trip(
 
 def _advance_to_completed(trip, actor):
     for target in FULL_SEQUENCE_AFTER_ASSIGNED:
+        TripWorkflowService.transition_trip(trip.id, target, actor)
+    trip.refresh_from_db()
+    return trip
+
+
+def _advance_to_quantity_control(trip, actor):
+    # Stop right before DELIVERED - the status DeliveryService.record_delivery
+    # itself must reach via TripWorkflowService.
+    for target in FULL_SEQUENCE_AFTER_ASSIGNED[:-2]:
         TripWorkflowService.transition_trip(trip.id, target, actor)
     trip.refresh_from_db()
     return trip
@@ -756,3 +770,431 @@ def test_api_customer_order_permissions_gate_on_sales_module():
     client.force_authenticate(fx["admin_user"])
     response = client.post("/api/customer-orders/", payload)
     assert response.status_code == 201, response.data
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 Etape 2/5: DeliveryControl model + DeliveryService (docs/PHASE_4_PLAN.md;
+# ERP_Implementation_Experience_Guide.md Section 7.2-7.6, Section 13/15).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_delivery_control_computes_loss_and_chargeable_loss_on_save():
+    fx = _setup_fixtures("DC-CALC")
+    truck = _make_truck("TRK-DC-CALC")
+    trip = _make_trip(fx, truck, "TRIP-DC-CALC-001")
+
+    control = DeliveryControl.objects.create(
+        trip=trip,
+        loaded_quantity=Decimal("45000.00"),
+        received_quantity=Decimal("44850.00"),
+        tolerance_quantity=Decimal("100.00"),
+        control_date="2026-08-18",
+        controller=fx["admin_user"],
+        method=DeliveryControl.Method.MANUAL_GAUGE,
+    )
+
+    assert control.loss_quantity == Decimal("150.00")
+    assert control.chargeable_loss_quantity == Decimal("50.00")
+
+
+@pytest.mark.django_db
+def test_delivery_control_requires_positive_loaded_quantity():
+    fx = _setup_fixtures("DC-QTY")
+    truck = _make_truck("TRK-DC-QTY")
+    trip = _make_trip(fx, truck, "TRIP-DC-QTY-001")
+
+    with pytest.raises(IntegrityError):
+        with transaction.atomic():
+            DeliveryControl.objects.create(
+                trip=trip,
+                loaded_quantity=Decimal("0.00"),
+                received_quantity=Decimal("0.00"),
+                tolerance_quantity=Decimal("100.00"),
+                control_date="2026-08-18",
+                controller=fx["admin_user"],
+                method=DeliveryControl.Method.MANUAL_GAUGE,
+            )
+
+
+def _fixtures_with_customer(suffix):
+    fx = _setup_fixtures(suffix)
+    fx["customer"] = Customer.objects.create(name=f"Client {suffix}")
+    return fx
+
+
+_delivery_truck_codes = itertools.count(1)
+
+
+def _deliverable_trip(fx, reference, quantity=Decimal("45000.00")):
+    # A short, counter-based code - independent of `reference`'s length -
+    # keeps tractor/tanker registration (max_length=30, "-TRACTOR" suffix
+    # included) from overflowing regardless of how long the caller's trip
+    # reference is.
+    truck = _make_truck(f"TRK-DC-{next(_delivery_truck_codes)}")
+    trip = _make_trip(fx, truck, reference, quantity=quantity, customer_order=None)
+    trip.client = fx["customer"]
+    trip.save(update_fields=["client"])
+    _advance_to_quantity_control(trip, fx["admin_user"])
+    return trip
+
+
+@pytest.mark.django_db
+def test_delivery_service_requires_selling_price_configured():
+    fx = _fixtures_with_customer("DS-NOPRICE")
+    trip = _deliverable_trip(fx, "TRIP-NOPRICE-001")
+
+    with pytest.raises(SellingPriceNotConfigured):
+        DeliveryService.record_delivery(
+            trip_id=trip.id,
+            received_qty=Decimal("44850.00"),
+            control_date="2026-08-18",
+            method=DeliveryControl.Method.MANUAL_GAUGE,
+            controller=fx["admin_user"],
+        )
+
+
+@pytest.mark.django_db
+def test_delivery_service_happy_path_creates_deduction_sale_and_invoice():
+    # Mandatory recette scenario (plan Section 4 / Etape 7): 45,000 L loaded,
+    # 44,850 L received, 100 L tolerance -> 150 L loss, 50 L chargeable.
+    fx = _fixtures_with_customer("DS-HAPPY")
+    trip = _deliverable_trip(fx, "TRIP-DS-HAPPY-001")
+    ProductSellingPriceHistory.objects.create(
+        product=fx["product"],
+        customer=fx["customer"],
+        price=Decimal("650.0000"),
+        changed_by=fx["admin_user"],
+    )
+    LossToleranceConfig.objects.create(
+        tolerance_litres=Decimal("100.00"), updated_by=fx["admin_user"]
+    )
+
+    control = DeliveryService.record_delivery(
+        trip_id=trip.id,
+        received_qty=Decimal("44850.00"),
+        control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE,
+        controller=fx["admin_user"],
+    )
+
+    trip.refresh_from_db()
+    assert trip.status == Trip.Status.DELIVERED
+
+    assert control.loaded_quantity == Decimal("45000.00")
+    assert control.received_quantity == Decimal("44850.00")
+    assert control.tolerance_quantity == Decimal("100.00")
+    assert control.loss_quantity == Decimal("150.00")
+    assert control.chargeable_loss_quantity == Decimal("50.00")
+
+    deduction = TransportDeduction.objects.get(trip=trip)
+    assert deduction.transporter_id == fx["transporter"].id
+    assert deduction.chargeable_quantity == Decimal("50.00")
+    assert deduction.unit_price == Decimal("600.0000")  # supplier purchase price
+    assert deduction.amount == Decimal("30000.00")
+    assert deduction.status == TransportDeduction.Status.DRAFT
+
+    sale = trip.sale
+    assert sale.customer_id == fx["customer"].id
+    assert sale.delivered_quantity == Decimal("44850.00")  # received, never loaded
+    assert sale.unit_selling_price == Decimal("650.0000")
+    assert sale.subtotal == Decimal("29152500.00")
+
+    invoice = sale.invoice
+    assert invoice.status == "DRAFT"
+    assert invoice.total_amount == sale.subtotal
+    assert invoice.issued_date.isoformat() == "2026-08-18"
+
+
+@pytest.mark.django_db
+def test_delivery_service_no_deduction_when_loss_within_tolerance():
+    fx = _fixtures_with_customer("DS-INTOL")
+    trip = _deliverable_trip(fx, "TRIP-DS-INTOL-001")
+    ProductSellingPriceHistory.objects.create(
+        product=fx["product"], customer=fx["customer"],
+        price=Decimal("650.0000"), changed_by=fx["admin_user"],
+    )
+
+    DeliveryService.record_delivery(
+        trip_id=trip.id,
+        received_qty=Decimal("44950.00"),  # 50 L loss, under the 100 L default tolerance
+        control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE,
+        controller=fx["admin_user"],
+    )
+
+    assert not TransportDeduction.objects.filter(trip=trip).exists()
+
+
+@pytest.mark.django_db
+def test_delivery_service_blocks_anomaly_without_confirmation():
+    fx = _fixtures_with_customer("DS-ANOM")
+    trip = _deliverable_trip(fx, "TRIP-DS-ANOM-001")
+    ProductSellingPriceHistory.objects.create(
+        product=fx["product"], customer=fx["customer"],
+        price=Decimal("650.0000"), changed_by=fx["admin_user"],
+    )
+
+    with pytest.raises(DeliveryAnomalyConfirmationRequired):
+        DeliveryService.record_delivery(
+            trip_id=trip.id,
+            received_qty=Decimal("46000.00"),  # more than the 45,000 L loaded
+            control_date="2026-08-18",
+            method=DeliveryControl.Method.MANUAL_GAUGE,
+            controller=fx["admin_user"],
+        )
+
+    trip.refresh_from_db()
+    assert trip.status == Trip.Status.QUANTITY_CONTROL
+    assert not DeliveryControl.objects.filter(trip=trip).exists()
+
+
+@pytest.mark.django_db
+def test_delivery_service_allows_anomaly_with_explicit_confirmation():
+    fx = _fixtures_with_customer("DS-ANOMOK")
+    trip = _deliverable_trip(fx, "TRIP-DS-ANOMOK-001")
+    ProductSellingPriceHistory.objects.create(
+        product=fx["product"], customer=fx["customer"],
+        price=Decimal("650.0000"), changed_by=fx["admin_user"],
+    )
+
+    control = DeliveryService.record_delivery(
+        trip_id=trip.id,
+        received_qty=Decimal("46000.00"),
+        control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE,
+        controller=fx["admin_user"],
+        anomaly_confirmed_by=fx["admin_user"],
+    )
+
+    trip.refresh_from_db()
+    assert trip.status == Trip.Status.DELIVERED
+    assert control.anomaly_confirmed_by_id == fx["admin_user"].id
+    assert control.anomaly_confirmed_at is not None
+    assert control.loss_quantity == Decimal("-1000.00")
+    assert control.chargeable_loss_quantity == Decimal("0.00")
+    assert not TransportDeduction.objects.filter(trip=trip).exists()
+
+
+@pytest.mark.django_db
+def test_delivery_service_freezes_tolerance_used_at_confirmation_time():
+    fx = _fixtures_with_customer("DS-FREEZE")
+    ProductSellingPriceHistory.objects.create(
+        product=fx["product"], customer=fx["customer"],
+        price=Decimal("650.0000"), changed_by=fx["admin_user"],
+    )
+    LossToleranceConfig.objects.create(
+        tolerance_litres=Decimal("100.00"), updated_by=fx["admin_user"]
+    )
+
+    trip_a = _deliverable_trip(fx, "TRIP-DS-FREEZE-A")
+    control_a = DeliveryService.record_delivery(
+        trip_id=trip_a.id,
+        received_qty=Decimal("44850.00"),
+        control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE,
+        controller=fx["admin_user"],
+    )
+    assert control_a.tolerance_quantity == Decimal("100.00")
+
+    # The default tolerance changes after trip A was confirmed.
+    LossToleranceConfig.objects.create(
+        tolerance_litres=Decimal("500.00"), updated_by=fx["admin_user"]
+    )
+
+    trip_b = _deliverable_trip(fx, "TRIP-DS-FREEZE-B")
+    control_b = DeliveryService.record_delivery(
+        trip_id=trip_b.id,
+        received_qty=Decimal("44850.00"),
+        control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE,
+        controller=fx["admin_user"],
+    )
+    assert control_b.tolerance_quantity == Decimal("500.00")
+
+    # Trip A's historic control must never drift with the new default.
+    control_a.refresh_from_db()
+    assert control_a.tolerance_quantity == Decimal("100.00")
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 Etape 6/7: POST /api/trips/{id}/delivery-control/ (docs/PHASE_4_PLAN.md;
+# guide Section 7.2-7.7, Section 15).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_api_delivery_control_happy_path_150l_loss_50l_chargeable():
+    # Mandatory recette scenario (plan Section 4 / Etape 7 test 1): 45,000 L
+    # loaded, 44,850 L received, 100 L tolerance -> 150 L loss, 50 L chargeable.
+    fx = _fixtures_with_customer("API-DC-HAPPY")
+    trip = _deliverable_trip(fx, "TRIP-API-DC-HAPPY-001")
+    ProductSellingPriceHistory.objects.create(
+        product=fx["product"], customer=fx["customer"],
+        price=Decimal("650.0000"), changed_by=fx["admin_user"],
+    )
+
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+    response = client.post(
+        f"/api/trips/{trip.id}/delivery-control/",
+        {
+            "received_quantity": "44850.00",
+            "control_date": "2026-08-18",
+            "method": "MANUAL_GAUGE",
+        },
+    )
+
+    assert response.status_code == 201, response.data
+    assert response.data["loaded_quantity"] == "45000.00"
+    assert response.data["received_quantity"] == "44850.00"
+    assert response.data["loss_quantity"] == "150.00"
+    assert response.data["chargeable_loss_quantity"] == "50.00"
+    assert response.data["tolerance_quantity"] == "100.00"
+
+    trip.refresh_from_db()
+    assert trip.status == Trip.Status.DELIVERED
+
+
+@pytest.mark.django_db
+def test_api_delivery_control_anomaly_rejected_422_then_confirmed_succeeds():
+    # Mandatory recette scenario (plan Etape 7 test 2): 46,000 L received on
+    # 45,000 L loaded -> 422 without a signature, 201 with one.
+    fx = _fixtures_with_customer("API-DC-ANOM")
+    trip = _deliverable_trip(fx, "TRIP-API-DC-ANOM-001")
+    ProductSellingPriceHistory.objects.create(
+        product=fx["product"], customer=fx["customer"],
+        price=Decimal("650.0000"), changed_by=fx["admin_user"],
+    )
+
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+
+    rejected = client.post(
+        f"/api/trips/{trip.id}/delivery-control/",
+        {
+            "received_quantity": "46000.00",
+            "control_date": "2026-08-18",
+            "method": "MANUAL_GAUGE",
+        },
+    )
+    assert rejected.status_code == 422, rejected.data
+
+    trip.refresh_from_db()
+    assert trip.status == Trip.Status.QUANTITY_CONTROL
+    assert not DeliveryControl.objects.filter(trip=trip).exists()
+
+    confirmed = client.post(
+        f"/api/trips/{trip.id}/delivery-control/",
+        {
+            "received_quantity": "46000.00",
+            "control_date": "2026-08-18",
+            "method": "MANUAL_GAUGE",
+            "anomaly_confirmed_by": fx["admin_user"].id,
+        },
+    )
+    assert confirmed.status_code == 201, confirmed.data
+    assert confirmed.data["anomaly_confirmed_by"] == fx["admin_user"].id
+    assert confirmed.data["anomaly_confirmed_at"] is not None
+
+    trip.refresh_from_db()
+    assert trip.status == Trip.Status.DELIVERED
+
+
+@pytest.mark.django_db
+def test_api_delivery_control_missing_price_returns_400():
+    fx = _fixtures_with_customer("API-DC-NOPRICE")
+    trip = _deliverable_trip(fx, "TRIP-DC-NOPRICE-01")
+
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+    response = client.post(
+        f"/api/trips/{trip.id}/delivery-control/",
+        {
+            "received_quantity": "44850.00",
+            "control_date": "2026-08-18",
+            "method": "MANUAL_GAUGE",
+        },
+    )
+
+    assert response.status_code == 400
+    trip.refresh_from_db()
+    assert trip.status == Trip.Status.QUANTITY_CONTROL
+
+
+@pytest.mark.django_db
+def test_api_delivery_control_denied_without_operations_permission():
+    fx = _fixtures_with_customer("API-DC-PERM")
+    trip = _deliverable_trip(fx, "TRIP-API-DC-PERM-001")
+    ProductSellingPriceHistory.objects.create(
+        product=fx["product"], customer=fx["customer"],
+        price=Decimal("650.0000"), changed_by=fx["admin_user"],
+    )
+
+    finance_role = Role.objects.get(name=Role.NAME_FINANCE)
+    finance_user = User.objects.create_user(
+        email="finance-dc-perm@example.com", password="testpass123", role=finance_role
+    )
+    client = APIClient()
+    client.force_authenticate(finance_user)
+
+    response = client.post(
+        f"/api/trips/{trip.id}/delivery-control/",
+        {
+            "received_quantity": "44850.00",
+            "control_date": "2026-08-18",
+            "method": "MANUAL_GAUGE",
+        },
+    )
+
+    assert response.status_code == 403
+
+
+@pytest.mark.django_db
+def test_api_invoice_amount_based_on_received_quantity_not_loaded():
+    # Mandatory recette scenario (plan Etape 7 test 3 / guide Section 7.7,
+    # Section 19): invoiced amount must reflect 44,850 L received, never the
+    # 45,000 L originally loaded. Driven fully through the trip lifecycle API
+    # (creation + status transitions), unlike the service-level happy-path
+    # test above, to confirm the same rule holds end-to-end through HTTP.
+    fx = _fixtures_with_customer("API-INV-QTY")
+    truck = _make_truck("TRK-API-INV-QTY")
+
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+
+    trip_response = client.post(
+        "/api/trips/",
+        _api_trip_payload(fx, truck, quantity="45000.00", client=fx["customer"].id),
+    )
+    assert trip_response.status_code == 201, trip_response.data
+    trip_id = trip_response.data["id"]
+
+    for target in _FORWARD_SEQUENCE_STATUS_NAMES[:-2]:  # stop right before DELIVERED
+        response = client.post(f"/api/trips/{trip_id}/status/", {"new_status": target})
+        assert response.status_code == 200, response.data
+
+    ProductSellingPriceHistory.objects.create(
+        product=fx["product"], customer=fx["customer"],
+        price=Decimal("650.0000"), changed_by=fx["admin_user"],
+    )
+
+    delivery_response = client.post(
+        f"/api/trips/{trip_id}/delivery-control/",
+        {
+            "received_quantity": "44850.00",
+            "control_date": "2026-08-18",
+            "method": "MANUAL_GAUGE",
+        },
+    )
+    assert delivery_response.status_code == 201, delivery_response.data
+
+    sales_response = client.get("/api/sales/", {"trip": trip_id})
+    assert sales_response.data["count"] == 1
+    sale_data = sales_response.data["results"][0]
+    assert sale_data["delivered_quantity"] == "44850.00"
+
+    invoices_response = client.get("/api/invoices/", {"sale": sale_data["id"]})
+    assert invoices_response.data["count"] == 1
+    invoice_data = invoices_response.data["results"][0]
+    assert invoice_data["total_amount"] == "29152500.00"  # 44,850 x 650, not 45,000 x 650

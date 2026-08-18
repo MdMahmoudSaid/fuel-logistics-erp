@@ -16,6 +16,15 @@ ACTION_MAP = {
     # operations module) can drive a trip through its lifecycle.
     "status": "edit",
     "destroy": "cancel",
+    # Delivery confirmation (docs/PHASE_4_PLAN.md Etape 6) is the same kind
+    # of routine operations action as a trip status transition above.
+    "delivery_control": "edit",
+    # Invoice validation freezes financial data - gate it behind "validate"
+    # (Role.ACTIONS), same tier as SupplierOrder/CessionLetter confirmation.
+    "validate": "validate",
+    # A correction only ever applies to an already-VALIDATED invoice, so it
+    # requires the same "validate" tier rather than plain "edit".
+    "correct": "validate",
 }
 
 

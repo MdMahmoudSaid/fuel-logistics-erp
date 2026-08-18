@@ -1,8 +1,16 @@
+from decimal import Decimal
+
 import pytest
+from django.db import IntegrityError, transaction
 from rest_framework.test import APIClient
 
 from apps.accounts.models import Role, User
-from apps.finance.models import BankAccount, CashAccount
+from apps.core.models import Product
+from apps.finance.models import BankAccount, CashAccount, TransportDeduction
+from apps.purchasing.models import CessionLetter, SupplierOrder
+from apps.suppliers.models import Supplier
+from apps.transport.models import Transporter, Truck
+from apps.trips.models import Trip
 
 
 @pytest.mark.django_db
@@ -98,3 +106,86 @@ def test_operations_role_can_create_truck_but_not_bank_account():
         "/api/bank-accounts/", {"name": "Main BOA Account", "opening_balance": "1000000.00"}
     )
     assert bank_response.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 Etape 3: TransportDeduction (docs/PHASE_4_PLAN.md; guide Section 7.5)
+# ---------------------------------------------------------------------------
+
+
+def _make_trip_for_deduction(suffix):
+    admin_role = Role.objects.get(name=Role.NAME_ADMIN)
+    admin_user = User.objects.create_user(
+        email=f"admin-deduction-{suffix}@example.com",
+        password="testpass123",
+        role=admin_role,
+    )
+    product = Product.objects.get(code="gasoil")
+    supplier = Supplier.objects.create(name="Total", country="Senegal")
+    transporter = Transporter.objects.create(name="Trans SA")
+    supplier_order = SupplierOrder.objects.create(
+        reference=f"SO-DED-{suffix}",
+        supplier=supplier,
+        product=product,
+        purchase_date="2026-08-18",
+        quantity_litres=Decimal("500000.00"),
+        unit_price=Decimal("600.0000"),
+        created_by=admin_user,
+    )
+    cession = CessionLetter.objects.create(
+        reference=f"CL-DED-{suffix}",
+        supplier_order=supplier_order,
+        authorized_quantity=Decimal("500000.00"),
+        issue_date="2026-08-18",
+        created_by=admin_user,
+    )
+    truck = Truck.objects.create(
+        internal_id=f"TRK-DED-{suffix}",
+        tractor_registration=f"{suffix}-TRACTOR",
+        tanker_registration=f"{suffix}-TANKER",
+        capacity_litres=Decimal("45000.00"),
+    )
+    trip = Trip.objects.create(
+        reference=f"TRIP-DED-{suffix}",
+        truck=truck,
+        transporter=transporter,
+        supplier=supplier,
+        supplier_order=supplier_order,
+        cession_letter=cession,
+        product=product,
+        quantity_loaded=Decimal("45000.00"),
+        loading_date="2026-08-18",
+        bl_reference=f"BL-DED-{suffix}",
+        created_by=admin_user,
+    )
+    return trip, transporter
+
+
+@pytest.mark.django_db
+def test_transport_deduction_amount_computed_on_save():
+    trip, transporter = _make_trip_for_deduction("AMT")
+
+    deduction = TransportDeduction.objects.create(
+        trip=trip,
+        transporter=transporter,
+        chargeable_quantity=Decimal("50.00"),
+        unit_price=Decimal("600.0000"),
+    )
+
+    assert deduction.amount == Decimal("30000.00")
+    assert deduction.status == TransportDeduction.Status.DRAFT
+    assert deduction.currency == "XOF"
+
+
+@pytest.mark.django_db
+def test_transport_deduction_requires_positive_chargeable_quantity():
+    trip, transporter = _make_trip_for_deduction("NEG")
+
+    with pytest.raises(IntegrityError):
+        with transaction.atomic():
+            TransportDeduction.objects.create(
+                trip=trip,
+                transporter=transporter,
+                chargeable_quantity=Decimal("0.00"),
+                unit_price=Decimal("600.0000"),
+            )
