@@ -65,6 +65,36 @@ const router = createRouter({
           component: () => import('@/modules/purchasing/CessionLetterForm.vue'),
         },
         {
+          path: 'customer-orders',
+          name: 'customer-orders',
+          component: () => import('@/modules/sales/CustomerOrderList.vue'),
+        },
+        {
+          path: 'customer-orders/new',
+          name: 'customer-order-new',
+          component: () => import('@/modules/sales/CustomerOrderForm.vue'),
+        },
+        {
+          path: 'customer-orders/:id',
+          name: 'customer-order-detail',
+          component: () => import('@/modules/sales/CustomerOrderForm.vue'),
+        },
+        {
+          path: 'trips',
+          name: 'trips',
+          component: () => import('@/modules/trips/TripStatusBoard.vue'),
+        },
+        {
+          path: 'trips/new',
+          name: 'trip-new',
+          component: () => import('@/modules/trips/TripForm.vue'),
+        },
+        {
+          path: 'trips/:id',
+          name: 'trip-detail',
+          component: () => import('@/modules/trips/TripDetail.vue'),
+        },
+        {
           path: 'customers',
           name: 'customers',
           component: () => import('@/modules/customers/CustomerView.vue'),

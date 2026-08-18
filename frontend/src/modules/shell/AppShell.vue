@@ -9,6 +9,8 @@ const NAV_ITEMS = [
   { to: 'supplier-orders', label: 'Supplier Orders', module: 'purchasing' },
   { to: 'cession-letters', label: 'Cession Letters', module: 'purchasing' },
   { to: 'customers', label: 'Customers', module: 'sales' },
+  { to: 'customer-orders', label: 'Customer Orders', module: 'sales' },
+  { to: 'trips', label: 'Trips & Loading', module: 'operations' },
   { to: 'transporters', label: 'Transporters', module: 'operations' },
   { to: 'drivers', label: 'Drivers', module: 'operations' },
   { to: 'trucks', label: 'Trucks', module: 'operations' },
