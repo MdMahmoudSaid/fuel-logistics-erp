@@ -6,6 +6,8 @@ import { useAuthStore } from '@/stores/auth'
 const NAV_ITEMS = [
   { to: 'products', label: 'Products', module: 'operations' },
   { to: 'suppliers', label: 'Suppliers', module: 'purchasing' },
+  { to: 'supplier-orders', label: 'Supplier Orders', module: 'purchasing' },
+  { to: 'cession-letters', label: 'Cession Letters', module: 'purchasing' },
   { to: 'customers', label: 'Customers', module: 'sales' },
   { to: 'transporters', label: 'Transporters', module: 'operations' },
   { to: 'drivers', label: 'Drivers', module: 'operations' },

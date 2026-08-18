@@ -14,17 +14,76 @@ const router = createRouter({
       path: '/',
       component: () => import('@/modules/shell/AppShell.vue'),
       children: [
-        { path: '', name: 'home', component: () => import('@/modules/shell/DashboardPlaceholder.vue') },
-        { path: 'products', name: 'products', component: () => import('@/modules/products/ProductView.vue') },
-        { path: 'suppliers', name: 'suppliers', component: () => import('@/modules/suppliers/SupplierView.vue') },
-        { path: 'customers', name: 'customers', component: () => import('@/modules/customers/CustomerView.vue') },
+        {
+          path: '',
+          name: 'home',
+          component: () => import('@/modules/shell/DashboardPlaceholder.vue'),
+        },
+        {
+          path: 'products',
+          name: 'products',
+          component: () => import('@/modules/products/ProductView.vue'),
+        },
+        {
+          path: 'suppliers',
+          name: 'suppliers',
+          component: () => import('@/modules/suppliers/SupplierView.vue'),
+        },
+        {
+          path: 'suppliers/:id/ledger',
+          name: 'supplier-ledger',
+          component: () => import('@/modules/suppliers/SupplierLedgerView.vue'),
+        },
+        {
+          path: 'supplier-orders',
+          name: 'supplier-orders',
+          component: () => import('@/modules/purchasing/SupplierOrderList.vue'),
+        },
+        {
+          path: 'supplier-orders/new',
+          name: 'supplier-order-new',
+          component: () => import('@/modules/purchasing/SupplierOrderForm.vue'),
+        },
+        {
+          path: 'supplier-orders/:id',
+          name: 'supplier-order-detail',
+          component: () => import('@/modules/purchasing/SupplierOrderForm.vue'),
+        },
+        {
+          path: 'cession-letters',
+          name: 'cession-letters',
+          component: () => import('@/modules/purchasing/CessionLetterList.vue'),
+        },
+        {
+          path: 'cession-letters/new',
+          name: 'cession-letter-new',
+          component: () => import('@/modules/purchasing/CessionLetterForm.vue'),
+        },
+        {
+          path: 'cession-letters/:id',
+          name: 'cession-letter-detail',
+          component: () => import('@/modules/purchasing/CessionLetterForm.vue'),
+        },
+        {
+          path: 'customers',
+          name: 'customers',
+          component: () => import('@/modules/customers/CustomerView.vue'),
+        },
         {
           path: 'transporters',
           name: 'transporters',
           component: () => import('@/modules/transporters/TransporterView.vue'),
         },
-        { path: 'drivers', name: 'drivers', component: () => import('@/modules/drivers/DriverView.vue') },
-        { path: 'trucks', name: 'trucks', component: () => import('@/modules/trucks/TruckView.vue') },
+        {
+          path: 'drivers',
+          name: 'drivers',
+          component: () => import('@/modules/drivers/DriverView.vue'),
+        },
+        {
+          path: 'trucks',
+          name: 'trucks',
+          component: () => import('@/modules/trucks/TruckView.vue'),
+        },
         {
           path: 'bank-accounts',
           name: 'bank-accounts',
@@ -36,7 +95,11 @@ const router = createRouter({
           component: () => import('@/modules/finance/CashAccountView.vue'),
         },
         { path: 'users', name: 'users', component: () => import('@/modules/users/UserView.vue') },
-        { path: 'roles', name: 'roles', component: () => import('@/modules/roles/RoleListView.vue') },
+        {
+          path: 'roles',
+          name: 'roles',
+          component: () => import('@/modules/roles/RoleListView.vue'),
+        },
       ],
     },
   ],
