@@ -108,7 +108,14 @@ function formatDateTime(value: string) {
         </div>
         <div>
           <span class="text-slate-500">Transporter</span>
-          <p class="font-medium text-slate-800">{{ trip.transporter_detail?.name }}</p>
+          <p class="font-medium text-slate-800">
+            <RouterLink
+              class="underline decoration-dotted"
+              :to="{ name: 'transporter-ledger', params: { id: trip.transporter } }"
+            >
+              {{ trip.transporter_detail?.name }}
+            </RouterLink>
+          </p>
         </div>
         <div>
           <span class="text-slate-500">Driver</span>

@@ -40,11 +40,17 @@ class CustomerViewSet(viewsets.ModelViewSet):
             "bank_account", "cash_account", "recorded_by"
         ).prefetch_related("allocations")
 
+        invoices_data = []
+        for invoice in invoices:
+            row = InvoiceSerializer(invoice, context={"request": request}).data
+            row["outstanding"] = f"{PaymentAllocationService.get_invoice_outstanding(invoice):.2f}"
+            invoices_data.append(row)
+
         return Response(
             {
                 "customer": CustomerSerializer(customer).data,
                 "outstanding_balance": f"{PaymentAllocationService.get_customer_outstanding(customer):.2f}",
-                "invoices": InvoiceSerializer(invoices, many=True, context={"request": request}).data,
+                "invoices": invoices_data,
                 "payments": CustomerPaymentSerializer(payments, many=True, context={"request": request}).data,
             }
         )

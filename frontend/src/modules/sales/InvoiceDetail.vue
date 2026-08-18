@@ -177,7 +177,16 @@ function formatDateTime(value: string) {
           <div>
             <span class="text-slate-500">Customer</span>
             <p class="font-medium text-slate-800">
-              {{ invoice.sale_detail?.customer_detail?.name }}
+              <RouterLink
+                v-if="invoice.sale_detail?.customer_detail"
+                class="underline decoration-dotted"
+                :to="{
+                  name: 'customer-ledger',
+                  params: { id: invoice.sale_detail.customer_detail.id },
+                }"
+              >
+                {{ invoice.sale_detail.customer_detail.name }}
+              </RouterLink>
             </p>
           </div>
           <div>

@@ -94,6 +94,7 @@ function makeRouter() {
       { path: '/invoices', name: 'invoices', component: stub },
       { path: '/invoices/:id', name: 'invoice-detail', component: InvoiceDetail },
       { path: '/trips/:id', name: 'trip-detail', component: stub },
+      { path: '/customers/:id/ledger', name: 'customer-ledger', component: stub },
     ],
   })
   return router

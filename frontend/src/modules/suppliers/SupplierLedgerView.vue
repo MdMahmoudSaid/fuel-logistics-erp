@@ -49,6 +49,30 @@ const STATUS_BADGE: Record<string, string> = {
     <p v-else-if="loading" class="text-sm text-slate-400">Loading…</p>
 
     <template v-else-if="ledger">
+      <section class="grid grid-cols-3 gap-4">
+        <div class="rounded border bg-white p-4">
+          <p class="text-xs text-slate-500">Total purchased</p>
+          <p class="text-lg font-semibold text-slate-800">
+            {{ Number(ledger.total_purchased).toLocaleString() }}
+          </p>
+        </div>
+        <div class="rounded border bg-white p-4">
+          <p class="text-xs text-slate-500">Total paid</p>
+          <p class="text-lg font-semibold text-slate-800">
+            {{ Number(ledger.total_paid).toLocaleString() }}
+          </p>
+        </div>
+        <div class="rounded border bg-white p-4">
+          <p class="text-xs text-slate-500">Outstanding balance</p>
+          <p
+            class="text-lg font-semibold"
+            :class="Number(ledger.outstanding_balance) > 0 ? 'text-amber-600' : 'text-emerald-600'"
+          >
+            {{ Number(ledger.outstanding_balance).toLocaleString() }}
+          </p>
+        </div>
+      </section>
+
       <section class="rounded border bg-white p-4">
         <h3 class="mb-3 text-base font-semibold text-slate-800">Reliquat by product</h3>
         <table class="w-full text-left text-sm">
@@ -126,6 +150,35 @@ const STATUS_BADGE: Record<string, string> = {
               <td colspan="6" class="px-2 py-4 text-center text-slate-400">
                 No purchase history yet.
               </td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="rounded border bg-white p-4">
+        <h3 class="mb-3 text-base font-semibold text-slate-800">Payments &amp; advances</h3>
+        <table class="w-full text-left text-sm">
+          <thead>
+            <tr class="border-b text-slate-500">
+              <th class="px-2 py-1.5 font-medium">Date</th>
+              <th class="px-2 py-1.5 font-medium">Method</th>
+              <th class="px-2 py-1.5 font-medium">Reference</th>
+              <th class="px-2 py-1.5 font-medium">Advance</th>
+              <th class="px-2 py-1.5 font-medium text-right">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="payment in ledger.payments" :key="payment.id" class="border-b last:border-0">
+              <td class="px-2 py-1.5">{{ payment.payment_date }}</td>
+              <td class="px-2 py-1.5">{{ payment.method }}</td>
+              <td class="px-2 py-1.5">{{ payment.reference || '—' }}</td>
+              <td class="px-2 py-1.5">{{ payment.is_advance ? 'Yes' : 'No' }}</td>
+              <td class="px-2 py-1.5 text-right font-medium text-slate-800">
+                {{ Number(payment.amount).toLocaleString() }}
+              </td>
+            </tr>
+            <tr v-if="ledger.payments.length === 0">
+              <td colspan="5" class="px-2 py-4 text-center text-slate-400">No payments yet.</td>
             </tr>
           </tbody>
         </table>

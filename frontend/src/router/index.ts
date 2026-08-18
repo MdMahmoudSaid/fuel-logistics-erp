@@ -120,9 +120,39 @@ const router = createRouter({
           component: () => import('@/modules/customers/CustomerView.vue'),
         },
         {
+          path: 'customers/:id/ledger',
+          name: 'customer-ledger',
+          component: () => import('@/modules/finance/CustomerLedgerView.vue'),
+        },
+        {
+          path: 'customer-payments/new',
+          name: 'customer-payment-new',
+          component: () => import('@/modules/finance/PaymentAllocationForm.vue'),
+        },
+        {
+          path: 'expenses/new',
+          name: 'expense-new',
+          component: () => import('@/modules/finance/ExpenseForm.vue'),
+        },
+        {
+          path: 'treasury/transactions',
+          name: 'treasury-transactions',
+          component: () => import('@/modules/finance/TreasuryLedgerView.vue'),
+        },
+        {
+          path: 'treasury/transfer',
+          name: 'treasury-transfer',
+          component: () => import('@/modules/finance/TransferForm.vue'),
+        },
+        {
           path: 'transporters',
           name: 'transporters',
           component: () => import('@/modules/transporters/TransporterView.vue'),
+        },
+        {
+          path: 'transporters/:id/ledger',
+          name: 'transporter-ledger',
+          component: () => import('@/modules/finance/TransporterLedgerView.vue'),
         },
         {
           path: 'drivers',

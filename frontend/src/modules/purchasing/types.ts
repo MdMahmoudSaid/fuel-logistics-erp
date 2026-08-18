@@ -84,8 +84,24 @@ export interface SupplierLedgerProductReliquat {
   total_reliquat: string
 }
 
+// backend/apps/finance/serializers.py SupplierPaymentSerializer - imported
+// as a loose subset here rather than from apps/finance/types.ts to avoid a
+// module cycle (finance/types already models the reverse relation).
+export interface SupplierLedgerPayment {
+  id: number
+  amount: string
+  payment_date: string
+  method: string
+  is_advance: boolean
+  reference: string
+}
+
 export interface SupplierLedger {
   supplier: { id: number; name: string }
   orders: SupplierOrder[]
   reliquat_summary: SupplierLedgerProductReliquat[]
+  payments: SupplierLedgerPayment[]
+  total_purchased: string
+  total_paid: string
+  outstanding_balance: string
 }
