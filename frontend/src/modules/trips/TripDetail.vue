@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { tripResource, fetchTripHistory, postTripStatus } from './api'
+import DeliveryControlForm from './DeliveryControlForm.vue'
 import { TRIP_STATUSES } from './types'
 import type { Trip, TripStatusHistoryEntry } from './types'
 
@@ -192,6 +193,13 @@ function formatDateTime(value: string) {
           </button>
         </div>
       </section>
+
+      <DeliveryControlForm
+        v-if="trip.status === 'QUANTITY_CONTROL' && canChangeStatus"
+        :trip-id="trip.id"
+        :quantity-loaded="trip.quantity_loaded"
+        @confirmed="load"
+      />
 
       <section class="space-y-3 rounded border bg-white p-4">
         <h3 class="text-base font-semibold text-slate-800">History</h3>

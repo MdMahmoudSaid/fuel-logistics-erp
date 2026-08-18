@@ -1,0 +1,164 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { mount, flushPromises } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
+import DeliveryControlForm from '../DeliveryControlForm.vue'
+import { useAuthStore } from '@/stores/auth'
+
+const postDeliveryControl = vi.fn(async (_tripId: number, payload: Record<string, unknown>) => ({
+  id: 1,
+  trip: 9,
+  loaded_quantity: '45000.00',
+  received_quantity: payload.received_quantity,
+  loss_quantity: '150.00',
+  chargeable_loss_quantity: '50.00',
+  tolerance_quantity: '100.00',
+  control_date: payload.control_date,
+  controller: 1,
+  controller_detail: null,
+  method: payload.method,
+  document: null,
+  notes: '',
+  anomaly_confirmed_by: payload.anomaly_confirmed_by ?? null,
+  anomaly_confirmed_by_detail: null,
+  anomaly_confirmed_at: null,
+  created_at: '',
+  updated_at: '',
+}))
+vi.mock('../api', () => ({
+  postDeliveryControl: (tripId: number, payload: Record<string, unknown>) =>
+    postDeliveryControl(tripId, payload),
+}))
+
+const fetchLossTolerance = vi.fn(async () => ({
+  tolerance_litres: '100.00',
+  updated_by: null,
+  updated_by_detail: null,
+  updated_at: null,
+}))
+vi.mock('@/modules/settings/api', () => ({
+  fetchLossTolerance: () => fetchLossTolerance(),
+}))
+
+function setAdminUser() {
+  const auth = useAuthStore()
+  auth.user = {
+    id: 1,
+    email: 'admin@example.com',
+    full_name: 'Admin',
+    role: 1,
+    role_detail: {
+      id: 1,
+      name: 'Admin',
+      permissions: { operations: ['view', 'create', 'edit', 'validate'] },
+    },
+  }
+}
+
+function setOpsUser() {
+  const auth = useAuthStore()
+  auth.user = {
+    id: 2,
+    email: 'ops@example.com',
+    full_name: 'Ops',
+    role: 2,
+    role_detail: {
+      id: 2,
+      name: 'Operations',
+      permissions: { operations: ['view', 'create', 'edit'] },
+    },
+  }
+}
+
+describe('DeliveryControlForm', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    setActivePinia(createPinia())
+  })
+
+  it('shows the loaded quantity read-only and computes loss/chargeable loss live', async () => {
+    setOpsUser()
+    const wrapper = mount(DeliveryControlForm, { props: { tripId: 9, quantityLoaded: '45000.00' } })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('45,000')
+    expect(wrapper.find('#loaded_quantity_display').exists()).toBe(true)
+
+    await wrapper.find('#received_quantity').setValue('44850.00')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('150')
+    expect(wrapper.text()).toContain('50')
+  })
+
+  it('warns and hides the confirm control from a non-authorized user when received exceeds loaded', async () => {
+    setOpsUser()
+    const wrapper = mount(DeliveryControlForm, { props: { tripId: 9, quantityLoaded: '45000.00' } })
+    await flushPromises()
+
+    await wrapper.find('#received_quantity').setValue('46000.00')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('anomaly')
+    expect(wrapper.find('#anomaly_confirmed').exists()).toBe(false)
+
+    await wrapper.find('#control_date').setValue('2026-08-18')
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(postDeliveryControl).not.toHaveBeenCalled()
+  })
+
+  it('lets an authorized user confirm the anomaly and submits anomaly_confirmed_by', async () => {
+    setAdminUser()
+    const wrapper = mount(DeliveryControlForm, { props: { tripId: 9, quantityLoaded: '45000.00' } })
+    await flushPromises()
+
+    await wrapper.find('#received_quantity').setValue('46000.00')
+    await wrapper.find('#control_date').setValue('2026-08-18')
+    await flushPromises()
+
+    expect(wrapper.find('#anomaly_confirmed').exists()).toBe(true)
+    await wrapper.find('#anomaly_confirmed').setValue(true)
+
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(postDeliveryControl).toHaveBeenCalledWith(
+      9,
+      expect.objectContaining({ anomaly_confirmed_by: 1 }),
+    )
+    const [, payload] = postDeliveryControl.mock.calls[0]!
+    expect(Number(payload.received_quantity)).toBe(46000)
+  })
+
+  it('emits confirmed with the server response on success', async () => {
+    setOpsUser()
+    const wrapper = mount(DeliveryControlForm, { props: { tripId: 9, quantityLoaded: '45000.00' } })
+    await flushPromises()
+
+    await wrapper.find('#received_quantity').setValue('44850.00')
+    await wrapper.find('#control_date').setValue('2026-08-18')
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(wrapper.emitted('confirmed')).toBeTruthy()
+    const [emittedControl] = wrapper.emitted('confirmed')![0] as [Record<string, unknown>]
+    expect(emittedControl.chargeable_loss_quantity).toBe('50.00')
+  })
+
+  it('surfaces the server error message on a rejected request', async () => {
+    setOpsUser()
+    postDeliveryControl.mockRejectedValueOnce({
+      response: { status: 400, data: { detail: 'No selling price configured.' } },
+    })
+    const wrapper = mount(DeliveryControlForm, { props: { tripId: 9, quantityLoaded: '45000.00' } })
+    await flushPromises()
+
+    await wrapper.find('#received_quantity').setValue('44850.00')
+    await wrapper.find('#control_date').setValue('2026-08-18')
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('No selling price configured.')
+  })
+})

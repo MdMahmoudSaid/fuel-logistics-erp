@@ -11,6 +11,8 @@ const NAV_ITEMS = [
   { to: 'customers', label: 'Customers', module: 'sales' },
   { to: 'customer-orders', label: 'Customer Orders', module: 'sales' },
   { to: 'trips', label: 'Trips & Loading', module: 'operations' },
+  { to: 'sales', label: 'Sales', module: 'sales' },
+  { to: 'invoices', label: 'Invoices', module: 'sales' },
   { to: 'transporters', label: 'Transporters', module: 'operations' },
   { to: 'drivers', label: 'Drivers', module: 'operations' },
   { to: 'trucks', label: 'Trucks', module: 'operations' },
@@ -18,6 +20,7 @@ const NAV_ITEMS = [
   { to: 'cash-accounts', label: 'Cash Accounts', module: 'finance' },
   { to: 'users', label: 'Users', module: 'admin' },
   { to: 'roles', label: 'Roles', module: 'admin' },
+  { to: 'loss-tolerance-settings', label: 'Loss Tolerance', module: 'admin' },
 ] as const
 
 const auth = useAuthStore()

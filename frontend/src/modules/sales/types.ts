@@ -51,3 +51,60 @@ export interface CustomerOrder {
   created_at: string
   updated_at: string
 }
+
+export interface UserBrief {
+  id: number
+  email: string
+  full_name: string
+}
+
+// A Sale is generated exclusively by the backend's DeliveryService when a
+// trip's delivery is confirmed (backend/apps/sales/serializers.py
+// SaleSerializer - entirely read-only) - there is no create/edit form here.
+export interface Sale {
+  id: number
+  trip: number
+  trip_reference: string
+  customer: number
+  customer_detail: CustomerBrief | null
+  product: number
+  product_detail: ProductBrief | null
+  delivered_quantity: string
+  unit_selling_price: string
+  currency: string
+  subtotal: string
+  created_at: string
+  updated_at: string
+}
+
+export type InvoiceStatus = 'DRAFT' | 'VALIDATED' | 'PARTIALLY_PAID' | 'PAID' | 'CANCELLED'
+
+// Fields InvoiceService.correct_invoice() knows how to apply/recompute
+// (backend/apps/sales/services.py) - the only ones offered in the
+// correction form below.
+export const CORRECTABLE_INVOICE_FIELDS = ['unit_selling_price', 'total_amount'] as const
+export type CorrectableInvoiceField = (typeof CORRECTABLE_INVOICE_FIELDS)[number]
+
+export interface InvoiceCorrectionEntry {
+  id: number
+  field_name: string
+  previous_value: string
+  new_value: string
+  corrected_by: number
+  corrected_by_detail: UserBrief | null
+  corrected_at: string
+  reason: string
+}
+
+export interface Invoice {
+  id: number
+  invoice_number: string
+  sale: number
+  sale_detail: Sale | null
+  status: InvoiceStatus
+  total_amount: string
+  issued_date: string
+  corrections: InvoiceCorrectionEntry[]
+  created_at: string
+  updated_at: string
+}

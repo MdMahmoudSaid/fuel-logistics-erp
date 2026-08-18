@@ -1,6 +1,6 @@
 import { apiClient } from '@/api/client'
 import { createResourceApi } from '@/api/resource'
-import type { Trip, TripStatusHistoryEntry } from './types'
+import type { DeliveryControl, DeliveryMethod, Trip, TripStatusHistoryEntry } from './types'
 
 export const tripResource = createResourceApi<Trip>('/trips/')
 
@@ -20,4 +20,25 @@ export function postTripStatus(tripId: number, newStatus: string, notes = ''): P
 
 export function fetchTruckTrips(truckId: number): Promise<Trip[]> {
   return apiClient.get<Trip[]>(`/trucks/${truckId}/trips/`).then((r) => r.data)
+}
+
+export interface DeliveryControlPayload {
+  received_quantity: string
+  control_date: string
+  method: DeliveryMethod
+  anomaly_confirmed_by?: number
+  notes?: string
+}
+
+// Backend/apps/trips/services.py DeliveryService.record_delivery() is the
+// sole authority on loss/tolerance/anomaly rules (guide §7.3/§15) - this
+// just posts the request and surfaces whatever the server accepts (201) or
+// rejects (400/422).
+export function postDeliveryControl(
+  tripId: number,
+  payload: DeliveryControlPayload,
+): Promise<DeliveryControl> {
+  return apiClient
+    .post<DeliveryControl>(`/trips/${tripId}/delivery-control/`, payload)
+    .then((r) => r.data)
 }

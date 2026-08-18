@@ -128,3 +128,27 @@ export interface TripStatusHistoryEntry {
   changed_at: string
   notes: string
 }
+
+// Mirrors backend/apps/trips/models.py DeliveryControl.Method.
+export type DeliveryMethod = 'MANUAL_GAUGE' | 'METER'
+
+export interface DeliveryControl {
+  id: number
+  trip: number
+  loaded_quantity: string
+  received_quantity: string
+  loss_quantity: string
+  chargeable_loss_quantity: string
+  tolerance_quantity: string
+  control_date: string
+  controller: number
+  controller_detail: UserBrief | null
+  method: DeliveryMethod
+  document: number | null
+  notes: string
+  anomaly_confirmed_by: number | null
+  anomaly_confirmed_by_detail: UserBrief | null
+  anomaly_confirmed_at: string | null
+  created_at: string
+  updated_at: string
+}

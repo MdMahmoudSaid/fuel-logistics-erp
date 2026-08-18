@@ -95,6 +95,26 @@ const router = createRouter({
           component: () => import('@/modules/trips/TripDetail.vue'),
         },
         {
+          path: 'sales',
+          name: 'sales',
+          component: () => import('@/modules/sales/SaleList.vue'),
+        },
+        {
+          path: 'invoices',
+          name: 'invoices',
+          component: () => import('@/modules/sales/InvoiceList.vue'),
+        },
+        {
+          path: 'invoices/:id',
+          name: 'invoice-detail',
+          component: () => import('@/modules/sales/InvoiceDetail.vue'),
+        },
+        {
+          path: 'settings/loss-tolerance',
+          name: 'loss-tolerance-settings',
+          component: () => import('@/modules/settings/LossToleranceSettings.vue'),
+        },
+        {
           path: 'customers',
           name: 'customers',
           component: () => import('@/modules/customers/CustomerView.vue'),
