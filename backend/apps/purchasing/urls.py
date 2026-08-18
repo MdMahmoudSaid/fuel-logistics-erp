@@ -1,7 +1,11 @@
 from rest_framework.routers import DefaultRouter
+from django.urls import path, include
+from .views import SupplierOrderViewSet, CessionLetterViewSet
 
-# ViewSets are registered here in the next block of work
-# (docs/PHASE_2_PLAN.md Etape 6).
 router = DefaultRouter()
+router.register("supplier-orders", SupplierOrderViewSet, basename="supplier-order")
+router.register("cession-letters", CessionLetterViewSet, basename="cession-letter")
 
-urlpatterns = router.urls
+urlpatterns = [
+    path("", include(router.urls)),
+]

@@ -3,6 +3,8 @@ from rest_framework.permissions import BasePermission
 ACTION_MAP = {
     "list": "view",
     "retrieve": "view",
+    "ledger": "view",
+    "reliquat": "view",
     "create": "create",
     "update": "edit",
     "partial_update": "edit",

@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from django.db import models
+from django.contrib.contenttypes.fields import GenericRelation
 
 from apps.core.models import TimeStampedModel
 
@@ -40,6 +41,7 @@ class SupplierOrder(TimeStampedModel):
     created_by = models.ForeignKey(
         "accounts.User", on_delete=models.PROTECT, related_name="supplier_orders"
     )
+    documents = GenericRelation("documents.Document")
 
     class Meta:
         ordering = ["-purchase_date", "-id"]
@@ -91,6 +93,7 @@ class CessionLetter(TimeStampedModel):
     created_by = models.ForeignKey(
         "accounts.User", on_delete=models.PROTECT, related_name="cession_letters"
     )
+    documents = GenericRelation("documents.Document")
 
     class Meta:
         ordering = ["-issue_date", "-id"]
