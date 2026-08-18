@@ -4,6 +4,8 @@ import pytest
 from django.db import IntegrityError, transaction
 from rest_framework.test import APIClient
 
+from django.contrib.contenttypes.models import ContentType
+
 from apps.accounts.models import Role, User
 from apps.core.models import Product
 from apps.customers.models import Customer
@@ -11,8 +13,14 @@ from apps.finance.models import (
     BankAccount,
     CashAccount,
     CustomerPayment,
+    Expense,
+    ExpenseAllocation,
     PaymentAllocation,
+    SupplierPayment,
     TransportDeduction,
+    TransporterAdvance,
+    TransportPayment,
+    TreasuryTransaction,
 )
 from apps.purchasing.models import CessionLetter, SupplierOrder
 from apps.sales.models import Invoice, Sale
@@ -382,3 +390,314 @@ def test_payment_allocation_invoice_null_means_unallocated_credit():
 
     assert allocation.invoice is None
     assert payment.allocations.get().invoice is None
+
+
+# ---------------------------------------------------------------------------
+# Phase 5 Etape 2: SupplierPayment (docs/PHASE_5_PLAN.md; guide Section 8.5)
+# ---------------------------------------------------------------------------
+
+
+def _make_supplier_order(suffix):
+    admin_role = Role.objects.get(name=Role.NAME_ADMIN)
+    admin_user = User.objects.create_user(
+        email=f"admin-suppay-{suffix}@example.com",
+        password="testpass123",
+        role=admin_role,
+    )
+    product = Product.objects.get(code="gasoil")
+    supplier = Supplier.objects.create(name=f"Supplier {suffix}", country="Senegal")
+    supplier_order = SupplierOrder.objects.create(
+        reference=f"SO-SUPPAY-{suffix}",
+        supplier=supplier,
+        product=product,
+        purchase_date="2026-08-18",
+        quantity_litres=Decimal("500000.00"),
+        unit_price=Decimal("600.0000"),
+        created_by=admin_user,
+    )
+    return admin_user, supplier, supplier_order
+
+
+@pytest.mark.django_db
+def test_supplier_payment_requires_positive_amount():
+    admin_user, supplier, _order = _make_supplier_order("AMT")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+
+    with pytest.raises(IntegrityError):
+        with transaction.atomic():
+            SupplierPayment.objects.create(
+                supplier=supplier,
+                amount=Decimal("0.00"),
+                payment_date="2026-08-18",
+                method=SupplierPayment.Method.CASH,
+                cash_account=cash_account,
+                recorded_by=admin_user,
+            )
+
+
+@pytest.mark.django_db
+def test_supplier_payment_cannot_set_both_accounts():
+    admin_user, supplier, _order = _make_supplier_order("BOTH")
+    bank_account = BankAccount.objects.create(name="Main BOA Account")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+
+    with pytest.raises(IntegrityError):
+        with transaction.atomic():
+            SupplierPayment.objects.create(
+                supplier=supplier,
+                amount=Decimal("1000000.00"),
+                payment_date="2026-08-18",
+                method=SupplierPayment.Method.BANK_TRANSFER,
+                bank_account=bank_account,
+                cash_account=cash_account,
+                recorded_by=admin_user,
+            )
+
+
+@pytest.mark.django_db
+def test_supplier_payment_requires_one_account():
+    admin_user, supplier, _order = _make_supplier_order("NOACC")
+
+    with pytest.raises(IntegrityError):
+        with transaction.atomic():
+            SupplierPayment.objects.create(
+                supplier=supplier,
+                amount=Decimal("1000000.00"),
+                payment_date="2026-08-18",
+                method=SupplierPayment.Method.CASH,
+                recorded_by=admin_user,
+            )
+
+
+@pytest.mark.django_db
+def test_supplier_payment_as_general_advance_without_order():
+    admin_user, supplier, _order = _make_supplier_order("ADV")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+
+    payment = SupplierPayment.objects.create(
+        supplier=supplier,
+        amount=Decimal("2000000.00"),
+        payment_date="2026-08-18",
+        method=SupplierPayment.Method.CASH,
+        cash_account=cash_account,
+        is_advance=True,
+        recorded_by=admin_user,
+    )
+
+    assert payment.supplier_order is None
+    assert payment.is_advance is True
+
+
+# ---------------------------------------------------------------------------
+# Phase 5 Etape 3: TransporterAdvance / TransportPayment
+# (docs/PHASE_5_PLAN.md; guide Section 1.5/8.6)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_transporter_advance_requires_positive_amount():
+    trip, transporter = _make_trip_for_deduction("ADV-NEG")
+
+    with pytest.raises(IntegrityError):
+        with transaction.atomic():
+            TransporterAdvance.objects.create(
+                transporter=transporter, amount=Decimal("0.00"), date="2026-08-18"
+            )
+
+
+@pytest.mark.django_db
+def test_transport_payment_net_amount_deducts_losses_and_advance():
+    """Guide Section 1.5/§16/§31 worked example: 700 000 gross, 42 500
+    deduction (50 L x 850), 100 000 advance applied -> net 557 500."""
+    trip, transporter = _make_trip_for_deduction("NET")
+    advance = TransporterAdvance.objects.create(
+        transporter=transporter, amount=Decimal("100000.00"), date="2026-08-18"
+    )
+
+    payment = TransportPayment.objects.create(
+        trip=trip,
+        transporter=transporter,
+        calculation_method=TransportPayment.CalculationMethod.FIXED,
+        base_amount=Decimal("700000.00"),
+        deduction_amount=Decimal("42500.00"),
+        advance_applied=advance,
+    )
+
+    assert payment.net_amount == Decimal("557500.00")
+    assert payment.status == TransportPayment.Status.PLANNED
+
+
+@pytest.mark.django_db
+def test_transport_payment_net_amount_without_advance():
+    trip, transporter = _make_trip_for_deduction("NOADV")
+
+    payment = TransportPayment.objects.create(
+        trip=trip,
+        transporter=transporter,
+        calculation_method=TransportPayment.CalculationMethod.PER_LITRE,
+        base_amount=Decimal("500000.00"),
+    )
+
+    assert payment.net_amount == Decimal("500000.00")
+
+
+# ---------------------------------------------------------------------------
+# Phase 5 Etape 4: Expense / ExpenseAllocation (docs/PHASE_5_PLAN.md;
+# guide Section 8.7/8.8)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_expense_requires_positive_amount():
+    with pytest.raises(IntegrityError):
+        with transaction.atomic():
+            Expense.objects.create(
+                category=Expense.Category.CUSTOMS,
+                amount=Decimal("0.00"),
+                calculation_method=Expense.CalculationMethod.FIXED,
+                date="2026-08-18",
+            )
+
+
+@pytest.mark.django_db
+def test_expense_defaults_to_unpaid_status():
+    expense = Expense.objects.create(
+        category=Expense.Category.ADMINISTRATION,
+        amount=Decimal("500000.00"),
+        calculation_method=Expense.CalculationMethod.MANUAL,
+        date="2026-08-18",
+    )
+
+    assert expense.status == Expense.Status.UNPAID
+    assert expense.paid_by_customer_directly is False
+
+
+@pytest.mark.django_db
+def test_expense_allocation_splits_across_multiple_trips():
+    """Guide Section 8.7: "a customs payment may affect several trips"."""
+    trip_a, _t1 = _make_trip_for_deduction("EXP-A")
+    trip_b, _t2 = _make_trip_for_deduction("EXP-B")
+    expense = Expense.objects.create(
+        category=Expense.Category.CUSTOMS,
+        amount=Decimal("1000000.00"),
+        calculation_method=Expense.CalculationMethod.FIXED,
+        date="2026-08-18",
+    )
+    trip_content_type = ContentType.objects.get_for_model(Trip)
+
+    ExpenseAllocation.objects.create(
+        expense=expense,
+        content_type=trip_content_type,
+        object_id=trip_a.id,
+        allocated_amount=Decimal("600000.00"),
+    )
+    ExpenseAllocation.objects.create(
+        expense=expense,
+        content_type=trip_content_type,
+        object_id=trip_b.id,
+        allocated_amount=Decimal("400000.00"),
+    )
+
+    allocations = expense.allocations.all()
+    assert allocations.count() == 2
+    assert {a.content_object for a in allocations} == {trip_a, trip_b}
+
+
+@pytest.mark.django_db
+def test_expense_allocation_requires_positive_amount():
+    expense = Expense.objects.create(
+        category=Expense.Category.OTHER,
+        amount=Decimal("100000.00"),
+        calculation_method=Expense.CalculationMethod.MANUAL,
+        date="2026-08-18",
+    )
+
+    with pytest.raises(IntegrityError):
+        with transaction.atomic():
+            ExpenseAllocation.objects.create(
+                expense=expense, allocated_amount=Decimal("0.00")
+            )
+
+
+# ---------------------------------------------------------------------------
+# Phase 5 Etape 5: TreasuryTransaction (docs/PHASE_5_PLAN.md;
+# guide Section 8.10/D)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def treasury_user():
+    admin_role = Role.objects.get(name=Role.NAME_ADMIN)
+    return User.objects.create_user(
+        email="admin-treasury@example.com", password="testpass123", role=admin_role
+    )
+
+
+@pytest.mark.django_db
+def test_treasury_transaction_requires_positive_amount(treasury_user):
+    cash_account = CashAccount.objects.create(name="Main Cash")
+
+    with pytest.raises(IntegrityError):
+        with transaction.atomic():
+            TreasuryTransaction.objects.create(
+                cash_account=cash_account,
+                type=TreasuryTransaction.Type.MONEY_IN,
+                amount=Decimal("0.00"),
+                date="2026-08-18",
+                recorded_by=treasury_user,
+            )
+
+
+@pytest.mark.django_db
+def test_treasury_transaction_cannot_set_both_accounts(treasury_user):
+    bank_account = BankAccount.objects.create(name="Main BOA Account")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+
+    with pytest.raises(IntegrityError):
+        with transaction.atomic():
+            TreasuryTransaction.objects.create(
+                bank_account=bank_account,
+                cash_account=cash_account,
+                type=TreasuryTransaction.Type.TRANSFER,
+                amount=Decimal("10000000.00"),
+                date="2026-08-18",
+                recorded_by=treasury_user,
+            )
+
+
+@pytest.mark.django_db
+def test_treasury_transaction_requires_one_account(treasury_user):
+    with pytest.raises(IntegrityError):
+        with transaction.atomic():
+            TreasuryTransaction.objects.create(
+                type=TreasuryTransaction.Type.MONEY_OUT,
+                amount=Decimal("10000000.00"),
+                date="2026-08-18",
+                recorded_by=treasury_user,
+            )
+
+
+@pytest.mark.django_db
+def test_treasury_transaction_source_object_traces_origin(treasury_user):
+    admin_user, supplier, _order = _make_supplier_order("TRACE")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+    payment = SupplierPayment.objects.create(
+        supplier=supplier,
+        amount=Decimal("2000000.00"),
+        payment_date="2026-08-18",
+        method=SupplierPayment.Method.CASH,
+        cash_account=cash_account,
+        recorded_by=admin_user,
+    )
+
+    txn = TreasuryTransaction.objects.create(
+        cash_account=cash_account,
+        type=TreasuryTransaction.Type.MONEY_OUT,
+        amount=payment.amount,
+        date="2026-08-18",
+        source_content_type=ContentType.objects.get_for_model(SupplierPayment),
+        source_object_id=payment.id,
+        recorded_by=treasury_user,
+    )
+
+    assert txn.source_object == payment
