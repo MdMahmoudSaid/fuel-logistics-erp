@@ -4,7 +4,7 @@ defineProps<{
   rows: Record<string, unknown>[]
 }>()
 
-defineEmits<{ edit: [row: Record<string, unknown>] }>()
+defineEmits<{ edit: [row: Record<string, unknown>]; delete: [row: Record<string, unknown>] }>()
 </script>
 
 <template>
@@ -20,6 +20,7 @@ defineEmits<{ edit: [row: Record<string, unknown>] }>()
         <td v-for="col in columns" :key="col.key" class="px-3 py-2">{{ row[col.key] }}</td>
         <td class="px-3 py-2 text-right">
           <button class="text-slate-500 hover:text-slate-800" @click="$emit('edit', row)">Edit</button>
+          <button class="ml-2 text-red-500 hover:text-red-800" @click="$emit('delete', row)">Delete</button>
         </td>
       </tr>
       <tr v-if="rows.length === 0">

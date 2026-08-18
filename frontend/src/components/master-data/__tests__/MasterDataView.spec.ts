@@ -22,7 +22,10 @@ function makeResource(initialRows: Record<string, unknown>[]) {
       rows[index] = { ...rows[index], ...payload }
       return rows[index]
     }),
-    remove: vi.fn(async () => undefined),
+    remove: vi.fn(async (id: number) => {
+      const index = rows.findIndex((r) => r.id === id)
+      if (index !== -1) rows.splice(index, 1)
+    }),
   }
 }
 
@@ -48,5 +51,21 @@ describe('MasterDataView', () => {
 
     expect(resource.create).toHaveBeenCalledWith(expect.objectContaining({ name: 'Shell Mali' }))
     expect(wrapper.text()).toContain('Shell Mali')
+  })
+
+  it('deletes a record through the Delete flow', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const resource = makeResource([{ id: 1, name: 'Total Senegal', is_active: true }])
+    const wrapper = mount(MasterDataView, { props: { title: 'Suppliers', resource, fields } })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Total Senegal')
+
+    const deleteButton = wrapper.findAll('button').find((b) => b.text() === 'Delete')
+    await deleteButton!.trigger('click')
+    await flushPromises()
+
+    expect(resource.remove).toHaveBeenCalledWith(1)
+    expect(wrapper.text()).not.toContain('Total Senegal')
   })
 })

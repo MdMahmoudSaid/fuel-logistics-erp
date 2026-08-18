@@ -60,6 +60,18 @@ async function onSubmit() {
   }
 }
 
+async function onDelete(row: Record<string, unknown>) {
+  if (!window.confirm('Are you sure you want to delete this record?')) {
+    return
+  }
+  try {
+    await props.resource.remove(row.id as number)
+    await load()
+  } catch {
+    error.value = 'Could not delete — check your permissions.'
+  }
+}
+
 onMounted(load)
 </script>
 
@@ -73,7 +85,7 @@ onMounted(load)
     </div>
 
     <div class="rounded border bg-white">
-      <DataTable :columns="columns" :rows="rows" @edit="openEdit" />
+      <DataTable :columns="columns" :rows="rows" @edit="openEdit" @delete="onDelete" />
     </div>
 
     <div v-if="showForm" class="fixed inset-0 flex items-center justify-center bg-black/30">

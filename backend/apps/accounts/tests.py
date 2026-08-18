@@ -93,6 +93,30 @@ def test_admin_can_create_user_and_role_endpoints_work():
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("weak_password", ["password", "12345678"])
+def test_admin_cannot_create_user_with_weak_password(weak_password):
+    admin_role = Role.objects.get(name=Role.NAME_ADMIN)
+    admin = User.objects.create_user(
+        email="admin2@example.com", password="testpass123", role=admin_role
+    )
+    client = APIClient()
+    client.force_authenticate(admin)
+
+    create_response = client.post(
+        "/api/accounts/users/",
+        {
+            "email": "weakpass@example.com",
+            "password": weak_password,
+            "full_name": "Weak Pass",
+            "role": admin_role.id,
+        },
+    )
+    assert create_response.status_code == 400
+    assert "password" in create_response.data
+    assert not User.objects.filter(email="weakpass@example.com").exists()
+
+
+@pytest.mark.django_db
 def test_login_with_valid_and_invalid_credentials():
     role = Role.objects.get(name=Role.NAME_OPERATIONS)
     User.objects.create_user(email="login@example.com", password="testpass123", role=role)
