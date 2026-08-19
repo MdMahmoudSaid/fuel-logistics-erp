@@ -282,23 +282,20 @@ class TreasuryTransactionSerializer(serializers.ModelSerializer):
     class Meta:
         model = TreasuryTransaction
         fields = [
-            "id", "bank_account", "cash_account", "type", "amount", "date", "reference",
-            "source_content_type", "source_object_id", "source_object_repr",
+            "id", "bank_account", "cash_account", "type", "is_transfer", "amount", "date",
+            "reference", "source_content_type", "source_object_id", "source_object_repr",
             "document", "recorded_by", "recorded_by_detail", "created_at", "updated_at",
         ]
-        read_only_fields = ["id", "recorded_by", "created_at", "updated_at"]
+        # is_transfer is only ever set by TreasuryService.record_transfer() -
+        # a direct client create always produces a plain (non-transfer)
+        # MONEY_IN/MONEY_OUT row; internal transfers must go through
+        # POST /api/treasury-transactions/transfer/.
+        read_only_fields = ["id", "is_transfer", "recorded_by", "created_at", "updated_at"]
 
     def get_source_object_repr(self, obj) -> str:
         return str(obj.source_object) if obj.source_object else ""
 
     def validate(self, data):
-        transaction_type = data.get("type", getattr(self.instance, "type", None))
-        if self.instance is None and transaction_type == TreasuryTransaction.Type.TRANSFER:
-            raise serializers.ValidationError(
-                "Les transferts internes doivent passer par "
-                "POST /api/treasury-transactions/transfer/, pas une creation directe."
-            )
-
         bank_account = data.get("bank_account", getattr(self.instance, "bank_account", None))
         cash_account = data.get("cash_account", getattr(self.instance, "cash_account", None))
         if bank_account and cash_account:

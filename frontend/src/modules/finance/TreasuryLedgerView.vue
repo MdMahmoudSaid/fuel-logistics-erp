@@ -57,7 +57,6 @@ onMounted(load)
 const TYPE_BADGE: Record<string, string> = {
   MONEY_IN: 'bg-emerald-100 text-emerald-700',
   MONEY_OUT: 'bg-red-100 text-red-700',
-  TRANSFER: 'bg-slate-100 text-slate-600',
 }
 </script>
 
@@ -96,6 +95,12 @@ const TYPE_BADGE: Record<string, string> = {
                 :class="TYPE_BADGE[txn.type]"
               >
                 {{ txn.type }}
+              </span>
+              <span
+                v-if="txn.is_transfer"
+                class="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600"
+              >
+                TRANSFER
               </span>
             </td>
             <td class="px-2 py-1.5">{{ accountLabel(txn) }}</td>

@@ -9,6 +9,28 @@ from apps.core.models import TimeStampedModel
 CURRENCY_CHOICES = [("XOF", "XOF")]
 
 
+def _account_current_balance(account):
+    """opening_balance + Sigma(TreasuryTransaction) (guide Section 8.10/D:
+    "computed, never stored, so it can never drift from the transaction
+    ledger"). A plain module function rather than a queryset method on
+    TreasuryTransaction, since it needs to run from both BankAccount and
+    CashAccount and TreasuryTransaction is defined later in this file.
+    """
+    money_in = (
+        account.transactions.filter(type=TreasuryTransaction.Type.MONEY_IN).aggregate(
+            total=models.Sum("amount")
+        )["total"]
+        or Decimal("0.00")
+    )
+    money_out = (
+        account.transactions.filter(type=TreasuryTransaction.Type.MONEY_OUT).aggregate(
+            total=models.Sum("amount")
+        )["total"]
+        or Decimal("0.00")
+    )
+    return Decimal(account.opening_balance) + money_in - money_out
+
+
 class BankAccount(TimeStampedModel):
     name = models.CharField(max_length=150)
     bank_name = models.CharField(max_length=150, blank=True)
@@ -25,10 +47,7 @@ class BankAccount(TimeStampedModel):
 
     @property
     def current_balance(self):
-        # opening_balance + Σ(TreasuryTransaction) once that model exists
-        # (Phase 5, roadmap/phase_5_finance.md) — computed, never stored,
-        # so it can never drift from the transaction ledger.
-        return self.opening_balance
+        return _account_current_balance(self)
 
 
 class CashAccount(TimeStampedModel):
@@ -46,7 +65,7 @@ class CashAccount(TimeStampedModel):
 
     @property
     def current_balance(self):
-        return self.opening_balance
+        return _account_current_balance(self)
 
 
 class TransportDeduction(TimeStampedModel):
@@ -458,12 +477,20 @@ class TreasuryTransaction(TimeStampedModel):
     model. `source_object` traces back to the CustomerPayment/SupplierPayment/
     Expense/etc. that caused this movement, except for the indirect-payment
     case (guide Section 1.6) which never creates a row here at all.
+
+    `type` only ever holds MONEY_IN/MONEY_OUT: current_balance sums this
+    field per account (guide Section D: "changes account balances"), and a
+    third TRANSFER value would make that direction unrecoverable for the
+    two legs TreasuryService.record_transfer() writes. `is_transfer` marks
+    those two legs instead (source=MONEY_OUT, destination=MONEY_IN, both
+    is_transfer=True) so a future profit/loss report can exclude them
+    (guide Section D: "does not create revenue/expense, does not change
+    profit") without that flag ever affecting the balance sum itself.
     """
 
     class Type(models.TextChoices):
         MONEY_IN = "MONEY_IN", "Money in"
         MONEY_OUT = "MONEY_OUT", "Money out"
-        TRANSFER = "TRANSFER", "Transfer"
 
     bank_account = models.ForeignKey(
         BankAccount, on_delete=models.PROTECT, null=True, blank=True, related_name="transactions"
@@ -472,6 +499,7 @@ class TreasuryTransaction(TimeStampedModel):
         CashAccount, on_delete=models.PROTECT, null=True, blank=True, related_name="transactions"
     )
     type = models.CharField(max_length=20, choices=Type.choices)
+    is_transfer = models.BooleanField(default=False)
     amount = models.DecimalField(max_digits=16, decimal_places=2)
     date = models.DateField()
     reference = models.CharField(max_length=100, blank=True)

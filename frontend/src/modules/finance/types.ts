@@ -181,13 +181,17 @@ export interface Expense {
   updated_at: string
 }
 
-export type TreasuryTransactionType = 'MONEY_IN' | 'MONEY_OUT' | 'TRANSFER'
+export type TreasuryTransactionType = 'MONEY_IN' | 'MONEY_OUT'
 
 export interface TreasuryTransaction {
   id: number
   bank_account: number | null
   cash_account: number | null
   type: TreasuryTransactionType
+  // Set only by TreasuryService.record_transfer() - both legs of an
+  // internal transfer carry this instead of a dedicated `type` value, so
+  // current_balance can still sum plain MONEY_IN/MONEY_OUT unambiguously.
+  is_transfer: boolean
   amount: string
   date: string
   reference: string

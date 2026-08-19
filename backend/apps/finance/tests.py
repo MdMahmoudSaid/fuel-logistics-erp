@@ -41,9 +41,29 @@ def test_bank_account_current_balance_defaults_to_opening_balance():
     account = BankAccount.objects.create(
         name="Main BOA Account", bank_name="Bank of Africa", opening_balance="1000000.00"
     )
-    # No TreasuryTransaction model exists until Phase 5 — current_balance is
-    # opening_balance alone for now, and will sum real transactions later.
-    assert account.current_balance == account.opening_balance
+    assert account.current_balance == Decimal("1000000.00")
+
+
+@pytest.mark.django_db
+def test_bank_account_current_balance_sums_money_in_and_out():
+    """opening_balance + MONEY_IN - MONEY_OUT (guide Section 8.10/D) -
+    computed live from TreasuryTransaction, never stored."""
+    admin_role = Role.objects.get(name=Role.NAME_ADMIN)
+    admin_user = User.objects.create_user(
+        email="admin-balance@example.com", password="testpass123", role=admin_role
+    )
+    account = BankAccount.objects.create(name="Main BOA Account", opening_balance="1000000.00")
+
+    TreasuryTransaction.objects.create(
+        bank_account=account, type=TreasuryTransaction.Type.MONEY_IN,
+        amount=Decimal("500000.00"), date="2026-08-18", recorded_by=admin_user,
+    )
+    TreasuryTransaction.objects.create(
+        bank_account=account, type=TreasuryTransaction.Type.MONEY_OUT,
+        amount=Decimal("200000.00"), date="2026-08-18", recorded_by=admin_user,
+    )
+
+    assert account.current_balance == Decimal("1300000.00")
 
 
 @pytest.mark.django_db
@@ -667,7 +687,7 @@ def test_treasury_transaction_cannot_set_both_accounts(treasury_user):
             TreasuryTransaction.objects.create(
                 bank_account=bank_account,
                 cash_account=cash_account,
-                type=TreasuryTransaction.Type.TRANSFER,
+                type=TreasuryTransaction.Type.MONEY_OUT,
                 amount=Decimal("10000000.00"),
                 date="2026-08-18",
                 recorded_by=treasury_user,
@@ -855,7 +875,9 @@ def test_acceptance_transporter_net_settlement_via_api(finance_client):
 
 @pytest.mark.django_db
 def test_acceptance_treasury_transfer_creates_matched_transfer_pair(treasury_user):
-    """10M transfer from Bank to Cash -> exactly two TRANSFER-type rows."""
+    """10M transfer from Bank to Cash -> a MONEY_OUT/MONEY_IN pair, both
+    is_transfer=True, and current_balance reflects the movement on both
+    accounts (guide Section D)."""
     bank_account = BankAccount.objects.create(name="Main BOA Account", opening_balance="20000000.00")
     cash_account = CashAccount.objects.create(name="Main Cash")
 
@@ -870,15 +892,22 @@ def test_acceptance_treasury_transfer_creates_matched_transfer_pair(treasury_use
         user=treasury_user,
     )
 
-    assert out_txn.type == TreasuryTransaction.Type.TRANSFER
-    assert in_txn.type == TreasuryTransaction.Type.TRANSFER
+    assert out_txn.type == TreasuryTransaction.Type.MONEY_OUT
+    assert in_txn.type == TreasuryTransaction.Type.MONEY_IN
+    assert out_txn.is_transfer is True
+    assert in_txn.is_transfer is True
     assert out_txn.bank_account == bank_account
     assert out_txn.cash_account is None
     assert in_txn.cash_account == cash_account
     assert in_txn.bank_account is None
     assert TreasuryTransaction.objects.filter(
-        type=TreasuryTransaction.Type.TRANSFER, reference="TRF-001"
+        is_transfer=True, reference="TRF-001"
     ).count() == 2
+
+    bank_account.refresh_from_db()
+    cash_account.refresh_from_db()
+    assert bank_account.current_balance == Decimal("10000000.00")
+    assert cash_account.current_balance == Decimal("10000000.00")
 
 
 @pytest.mark.django_db
@@ -918,14 +947,36 @@ def test_treasury_transfer_rejected_via_api_for_same_account(finance_client):
 
 
 @pytest.mark.django_db
-def test_direct_transfer_type_creation_rejected_via_api(finance_client):
+def test_direct_is_transfer_flag_is_ignored_on_api_create(finance_client):
+    """is_transfer is read-only - only TreasuryService.record_transfer()
+    may set it, so posting it directly is silently ignored rather than
+    honoured (docs/PHASE_5_PLAN.md Etape 7)."""
     cash_account = CashAccount.objects.create(name="Main Cash")
 
     response = finance_client.post(
         "/api/treasury-transactions/",
         {
             "cash_account": cash_account.id,
-            "type": TreasuryTransaction.Type.TRANSFER,
+            "type": TreasuryTransaction.Type.MONEY_IN,
+            "is_transfer": True,
+            "amount": "1000000.00",
+            "date": "2026-08-18",
+        },
+    )
+
+    assert response.status_code == 201, response.data
+    assert response.data["is_transfer"] is False
+
+
+@pytest.mark.django_db
+def test_invalid_transfer_type_value_rejected_via_api(finance_client):
+    cash_account = CashAccount.objects.create(name="Main Cash")
+
+    response = finance_client.post(
+        "/api/treasury-transactions/",
+        {
+            "cash_account": cash_account.id,
+            "type": "TRANSFER",
             "amount": "1000000.00",
             "date": "2026-08-18",
         },

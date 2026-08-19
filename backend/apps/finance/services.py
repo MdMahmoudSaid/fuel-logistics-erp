@@ -206,10 +206,12 @@ class TreasuryService:
         user,
     ):
         """Move money between two treasury accounts as exactly two
-        TREASURY rows (MONEY_OUT on the source, MONEY_IN on the
-        destination), both type=TRANSFER so profit/loss reporting can
-        exclude them (guide Section D: "does not create revenue/expense,
-        does not change profit")."""
+        TreasuryTransaction rows (type=MONEY_OUT on the source,
+        type=MONEY_IN on the destination - so BankAccount/CashAccount.
+        current_balance can sum them like any other movement), both
+        is_transfer=True so profit/loss reporting can exclude them (guide
+        Section D: "does not create revenue/expense, does not change
+        profit")."""
         if (
             source_account_type == dest_account_type
             and str(source_account_id) == str(dest_account_id)
@@ -225,16 +227,18 @@ class TreasuryService:
             dest_account_type, dest_account_id
         )
 
-        common = dict(amount=amount, date=date, reference=reference, recorded_by=user)
+        common = dict(
+            amount=amount, date=date, reference=reference, recorded_by=user, is_transfer=True
+        )
 
         out_txn = TreasuryTransaction.objects.create(
-            type=TreasuryTransaction.Type.TRANSFER,
+            type=TreasuryTransaction.Type.MONEY_OUT,
             bank_account=source_account if source_account_type == "bank" else None,
             cash_account=source_account if source_account_type == "cash" else None,
             **common,
         )
         in_txn = TreasuryTransaction.objects.create(
-            type=TreasuryTransaction.Type.TRANSFER,
+            type=TreasuryTransaction.Type.MONEY_IN,
             bank_account=dest_account if dest_account_type == "bank" else None,
             cash_account=dest_account if dest_account_type == "cash" else None,
             **common,
