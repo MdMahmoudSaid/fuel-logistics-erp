@@ -2,6 +2,7 @@ from decimal import Decimal
 
 from django.db import models
 
+from apps.audit.mixins import AuditableModel
 from apps.core.models import TimeStampedModel
 
 
@@ -59,7 +60,7 @@ class CustomerOrder(TimeStampedModel):
         return f"Order #{self.pk} - {self.customer} ({self.quantity_ordered} L)"
 
 
-class Sale(TimeStampedModel):
+class Sale(AuditableModel, TimeStampedModel):
     """One commercial sale line, created once a Trip's delivery is confirmed
     (docs/PHASE_4_PLAN.md Etape 4;
     ERP_Implementation_Experience_Guide.md Section 7.6).
@@ -156,7 +157,7 @@ class ProductSellingPriceHistory(TimeStampedModel):
         return f"{self.product} / {scope}: {self.price}"
 
 
-class Invoice(TimeStampedModel):
+class Invoice(AuditableModel, TimeStampedModel):
     """Customer invoice for one Sale (docs/PHASE_4_PLAN.md Etape 4;
     ERP_Implementation_Experience_Guide.md Section 7.9/Section 21).
 
@@ -194,6 +195,9 @@ class Invoice(TimeStampedModel):
 
     def __str__(self) -> str:
         return self.invoice_number
+
+    def is_locked_for_deletion(self) -> bool:
+        return self.status != self.Status.DRAFT
 
 
 class InvoiceCorrection(TimeStampedModel):

@@ -43,9 +43,19 @@ def _generate_next_reference() -> str:
     number (cheaper than locking a counter row for an internal, non-
     negotiated identifier - unlike the truck/cession locks, which guard
     real business quantities).
+
+    The regex restricts this to references matching our own generated
+    format (fixed-width digits). Some trips carry hand-picked references
+    (e.g. seeded fixtures) that also start with "TRIP-" but aren't
+    numeric - ordering by "-reference" across those would pick a
+    lexicographically-last string like "TRIP-TRANSPORT-R2", fail to parse
+    as a number, and silently restart the sequence at TRIP-000001,
+    colliding with an existing row on every retry.
     """
     last = (
-        Trip.objects.filter(reference__startswith=_REFERENCE_PREFIX)
+        Trip.objects.filter(
+            reference__regex=rf"^{_REFERENCE_PREFIX}\d{{{_REFERENCE_WIDTH}}}$"
+        )
         .order_by("-reference")
         .first()
     )

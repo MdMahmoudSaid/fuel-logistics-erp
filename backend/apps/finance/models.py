@@ -4,6 +4,7 @@ from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
 
+from apps.audit.mixins import AuditableModel
 from apps.core.models import TimeStampedModel
 
 CURRENCY_CHOICES = [("XOF", "XOF")]
@@ -68,7 +69,7 @@ class CashAccount(TimeStampedModel):
         return _account_current_balance(self)
 
 
-class TransportDeduction(TimeStampedModel):
+class TransportDeduction(AuditableModel, TimeStampedModel):
     """Deduction on a transporter's account for chargeable (out-of-tolerance)
     loss on a trip (docs/PHASE_4_PLAN.md Etape 3;
     ERP_Implementation_Experience_Guide.md Section 7.5).
@@ -116,6 +117,9 @@ class TransportDeduction(TimeStampedModel):
     def __str__(self) -> str:
         return f"Deduction for {self.trip.reference}: {self.chargeable_quantity} L"
 
+    def is_locked_for_deletion(self) -> bool:
+        return self.status != self.Status.DRAFT
+
     def save(self, *args, **kwargs):
         self.amount = (self.chargeable_quantity * self.unit_price).quantize(
             Decimal("0.01")
@@ -123,7 +127,7 @@ class TransportDeduction(TimeStampedModel):
         super().save(*args, **kwargs)
 
 
-class CustomerPayment(TimeStampedModel):
+class CustomerPayment(AuditableModel, TimeStampedModel):
     """Money received from a customer (docs/PHASE_5_PLAN.md Etape 1;
     ERP_Implementation_Experience_Guide.md Section 8.2/1.7).
 
@@ -214,7 +218,7 @@ class PaymentAllocation(TimeStampedModel):
         return f"{self.payment_id}: {self.amount} -> {target}"
 
 
-class SupplierPayment(TimeStampedModel):
+class SupplierPayment(AuditableModel, TimeStampedModel):
     """Money paid to a supplier, either against a specific SupplierOrder or
     as a general advance (docs/PHASE_5_PLAN.md Etape 2;
     ERP_Implementation_Experience_Guide.md Section 8.5).
@@ -376,7 +380,7 @@ class TransportPayment(TimeStampedModel):
             TransporterAdvance.objects.filter(pk=self.advance_applied_id).update(settled=True)
 
 
-class Expense(TimeStampedModel):
+class Expense(AuditableModel, TimeStampedModel):
     """A company operating cost, optionally split across several trips,
     trucks, customers, suppliers or transporters via ExpenseAllocation
     (docs/PHASE_5_PLAN.md Etape 4; guide Section 8.7).
@@ -467,7 +471,7 @@ class ExpenseAllocation(TimeStampedModel):
         return f"{self.expense_id}: {self.allocated_amount} -> {self.content_object}"
 
 
-class TreasuryTransaction(TimeStampedModel):
+class TreasuryTransaction(AuditableModel, TimeStampedModel):
     """One movement of company cash/bank money (docs/PHASE_5_PLAN.md Etape 5;
     guide Section 8.10/1.6/D).
 

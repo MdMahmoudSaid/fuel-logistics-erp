@@ -3,10 +3,11 @@ from decimal import Decimal
 from django.db import models
 from django.contrib.contenttypes.fields import GenericRelation
 
+from apps.audit.mixins import AuditableModel
 from apps.core.models import TimeStampedModel
 
 
-class SupplierOrder(TimeStampedModel):
+class SupplierOrder(AuditableModel, TimeStampedModel):
     """A fuel purchase from a supplier (spec §5).
 
     `total_amount` is recalculated on every save() for query/list performance,
@@ -58,6 +59,9 @@ class SupplierOrder(TimeStampedModel):
 
     def __str__(self) -> str:
         return self.reference
+
+    def is_locked_for_deletion(self) -> bool:
+        return self.status != self.Status.DRAFT
 
     def save(self, *args, **kwargs):
         total = (self.quantity_litres * self.unit_price) + (

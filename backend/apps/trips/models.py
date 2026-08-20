@@ -2,6 +2,7 @@ from decimal import Decimal
 
 from django.db import models
 
+from apps.audit.mixins import AuditableModel
 from apps.core.models import TimeStampedModel
 
 
@@ -145,7 +146,7 @@ class TripStatusHistory(models.Model):
         )
 
 
-class DeliveryControl(TimeStampedModel):
+class DeliveryControl(AuditableModel, TimeStampedModel):
     """Quantity control recorded at discharge, the source of commercial
     truth for the whole downstream chain (docs/PHASE_4_PLAN.md Etape 2;
     ERP_Implementation_Experience_Guide.md Section 7.2/7.3: "Delivery is not

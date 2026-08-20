@@ -14,7 +14,7 @@ class Role(TimeStampedModel):
     grid straight off `MODULES` x `ACTIONS`.
     """
 
-    MODULES = ["operations", "finance", "sales", "purchasing", "admin"]
+    MODULES = ["operations", "finance", "sales", "purchasing", "admin", "reports"]
     ACTIONS = ["view", "create", "edit", "validate", "cancel", "export"]
 
     NAME_ADMIN = "Admin"

@@ -7,6 +7,8 @@ ACTION_MAP = {
     "reliquat": "view",
     "trips": "view",
     "history": "view",
+    # Dashboard's single custom read action (docs/PHASE_6_PLAN.md Etape 5).
+    "summary": "view",
     "create": "create",
     "update": "edit",
     "partial_update": "edit",
