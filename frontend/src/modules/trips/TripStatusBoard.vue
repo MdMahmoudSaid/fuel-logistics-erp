@@ -1,9 +1,17 @@
 <script setup lang="ts">
+// Vue hybride (docs/UI_REDESIGN_PLAN.md Etape 6.2) : tableau desktop
+// (>=768px, chiffres Mono alignés à droite) / liste de TripCard mobile
+// (<768px), avec puces de filtre statut à défilement horizontal.
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { tripResource } from './api'
 import { TRIP_STATUSES } from './types'
 import type { Trip, TripStatus } from './types'
+import Chip from '@/components/ui/Chip.vue'
+import Badge from '@/components/ui/Badge.vue'
+import MonoValue from '@/components/ui/MonoValue.vue'
+import Button from '@/components/ui/Button.vue'
+import TripCard from './TripCard.vue'
 
 const router = useRouter()
 
@@ -11,12 +19,14 @@ const trips = ref<Trip[]>([])
 const loading = ref(false)
 const error = ref('')
 
-// Kanban shows operations "en cours d'exécution" (plan Etape 9) — completed
-// and cancelled trips have their own history views (TripDetail, truck/order
-// trip lists) rather than piling up on the board indefinitely.
-const BOARD_STATUSES = TRIP_STATUSES.filter((s) => s !== 'COMPLETED' && s !== 'CANCELLED')
+// Cette vue couvre les opérations "en cours d'exécution" (plan Etape 9) -
+// les trajets livrés/annulés ont leur propre historique (TripDetail, listes
+// camion/commande) plutôt que de s'accumuler ici indéfiniment.
+const FILTER_STATUSES: TripStatus[] = TRIP_STATUSES.filter(
+  (s) => s !== 'COMPLETED' && s !== 'CANCELLED',
+)
 
-const COLUMN_LABEL: Record<TripStatus, string> = {
+const STATUS_LABEL: Record<TripStatus, string> = {
   ASSIGNED: 'Assigned',
   SENT_FOR_LOADING: 'Sent for loading',
   LOADING: 'Loading',
@@ -33,15 +43,15 @@ const COLUMN_LABEL: Record<TripStatus, string> = {
   CANCELLED: 'Cancelled',
 }
 
+const selectedStatus = ref<TripStatus | ''>('')
+
 async function load() {
   loading.value = true
   error.value = ''
   try {
-    // NB: this reads a single page (25, PAGE_SIZE) from the paginated
-    // /api/trips/ list — same "one page, no follow-the-next-link"
-    // convention as SupplierOrderList/CustomerOrderList. Fine while active
-    // trip volume stays modest; revisit (server-side page_size override or
-    // a dedicated unpaginated board endpoint) if it grows past a page.
+    // NB: une seule page (25, PAGE_SIZE) de /api/trips/ - même convention
+    // que SupplierOrderList/CustomerOrderList. Correct tant que le volume de
+    // trajets actifs reste modeste.
     const data = await tripResource.list()
     trips.value = data.results
   } catch {
@@ -53,13 +63,16 @@ async function load() {
 
 onMounted(load)
 
-const columns = computed(() =>
-  BOARD_STATUSES.map((status) => ({
-    status,
-    label: COLUMN_LABEL[status],
-    trips: trips.value.filter((t) => t.status === status),
-  })),
-)
+const filteredTrips = computed(() => {
+  if (selectedStatus.value) return trips.value.filter((t) => t.status === selectedStatus.value)
+  return trips.value.filter((t) => FILTER_STATUSES.includes(t.status))
+})
+
+const badgeVariant = (status: TripStatus) => {
+  if (status === 'DELIVERED' || status === 'COMPLETED') return 'livre' as const
+  if (status === 'BLOCKED' || status === 'CANCELLED') return 'critique' as const
+  return 'transit' as const
+}
 
 function goToDetail(trip: Trip) {
   router.push({ name: 'trip-detail', params: { id: trip.id } })
@@ -73,46 +86,78 @@ function goToNew() {
 <template>
   <div class="space-y-4">
     <div class="flex items-center justify-between">
-      <h2 class="text-lg font-semibold text-slate-800">Trips &amp; Loading</h2>
-      <button
-        class="rounded bg-slate-800 px-3 py-2 text-sm font-medium text-white"
-        @click="goToNew"
-      >
-        New Trip
-      </button>
+      <h1 class="font-display text-2xl leading-none font-semibold uppercase">
+        Trips &amp; Loading
+      </h1>
+      <Button variant="primary" @click="goToNew">New Trip</Button>
     </div>
 
-    <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
-    <p v-else-if="loading" class="text-sm text-slate-400">Loading…</p>
-
-    <div v-else class="flex gap-3 overflow-x-auto pb-2">
-      <div
-        v-for="column in columns"
-        :key="column.status"
-        class="w-64 shrink-0 rounded border bg-slate-50"
+    <div class="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+      <Chip :active="selectedStatus === ''" @click="selectedStatus = ''">Tous</Chip>
+      <Chip
+        v-for="status in FILTER_STATUSES"
+        :key="status"
+        :active="selectedStatus === status"
+        @click="selectedStatus = selectedStatus === status ? '' : status"
       >
-        <div class="flex items-center justify-between border-b bg-white px-3 py-2">
-          <span class="text-sm font-medium text-slate-700">{{ column.label }}</span>
-          <span class="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
-            {{ column.trips.length }}
-          </span>
-        </div>
-        <div class="space-y-2 p-2">
-          <button
-            v-for="trip in column.trips"
-            :key="trip.id"
-            class="w-full rounded border bg-white p-2 text-left text-sm shadow-sm hover:border-slate-400"
-            @click="goToDetail(trip)"
-          >
-            <div class="font-medium text-slate-800">{{ trip.reference }}</div>
-            <div class="text-xs text-slate-500">{{ trip.truck_detail?.internal_id }}</div>
-            <div class="text-xs text-slate-500">
-              {{ Number(trip.quantity_loaded).toLocaleString() }} L
-            </div>
-          </button>
-          <p v-if="!column.trips.length" class="px-1 py-2 text-center text-xs text-slate-400">—</p>
-        </div>
+        {{ STATUS_LABEL[status] }}
+      </Chip>
+    </div>
+
+    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
+    <p v-else-if="loading" class="text-texte-3 text-sm">Loading…</p>
+
+    <template v-else>
+      <!-- Desktop : tableau complet, chiffres Mono alignés à droite -->
+      <div class="border-ligne hidden overflow-x-auto rounded-xl border bg-white md:block">
+        <table class="w-full text-left text-sm">
+          <thead>
+            <tr class="border-ligne text-texte-2 border-b">
+              <th class="px-3 py-2.5 font-medium">Reference</th>
+              <th class="px-3 py-2.5 font-medium">Truck</th>
+              <th class="px-3 py-2.5 font-medium">Transporter</th>
+              <th class="px-3 py-2.5 font-medium">Client</th>
+              <th class="px-3 py-2.5 text-right font-medium">Quantity</th>
+              <th class="px-3 py-2.5 font-medium">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="trip in filteredTrips"
+              :key="trip.id"
+              class="border-ligne hover:bg-sable cursor-pointer border-b last:border-0"
+              @click="goToDetail(trip)"
+            >
+              <td class="px-3 py-2.5"><MonoValue :value="trip.reference" align="left" /></td>
+              <td class="px-3 py-2.5">{{ trip.truck_detail?.internal_id ?? '—' }}</td>
+              <td class="px-3 py-2.5">{{ trip.transporter_detail?.name ?? '—' }}</td>
+              <td class="px-3 py-2.5">{{ trip.client_detail?.name ?? 'Direct sale' }}</td>
+              <td class="px-3 py-2.5 text-right">
+                <MonoValue :value="Number(trip.quantity_loaded).toLocaleString()" unit="L" />
+              </td>
+              <td class="px-3 py-2.5">
+                <Badge :variant="badgeVariant(trip.status)">{{ STATUS_LABEL[trip.status] }}</Badge>
+              </td>
+            </tr>
+            <tr v-if="!filteredTrips.length">
+              <td colspan="6" class="text-texte-3 px-3 py-8 text-center">
+                No trips for this filter.
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
-    </div>
+
+      <!-- Mobile : liste de TripCard empilées -->
+      <div class="space-y-3 md:hidden">
+        <TripCard v-for="trip in filteredTrips" :key="trip.id" :trip="trip" />
+        <p
+          v-if="!filteredTrips.length"
+          class="text-texte-3 border-ligne rounded-xl border border-dashed p-6 text-center text-sm"
+        >
+          No trips for this filter.
+        </p>
+      </div>
+    </template>
   </div>
 </template>

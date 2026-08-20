@@ -1,9 +1,16 @@
 <script setup lang="ts">
+// Vue hybride (docs/UI_REDESIGN_PLAN.md Etape 6.2) : tableau desktop
+// (>=768px, chiffres Mono alignés à droite) / cartes empilées mobile
+// (<768px), avec puces de filtre statut à défilement horizontal.
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { createResourceApi } from '@/api/resource'
 import { customerOrderResource } from './api'
-import type { CustomerOrder, CustomerBrief, ProductBrief } from './types'
+import type { CustomerOrder, CustomerOrderStatus, CustomerBrief, ProductBrief } from './types'
+import Chip from '@/components/ui/Chip.vue'
+import Badge from '@/components/ui/Badge.vue'
+import MonoValue from '@/components/ui/MonoValue.vue'
+import Button from '@/components/ui/Button.vue'
 
 const router = useRouter()
 
@@ -13,7 +20,45 @@ const products = ref<ProductBrief[]>([])
 const loading = ref(false)
 const error = ref('')
 
-const filters = ref({ customer: '', product: '', status: '' })
+const filters = ref<{ customer: string; product: string; status: CustomerOrderStatus | '' }>({
+  customer: '',
+  product: '',
+  status: '',
+})
+
+const STATUSES: CustomerOrderStatus[] = [
+  'DRAFT',
+  'CONFIRMED',
+  'PARTIALLY_ASSIGNED',
+  'IN_PROGRESS',
+  'PARTIALLY_DELIVERED',
+  'DELIVERED',
+  'CLOSED',
+  'CANCELLED',
+]
+
+const STATUS_LABEL: Record<CustomerOrderStatus, string> = {
+  DRAFT: 'Draft',
+  CONFIRMED: 'Confirmed',
+  PARTIALLY_ASSIGNED: 'Partially assigned',
+  IN_PROGRESS: 'In progress',
+  PARTIALLY_DELIVERED: 'Partially delivered',
+  DELIVERED: 'Delivered',
+  CLOSED: 'Closed',
+  CANCELLED: 'Cancelled',
+}
+
+function badgeVariant(status: CustomerOrderStatus) {
+  if (status === 'DELIVERED' || status === 'CLOSED') return 'livre' as const
+  if (status === 'CANCELLED') return 'critique' as const
+  if (
+    status === 'PARTIALLY_ASSIGNED' ||
+    status === 'IN_PROGRESS' ||
+    status === 'PARTIALLY_DELIVERED'
+  )
+    return 'ecart' as const
+  return 'transit' as const
+}
 
 const customerResource = createResourceApi<CustomerBrief>('/customers/')
 const productResource = createResourceApi<ProductBrief>('/products/')
@@ -35,6 +80,16 @@ async function loadOrders() {
   }
 }
 
+function toggleStatus(status: CustomerOrderStatus) {
+  filters.value.status = filters.value.status === status ? '' : status
+  loadOrders()
+}
+
+function clearStatus() {
+  filters.value.status = ''
+  loadOrders()
+}
+
 onMounted(async () => {
   const [customerData, productData] = await Promise.all([
     customerResource.list(),
@@ -52,35 +107,19 @@ function goToNew() {
 function goToDetail(order: CustomerOrder) {
   router.push({ name: 'customer-order-detail', params: { id: order.id } })
 }
-
-const STATUS_BADGE: Record<string, string> = {
-  DRAFT: 'bg-slate-100 text-slate-600',
-  CONFIRMED: 'bg-sky-100 text-sky-700',
-  PARTIALLY_ASSIGNED: 'bg-amber-100 text-amber-700',
-  IN_PROGRESS: 'bg-amber-100 text-amber-700',
-  PARTIALLY_DELIVERED: 'bg-indigo-100 text-indigo-700',
-  DELIVERED: 'bg-emerald-100 text-emerald-700',
-  CLOSED: 'bg-slate-100 text-slate-600',
-  CANCELLED: 'bg-red-100 text-red-700',
-}
 </script>
 
 <template>
   <div class="space-y-4">
     <div class="flex items-center justify-between">
-      <h2 class="text-lg font-semibold text-slate-800">Customer Orders</h2>
-      <button
-        class="rounded bg-slate-800 px-3 py-2 text-sm font-medium text-white"
-        @click="goToNew"
-      >
-        New Order
-      </button>
+      <h1 class="font-display text-2xl leading-none font-semibold uppercase">Customer Orders</h1>
+      <Button variant="primary" @click="goToNew">New Order</Button>
     </div>
 
-    <div class="flex flex-wrap gap-3 rounded border bg-white p-3">
+    <div class="flex flex-wrap gap-3">
       <select
         v-model="filters.customer"
-        class="rounded border border-slate-300 px-2 py-1.5 text-sm"
+        class="border-ligne-forte h-11 rounded-lg border bg-white px-3 text-sm"
         @change="loadOrders"
       >
         <option value="">All customers</option>
@@ -88,81 +127,111 @@ const STATUS_BADGE: Record<string, string> = {
       </select>
       <select
         v-model="filters.product"
-        class="rounded border border-slate-300 px-2 py-1.5 text-sm"
+        class="border-ligne-forte h-11 rounded-lg border bg-white px-3 text-sm"
         @change="loadOrders"
       >
         <option value="">All products</option>
         <option v-for="p in products" :key="p.id" :value="p.id">{{ p.name }}</option>
       </select>
-      <select
-        v-model="filters.status"
-        class="rounded border border-slate-300 px-2 py-1.5 text-sm"
-        @change="loadOrders"
-      >
-        <option value="">All statuses</option>
-        <option value="DRAFT">Draft</option>
-        <option value="CONFIRMED">Confirmed</option>
-        <option value="PARTIALLY_ASSIGNED">Partially assigned</option>
-        <option value="IN_PROGRESS">In progress</option>
-        <option value="PARTIALLY_DELIVERED">Partially delivered</option>
-        <option value="DELIVERED">Delivered</option>
-        <option value="CLOSED">Closed</option>
-        <option value="CANCELLED">Cancelled</option>
-      </select>
     </div>
 
-    <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
+    <div class="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+      <Chip :active="filters.status === ''" @click="clearStatus">Tous</Chip>
+      <Chip
+        v-for="status in STATUSES"
+        :key="status"
+        :active="filters.status === status"
+        @click="toggleStatus(status)"
+      >
+        {{ STATUS_LABEL[status] }}
+      </Chip>
+    </div>
 
-    <div class="overflow-x-auto rounded border bg-white">
+    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
+
+    <!-- Desktop : tableau complet, chiffres Mono alignés à droite -->
+    <div class="border-ligne hidden overflow-x-auto rounded-xl border bg-white md:block">
       <table class="w-full text-left text-sm">
         <thead>
-          <tr class="border-b text-slate-500">
-            <th class="px-3 py-2 font-medium">Customer</th>
-            <th class="px-3 py-2 font-medium">Product</th>
-            <th class="px-3 py-2 font-medium text-right">Ordered (L)</th>
-            <th class="px-3 py-2 font-medium text-right">Assigned (L)</th>
-            <th class="px-3 py-2 font-medium text-right">Delivered (L)</th>
-            <th class="px-3 py-2 font-medium text-right">Remaining (L)</th>
-            <th class="px-3 py-2 font-medium">Status</th>
+          <tr class="border-ligne text-texte-2 border-b">
+            <th class="px-3 py-2.5 font-medium">Customer</th>
+            <th class="px-3 py-2.5 font-medium">Product</th>
+            <th class="px-3 py-2.5 text-right font-medium">Ordered (L)</th>
+            <th class="px-3 py-2.5 text-right font-medium">Assigned (L)</th>
+            <th class="px-3 py-2.5 text-right font-medium">Delivered (L)</th>
+            <th class="px-3 py-2.5 text-right font-medium">Remaining (L)</th>
+            <th class="px-3 py-2.5 font-medium">Status</th>
           </tr>
         </thead>
         <tbody>
           <tr
             v-for="order in orders"
             :key="order.id"
-            class="cursor-pointer border-b last:border-0 hover:bg-slate-50"
+            class="border-ligne hover:bg-sable cursor-pointer border-b last:border-0"
             @click="goToDetail(order)"
           >
-            <td class="px-3 py-2 font-medium text-slate-800">{{ order.customer_detail?.name }}</td>
-            <td class="px-3 py-2">{{ order.product_detail?.name }}</td>
-            <td class="px-3 py-2 text-right">
-              {{ Number(order.quantity_ordered).toLocaleString() }}
+            <td class="px-3 py-2.5 font-medium">{{ order.customer_detail?.name }}</td>
+            <td class="px-3 py-2.5">{{ order.product_detail?.name }}</td>
+            <td class="px-3 py-2.5 text-right">
+              <MonoValue :value="Number(order.quantity_ordered).toLocaleString()" />
             </td>
-            <td class="px-3 py-2 text-right">
-              {{ Number(order.assigned_quantity).toLocaleString() }}
+            <td class="px-3 py-2.5 text-right">
+              <MonoValue :value="Number(order.assigned_quantity).toLocaleString()" />
             </td>
-            <td class="px-3 py-2 text-right">
-              {{ Number(order.delivered_quantity).toLocaleString() }}
+            <td class="px-3 py-2.5 text-right">
+              <MonoValue :value="Number(order.delivered_quantity).toLocaleString()" />
             </td>
-            <td class="px-3 py-2 text-right font-medium">
-              {{ Number(order.remaining_quantity).toLocaleString() }}
+            <td class="px-3 py-2.5 text-right">
+              <MonoValue :value="Number(order.remaining_quantity).toLocaleString()" />
             </td>
-            <td class="px-3 py-2">
-              <span
-                class="rounded-full px-2 py-0.5 text-xs font-medium"
-                :class="STATUS_BADGE[order.status]"
-              >
-                {{ order.status }}
-              </span>
+            <td class="px-3 py-2.5">
+              <Badge :variant="badgeVariant(order.status)">{{ STATUS_LABEL[order.status] }}</Badge>
             </td>
           </tr>
           <tr v-if="!loading && orders.length === 0">
-            <td colspan="7" class="px-3 py-6 text-center text-slate-400">
-              No customer orders yet.
-            </td>
+            <td colspan="7" class="text-texte-3 px-3 py-8 text-center">No customer orders yet.</td>
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <!-- Mobile : cartes empilées -->
+    <div class="space-y-3 md:hidden">
+      <button
+        v-for="order in orders"
+        :key="order.id"
+        type="button"
+        class="border-ligne block w-full space-y-3 rounded-xl border bg-white p-4 text-left"
+        @click="goToDetail(order)"
+      >
+        <div class="flex items-start justify-between gap-2">
+          <div>
+            <p class="font-medium">{{ order.customer_detail?.name }}</p>
+            <p class="text-texte-2 text-xs">{{ order.product_detail?.name }}</p>
+          </div>
+          <Badge :variant="badgeVariant(order.status)">{{ STATUS_LABEL[order.status] }}</Badge>
+        </div>
+        <div class="grid grid-cols-3 gap-2 text-xs">
+          <div>
+            <p class="text-texte-3 uppercase">Ordered</p>
+            <MonoValue :value="Number(order.quantity_ordered).toLocaleString()" align="left" />
+          </div>
+          <div>
+            <p class="text-texte-3 uppercase">Delivered</p>
+            <MonoValue :value="Number(order.delivered_quantity).toLocaleString()" align="left" />
+          </div>
+          <div>
+            <p class="text-texte-3 uppercase">Remaining</p>
+            <MonoValue :value="Number(order.remaining_quantity).toLocaleString()" align="left" />
+          </div>
+        </div>
+      </button>
+      <p
+        v-if="!loading && orders.length === 0"
+        class="text-texte-3 border-ligne rounded-xl border border-dashed p-6 text-center text-sm"
+      >
+        No customer orders yet.
+      </p>
     </div>
   </div>
 </template>

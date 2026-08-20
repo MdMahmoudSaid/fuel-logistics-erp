@@ -40,6 +40,28 @@ export const TRIP_STATUSES: TripStatus[] = [
   'CANCELLED',
 ]
 
+// Pipeline linéaire de l'affectation à la livraison, utilisé pour la jauge
+// de progression (TripCard) et pour repérer les trajets "en route" sur le
+// Dashboard. BLOCKED/CANCELLED sortent de ce pipeline (traités à part).
+export const TRIP_PIPELINE_STATUSES: TripStatus[] = [
+  'ASSIGNED',
+  'SENT_FOR_LOADING',
+  'LOADING',
+  'LOADED',
+  'IN_TRANSIT',
+  'BORDER',
+  'CUSTOMS',
+  'GOING_TO_CLIENT',
+  'ARRIVED_AT_CLIENT',
+  'QUANTITY_CONTROL',
+  'DELIVERED',
+]
+
+// "En route maintenant" (Dashboard) = pipeline hors trajets déjà livrés.
+export function isTripEnRoute(status: TripStatus): boolean {
+  return TRIP_PIPELINE_STATUSES.includes(status) && status !== 'DELIVERED'
+}
+
 export type TruckStatus = 'AVAILABLE' | 'ON_TRIP' | 'BLOCKED'
 
 export interface TruckBrief {

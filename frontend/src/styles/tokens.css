@@ -1,0 +1,79 @@
+/**
+ * Design System "Jauge" — design tokens.
+ * Source of truth: docs/UI_REDESIGN_PLAN.md §1.
+ * Raw values live in :root; the @theme inline block below maps them onto
+ * Tailwind v4 utilities (bg-bitume, text-orange-fonce, font-mono, ...).
+ */
+
+:root {
+  /* Surfaces */
+  --bitume: #12171c; /* sidebar, header, nav basse, modales */
+  --bitume-2: #1c242b; /* survol sur fond sombre, séparateurs sombres */
+  --sable: #f6f4ef; /* canvas global de l'application */
+  --surface: #ffffff; /* cartes, formulaires */
+  --ligne: #e4e1d8; /* bordures 1px */
+  --ligne-forte: #d8d5cc;
+
+  /* Texte */
+  --texte: #12171c;
+  --texte-2: #6b6a64;
+  --texte-3: #9a9891; /* placeholders, métadonnées */
+
+  /* Marque / Action */
+  --orange: #f97316; /* fond de bouton primaire, logo, actif */
+  --orange-fonce: #c2410c; /* texte et icônes orange sur fond clair */
+  --orange-tint: #fdebd3;
+
+  /* Statuts (fond clair / texte sombre) */
+  --livre: #0e9f6e;
+  --livre-tint: #d6f2e6;
+  --livre-texte: #0a5c41;
+  --transit: #2563eb;
+  --transit-tint: #dbeafe;
+  --transit-texte: #1e3a8a;
+  --ecart: #b45309;
+  --ecart-tint: #fdebd3;
+  --ecart-texte: #7c3d06;
+  --critique: #dc2626;
+  --critique-tint: #fbdddd;
+  --critique-texte: #8f1d1d;
+
+  /* Typographie */
+  --font-sans-family: 'Barlow', ui-sans-serif, system-ui, sans-serif;
+  --font-display-family: 'Barlow Condensed', ui-sans-serif, system-ui, sans-serif;
+  --font-mono-family: 'IBM Plex Mono', ui-monospace, monospace;
+}
+
+@theme inline {
+  --color-bitume: var(--bitume);
+  --color-bitume-2: var(--bitume-2);
+  --color-sable: var(--sable);
+  --color-surface: var(--surface);
+  --color-ligne: var(--ligne);
+  --color-ligne-forte: var(--ligne-forte);
+
+  --color-texte: var(--texte);
+  --color-texte-2: var(--texte-2);
+  --color-texte-3: var(--texte-3);
+
+  --color-orange: var(--orange);
+  --color-orange-fonce: var(--orange-fonce);
+  --color-orange-tint: var(--orange-tint);
+
+  --color-livre: var(--livre);
+  --color-livre-tint: var(--livre-tint);
+  --color-livre-texte: var(--livre-texte);
+  --color-transit: var(--transit);
+  --color-transit-tint: var(--transit-tint);
+  --color-transit-texte: var(--transit-texte);
+  --color-ecart: var(--ecart);
+  --color-ecart-tint: var(--ecart-tint);
+  --color-ecart-texte: var(--ecart-texte);
+  --color-critique: var(--critique);
+  --color-critique-tint: var(--critique-tint);
+  --color-critique-texte: var(--critique-texte);
+
+  --font-sans: var(--font-sans-family);
+  --font-display: var(--font-display-family);
+  --font-mono: var(--font-mono-family);
+}

@@ -6,6 +6,9 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { createResourceApi } from '@/api/resource'
 import { treasuryTransactionResource } from './api'
+import { fetchDashboardSummary } from '@/modules/dashboard/api'
+import Button from '@/components/ui/Button.vue'
+import MonoValue from '@/components/ui/MonoValue.vue'
 import type { TreasuryTransaction } from './types'
 
 const router = useRouter()
@@ -13,6 +16,11 @@ const router = useRouter()
 const transactions = ref<TreasuryTransaction[]>([])
 const loading = ref(true)
 const error = ref('')
+
+// §0.3/Etape 6.3 : solde courant global (pas borné par une période - c'est
+// une balance, pas un flux), déjà calculé par le dashboard summary
+// (backend/apps/reports/views/dashboard.py) à partir de tous les comptes.
+const balance = ref<number | null>(null)
 
 const bankAccountResource = createResourceApi<{ id: number; name: string }>('/bank-accounts/')
 const cashAccountResource = createResourceApi<{ id: number; name: string }>('/cash-accounts/')
@@ -37,14 +45,16 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const [txnData, bankData, cashData] = await Promise.all([
+    const [txnData, bankData, cashData, summary] = await Promise.all([
       treasuryTransactionResource.list(),
       bankAccountResource.list(),
       cashAccountResource.list(),
+      fetchDashboardSummary({}),
     ])
     transactions.value = txnData.results
     bankAccounts.value = bankData.results
     cashAccounts.value = cashData.results
+    balance.value = Number(summary.finance.treasury_balance)
   } catch {
     error.value = 'Could not load the treasury journal.'
   } finally {
@@ -63,32 +73,41 @@ const TYPE_BADGE: Record<string, string> = {
 <template>
   <div class="max-w-4xl space-y-6">
     <div class="flex items-center justify-between">
-      <h2 class="text-lg font-semibold text-slate-800">Treasury Journal</h2>
-      <button
-        class="rounded bg-slate-800 px-3 py-1.5 text-sm font-medium text-white"
-        @click="router.push({ name: 'treasury-transfer' })"
-      >
+      <h1 class="font-display text-2xl leading-none font-semibold uppercase">Treasury Journal</h1>
+      <Button variant="primary" @click="router.push({ name: 'treasury-transfer' })">
         Internal transfer
-      </button>
+      </Button>
+    </div>
+
+    <!-- Solde courant — §0.3 : Mono 30px sur carte bitume, négatif en
+         --critique sans parenthèses. -->
+    <div v-if="balance !== null" class="bg-bitume rounded-xl p-5">
+      <p class="text-sable/60 text-xs font-medium uppercase">Solde courant</p>
+      <p
+        class="font-mono text-[30px] leading-none font-semibold tabular-nums"
+        :class="balance < 0 ? 'text-critique' : 'text-sable'"
+      >
+        {{ balance < 0 ? '−' : '' }}{{ Math.abs(balance).toLocaleString() }}
+      </p>
     </div>
 
     <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
     <p v-else-if="loading" class="text-sm text-slate-400">Loading…</p>
 
-    <section v-else class="rounded border bg-white p-4">
+    <section v-else class="border-ligne rounded-xl border bg-white p-4">
       <table class="w-full text-left text-sm">
         <thead>
-          <tr class="border-b text-slate-500">
+          <tr class="border-ligne text-texte-2 border-b">
             <th class="px-2 py-1.5 font-medium">Date</th>
             <th class="px-2 py-1.5 font-medium">Type</th>
             <th class="px-2 py-1.5 font-medium">Account</th>
             <th class="px-2 py-1.5 font-medium">Reference</th>
-            <th class="px-2 py-1.5 font-medium text-right">Amount</th>
+            <th class="px-2 py-1.5 text-right font-medium">Amount</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="txn in transactions" :key="txn.id" class="border-b last:border-0">
-            <td class="px-2 py-1.5">{{ txn.date }}</td>
+          <tr v-for="txn in transactions" :key="txn.id" class="border-ligne border-b last:border-0">
+            <td class="px-2 py-1.5"><MonoValue :value="txn.date" align="left" /></td>
             <td class="px-2 py-1.5">
               <span
                 class="rounded-full px-2 py-0.5 text-xs font-medium"
@@ -105,12 +124,15 @@ const TYPE_BADGE: Record<string, string> = {
             </td>
             <td class="px-2 py-1.5">{{ accountLabel(txn) }}</td>
             <td class="px-2 py-1.5">{{ txn.reference || '—' }}</td>
-            <td class="px-2 py-1.5 text-right font-medium text-slate-800">
-              {{ Number(txn.amount).toLocaleString() }}
+            <td class="px-2 py-1.5 text-right">
+              <MonoValue
+                :value="(txn.type === 'MONEY_OUT' ? '−' : '') + Number(txn.amount).toLocaleString()"
+                :class="txn.type === 'MONEY_OUT' ? 'text-critique' : 'text-texte'"
+              />
             </td>
           </tr>
           <tr v-if="transactions.length === 0">
-            <td colspan="5" class="px-2 py-4 text-center text-slate-400">No transactions yet.</td>
+            <td colspan="5" class="text-texte-3 px-2 py-4 text-center">No transactions yet.</td>
           </tr>
         </tbody>
       </table>

@@ -1,11 +1,15 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { tripResource, fetchTripHistory, postTripStatus } from './api'
 import DeliveryControlForm from './DeliveryControlForm.vue'
 import { TRIP_STATUSES } from './types'
 import type { Trip, TripStatusHistoryEntry } from './types'
+import { fetchReport } from '@/modules/reports/api'
+import { lossSeverityTone, type LossReportRow } from '@/modules/dashboard/aggregate'
+import GaugeBar from '@/components/ui/GaugeBar.vue'
+import MonoValue from '@/components/ui/MonoValue.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -34,6 +38,44 @@ async function load() {
 }
 
 onMounted(load)
+
+// docs/UI_REDESIGN_PLAN.md Etape 6.2: bloc "Jauges" (chargé/livré/écart).
+// Pas de champ dédié sur Trip pour la quantité livrée - le DeliveryControl
+// associé n'est pas non plus imbriqué dans TripSerializer (backend/apps/
+// trips/serializers.py), et il n'existe aucun endpoint de lecture pour un
+// DeliveryControl isolé (seule sa création via POST /trips/{id}/delivery-
+// control/ est exposée). Le loss-report existant expose déjà ces champs par
+// trip_reference - on le réutilise plutôt que d'ajouter un endpoint backend
+// pour ce seul affichage.
+const deliveryData = ref<LossReportRow | null>(null)
+
+watch(
+  () => trip.value?.status,
+  async (status) => {
+    if (status !== 'DELIVERED' && status !== 'COMPLETED') {
+      deliveryData.value = null
+      return
+    }
+    try {
+      const report = await fetchReport('loss-report', {})
+      const rows = report.rows as unknown as LossReportRow[]
+      deliveryData.value = rows.find((row) => row.trip_reference === trip.value?.reference) ?? null
+    } catch {
+      deliveryData.value = null
+    }
+  },
+)
+
+const deliveredPct = computed(() => {
+  if (!deliveryData.value) return 0
+  const loaded = Number(deliveryData.value.loaded_quantity)
+  return loaded > 0 ? (Number(deliveryData.value.received_quantity) / loaded) * 100 : 0
+})
+const lossPct = computed(() => {
+  if (!deliveryData.value) return 0
+  const loaded = Number(deliveryData.value.loaded_quantity)
+  return loaded > 0 ? (Number(deliveryData.value.loss_quantity) / loaded) * 100 : 0
+})
 
 const canChangeStatus = computed(() => auth.can('operations', 'edit'))
 
@@ -207,6 +249,43 @@ function formatDateTime(value: string) {
         :quantity-loaded="trip.quantity_loaded"
         @confirmed="load"
       />
+
+      <section v-if="deliveryData" class="border-ligne space-y-4 rounded-xl border bg-white p-4">
+        <h3 class="text-texte-2 text-sm font-semibold uppercase">Jauges</h3>
+        <div class="grid grid-cols-3 gap-4">
+          <div>
+            <p class="text-texte-3 text-xs uppercase">Chargé</p>
+            <MonoValue
+              :value="Number(deliveryData.loaded_quantity).toLocaleString()"
+              unit="L"
+              align="left"
+            />
+          </div>
+          <div>
+            <p class="text-texte-3 text-xs uppercase">Livré</p>
+            <MonoValue
+              :value="Number(deliveryData.received_quantity).toLocaleString()"
+              unit="L"
+              align="left"
+            />
+          </div>
+          <div>
+            <p class="text-texte-3 text-xs uppercase">Écart</p>
+            <MonoValue
+              :value="Number(deliveryData.loss_quantity).toLocaleString()"
+              unit="L"
+              align="left"
+              :class="Number(deliveryData.chargeable_loss_quantity) > 0 ? 'text-critique' : ''"
+            />
+          </div>
+        </div>
+        <GaugeBar :value="deliveredPct" tone="livre" label="Livré / Chargé" />
+        <GaugeBar
+          :value="Math.min(100, (lossPct / 5) * 100)"
+          :tone="lossSeverityTone(lossPct)"
+          label="Écart"
+        />
+      </section>
 
       <section class="space-y-3 rounded border bg-white p-4">
         <h3 class="text-base font-semibold text-slate-800">History</h3>
