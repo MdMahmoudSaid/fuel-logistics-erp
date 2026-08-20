@@ -98,7 +98,7 @@ describe('DeliveryControlForm', () => {
     await wrapper.find('#received_quantity').setValue('46000.00')
     await flushPromises()
 
-    expect(wrapper.text()).toContain('anomaly')
+    expect(wrapper.text()).toContain('anomalie')
     expect(wrapper.find('#anomaly_confirmed').exists()).toBe(false)
 
     await wrapper.find('#control_date').setValue('2026-08-18')

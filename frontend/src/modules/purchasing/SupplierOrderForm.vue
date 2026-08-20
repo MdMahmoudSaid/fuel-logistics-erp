@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { createResourceApi } from '@/api/resource'
 import { supplierOrderResource, uploadDocument } from './api'
+import Button from '@/components/ui/Button.vue'
 import type { SupplierOrder, SupplierOrderStatus, SupplierBrief, ProductBrief } from './types'
 
 const route = useRoute()
 const router = useRouter()
+const { t } = useI18n()
 
 const orderId = computed(() => (route.params.id ? Number(route.params.id) : null))
 const isNew = computed(() => orderId.value === null)
@@ -86,7 +89,7 @@ async function onSubmit() {
       order.value = await supplierOrderResource.update(orderId.value!, payload)
     }
   } catch {
-    error.value = 'Could not save — check the fields and your permissions.'
+    error.value = t('purchasing.orderForm.saveError')
   } finally {
     saving.value = false
   }
@@ -117,7 +120,7 @@ async function onUploadDocument() {
     documentFile.value = null
     await loadOrder()
   } catch {
-    uploadError.value = 'Could not upload document.'
+    uploadError.value = t('purchasing.orderForm.uploadError')
   } finally {
     uploadingDoc.value = false
   }
@@ -130,86 +133,107 @@ function goToNewCession() {
 
 <template>
   <div class="max-w-3xl space-y-6">
-    <h2 class="text-lg font-semibold text-slate-800">
-      {{ isNew ? 'New Supplier Order' : `Supplier Order ${order?.reference ?? ''}` }}
-    </h2>
+    <h1 class="font-display text-2xl leading-none font-semibold uppercase">
+      {{
+        isNew
+          ? t('purchasing.orderForm.newTitle')
+          : t('purchasing.orderForm.editTitle', { reference: order?.reference ?? '' })
+      }}
+    </h1>
 
-    <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
+    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
 
-    <form class="grid grid-cols-2 gap-4 rounded border bg-white p-4" @submit.prevent="onSubmit">
-      <div class="space-y-1">
-        <label class="text-sm font-medium text-slate-600" for="reference">Reference</label>
+    <form
+      class="border-ligne grid grid-cols-2 gap-4 rounded-xl border bg-surface p-6"
+      @submit.prevent="onSubmit"
+    >
+      <div class="space-y-1.5">
+        <label class="text-texte-2 text-sm font-medium" for="reference">{{
+          t('purchasing.orderForm.reference')
+        }}</label>
         <input
           id="reference"
           v-model="form.reference"
           required
-          class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+          class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
         />
       </div>
 
-      <div class="space-y-1">
-        <label class="text-sm font-medium text-slate-600" for="status">Status</label>
+      <div class="space-y-1.5">
+        <label class="text-texte-2 text-sm font-medium" for="status">{{
+          t('purchasing.orderForm.status')
+        }}</label>
         <select
           id="status"
           v-model="form.status"
-          class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+          class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
         >
-          <option value="DRAFT">Draft</option>
-          <option value="CONFIRMED">Confirmed</option>
-          <option value="CANCELLED">Cancelled</option>
+          <option value="DRAFT">{{ t('supplierOrderStatus.DRAFT') }}</option>
+          <option value="CONFIRMED">{{ t('supplierOrderStatus.CONFIRMED') }}</option>
+          <option value="CANCELLED">{{ t('supplierOrderStatus.CANCELLED') }}</option>
         </select>
       </div>
 
-      <div class="space-y-1">
-        <label class="text-sm font-medium text-slate-600" for="supplier">Supplier</label>
+      <div class="space-y-1.5">
+        <label class="text-texte-2 text-sm font-medium" for="supplier">{{
+          t('purchasing.orderForm.supplier')
+        }}</label>
         <select
           id="supplier"
           v-model="form.supplier"
           required
-          class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+          class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
         >
-          <option value="" disabled>Select a supplier</option>
+          <option value="" disabled>{{ t('purchasing.orderForm.selectSupplier') }}</option>
           <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
         </select>
       </div>
 
-      <div class="space-y-1">
-        <label class="text-sm font-medium text-slate-600" for="product">Product</label>
+      <div class="space-y-1.5">
+        <label class="text-texte-2 text-sm font-medium" for="product">{{
+          t('purchasing.orderForm.product')
+        }}</label>
         <select
           id="product"
           v-model="form.product"
           required
-          class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+          class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
         >
-          <option value="" disabled>Select a product</option>
+          <option value="" disabled>{{ t('purchasing.orderForm.selectProduct') }}</option>
           <option v-for="p in products" :key="p.id" :value="p.id">{{ p.name }}</option>
         </select>
       </div>
 
-      <div class="space-y-1">
-        <label class="text-sm font-medium text-slate-600" for="purchase_date">Purchase date</label>
+      <div class="space-y-1.5">
+        <label class="text-texte-2 text-sm font-medium" for="purchase_date">{{
+          t('purchasing.orderForm.purchaseDate')
+        }}</label>
         <input
           id="purchase_date"
           v-model="form.purchase_date"
           type="date"
           required
-          class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+          class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
         />
       </div>
 
-      <div class="space-y-1">
-        <label class="text-sm font-medium text-slate-600" for="currency">Currency</label>
+      <div class="space-y-1.5">
+        <label class="text-texte-2 text-sm font-medium" for="currency">{{
+          t('purchasing.orderForm.currency')
+        }}</label>
         <select
           id="currency"
           v-model="form.currency"
-          class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+          class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
         >
           <option value="XOF">XOF</option>
         </select>
       </div>
 
-      <div class="space-y-1">
-        <label class="text-sm font-medium text-slate-600" for="quantity_litres">Quantity (L)</label>
+      <div class="space-y-1.5">
+        <label class="text-texte-2 text-sm font-medium" for="quantity_litres">{{
+          t('purchasing.orderForm.quantity')
+        }}</label>
         <input
           id="quantity_litres"
           v-model="form.quantity_litres"
@@ -217,12 +241,14 @@ function goToNewCession() {
           step="0.01"
           min="0.01"
           required
-          class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+          class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
         />
       </div>
 
-      <div class="space-y-1">
-        <label class="text-sm font-medium text-slate-600" for="unit_price">Unit price / L</label>
+      <div class="space-y-1.5">
+        <label class="text-texte-2 text-sm font-medium" for="unit_price">{{
+          t('purchasing.orderForm.unitPrice')
+        }}</label>
         <input
           id="unit_price"
           v-model="form.unit_price"
@@ -230,133 +256,141 @@ function goToNewCession() {
           step="0.0001"
           min="0"
           required
-          class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+          class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
         />
       </div>
 
-      <div class="space-y-1">
-        <label class="text-sm font-medium text-slate-600" for="optional_costs"
-          >Optional costs</label
-        >
+      <div class="space-y-1.5">
+        <label class="text-texte-2 text-sm font-medium" for="optional_costs">{{
+          t('purchasing.orderForm.optionalCosts')
+        }}</label>
         <input
           id="optional_costs"
           v-model="form.optional_costs"
           type="number"
           step="0.01"
           min="0"
-          class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+          class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
         />
       </div>
 
-      <div v-if="order" class="space-y-1">
-        <span class="text-sm font-medium text-slate-600">Total amount</span>
-        <p class="rounded border border-transparent px-3 py-2 text-sm font-semibold text-slate-800">
+      <div v-if="order" class="space-y-1.5">
+        <span class="text-texte-2 text-sm font-medium">{{
+          t('purchasing.orderForm.totalAmount')
+        }}</span>
+        <p class="text-texte rounded-lg border border-transparent px-3.5 py-2.5 text-sm font-semibold">
           {{ Number(order.total_amount).toLocaleString() }} {{ order.currency }}
         </p>
       </div>
 
-      <div v-if="order" class="space-y-1">
-        <span class="text-sm font-medium text-slate-600">Reliquat (remaining)</span>
+      <div v-if="order" class="space-y-1.5">
+        <span class="text-texte-2 text-sm font-medium">{{
+          t('purchasing.orderForm.reliquat')
+        }}</span>
         <p
-          class="rounded border border-transparent px-3 py-2 text-sm font-semibold"
-          :class="Number(order.reliquat) <= 0 ? 'text-red-600' : 'text-emerald-700'"
+          class="rounded-lg border border-transparent px-3.5 py-2.5 text-sm font-semibold"
+          :class="Number(order.reliquat) <= 0 ? 'text-critique' : 'text-livre-texte'"
         >
           {{ Number(order.reliquat).toLocaleString() }} L
         </p>
       </div>
 
-      <div class="col-span-2 space-y-1">
-        <label class="text-sm font-medium text-slate-600" for="notes">Notes</label>
+      <div class="col-span-2 space-y-1.5">
+        <label class="text-texte-2 text-sm font-medium" for="notes">{{
+          t('purchasing.orderForm.notes')
+        }}</label>
         <textarea
           id="notes"
           v-model="form.notes"
           rows="2"
-          class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+          class="border-ligne-forte w-full rounded-lg border bg-white px-3.5 py-2.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
         />
       </div>
 
       <div class="col-span-2 flex justify-end gap-2 pt-2">
-        <button
-          type="button"
-          class="px-3 py-2 text-sm text-slate-500"
-          @click="router.push({ name: 'supplier-orders' })"
-        >
-          Back
-        </button>
-        <button
-          type="submit"
-          :disabled="saving"
-          class="rounded bg-slate-800 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
-        >
-          {{ saving ? 'Saving…' : 'Save' }}
-        </button>
+        <Button variant="ghost" type="button" @click="router.push({ name: 'supplier-orders' })">
+          {{ t('purchasing.orderForm.back') }}
+        </Button>
+        <Button type="submit" variant="primary" :loading="saving">
+          {{ saving ? t('purchasing.orderForm.saving') : t('purchasing.orderForm.save') }}
+        </Button>
       </div>
     </form>
 
-    <section v-if="!isNew" class="space-y-3 rounded border bg-white p-4">
-      <h3 class="text-base font-semibold text-slate-800">Documents</h3>
-      <p v-if="uploadError" class="text-sm text-red-600">{{ uploadError }}</p>
+    <section v-if="!isNew" class="border-ligne space-y-3 rounded-xl border bg-surface p-6">
+      <h2 class="font-display text-lg leading-none font-semibold uppercase">
+        {{ t('purchasing.orderForm.documents') }}
+      </h2>
+      <p v-if="uploadError" class="text-critique text-sm">{{ uploadError }}</p>
 
       <ul class="space-y-1">
         <li v-for="doc in order?.documents ?? []" :key="doc.id" class="text-sm">
-          <a :href="doc.file" target="_blank" class="text-slate-700 underline hover:text-slate-900">
+          <a :href="doc.file" target="_blank" class="text-texte underline hover:text-texte-2">
             {{ doc.reference || doc.document_type }}
           </a>
-          <span class="text-slate-400"> — {{ doc.document_type }}</span>
+          <span class="text-texte-3"> — {{ doc.document_type }}</span>
         </li>
-        <li v-if="!order?.documents?.length" class="text-sm text-slate-400">
-          No documents attached yet.
+        <li v-if="!order?.documents?.length" class="text-texte-3 text-sm">
+          {{ t('purchasing.orderForm.noDocuments') }}
         </li>
       </ul>
 
       <div class="flex flex-wrap items-center gap-2 pt-2">
-        <select v-model="documentType" class="rounded border border-slate-300 px-2 py-1.5 text-sm">
-          <option value="purchase_contract">Purchase contract</option>
-          <option value="receipt">Receipt</option>
-          <option value="other">Other</option>
+        <select
+          v-model="documentType"
+          class="border-ligne-forte h-12 rounded-lg border bg-white px-3.5 text-sm focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+        >
+          <option value="purchase_contract">
+            {{ t('purchasing.orderForm.documentTypes.purchase_contract') }}
+          </option>
+          <option value="receipt">{{ t('purchasing.orderForm.documentTypes.receipt') }}</option>
+          <option value="other">{{ t('purchasing.orderForm.documentTypes.other') }}</option>
         </select>
         <input
           type="file"
           accept="application/pdf,image/*"
-          class="text-sm"
+          class="text-texte-2 text-sm"
           @change="onFileChange"
         />
-        <button
+        <Button
           type="button"
+          variant="primary"
           :disabled="!documentFile || uploadingDoc"
-          class="rounded bg-slate-800 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
           @click="onUploadDocument"
         >
-          {{ uploadingDoc ? 'Uploading…' : 'Upload' }}
-        </button>
+          {{ uploadingDoc ? t('purchasing.orderForm.uploading') : t('purchasing.orderForm.upload') }}
+        </Button>
       </div>
     </section>
 
-    <section v-if="!isNew" class="space-y-3 rounded border bg-white p-4">
+    <section v-if="!isNew" class="border-ligne space-y-3 rounded-xl border bg-surface p-6">
       <div class="flex items-center justify-between">
-        <h3 class="text-base font-semibold text-slate-800">Cession Letters</h3>
-        <button
-          class="rounded bg-slate-800 px-3 py-1.5 text-sm font-medium text-white"
-          @click="goToNewCession"
-        >
-          New Cession
-        </button>
+        <h2 class="font-display text-lg leading-none font-semibold uppercase">
+          {{ t('purchasing.orderForm.cessionLetters') }}
+        </h2>
+        <Button variant="primary" @click="goToNewCession">
+          {{ t('purchasing.orderForm.newCession') }}
+        </Button>
       </div>
 
       <table class="w-full text-left text-sm">
         <thead>
-          <tr class="border-b text-slate-500">
-            <th class="px-2 py-1.5 font-medium">Reference</th>
-            <th class="px-2 py-1.5 font-medium text-right">Authorized (L)</th>
-            <th class="px-2 py-1.5 font-medium text-right">Remaining (L)</th>
-            <th class="px-2 py-1.5 font-medium">Status</th>
+          <tr class="border-ligne text-texte-2 border-b">
+            <th class="px-2 py-1.5 font-medium">{{ t('purchasing.orderForm.table.reference') }}</th>
+            <th class="px-2 py-1.5 font-medium text-right">
+              {{ t('purchasing.orderForm.table.authorized') }}
+            </th>
+            <th class="px-2 py-1.5 font-medium text-right">
+              {{ t('purchasing.orderForm.table.remaining') }}
+            </th>
+            <th class="px-2 py-1.5 font-medium">{{ t('purchasing.orderForm.table.status') }}</th>
           </tr>
         </thead>
         <tbody>
           <tr
             v-for="cession in order?.cessions ?? []"
             :key="cession.id"
-            class="border-b last:border-0"
+            class="border-ligne border-b last:border-0"
           >
             <td class="px-2 py-1.5">{{ cession.reference }}</td>
             <td class="px-2 py-1.5 text-right">
@@ -365,11 +399,11 @@ function goToNewCession() {
             <td class="px-2 py-1.5 text-right">
               {{ Number(cession.remaining_quantity).toLocaleString() }}
             </td>
-            <td class="px-2 py-1.5">{{ cession.status }}</td>
+            <td class="px-2 py-1.5">{{ t(`cessionStatus.${cession.status}`) }}</td>
           </tr>
           <tr v-if="!order?.cessions?.length">
-            <td colspan="4" class="px-2 py-4 text-center text-slate-400">
-              No cession letters yet.
+            <td colspan="4" class="text-texte-3 px-2 py-4 text-center">
+              {{ t('purchasing.orderForm.noCessions') }}
             </td>
           </tr>
         </tbody>

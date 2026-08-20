@@ -3,15 +3,18 @@
 // periods plus a custom from/to pair, emitting the same shape the backend
 // dashboard/report endpoints already accept (?range=|&from=&to=).
 import { ref, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { DateRangeValue } from './date-range'
 
+const { t } = useI18n()
+
 const PRESETS = [
-  { value: 'today', label: 'Today' },
-  { value: 'yesterday', label: 'Yesterday' },
-  { value: 'week', label: 'This week' },
-  { value: 'month', label: 'This month' },
-  { value: 'year', label: 'This year' },
-  { value: 'custom', label: 'Custom period' },
+  { value: 'today', labelKey: 'dateRange.today' },
+  { value: 'yesterday', labelKey: 'dateRange.yesterday' },
+  { value: 'week', labelKey: 'dateRange.week' },
+  { value: 'month', labelKey: 'dateRange.month' },
+  { value: 'year', labelKey: 'dateRange.year' },
+  { value: 'custom', labelKey: 'dateRange.custom' },
 ] as const
 
 const emit = defineEmits<{ change: [DateRangeValue] }>()
@@ -39,7 +42,7 @@ onMounted(apply)
       @change="apply"
     >
       <option v-for="preset in PRESETS" :key="preset.value" :value="preset.value">
-        {{ preset.label }}
+        {{ t(preset.labelKey) }}
       </option>
     </select>
     <template v-if="selected === 'custom'">

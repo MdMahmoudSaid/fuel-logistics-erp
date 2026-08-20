@@ -3,10 +3,13 @@
 // - no "New" button, mirroring backend/apps/sales/views.py SaleViewSet's
 // disabled create/update/destroy.
 import { ref, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { createResourceApi } from '@/api/resource'
 import { saleResource } from './api'
 import type { Sale, CustomerBrief, ProductBrief } from './types'
 import MonoValue from '@/components/ui/MonoValue.vue'
+
+const { t } = useI18n()
 
 const sales = ref<Sale[]>([])
 const customers = ref<CustomerBrief[]>([])
@@ -29,7 +32,7 @@ async function loadSales() {
     const data = await saleResource.list(params)
     sales.value = data.results
   } catch {
-    error.value = 'Could not load sales.'
+    error.value = t('sales.saleList.loadError')
   } finally {
     loading.value = false
   }
@@ -48,7 +51,9 @@ onMounted(async () => {
 
 <template>
   <div class="space-y-4">
-    <h1 class="font-display text-2xl leading-none font-semibold uppercase">Sales</h1>
+    <h1 class="font-display text-2xl leading-none font-semibold uppercase">
+      {{ t('sales.saleList.title') }}
+    </h1>
 
     <div class="flex flex-wrap gap-3">
       <select
@@ -56,7 +61,7 @@ onMounted(async () => {
         class="border-ligne-forte h-11 rounded-lg border bg-white px-3 text-sm"
         @change="loadSales"
       >
-        <option value="">All customers</option>
+        <option value="">{{ t('sales.saleList.allCustomers') }}</option>
         <option v-for="c in customers" :key="c.id" :value="c.id">{{ c.name }}</option>
       </select>
       <select
@@ -64,7 +69,7 @@ onMounted(async () => {
         class="border-ligne-forte h-11 rounded-lg border bg-white px-3 text-sm"
         @change="loadSales"
       >
-        <option value="">All products</option>
+        <option value="">{{ t('sales.saleList.allProducts') }}</option>
         <option v-for="p in products" :key="p.id" :value="p.id">{{ p.name }}</option>
       </select>
     </div>
@@ -75,12 +80,18 @@ onMounted(async () => {
       <table class="w-full text-left text-sm">
         <thead>
           <tr class="border-ligne text-texte-2 border-b">
-            <th class="px-3 py-2.5 font-medium">Trip</th>
-            <th class="px-3 py-2.5 font-medium">Customer</th>
-            <th class="px-3 py-2.5 font-medium">Product</th>
-            <th class="px-3 py-2.5 text-right font-medium">Delivered (L)</th>
-            <th class="px-3 py-2.5 text-right font-medium">Unit price</th>
-            <th class="px-3 py-2.5 text-right font-medium">Subtotal</th>
+            <th class="px-3 py-2.5 font-medium">{{ t('sales.saleList.table.trip') }}</th>
+            <th class="px-3 py-2.5 font-medium">{{ t('sales.saleList.table.customer') }}</th>
+            <th class="px-3 py-2.5 font-medium">{{ t('sales.saleList.table.product') }}</th>
+            <th class="px-3 py-2.5 text-right font-medium">
+              {{ t('sales.saleList.table.delivered') }}
+            </th>
+            <th class="px-3 py-2.5 text-right font-medium">
+              {{ t('sales.saleList.table.unitPrice') }}
+            </th>
+            <th class="px-3 py-2.5 text-right font-medium">
+              {{ t('sales.saleList.table.subtotal') }}
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -113,7 +124,9 @@ onMounted(async () => {
             </td>
           </tr>
           <tr v-if="!loading && sales.length === 0">
-            <td colspan="6" class="text-texte-3 px-3 py-8 text-center">No sales yet.</td>
+            <td colspan="6" class="text-texte-3 px-3 py-8 text-center">
+              {{ t('sales.saleList.noSales') }}
+            </td>
           </tr>
         </tbody>
       </table>

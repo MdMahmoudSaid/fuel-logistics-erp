@@ -35,18 +35,23 @@ const model = defineModel<string>({ default: '' })
     <label v-if="label" :for="id" class="text-texte-2 text-sm font-medium">
       {{ label }}
     </label>
-    <input
-      :id="id"
-      v-model="model"
-      :type="type"
-      :placeholder="placeholder"
-      :required="required"
-      :disabled="disabled"
-      :autocomplete="autocomplete"
-      :aria-invalid="!!error"
-      class="border-ligne-forte text-texte placeholder:text-texte-3 focus-visible:outline-bitume h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-      :class="error ? 'border-critique' : ''"
-    />
+    <div class="relative">
+      <input
+        :id="id"
+        v-model="model"
+        :type="type"
+        :placeholder="placeholder"
+        :required="required"
+        :disabled="disabled"
+        :autocomplete="autocomplete"
+        :aria-invalid="!!error"
+        class="border-ligne-forte text-texte placeholder:text-texte-3 focus-visible:outline-bitume h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+        :class="[error ? 'border-critique' : '', $slots.suffix ? 'pr-11' : '']"
+      />
+      <div v-if="$slots.suffix" class="absolute inset-y-0 right-1.5 flex items-center">
+        <slot name="suffix" />
+      </div>
+    </div>
     <p v-if="error" class="text-critique text-sm">{{ error }}</p>
   </div>
 </template>

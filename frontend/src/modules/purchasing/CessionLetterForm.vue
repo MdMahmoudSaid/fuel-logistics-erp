@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { cessionLetterResource, supplierOrderResource, uploadDocument } from './api'
+import Button from '@/components/ui/Button.vue'
 import type { CessionLetter, CessionLetterStatus, SupplierOrder } from './types'
 
 const route = useRoute()
 const router = useRouter()
+const { t } = useI18n()
 
 const cessionId = computed(() => (route.params.id ? Number(route.params.id) : null))
 const isNew = computed(() => cessionId.value === null)
@@ -111,7 +114,7 @@ async function onSubmit() {
     // even though the bar above already warns the user client-side.
     const detail = (e as { response?: { data?: { authorized_quantity?: string[] } } })?.response
       ?.data?.authorized_quantity?.[0]
-    error.value = detail || 'Could not save — check the fields and your permissions.'
+    error.value = detail || t('purchasing.cessionForm.saveError')
   } finally {
     saving.value = false
   }
@@ -141,7 +144,7 @@ async function onUploadDocument() {
     documentFile.value = null
     cession.value = await cessionLetterResource.get!(cessionId.value)
   } catch {
-    uploadError.value = 'Could not upload document.'
+    uploadError.value = t('purchasing.cessionForm.uploadError')
   } finally {
     uploadingDoc.value = false
   }
@@ -150,41 +153,47 @@ async function onUploadDocument() {
 
 <template>
   <div class="max-w-2xl space-y-6">
-    <h2 class="text-lg font-semibold text-slate-800">
-      {{ isNew ? 'New Cession Letter' : `Cession Letter ${cession?.reference ?? ''}` }}
-    </h2>
+    <h1 class="font-display text-2xl leading-none font-semibold uppercase">
+      {{
+        isNew
+          ? t('purchasing.cessionForm.newTitle')
+          : t('purchasing.cessionForm.editTitle', { reference: cession?.reference ?? '' })
+      }}
+    </h1>
 
-    <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
+    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
 
-    <form class="space-y-4 rounded border bg-white p-4" @submit.prevent="onSubmit">
-      <div class="space-y-1">
-        <label class="text-sm font-medium text-slate-600" for="reference">Reference</label>
+    <form class="border-ligne space-y-4 rounded-xl border bg-surface p-6" @submit.prevent="onSubmit">
+      <div class="space-y-1.5">
+        <label class="text-texte-2 text-sm font-medium" for="reference">{{
+          t('purchasing.cessionForm.reference')
+        }}</label>
         <input
           id="reference"
           v-model="form.reference"
           required
-          class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+          class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
         />
       </div>
 
-      <div v-if="!route.query.supplier_order || !isNew" class="space-y-1">
-        <label class="text-sm font-medium text-slate-600" for="supplier_order"
-          >Supplier order</label
-        >
+      <div v-if="!route.query.supplier_order || !isNew" class="space-y-1.5">
+        <label class="text-texte-2 text-sm font-medium" for="supplier_order">{{
+          t('purchasing.cessionForm.supplierOrder')
+        }}</label>
         <select
           id="supplier_order"
           v-model="form.supplier_order"
           required
           :disabled="!isNew"
-          class="w-full rounded border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-50"
+          class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
           @change="onOrderChange"
         >
-          <option value="" disabled>Select a supplier order</option>
+          <option value="" disabled>{{ t('purchasing.cessionForm.selectSupplierOrder') }}</option>
           <option v-for="o in availableOrders" :key="o.id" :value="o.id">
             {{ o.reference }} — {{ o.supplier_detail?.name }} ({{
               Number(o.reliquat).toLocaleString()
             }}
-            L remaining)
+            {{ t('purchasing.cessionForm.remainingSuffix') }})
           </option>
           <option
             v-if="order && !availableOrders.find((o) => o.id === order!.id)"
@@ -194,42 +203,49 @@ async function onUploadDocument() {
           </option>
         </select>
       </div>
-      <p v-else-if="order" class="text-sm text-slate-600">
-        Against order <span class="font-medium text-slate-800">{{ order.reference }}</span> ({{
+      <p v-else-if="order" class="text-texte-2 text-sm">
+        {{ t('purchasing.cessionForm.againstOrder') }}
+        <span class="text-texte font-medium">{{ order.reference }}</span> ({{
           order.supplier_detail?.name
         }})
       </p>
 
-      <div v-if="order" class="space-y-2 rounded border border-slate-200 bg-slate-50 p-3">
-        <div class="flex justify-between text-xs text-slate-500">
-          <span>Purchased: {{ purchased.toLocaleString() }} L</span>
-          <span>Already allocated: {{ allocatedToOthers.toLocaleString() }} L</span>
-          <span :class="isOverLimit ? 'font-semibold text-red-600' : ''">
-            Requested: {{ requested.toLocaleString() }} L
+      <div v-if="order" class="border-ligne space-y-2 rounded-lg border bg-sable p-3">
+        <div class="text-texte-2 flex justify-between text-xs">
+          <span>{{ t('purchasing.cessionForm.purchased') }} {{ purchased.toLocaleString() }} L</span>
+          <span
+            >{{ t('purchasing.cessionForm.alreadyAllocated') }}
+            {{ allocatedToOthers.toLocaleString() }} L</span
+          >
+          <span :class="isOverLimit ? 'text-critique font-semibold' : ''">
+            {{ t('purchasing.cessionForm.requested') }} {{ requested.toLocaleString() }} L
           </span>
         </div>
-        <div class="flex h-3 w-full overflow-hidden rounded-full bg-slate-200">
-          <div class="bg-slate-500" :style="{ width: allocatedPct + '%' }" />
+        <div class="bg-ligne flex h-3 w-full overflow-hidden rounded-full">
+          <div class="bg-texte-3" :style="{ width: allocatedPct + '%' }" />
           <div
-            :class="isOverLimit ? 'bg-red-500' : 'bg-emerald-500'"
+            :class="isOverLimit ? 'bg-critique' : 'bg-livre'"
             :style="{ width: requestedPct + '%' }"
           />
-          <div v-if="isOverLimit" class="bg-red-700" :style="{ width: overflowPct + '%' }" />
+          <div v-if="isOverLimit" class="bg-critique-texte" :style="{ width: overflowPct + '%' }" />
         </div>
-        <p v-if="isOverLimit" class="text-sm font-medium text-red-600">
-          Exceeds available reliquat by {{ Math.abs(remainingAfterThis).toLocaleString() }} L.
-          Reduce the requested quantity before saving.
+        <p v-if="isOverLimit" class="text-critique text-sm font-medium">
+          {{
+            t('purchasing.cessionForm.exceedsBy', {
+              amount: Math.abs(remainingAfterThis).toLocaleString(),
+            })
+          }}
         </p>
-        <p v-else class="text-sm text-slate-500">
-          {{ remainingAfterThis.toLocaleString() }} L would remain available.
+        <p v-else class="text-texte-2 text-sm">
+          {{ t('purchasing.cessionForm.wouldRemain', { amount: remainingAfterThis.toLocaleString() }) }}
         </p>
       </div>
 
       <div class="grid grid-cols-2 gap-4">
-        <div class="space-y-1">
-          <label class="text-sm font-medium text-slate-600" for="authorized_quantity"
-            >Authorized quantity (L)</label
-          >
+        <div class="space-y-1.5">
+          <label class="text-texte-2 text-sm font-medium" for="authorized_quantity">{{
+            t('purchasing.cessionForm.authorizedQuantity')
+          }}</label>
           <input
             id="authorized_quantity"
             v-model="form.authorized_quantity"
@@ -237,72 +253,76 @@ async function onUploadDocument() {
             step="0.01"
             min="0.01"
             required
-            class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
-            :class="isOverLimit ? 'border-red-400' : ''"
+            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+            :class="isOverLimit ? 'border-critique' : ''"
           />
         </div>
 
-        <div class="space-y-1">
-          <label class="text-sm font-medium text-slate-600" for="issue_date">Issue date</label>
+        <div class="space-y-1.5">
+          <label class="text-texte-2 text-sm font-medium" for="issue_date">{{
+            t('purchasing.cessionForm.issueDate')
+          }}</label>
           <input
             id="issue_date"
             v-model="form.issue_date"
             type="date"
             required
-            class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           />
         </div>
 
-        <div v-if="!isNew" class="space-y-1">
-          <label class="text-sm font-medium text-slate-600" for="status">Status</label>
+        <div v-if="!isNew" class="space-y-1.5">
+          <label class="text-texte-2 text-sm font-medium" for="status">{{
+            t('purchasing.cessionForm.status')
+          }}</label>
           <select
             id="status"
             v-model="form.status"
-            class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           >
-            <option value="ACTIVE">Active</option>
-            <option value="EXHAUSTED">Exhausted</option>
-            <option value="CANCELLED">Cancelled</option>
+            <option value="ACTIVE">{{ t('cessionStatus.ACTIVE') }}</option>
+            <option value="EXHAUSTED">{{ t('cessionStatus.EXHAUSTED') }}</option>
+            <option value="CANCELLED">{{ t('cessionStatus.CANCELLED') }}</option>
           </select>
         </div>
       </div>
 
-      <div class="space-y-1">
-        <label class="text-sm font-medium text-slate-600" for="notes">Notes</label>
+      <div class="space-y-1.5">
+        <label class="text-texte-2 text-sm font-medium" for="notes">{{
+          t('purchasing.cessionForm.notes')
+        }}</label>
         <textarea
           id="notes"
           v-model="form.notes"
           rows="2"
-          class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+          class="border-ligne-forte w-full rounded-lg border bg-white px-3.5 py-2.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
         />
       </div>
 
       <div class="flex justify-end gap-2 pt-2">
-        <button type="button" class="px-3 py-2 text-sm text-slate-500" @click="router.back()">
-          Back
-        </button>
-        <button
-          type="submit"
-          :disabled="saving"
-          class="rounded bg-slate-800 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
-        >
-          {{ saving ? 'Saving…' : 'Save' }}
-        </button>
+        <Button variant="ghost" type="button" @click="router.back()">
+          {{ t('purchasing.cessionForm.back') }}
+        </Button>
+        <Button type="submit" variant="primary" :loading="saving">
+          {{ saving ? t('purchasing.cessionForm.saving') : t('purchasing.cessionForm.save') }}
+        </Button>
       </div>
     </form>
 
-    <section v-if="!isNew" class="space-y-3 rounded border bg-white p-4">
-      <h3 class="text-base font-semibold text-slate-800">Cession Document</h3>
-      <p v-if="uploadError" class="text-sm text-red-600">{{ uploadError }}</p>
+    <section v-if="!isNew" class="border-ligne space-y-3 rounded-xl border bg-surface p-6">
+      <h2 class="font-display text-lg leading-none font-semibold uppercase">
+        {{ t('purchasing.cessionForm.document') }}
+      </h2>
+      <p v-if="uploadError" class="text-critique text-sm">{{ uploadError }}</p>
 
       <ul class="space-y-1">
         <li v-for="doc in cession?.documents ?? []" :key="doc.id" class="text-sm">
-          <a :href="doc.file" target="_blank" class="text-slate-700 underline hover:text-slate-900">
+          <a :href="doc.file" target="_blank" class="text-texte underline hover:text-texte-2">
             {{ doc.reference || doc.document_type }}
           </a>
         </li>
-        <li v-if="!cession?.documents?.length" class="text-sm text-slate-400">
-          No document attached yet.
+        <li v-if="!cession?.documents?.length" class="text-texte-3 text-sm">
+          {{ t('purchasing.cessionForm.noDocument') }}
         </li>
       </ul>
 
@@ -310,17 +330,17 @@ async function onUploadDocument() {
         <input
           type="file"
           accept="application/pdf,image/*"
-          class="text-sm"
+          class="text-texte-2 text-sm"
           @change="onFileChange"
         />
-        <button
+        <Button
           type="button"
+          variant="primary"
           :disabled="!documentFile || uploadingDoc"
-          class="rounded bg-slate-800 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
           @click="onUploadDocument"
         >
-          {{ uploadingDoc ? 'Uploading…' : 'Upload' }}
-        </button>
+          {{ uploadingDoc ? t('purchasing.cessionForm.uploading') : t('purchasing.cessionForm.upload') }}
+        </Button>
       </div>
     </section>
   </div>

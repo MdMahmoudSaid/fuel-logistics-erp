@@ -135,14 +135,23 @@ const router = createRouter({
           component: () => import('@/modules/finance/CustomerLedgerView.vue'),
         },
         {
+          // "Enregistrer un paiement client" est désormais une modale ouverte
+          // depuis Factures/Clients — cette route ne sert plus qu'à la
+          // rétrocompatibilité des anciens liens.
           path: 'customer-payments/new',
-          name: 'customer-payment-new',
-          component: () => import('@/modules/finance/PaymentAllocationForm.vue'),
+          redirect: (to) => ({
+            name: 'invoices',
+            query: {
+              action: 'payment',
+              ...(to.query.customer ? { customer: to.query.customer } : {}),
+            },
+          }),
         },
         {
+          // "Enregistrer une dépense" est désormais une modale ouverte depuis
+          // le Journal de trésorerie — rétrocompatibilité des anciens liens.
           path: 'expenses/new',
-          name: 'expense-new',
-          component: () => import('@/modules/finance/ExpenseForm.vue'),
+          redirect: { name: 'treasury-transactions', query: { action: 'expense' } },
         },
         {
           path: 'treasury/transactions',
@@ -150,9 +159,10 @@ const router = createRouter({
           component: () => import('@/modules/finance/TreasuryLedgerView.vue'),
         },
         {
+          // "Transfert interne" est désormais une modale ouverte depuis le
+          // Journal de trésorerie — rétrocompatibilité des anciens liens.
           path: 'treasury/transfer',
-          name: 'treasury-transfer',
-          component: () => import('@/modules/finance/TransferForm.vue'),
+          redirect: { name: 'treasury-transactions', query: { action: 'transfer' } },
         },
         {
           path: 'transporters',

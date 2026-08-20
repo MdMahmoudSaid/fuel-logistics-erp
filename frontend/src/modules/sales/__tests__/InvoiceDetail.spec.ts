@@ -135,7 +135,7 @@ describe('InvoiceDetail', () => {
     await flushPromises()
 
     expect(validateInvoice).toHaveBeenCalledWith(3)
-    expect(wrapper.text()).toContain('VALIDATED')
+    expect(wrapper.text()).toContain('Validée')
     expect(wrapper.find('#total_amount').exists()).toBe(false)
     expect(wrapper.find('button#correct-invoice').exists()).toBe(true)
   })

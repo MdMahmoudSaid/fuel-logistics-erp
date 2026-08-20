@@ -2,30 +2,18 @@
 defineOptions({ name: 'TripCard' })
 
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import GaugeBar from '@/components/ui/GaugeBar.vue'
 import UiBadge from '@/components/ui/Badge.vue'
 import MonoValue from '@/components/ui/MonoValue.vue'
 import { TRIP_PIPELINE_STATUSES } from './types'
-import type { Trip, TripStatus } from './types'
+import type { Trip } from './types'
+import { useTripStatusLabel } from './tripStatusLabels'
 
 const props = defineProps<{ trip: Trip }>()
 
-const STATUS_LABEL: Record<TripStatus, string> = {
-  ASSIGNED: 'Assigned',
-  SENT_FOR_LOADING: 'Sent for loading',
-  LOADING: 'Loading',
-  LOADED: 'Loaded',
-  IN_TRANSIT: 'In transit',
-  BORDER: 'Border',
-  CUSTOMS: 'Customs',
-  GOING_TO_CLIENT: 'Going to client',
-  ARRIVED_AT_CLIENT: 'Arrived at client',
-  QUANTITY_CONTROL: 'Quantity control',
-  DELIVERED: 'Delivered',
-  COMPLETED: 'Completed',
-  BLOCKED: 'Blocked',
-  CANCELLED: 'Cancelled',
-}
+const { t } = useI18n()
+const statusLabel = useTripStatusLabel()
 
 const progress = computed(() => {
   const idx = TRIP_PIPELINE_STATUSES.indexOf(props.trip.status)
@@ -55,10 +43,10 @@ const badgeVariant = computed(() => {
       <div>
         <p class="font-mono text-sm font-medium">{{ trip.reference }}</p>
         <p class="text-texte-2 text-xs">
-          {{ trip.truck_detail?.internal_id }} · {{ trip.client_detail?.name ?? 'Direct sale' }}
+          {{ trip.truck_detail?.internal_id }} · {{ trip.client_detail?.name ?? t('trips.directSale') }}
         </p>
       </div>
-      <UiBadge :variant="badgeVariant">{{ STATUS_LABEL[trip.status] }}</UiBadge>
+      <UiBadge :variant="badgeVariant">{{ statusLabel(trip.status) }}</UiBadge>
     </div>
 
     <div class="flex items-end justify-between gap-2">

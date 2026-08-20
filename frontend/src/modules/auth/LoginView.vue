@@ -1,15 +1,19 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import AppLogo from '@/components/AppLogo.vue'
 import Input from '@/components/ui/Input.vue'
 import Button from '@/components/ui/Button.vue'
 
+const { t } = useI18n()
+
 const email = ref('')
 const password = ref('')
 const error = ref('')
 const loading = ref(false)
+const showPassword = ref(false)
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -23,7 +27,7 @@ async function onSubmit() {
     const redirect = (route.query.redirect as string) || '/'
     router.push(redirect)
   } catch {
-    error.value = 'Invalid email or password.'
+    error.value = t('auth.invalidCredentials')
   } finally {
     loading.value = false
   }
@@ -39,7 +43,7 @@ async function onSubmit() {
       <AppLogo tone="light" :size="32" />
       <div class="relative z-10">
         <p class="font-display text-sable max-w-sm text-3xl leading-tight font-semibold uppercase">
-          Suivi carburant, trajets &amp; trésorerie — bout en bout.
+          {{ t('auth.tagline') }}
         </p>
       </div>
       <svg
@@ -72,14 +76,16 @@ async function onSubmit() {
           @submit.prevent="onSubmit"
         >
           <div>
-            <h1 class="font-display text-texte text-2xl font-semibold uppercase">Connexion</h1>
-            <p class="text-texte-2 mt-1 text-sm">Accédez à votre espace opérations.</p>
+            <h1 class="font-display text-texte text-2xl font-semibold uppercase">
+              {{ t('auth.title') }}
+            </h1>
+            <p class="text-texte-2 mt-1 text-sm">{{ t('auth.subtitle') }}</p>
           </div>
 
           <Input
             id="email"
             v-model="email"
-            label="Email"
+            :label="t('auth.emailLabel')"
             type="email"
             autocomplete="username"
             required
@@ -87,16 +93,52 @@ async function onSubmit() {
           <Input
             id="password"
             v-model="password"
-            label="Mot de passe"
-            type="password"
+            :label="t('auth.passwordLabel')"
+            :type="showPassword ? 'text' : 'password'"
             autocomplete="current-password"
             required
-          />
+          >
+            <template #suffix>
+              <button
+                type="button"
+                class="text-texte-3 hover:text-texte-2 flex h-8 w-8 items-center justify-center rounded-md transition"
+                :aria-label="showPassword ? t('auth.hidePassword') : t('auth.showPassword')"
+                @click="showPassword = !showPassword"
+              >
+                <svg
+                  v-if="showPassword"
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.4 5.5A9.9 9.9 0 0 1 12 5.2c4.2 0 7.8 2.6 9.5 6.3a10.5 10.5 0 0 1-2.9 3.7M6.5 6.9A10.6 10.6 0 0 0 2.5 11.5c1.7 3.7 5.3 6.3 9.5 6.3a9.6 9.6 0 0 0 3.4-.6"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+                <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path
+                    d="M2.5 11.5C4.2 7.8 7.8 5.2 12 5.2s7.8 2.6 9.5 6.3c-1.7 3.7-5.3 6.3-9.5 6.3s-7.8-2.6-9.5-6.3Z"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                  <circle cx="12" cy="11.5" r="2.6" stroke="currentColor" stroke-width="1.8" />
+                </svg>
+              </button>
+            </template>
+          </Input>
 
           <p v-if="error" class="text-critique text-sm" role="alert">{{ error }}</p>
 
           <Button type="submit" variant="primary" size="md" :disabled="loading" class="w-full">
-            {{ loading ? 'Signing in…' : 'Sign in' }}
+            {{ loading ? t('auth.signingIn') : t('auth.signIn') }}
           </Button>
         </form>
       </div>

@@ -207,9 +207,9 @@ describe('DashboardView', () => {
     await flushPromises()
 
     expect(fetchDashboardSummary).toHaveBeenCalledWith({ range: 'month' })
-    expect(wrapper.text()).toContain('Operations')
-    expect(wrapper.text()).toContain('Fuel')
-    expect(wrapper.text()).toContain('Sales')
+    expect(wrapper.text()).toContain('Opérations')
+    expect(wrapper.text()).toContain('Carburant')
+    expect(wrapper.text()).toContain('Ventes')
     expect(wrapper.text()).toContain('Transport')
     expect(wrapper.text()).toContain('Finance')
     expect(wrapper.text()).toContain('Profit')
@@ -222,7 +222,7 @@ describe('DashboardView', () => {
     const wrapper = mount(DashboardView, { global: { plugins: [makeRouter()] } })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Could not load the dashboard.')
+    expect(wrapper.text()).toContain('Impossible de charger le tableau de bord.')
   })
 
   it('renders the 4 strategic KPIs, "En route maintenant" and "À traiter" from live-ops data', async () => {

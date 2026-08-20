@@ -4,12 +4,14 @@
 // POST /api/treasury-transactions/transfer/, which creates the matched
 // MONEY_OUT/MONEY_IN TRANSFER pair atomically (guide Section 8.10/D).
 import { ref, onMounted, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { createResourceApi } from '@/api/resource'
+import { translateApiError } from '@/i18n/apiErrors'
 import { recordTransfer } from './api'
 import Button from '@/components/ui/Button.vue'
 
-const router = useRouter()
+const emit = defineEmits<{ success: []; cancel: [] }>()
+const { t } = useI18n()
 
 const bankAccountResource = createResourceApi<{ id: number; name: string }>('/bank-accounts/')
 const cashAccountResource = createResourceApi<{ id: number; name: string }>('/cash-accounts/')
@@ -64,10 +66,10 @@ async function onSubmit() {
       date: form.value.date,
       reference: form.value.reference,
     })
-    router.push({ name: 'treasury-transactions' })
+    emit('success')
   } catch (e) {
     const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-    error.value = detail || 'Could not record this transfer.'
+    error.value = translateApiError(detail) || t('finance.transfer.saveError')
   } finally {
     saving.value = false
   }
@@ -75,12 +77,10 @@ async function onSubmit() {
 </script>
 
 <template>
-  <div class="max-w-xl space-y-6">
-    <h1 class="font-display text-2xl leading-none font-semibold uppercase">Internal Transfer</h1>
-
+  <div class="space-y-4">
     <p v-if="error" class="text-critique text-sm">{{ error }}</p>
     <p v-if="sameAccount" class="text-critique text-sm">
-      Source and destination cannot be the same account.
+      {{ t('finance.transfer.sameAccountError') }}
     </p>
 
     <form
@@ -89,57 +89,65 @@ async function onSubmit() {
     >
       <div class="grid grid-cols-2 gap-4">
         <div class="space-y-1.5">
-          <label class="text-texte-2 text-sm font-medium" for="source_type"
-            >From account type</label
-          >
+          <label class="text-texte-2 text-sm font-medium" for="source_type">{{
+            t('finance.transfer.fromAccountType')
+          }}</label>
           <select
             id="source_type"
             v-model="form.source_account_type"
             class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           >
-            <option value="bank">Bank</option>
-            <option value="cash">Cash</option>
+            <option value="bank">{{ t('finance.transfer.bank') }}</option>
+            <option value="cash">{{ t('finance.transfer.cash') }}</option>
           </select>
         </div>
         <div class="space-y-1.5">
-          <label class="text-texte-2 text-sm font-medium" for="source_id">From account</label>
+          <label class="text-texte-2 text-sm font-medium" for="source_id">{{
+            t('finance.transfer.fromAccount')
+          }}</label>
           <select
             id="source_id"
             v-model="form.source_account_id"
             required
             class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           >
-            <option value="" disabled>Select an account</option>
+            <option value="" disabled>{{ t('finance.transfer.selectAccount') }}</option>
             <option v-for="a in sourceOptions" :key="a.id" :value="a.id">{{ a.name }}</option>
           </select>
         </div>
 
         <div class="space-y-1.5">
-          <label class="text-texte-2 text-sm font-medium" for="dest_type">To account type</label>
+          <label class="text-texte-2 text-sm font-medium" for="dest_type">{{
+            t('finance.transfer.toAccountType')
+          }}</label>
           <select
             id="dest_type"
             v-model="form.dest_account_type"
             class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           >
-            <option value="bank">Bank</option>
-            <option value="cash">Cash</option>
+            <option value="bank">{{ t('finance.transfer.bank') }}</option>
+            <option value="cash">{{ t('finance.transfer.cash') }}</option>
           </select>
         </div>
         <div class="space-y-1.5">
-          <label class="text-texte-2 text-sm font-medium" for="dest_id">To account</label>
+          <label class="text-texte-2 text-sm font-medium" for="dest_id">{{
+            t('finance.transfer.toAccount')
+          }}</label>
           <select
             id="dest_id"
             v-model="form.dest_account_id"
             required
             class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           >
-            <option value="" disabled>Select an account</option>
+            <option value="" disabled>{{ t('finance.transfer.selectAccount') }}</option>
             <option v-for="a in destOptions" :key="a.id" :value="a.id">{{ a.name }}</option>
           </select>
         </div>
 
         <div class="space-y-1.5">
-          <label class="text-texte-2 text-sm font-medium" for="amount">Amount</label>
+          <label class="text-texte-2 text-sm font-medium" for="amount">{{
+            t('finance.transfer.amount')
+          }}</label>
           <input
             id="amount"
             v-model="form.amount"
@@ -151,7 +159,9 @@ async function onSubmit() {
           />
         </div>
         <div class="space-y-1.5">
-          <label class="text-texte-2 text-sm font-medium" for="date">Date</label>
+          <label class="text-texte-2 text-sm font-medium" for="date">{{
+            t('finance.transfer.date')
+          }}</label>
           <input
             id="date"
             v-model="form.date"
@@ -162,7 +172,9 @@ async function onSubmit() {
         </div>
 
         <div class="col-span-2 space-y-1.5">
-          <label class="text-texte-2 text-sm font-medium" for="reference">Reference</label>
+          <label class="text-texte-2 text-sm font-medium" for="reference">{{
+            t('finance.transfer.reference')
+          }}</label>
           <input
             id="reference"
             v-model="form.reference"
@@ -171,9 +183,12 @@ async function onSubmit() {
         </div>
       </div>
 
-      <div class="flex justify-end">
+      <div class="flex justify-end gap-2">
+        <Button type="button" variant="ghost" @click="emit('cancel')">
+          {{ t('common.cancel') }}
+        </Button>
         <Button type="submit" variant="primary" :disabled="sameAccount" :loading="saving">
-          {{ saving ? 'Transferring…' : 'Transfer' }}
+          {{ saving ? t('finance.transfer.transferring') : t('finance.transfer.transfer') }}
         </Button>
       </div>
     </form>

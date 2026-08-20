@@ -5,8 +5,9 @@
 // CustomerPaymentSerializer consumes the nested `allocations` list via
 // PaymentAllocationService.allocate_payment()).
 import { ref, computed, onMounted, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { createResourceApi } from '@/api/resource'
+import { translateApiError } from '@/i18n/apiErrors'
 import { customerPaymentResource, fetchCustomerLedger } from './api'
 import type {
   CustomerBrief,
@@ -16,8 +17,9 @@ import type {
 } from './types'
 import Button from '@/components/ui/Button.vue'
 
-const route = useRoute()
-const router = useRouter()
+const props = defineProps<{ initialCustomerId?: number | null }>()
+const emit = defineEmits<{ success: [customerId: number]; cancel: [] }>()
+const { t } = useI18n()
 
 const customerResource = createResourceApi<CustomerBrief>('/customers/')
 const customers = ref<CustomerBrief[]>([])
@@ -76,9 +78,8 @@ onMounted(async () => {
   bankAccounts.value = bankData.results
   cashAccounts.value = cashData.results
 
-  const preselected = route.query.customer
-  if (preselected) {
-    form.value.customer = String(preselected)
+  if (props.initialCustomerId) {
+    form.value.customer = String(props.initialCustomerId)
     await loadInvoices()
   }
 })
@@ -125,10 +126,10 @@ async function onSubmit() {
     }
 
     const created = await customerPaymentResource.create(payload)
-    router.push({ name: 'customer-ledger', params: { id: created.customer } })
+    emit('success', Number(created.customer))
   } catch (e) {
     const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-    error.value = detail || 'Could not record this payment — check the fields.'
+    error.value = translateApiError(detail) || t('finance.payment.saveError')
   } finally {
     saving.value = false
   }
@@ -136,9 +137,7 @@ async function onSubmit() {
 </script>
 
 <template>
-  <div class="max-w-3xl space-y-6">
-    <h1 class="font-display text-2xl leading-none font-semibold uppercase">New Customer Payment</h1>
-
+  <div class="space-y-4">
     <p v-if="error" class="text-critique text-sm">{{ error }}</p>
 
     <form
@@ -147,20 +146,24 @@ async function onSubmit() {
     >
       <div class="grid grid-cols-2 gap-4">
         <div class="space-y-1.5">
-          <label class="text-texte-2 text-sm font-medium" for="customer">Customer</label>
+          <label class="text-texte-2 text-sm font-medium" for="customer">{{
+            t('finance.payment.customer')
+          }}</label>
           <select
             id="customer"
             v-model="form.customer"
             required
             class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           >
-            <option value="" disabled>Select a customer</option>
+            <option value="" disabled>{{ t('finance.payment.selectCustomer') }}</option>
             <option v-for="c in customers" :key="c.id" :value="c.id">{{ c.name }}</option>
           </select>
         </div>
 
         <div class="space-y-1.5">
-          <label class="text-texte-2 text-sm font-medium" for="amount">Amount</label>
+          <label class="text-texte-2 text-sm font-medium" for="amount">{{
+            t('finance.payment.amount')
+          }}</label>
           <input
             id="amount"
             v-model="form.amount"
@@ -173,7 +176,9 @@ async function onSubmit() {
         </div>
 
         <div class="space-y-1.5">
-          <label class="text-texte-2 text-sm font-medium" for="payment_date">Payment date</label>
+          <label class="text-texte-2 text-sm font-medium" for="payment_date">{{
+            t('finance.payment.paymentDate')
+          }}</label>
           <input
             id="payment_date"
             v-model="form.payment_date"
@@ -184,21 +189,25 @@ async function onSubmit() {
         </div>
 
         <div class="space-y-1.5">
-          <label class="text-texte-2 text-sm font-medium" for="method">Method</label>
+          <label class="text-texte-2 text-sm font-medium" for="method">{{
+            t('finance.payment.method')
+          }}</label>
           <select
             id="method"
             v-model="form.method"
             class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           >
-            <option value="CASH">Cash</option>
-            <option value="BANK_TRANSFER">Bank transfer</option>
-            <option value="CHEQUE">Cheque</option>
-            <option value="OTHER">Other</option>
+            <option value="CASH">{{ t('paymentMethod.CASH') }}</option>
+            <option value="BANK_TRANSFER">{{ t('paymentMethod.BANK_TRANSFER') }}</option>
+            <option value="CHEQUE">{{ t('paymentMethod.CHEQUE') }}</option>
+            <option value="OTHER">{{ t('paymentMethod.OTHER') }}</option>
           </select>
         </div>
 
         <div class="space-y-1.5">
-          <label class="text-texte-2 text-sm font-medium" for="reference">Reference</label>
+          <label class="text-texte-2 text-sm font-medium" for="reference">{{
+            t('finance.payment.reference')
+          }}</label>
           <input
             id="reference"
             v-model="form.reference"
@@ -214,44 +223,50 @@ async function onSubmit() {
             class="border-ligne-forte accent-orange h-5 w-5 rounded"
           />
           <label class="text-texte-2 text-sm font-medium" for="is_indirect">
-            Indirect payment (no treasury movement)
+            {{ t('finance.payment.indirectPayment') }}
           </label>
         </div>
       </div>
 
       <div v-if="!form.is_indirect" class="border-ligne grid grid-cols-2 gap-4 border-t pt-4">
         <div class="space-y-1.5">
-          <label class="text-texte-2 text-sm font-medium" for="account_type">Account type</label>
+          <label class="text-texte-2 text-sm font-medium" for="account_type">{{
+            t('finance.payment.accountType')
+          }}</label>
           <select
             id="account_type"
             v-model="form.account_type"
             class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           >
-            <option value="cash">Cash</option>
-            <option value="bank">Bank</option>
+            <option value="cash">{{ t('finance.payment.cash') }}</option>
+            <option value="bank">{{ t('finance.payment.bank') }}</option>
           </select>
         </div>
         <div v-if="form.account_type === 'bank'" class="space-y-1.5">
-          <label class="text-texte-2 text-sm font-medium" for="bank_account">Bank account</label>
+          <label class="text-texte-2 text-sm font-medium" for="bank_account">{{
+            t('finance.payment.bankAccount')
+          }}</label>
           <select
             id="bank_account"
             v-model="form.bank_account"
             required
             class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           >
-            <option value="" disabled>Select a bank account</option>
+            <option value="" disabled>{{ t('finance.payment.selectBankAccount') }}</option>
             <option v-for="a in bankAccounts" :key="a.id" :value="a.id">{{ a.name }}</option>
           </select>
         </div>
         <div v-else class="space-y-1.5">
-          <label class="text-texte-2 text-sm font-medium" for="cash_account">Cash account</label>
+          <label class="text-texte-2 text-sm font-medium" for="cash_account">{{
+            t('finance.payment.cashAccount')
+          }}</label>
           <select
             id="cash_account"
             v-model="form.cash_account"
             required
             class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           >
-            <option value="" disabled>Select a cash account</option>
+            <option value="" disabled>{{ t('finance.payment.selectCashAccount') }}</option>
             <option v-for="a in cashAccounts" :key="a.id" :value="a.id">{{ a.name }}</option>
           </select>
         </div>
@@ -259,19 +274,23 @@ async function onSubmit() {
 
       <div class="border-ligne space-y-2 border-t pt-4">
         <div class="flex items-center justify-between">
-          <h2 class="font-display text-sm font-semibold uppercase">Allocate to invoices</h2>
+          <h2 class="font-display text-sm font-semibold uppercase">
+            {{ t('finance.payment.allocateToInvoices') }}
+          </h2>
           <button type="button" class="text-texte-2 hover:text-texte text-sm" @click="addLine">
-            + Add line
+            {{ t('finance.payment.addLine') }}
           </button>
         </div>
-        <p v-if="loadingInvoices" class="text-texte-3 text-sm">Loading unpaid invoices…</p>
+        <p v-if="loadingInvoices" class="text-texte-3 text-sm">
+          {{ t('finance.payment.loadingInvoices') }}
+        </p>
 
         <div v-for="(line, index) in lines" :key="index" class="flex items-center gap-2">
           <select
             v-model="line.invoice"
             class="border-ligne-forte h-12 flex-1 rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           >
-            <option value="">Unallocated credit</option>
+            <option value="">{{ t('finance.payment.unallocatedCredit') }}</option>
             <option v-for="inv in unpaidInvoices" :key="inv.id" :value="inv.id">
               {{ inv.invoice_number }} — outstanding {{ Number(inv.outstanding).toLocaleString() }}
             </option>
@@ -281,7 +300,7 @@ async function onSubmit() {
             type="number"
             step="0.01"
             min="0"
-            placeholder="Amount"
+            :placeholder="t('finance.payment.amountPlaceholder')"
             class="border-ligne-forte h-12 w-40 rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           />
           <button
@@ -289,21 +308,24 @@ async function onSubmit() {
             class="text-critique text-sm hover:brightness-90"
             @click="removeLine(index)"
           >
-            Remove
+            {{ t('finance.payment.remove') }}
           </button>
         </div>
 
         <p class="text-texte-2 text-sm">
-          Allocated: {{ allocatedTotal.toLocaleString() }} · Remaining unallocated:
+          {{ t('finance.payment.allocatedSummary', { allocated: allocatedTotal.toLocaleString() }) }}
           <span :class="unallocatedRemainder < 0 ? 'text-critique font-medium' : ''">
             {{ unallocatedRemainder.toLocaleString() }}
           </span>
         </p>
       </div>
 
-      <div class="flex justify-end">
+      <div class="flex justify-end gap-2">
+        <Button type="button" variant="ghost" @click="emit('cancel')">
+          {{ t('common.cancel') }}
+        </Button>
         <Button type="submit" variant="primary" :loading="saving">
-          {{ saving ? 'Saving…' : 'Record payment' }}
+          {{ saving ? t('finance.payment.saving') : t('finance.payment.record') }}
         </Button>
       </div>
     </form>

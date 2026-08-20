@@ -4,9 +4,12 @@
 // onto each DeliveryControl at confirmation time so later changes here
 // never rewrite past trips' figures, guide §7.2/§7.4).
 import { ref, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { fetchLossTolerance, updateLossTolerance } from './api'
 import type { LossToleranceConfig } from './types'
 import Button from '@/components/ui/Button.vue'
+
+const { t } = useI18n()
 
 const config = ref<LossToleranceConfig | null>(null)
 const toleranceLitres = ref('')
@@ -21,7 +24,7 @@ async function load() {
     config.value = await fetchLossTolerance()
     toleranceLitres.value = config.value.tolerance_litres
   } catch {
-    error.value = 'Could not load the loss tolerance setting.'
+    error.value = t('settings.lossTolerance.loadError')
   } finally {
     loading.value = false
   }
@@ -36,7 +39,7 @@ async function onSubmit() {
     config.value = await updateLossTolerance(toleranceLitres.value)
     toleranceLitres.value = config.value.tolerance_litres
   } catch {
-    error.value = 'Could not save — admin rights are required to change this setting.'
+    error.value = t('settings.lossTolerance.saveError')
   } finally {
     saving.value = false
   }
@@ -49,15 +52,15 @@ function formatDateTime(value: string) {
 
 <template>
   <div class="max-w-md space-y-6">
-    <h1 class="font-display text-2xl leading-none font-semibold uppercase">Loss Tolerance</h1>
+    <h1 class="font-display text-2xl leading-none font-semibold uppercase">
+      {{ t('settings.lossTolerance.title') }}
+    </h1>
     <p class="text-texte-2 text-sm">
-      Default tolerance (litres) applied when a discharge's loss is checked against the
-      transporter's chargeable deduction. Frozen onto each delivery at the moment it is confirmed —
-      changing it here only affects deliveries confirmed afterwards.
+      {{ t('settings.lossTolerance.description') }}
     </p>
 
     <p v-if="error" class="text-critique text-sm">{{ error }}</p>
-    <p v-else-if="loading" class="text-texte-3 text-sm">Loading…</p>
+    <p v-else-if="loading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
     <form
       v-else
@@ -65,7 +68,9 @@ function formatDateTime(value: string) {
       @submit.prevent="onSubmit"
     >
       <div class="space-y-1.5">
-        <label class="text-texte-2 text-sm font-medium" for="tolerance_litres">Tolerance (L)</label>
+        <label class="text-texte-2 text-sm font-medium" for="tolerance_litres">{{
+          t('settings.lossTolerance.tolerance')
+        }}</label>
         <input
           id="tolerance_litres"
           v-model="toleranceLitres"
@@ -79,15 +84,17 @@ function formatDateTime(value: string) {
 
       <p class="text-texte-3 text-xs">
         <template v-if="config?.updated_by_detail">
-          Last updated by {{ config.updated_by_detail.email }}
-          <template v-if="config.updated_at"> on {{ formatDateTime(config.updated_at) }}</template>
+          {{ t('settings.lossTolerance.lastUpdatedBy', { email: config.updated_by_detail.email }) }}
+          <template v-if="config.updated_at">
+            {{ t('settings.lossTolerance.on') }} {{ formatDateTime(config.updated_at) }}</template
+          >
         </template>
-        <template v-else>Not yet configured — showing the spec default (100 L).</template>
+        <template v-else>{{ t('settings.lossTolerance.notConfigured') }}</template>
       </p>
 
       <div class="flex justify-end">
         <Button type="submit" variant="primary" :loading="saving">
-          {{ saving ? 'Saving…' : 'Save' }}
+          {{ saving ? t('settings.lossTolerance.saving') : t('settings.lossTolerance.save') }}
         </Button>
       </div>
     </form>

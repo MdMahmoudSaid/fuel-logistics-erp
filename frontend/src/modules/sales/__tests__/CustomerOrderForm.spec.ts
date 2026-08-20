@@ -80,8 +80,8 @@ describe('CustomerOrderForm progress bar', () => {
     expect(wrapper.text()).toContain('270,000 L')
     expect(wrapper.text()).toContain('180,000 L')
     expect(wrapper.text()).toContain('90,000 L')
-    expect(wrapper.text()).toContain('Ordered 450,000 L')
-    expect(wrapper.text()).toContain('Remaining 360,000 L')
+    expect(wrapper.text()).toContain('Commandé 450,000 L')
+    expect(wrapper.text()).toContain('Restant 360,000 L')
   })
 })
 
@@ -110,7 +110,7 @@ describe('CustomerOrderForm status guard', () => {
     await flushPromises()
 
     expect(wrapper.find('#status').exists()).toBe(false)
-    expect(wrapper.text()).toContain('PARTIALLY_ASSIGNED')
-    expect(wrapper.text()).toContain('computed from trip progress')
+    expect(wrapper.text()).toContain('Partiellement affectée')
+    expect(wrapper.text()).toContain('calculé à partir de la progression des trajets')
   })
 })

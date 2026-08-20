@@ -4,8 +4,9 @@
 // submission through IndirectSettlementService instead of a plain Expense
 // create (guide Section 1.6/8.9: never creates a TreasuryTransaction).
 import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { createResourceApi } from '@/api/resource'
+import { translateApiError } from '@/i18n/apiErrors'
 import { expenseResource, fetchCustomerLedger, recordIndirectExpense } from './api'
 import { EXPENSE_CATEGORIES } from './types'
 import Button from '@/components/ui/Button.vue'
@@ -17,7 +18,8 @@ import type {
   ExpenseCategory,
 } from './types'
 
-const router = useRouter()
+const emit = defineEmits<{ success: [customerId: number | null]; cancel: [] }>()
+const { t } = useI18n()
 
 const form = ref({
   category: 'other' as ExpenseCategory,
@@ -78,7 +80,7 @@ async function onSubmit() {
         date: form.value.date,
         notes: form.value.notes,
       })
-      router.push({ name: 'customer-ledger', params: { id: indirectForm.value.customer } })
+      emit('success', Number(indirectForm.value.customer))
       return
     }
 
@@ -98,10 +100,10 @@ async function onSubmit() {
       notes: form.value.notes,
       allocations,
     })
-    router.push({ name: 'home' })
+    emit('success', null)
   } catch (e) {
     const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-    error.value = detail || 'Could not save this expense — check the fields.'
+    error.value = translateApiError(detail) || t('finance.expense.saveError')
   } finally {
     saving.value = false
   }
@@ -109,9 +111,7 @@ async function onSubmit() {
 </script>
 
 <template>
-  <div class="max-w-2xl space-y-6">
-    <h1 class="font-display text-2xl leading-none font-semibold uppercase">New Expense</h1>
-
+  <div class="space-y-4">
     <p v-if="error" class="text-critique text-sm">{{ error }}</p>
 
     <form
@@ -120,38 +120,42 @@ async function onSubmit() {
     >
       <div class="grid grid-cols-2 gap-4">
         <div class="space-y-1.5">
-          <label class="text-texte-2 text-sm font-medium" for="category">Category</label>
+          <label class="text-texte-2 text-sm font-medium" for="category">{{
+            t('finance.expense.category')
+          }}</label>
           <select
             id="category"
             v-model="form.category"
             class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           >
             <option v-for="c in EXPENSE_CATEGORIES" :key="c.value" :value="c.value">
-              {{ c.label }}
+              {{ t(`expenseCategory.${c.value}`) }}
             </option>
           </select>
         </div>
 
         <div class="space-y-1.5">
-          <label class="text-texte-2 text-sm font-medium" for="calculation_method"
-            >Calculation method</label
-          >
+          <label class="text-texte-2 text-sm font-medium" for="calculation_method">{{
+            t('finance.expense.calculationMethod')
+          }}</label>
           <select
             id="calculation_method"
             v-model="form.calculation_method"
             class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           >
-            <option value="FIXED">Fixed</option>
-            <option value="PER_LITRE">Per litre</option>
-            <option value="PERCENTAGE">Percentage</option>
-            <option value="PER_ORDER">Per order</option>
-            <option value="PER_TRUCK">Per truck</option>
-            <option value="MANUAL">Manual</option>
+            <option value="FIXED">{{ t('expenseCalcMethod.FIXED') }}</option>
+            <option value="PER_LITRE">{{ t('expenseCalcMethod.PER_LITRE') }}</option>
+            <option value="PERCENTAGE">{{ t('expenseCalcMethod.PERCENTAGE') }}</option>
+            <option value="PER_ORDER">{{ t('expenseCalcMethod.PER_ORDER') }}</option>
+            <option value="PER_TRUCK">{{ t('expenseCalcMethod.PER_TRUCK') }}</option>
+            <option value="MANUAL">{{ t('expenseCalcMethod.MANUAL') }}</option>
           </select>
         </div>
 
         <div class="space-y-1.5">
-          <label class="text-texte-2 text-sm font-medium" for="amount">Amount</label>
+          <label class="text-texte-2 text-sm font-medium" for="amount">{{
+            t('finance.expense.amount')
+          }}</label>
           <input
             id="amount"
             v-model="form.amount"
@@ -164,7 +168,9 @@ async function onSubmit() {
         </div>
 
         <div class="space-y-1.5">
-          <label class="text-texte-2 text-sm font-medium" for="date">Date</label>
+          <label class="text-texte-2 text-sm font-medium" for="date">{{
+            t('finance.expense.date')
+          }}</label>
           <input
             id="date"
             v-model="form.date"
@@ -176,7 +182,9 @@ async function onSubmit() {
       </div>
 
       <div class="space-y-1.5">
-        <label class="text-texte-2 text-sm font-medium" for="notes">Notes</label>
+        <label class="text-texte-2 text-sm font-medium" for="notes">{{
+          t('finance.expense.notes')
+        }}</label>
         <textarea
           id="notes"
           v-model="form.notes"
@@ -193,18 +201,19 @@ async function onSubmit() {
           class="border-ligne-forte accent-orange h-5 w-5 rounded"
         />
         <label class="text-texte-2 text-sm font-medium" for="paid_by_customer">
-          Paid directly by customer
+          {{ t('finance.expense.paidByCustomer') }}
         </label>
       </div>
 
       <template v-if="paidByCustomerDirectly">
         <p class="text-texte-2 text-sm">
-          This reduces the customer's receivable and marks the expense paid — no treasury movement
-          is recorded.
+          {{ t('finance.expense.paidByCustomerHint') }}
         </p>
         <div class="grid grid-cols-2 gap-4">
           <div class="space-y-1.5">
-            <label class="text-texte-2 text-sm font-medium" for="indirect_customer">Customer</label>
+            <label class="text-texte-2 text-sm font-medium" for="indirect_customer">{{
+              t('finance.expense.customer')
+            }}</label>
             <select
               id="indirect_customer"
               v-model="indirectForm.customer"
@@ -212,20 +221,20 @@ async function onSubmit() {
               class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
               @change="onCustomerChange"
             >
-              <option value="" disabled>Select a customer</option>
+              <option value="" disabled>{{ t('finance.expense.selectCustomer') }}</option>
               <option v-for="c in customers" :key="c.id" :value="c.id">{{ c.name }}</option>
             </select>
           </div>
           <div class="space-y-1.5">
-            <label class="text-texte-2 text-sm font-medium" for="indirect_invoice"
-              >Apply to invoice (optional)</label
-            >
+            <label class="text-texte-2 text-sm font-medium" for="indirect_invoice">{{
+              t('finance.expense.applyToInvoice')
+            }}</label>
             <select
               id="indirect_invoice"
               v-model="indirectForm.invoice"
               class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
             >
-              <option value="">Unallocated credit</option>
+              <option value="">{{ t('finance.expense.unallocatedCredit') }}</option>
               <option v-for="inv in customerInvoices" :key="inv.id" :value="inv.id">
                 {{ inv.invoice_number }} — outstanding
                 {{ Number(inv.outstanding).toLocaleString() }}
@@ -237,33 +246,34 @@ async function onSubmit() {
 
       <div v-else class="border-ligne space-y-2 border-t pt-4">
         <div class="flex items-center justify-between">
-          <h2 class="font-display text-sm font-semibold uppercase">Allocation (optional)</h2>
+          <h2 class="font-display text-sm font-semibold uppercase">
+            {{ t('finance.expense.allocationOptional') }}
+          </h2>
           <button type="button" class="text-texte-2 hover:text-texte text-sm" @click="addLine">
-            + Add line
+            {{ t('finance.expense.addLine') }}
           </button>
         </div>
         <p class="text-texte-3 text-xs">
-          Split this expense across trips/trucks/customers via content type id + object id (guide
-          Section 8.7: "a customs payment may affect several trips").
+          {{ t('finance.expense.allocationHint') }}
         </p>
         <div v-for="(line, index) in lines" :key="index" class="flex items-center gap-2">
           <input
             v-model="line.content_type"
             type="number"
-            placeholder="Content type id"
+            :placeholder="t('finance.expense.contentTypeId')"
             class="border-ligne-forte h-12 w-36 rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           />
           <input
             v-model="line.object_id"
             type="number"
-            placeholder="Object id"
+            :placeholder="t('finance.expense.objectId')"
             class="border-ligne-forte h-12 w-28 rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           />
           <input
             v-model="line.allocated_amount"
             type="number"
             step="0.01"
-            placeholder="Amount"
+            :placeholder="t('finance.expense.amountPlaceholder')"
             class="border-ligne-forte h-12 w-32 rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           />
           <button
@@ -271,14 +281,17 @@ async function onSubmit() {
             class="text-critique text-sm hover:brightness-90"
             @click="removeLine(index)"
           >
-            Remove
+            {{ t('finance.expense.remove') }}
           </button>
         </div>
       </div>
 
-      <div class="flex justify-end">
+      <div class="flex justify-end gap-2">
+        <Button type="button" variant="ghost" @click="emit('cancel')">
+          {{ t('common.cancel') }}
+        </Button>
         <Button type="submit" variant="primary" :loading="saving">
-          {{ saving ? 'Saving…' : 'Save expense' }}
+          {{ saving ? t('finance.expense.saving') : t('finance.expense.save') }}
         </Button>
       </div>
     </form>

@@ -3,6 +3,7 @@
 // (>=768px, chiffres Mono alignés à droite) / liste de TripCard mobile
 // (<768px), avec puces de filtre statut à défilement horizontal.
 import { ref, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { tripResource } from './api'
 import { TRIP_STATUSES } from './types'
@@ -12,8 +13,11 @@ import Badge from '@/components/ui/Badge.vue'
 import MonoValue from '@/components/ui/MonoValue.vue'
 import Button from '@/components/ui/Button.vue'
 import TripCard from './TripCard.vue'
+import { useTripStatusLabel } from './tripStatusLabels'
 
 const router = useRouter()
+const { t } = useI18n()
+const statusLabel = useTripStatusLabel()
 
 const trips = ref<Trip[]>([])
 const loading = ref(false)
@@ -25,23 +29,6 @@ const error = ref('')
 const FILTER_STATUSES: TripStatus[] = TRIP_STATUSES.filter(
   (s) => s !== 'COMPLETED' && s !== 'CANCELLED',
 )
-
-const STATUS_LABEL: Record<TripStatus, string> = {
-  ASSIGNED: 'Assigned',
-  SENT_FOR_LOADING: 'Sent for loading',
-  LOADING: 'Loading',
-  LOADED: 'Loaded',
-  IN_TRANSIT: 'In transit',
-  BORDER: 'Border',
-  CUSTOMS: 'Customs',
-  GOING_TO_CLIENT: 'Going to client',
-  ARRIVED_AT_CLIENT: 'Arrived at client',
-  QUANTITY_CONTROL: 'Quantity control',
-  DELIVERED: 'Delivered',
-  COMPLETED: 'Completed',
-  BLOCKED: 'Blocked',
-  CANCELLED: 'Cancelled',
-}
 
 const selectedStatus = ref<TripStatus | ''>('')
 
@@ -55,7 +42,7 @@ async function load() {
     const data = await tripResource.list()
     trips.value = data.results
   } catch {
-    error.value = 'Could not load trips.'
+    error.value = t('trips.loadError')
   } finally {
     loading.value = false
   }
@@ -87,25 +74,25 @@ function goToNew() {
   <div class="space-y-4">
     <div class="flex items-center justify-between">
       <h1 class="font-display text-2xl leading-none font-semibold uppercase">
-        Trips &amp; Loading
+        {{ t('trips.title') }}
       </h1>
-      <Button variant="primary" @click="goToNew">New Trip</Button>
+      <Button variant="primary" @click="goToNew">{{ t('trips.newTrip') }}</Button>
     </div>
 
     <div class="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
-      <Chip :active="selectedStatus === ''" @click="selectedStatus = ''">Tous</Chip>
+      <Chip :active="selectedStatus === ''" @click="selectedStatus = ''">{{ t('trips.all') }}</Chip>
       <Chip
         v-for="status in FILTER_STATUSES"
         :key="status"
         :active="selectedStatus === status"
         @click="selectedStatus = selectedStatus === status ? '' : status"
       >
-        {{ STATUS_LABEL[status] }}
+        {{ statusLabel(status) }}
       </Chip>
     </div>
 
     <p v-if="error" class="text-critique text-sm">{{ error }}</p>
-    <p v-else-if="loading" class="text-texte-3 text-sm">Loading…</p>
+    <p v-else-if="loading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
     <template v-else>
       <!-- Desktop : tableau complet, chiffres Mono alignés à droite -->
@@ -113,12 +100,12 @@ function goToNew() {
         <table class="w-full text-left text-sm">
           <thead>
             <tr class="border-ligne text-texte-2 border-b">
-              <th class="px-3 py-2.5 font-medium">Reference</th>
-              <th class="px-3 py-2.5 font-medium">Truck</th>
-              <th class="px-3 py-2.5 font-medium">Transporter</th>
-              <th class="px-3 py-2.5 font-medium">Client</th>
-              <th class="px-3 py-2.5 text-right font-medium">Quantity</th>
-              <th class="px-3 py-2.5 font-medium">Status</th>
+              <th class="px-3 py-2.5 font-medium">{{ t('trips.table.reference') }}</th>
+              <th class="px-3 py-2.5 font-medium">{{ t('trips.table.truck') }}</th>
+              <th class="px-3 py-2.5 font-medium">{{ t('trips.table.transporter') }}</th>
+              <th class="px-3 py-2.5 font-medium">{{ t('trips.table.client') }}</th>
+              <th class="px-3 py-2.5 text-right font-medium">{{ t('trips.table.quantity') }}</th>
+              <th class="px-3 py-2.5 font-medium">{{ t('trips.table.status') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -131,17 +118,17 @@ function goToNew() {
               <td class="px-3 py-2.5"><MonoValue :value="trip.reference" align="left" /></td>
               <td class="px-3 py-2.5">{{ trip.truck_detail?.internal_id ?? '—' }}</td>
               <td class="px-3 py-2.5">{{ trip.transporter_detail?.name ?? '—' }}</td>
-              <td class="px-3 py-2.5">{{ trip.client_detail?.name ?? 'Direct sale' }}</td>
+              <td class="px-3 py-2.5">{{ trip.client_detail?.name ?? t('trips.directSale') }}</td>
               <td class="px-3 py-2.5 text-right">
                 <MonoValue :value="Number(trip.quantity_loaded).toLocaleString()" unit="L" />
               </td>
               <td class="px-3 py-2.5">
-                <Badge :variant="badgeVariant(trip.status)">{{ STATUS_LABEL[trip.status] }}</Badge>
+                <Badge :variant="badgeVariant(trip.status)">{{ statusLabel(trip.status) }}</Badge>
               </td>
             </tr>
             <tr v-if="!filteredTrips.length">
               <td colspan="6" class="text-texte-3 px-3 py-8 text-center">
-                No trips for this filter.
+                {{ t('trips.noTripsForFilter') }}
               </td>
             </tr>
           </tbody>
@@ -155,7 +142,7 @@ function goToNew() {
           v-if="!filteredTrips.length"
           class="text-texte-3 border-ligne rounded-xl border border-dashed p-6 text-center text-sm"
         >
-          No trips for this filter.
+          {{ t('trips.noTripsForFilter') }}
         </p>
       </div>
     </template>

@@ -12,6 +12,7 @@
 // existing dashboard summary, loss-report, trips list and customer-payments
 // endpoints (see aggregate.ts for the derivations and their caveats).
 import { ref, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import DateRangeFilter from '@/components/DateRangeFilter.vue'
 import type { DateRangeValue } from '@/components/date-range'
 import { fetchDashboardSummary } from './api'
@@ -36,6 +37,8 @@ import {
   type VolumeDay,
 } from './aggregate'
 
+const { t, locale } = useI18n()
+
 const summary = ref<DashboardSummary | null>(null)
 const loading = ref(true)
 const error = ref('')
@@ -50,7 +53,7 @@ async function load(filter: DateRangeValue) {
   try {
     summary.value = await fetchDashboardSummary(filter as Record<string, string | undefined>)
   } catch {
-    error.value = 'Could not load the dashboard.'
+    error.value = t('dashboard.errorLoad')
   } finally {
     loading.value = false
   }
@@ -59,11 +62,13 @@ async function load(filter: DateRangeValue) {
 // --- Live ops (today) --------------------------------------------------
 
 const todayIso = new Date().toISOString().slice(0, 10)
-const todayLabel = new Date().toLocaleDateString('fr-FR', {
-  weekday: 'long',
-  day: 'numeric',
-  month: 'long',
-})
+const todayLabel = computed(() =>
+  new Date().toLocaleDateString(locale.value === 'fr' ? 'fr-FR' : 'en-US', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  }),
+)
 
 const liveLoading = ref(true)
 const liveError = ref('')
@@ -133,7 +138,7 @@ async function loadLive() {
           ? 100
           : 0
   } catch {
-    liveError.value = 'Impossible de charger les indicateurs en direct.'
+    liveError.value = t('dashboard.liveError')
   } finally {
     liveLoading.value = false
   }
@@ -157,38 +162,40 @@ const lossGaugeTone = computed(() => lossSeverityTone(avgLossPct.value))
 <template>
   <div class="max-w-6xl space-y-6">
     <div class="flex flex-wrap items-center justify-between gap-3">
-      <h1 class="font-display text-2xl leading-none font-semibold uppercase">Dashboard</h1>
+      <h1 class="font-display text-2xl leading-none font-semibold uppercase">
+        {{ t('dashboard.title') }}
+      </h1>
       <span class="text-texte-2 font-mono text-sm capitalize">{{ todayLabel }}</span>
     </div>
 
     <p v-if="liveError" class="text-critique text-sm">{{ liveError }}</p>
-    <p v-else-if="liveLoading" class="text-texte-3 text-sm">Chargement…</p>
+    <p v-else-if="liveLoading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
     <template v-else>
       <!-- 4 KPI stratégiques -->
       <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <KpiTile
-          label="Volume livré (aujourd'hui)"
+          :label="t('dashboard.kpi.deliveredToday')"
           :value="Math.round(todayDelivered).toLocaleString()"
           unit="L"
           :gauge-value="deliveredGauge"
           gauge-tone="livre"
         />
         <KpiTile
-          label="Trajets en cours"
+          :label="t('dashboard.kpi.tripsInProgress')"
           :value="String(enRouteTrips.length)"
           :gauge-value="enRouteGauge"
           gauge-tone="transit"
         />
         <KpiTile
-          label="Écart moyen"
+          :label="t('dashboard.kpi.avgLoss')"
           :value="avgLossPct.toFixed(1)"
           unit="%"
           :gauge-value="Math.min(100, (avgLossPct / 5) * 100)"
           :gauge-tone="lossGaugeTone"
         />
         <KpiTile
-          label="Encaissements (aujourd'hui)"
+          :label="t('dashboard.kpi.paymentsToday')"
           :value="Math.round(todayEncaissements).toLocaleString()"
           :gauge-value="encaissementsGauge"
           gauge-tone="livre"
@@ -198,7 +205,7 @@ const lossGaugeTone = computed(() => lossSeverityTone(avgLossPct.value))
       <!-- En route maintenant -->
       <section class="space-y-3">
         <h2 class="text-texte-2 text-sm font-semibold uppercase">
-          En route maintenant ({{ enRouteTrips.length }})
+          {{ t('dashboard.enRouteNow', { count: enRouteTrips.length }) }}
         </h2>
         <div v-if="enRouteTrips.length" class="flex gap-3 overflow-x-auto pb-2">
           <TripCard
@@ -212,7 +219,7 @@ const lossGaugeTone = computed(() => lossSeverityTone(avgLossPct.value))
           v-else
           class="text-texte-3 border-ligne rounded-xl border border-dashed p-6 text-center text-sm"
         >
-          Aucun trajet en route actuellement.
+          {{ t('dashboard.noTripsEnRoute') }}
         </p>
       </section>
 
@@ -220,10 +227,12 @@ const lossGaugeTone = computed(() => lossSeverityTone(avgLossPct.value))
 
       <!-- À traiter -->
       <section class="border-ligne rounded-xl border bg-white p-4">
-        <h2 class="text-texte-2 mb-3 text-sm font-semibold uppercase">À traiter</h2>
+        <h2 class="text-texte-2 mb-3 text-sm font-semibold uppercase">{{ t('dashboard.toTreat') }}</h2>
         <div class="grid gap-4 sm:grid-cols-2">
           <div class="space-y-2">
-            <p class="text-texte-3 text-xs font-medium uppercase">Écarts non justifiés</p>
+            <p class="text-texte-3 text-xs font-medium uppercase">
+              {{ t('dashboard.unjustifiedLosses') }}
+            </p>
             <ul v-if="toTreat.length" class="space-y-1.5">
               <li
                 v-for="row in toTreat.slice(0, 6)"
@@ -246,11 +255,13 @@ const lossGaugeTone = computed(() => lossSeverityTone(avgLossPct.value))
                 </span>
               </li>
             </ul>
-            <p v-else class="text-texte-3 text-sm">Aucun écart à traiter.</p>
+            <p v-else class="text-texte-3 text-sm">{{ t('dashboard.noUnjustifiedLosses') }}</p>
           </div>
 
           <div class="space-y-2">
-            <p class="text-texte-3 text-xs font-medium uppercase">Urgences (trajets bloqués)</p>
+            <p class="text-texte-3 text-xs font-medium uppercase">
+              {{ t('dashboard.urgentBlockedTrips') }}
+            </p>
             <ul v-if="blockedTrips.length" class="space-y-1.5">
               <li
                 v-for="trip in blockedTrips.slice(0, 6)"
@@ -266,7 +277,7 @@ const lossGaugeTone = computed(() => lossSeverityTone(avgLossPct.value))
                 <span class="text-critique-texte ml-2">{{ trip.truck_detail?.internal_id }}</span>
               </li>
             </ul>
-            <p v-else class="text-texte-3 text-sm">Aucune urgence.</p>
+            <p v-else class="text-texte-3 text-sm">{{ t('dashboard.noUrgentTrips') }}</p>
           </div>
         </div>
       </section>
@@ -274,27 +285,27 @@ const lossGaugeTone = computed(() => lossSeverityTone(avgLossPct.value))
 
     <!-- Détail de la période sélectionnée (KPI historiques) -->
     <div class="flex flex-wrap items-center justify-between gap-3 pt-2">
-      <h2 class="text-texte-2 text-sm font-semibold uppercase">Détail de la période</h2>
+      <h2 class="text-texte-2 text-sm font-semibold uppercase">{{ t('dashboard.periodDetail') }}</h2>
       <DateRangeFilter @change="load" />
     </div>
 
     <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
-    <p v-else-if="loading" class="text-sm text-slate-400">Loading…</p>
+    <p v-else-if="loading" class="text-sm text-slate-400">{{ t('common.loading') }}</p>
 
     <div v-else-if="summary" class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       <section class="rounded border bg-white p-4">
-        <h3 class="mb-3 text-sm font-semibold text-slate-500">Operations</h3>
+        <h3 class="mb-3 text-sm font-semibold text-slate-500">{{ t('dashboard.sections.operations') }}</h3>
         <dl class="space-y-1 text-sm">
           <div class="flex justify-between">
-            <dt class="text-slate-500">Trips</dt>
+            <dt class="text-slate-500">{{ t('dashboard.fields.trips') }}</dt>
             <dd class="font-medium text-slate-800">{{ summary.operations.trips_count }}</dd>
           </div>
           <div class="flex justify-between">
-            <dt class="text-slate-500">Active</dt>
+            <dt class="text-slate-500">{{ t('dashboard.fields.active') }}</dt>
             <dd class="font-medium text-slate-800">{{ summary.operations.active_trips_count }}</dd>
           </div>
           <div class="flex justify-between">
-            <dt class="text-slate-500">Delivered</dt>
+            <dt class="text-slate-500">{{ t('dashboard.fields.delivered') }}</dt>
             <dd class="font-medium text-slate-800">
               {{ summary.operations.delivered_trips_count }}
             </dd>
@@ -303,16 +314,16 @@ const lossGaugeTone = computed(() => lossSeverityTone(avgLossPct.value))
       </section>
 
       <section class="rounded border bg-white p-4">
-        <h3 class="mb-3 text-sm font-semibold text-slate-500">Fuel</h3>
+        <h3 class="mb-3 text-sm font-semibold text-slate-500">{{ t('dashboard.sections.fuel') }}</h3>
         <dl class="space-y-1 text-sm">
           <div class="flex justify-between">
-            <dt class="text-slate-500">Quantity loaded</dt>
+            <dt class="text-slate-500">{{ t('dashboard.fields.quantityLoaded') }}</dt>
             <dd class="font-medium text-slate-800">
               {{ formatNumber(summary.fuel.quantity_loaded) }} L
             </dd>
           </div>
           <div class="flex justify-between">
-            <dt class="text-slate-500">Theoretical stock</dt>
+            <dt class="text-slate-500">{{ t('dashboard.fields.theoreticalStock') }}</dt>
             <dd class="font-medium text-slate-800">
               {{ formatNumber(summary.fuel.theoretical_stock) }} L
             </dd>
@@ -321,28 +332,28 @@ const lossGaugeTone = computed(() => lossSeverityTone(avgLossPct.value))
       </section>
 
       <section class="rounded border bg-white p-4">
-        <h3 class="mb-3 text-sm font-semibold text-slate-500">Sales</h3>
+        <h3 class="mb-3 text-sm font-semibold text-slate-500">{{ t('dashboard.sections.sales') }}</h3>
         <dl class="space-y-1 text-sm">
           <div class="flex justify-between">
-            <dt class="text-slate-500">Sales</dt>
+            <dt class="text-slate-500">{{ t('dashboard.fields.salesCount') }}</dt>
             <dd class="font-medium text-slate-800">{{ summary.sales.sales_count }}</dd>
           </div>
           <div class="flex justify-between">
-            <dt class="text-slate-500">Revenue</dt>
+            <dt class="text-slate-500">{{ t('dashboard.fields.revenue') }}</dt>
             <dd class="font-medium text-slate-800">{{ formatNumber(summary.sales.revenue) }}</dd>
           </div>
         </dl>
       </section>
 
       <section class="rounded border bg-white p-4">
-        <h3 class="mb-3 text-sm font-semibold text-slate-500">Transport</h3>
+        <h3 class="mb-3 text-sm font-semibold text-slate-500">{{ t('dashboard.sections.transport') }}</h3>
         <dl class="space-y-1 text-sm">
           <div class="flex justify-between">
-            <dt class="text-slate-500">Settlements</dt>
+            <dt class="text-slate-500">{{ t('dashboard.fields.settlements') }}</dt>
             <dd class="font-medium text-slate-800">{{ summary.transport.settlements_count }}</dd>
           </div>
           <div class="flex justify-between">
-            <dt class="text-slate-500">Transport cost</dt>
+            <dt class="text-slate-500">{{ t('dashboard.fields.transportCost') }}</dt>
             <dd class="font-medium text-slate-800">
               {{ formatNumber(summary.transport.transport_cost) }}
             </dd>
@@ -351,16 +362,16 @@ const lossGaugeTone = computed(() => lossSeverityTone(avgLossPct.value))
       </section>
 
       <section class="rounded border bg-white p-4">
-        <h3 class="mb-3 text-sm font-semibold text-slate-500">Finance</h3>
+        <h3 class="mb-3 text-sm font-semibold text-slate-500">{{ t('dashboard.sections.finance') }}</h3>
         <dl class="space-y-1 text-sm">
           <div class="flex justify-between">
-            <dt class="text-slate-500">Expenses</dt>
+            <dt class="text-slate-500">{{ t('dashboard.fields.expenses') }}</dt>
             <dd class="font-medium text-slate-800">
               {{ formatNumber(summary.finance.expenses_total) }}
             </dd>
           </div>
           <div class="flex justify-between">
-            <dt class="text-slate-500">Treasury balance</dt>
+            <dt class="text-slate-500">{{ t('dashboard.fields.treasuryBalance') }}</dt>
             <dd class="font-medium text-slate-800">
               {{ formatNumber(summary.finance.treasury_balance) }}
             </dd>
@@ -369,10 +380,10 @@ const lossGaugeTone = computed(() => lossSeverityTone(avgLossPct.value))
       </section>
 
       <section class="rounded border bg-white p-4">
-        <h3 class="mb-3 text-sm font-semibold text-slate-500">Profit</h3>
+        <h3 class="mb-3 text-sm font-semibold text-slate-500">{{ t('dashboard.sections.profit') }}</h3>
         <dl class="space-y-1 text-sm">
           <div class="flex justify-between">
-            <dt class="text-slate-500">Total margin</dt>
+            <dt class="text-slate-500">{{ t('dashboard.fields.totalMargin') }}</dt>
             <dd class="font-medium text-slate-800">
               {{ formatNumber(summary.profit.total_margin) }}
             </dd>

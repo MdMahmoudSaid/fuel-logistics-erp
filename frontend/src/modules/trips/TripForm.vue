@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { createResourceApi } from '@/api/resource'
 import { useAuthStore } from '@/stores/auth'
@@ -9,10 +10,18 @@ import { customerOrderResource } from '@/modules/sales/api'
 import type { CustomerOrder } from '@/modules/sales/types'
 import { tripResource } from './api'
 import type { Trip, TruckBrief, TransporterBrief, DriverBrief, CustomerBrief } from './types'
+import { translateApiError } from '@/i18n/apiErrors'
+import Button from '@/components/ui/Button.vue'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const { t, te } = useI18n()
+
+function truckStatusLabel(status: string): string {
+  const key = `truckStatus.${status}`
+  return te(key) ? t(key) : status
+}
 
 const prefilledOrderId = computed(() =>
   route.query.customer_order ? Number(route.query.customer_order) : null,
@@ -130,7 +139,7 @@ const requestedPct = computed(() => pct(Math.min(requested.value, cessionRemaini
 
 async function onSubmit() {
   if (!selectedCession.value || !selectedSupplierOrder.value) {
-    error.value = 'Select a cession letter first.'
+    error.value = t('trips.newForm.selectCessionFirst')
     return
   }
   saving.value = true
@@ -158,7 +167,7 @@ async function onSubmit() {
     const data = (e as { response?: { data?: Record<string, string[] | string> } })?.response?.data
     const firstEntry = data ? Object.values(data)[0] : undefined
     const detail = Array.isArray(firstEntry) ? firstEntry[0] : firstEntry
-    error.value = detail || 'Could not save — check the fields and your permissions.'
+    error.value = translateApiError(detail) || t('trips.newForm.saveError')
   } finally {
     saving.value = false
   }
@@ -167,101 +176,120 @@ async function onSubmit() {
 
 <template>
   <div class="max-w-3xl space-y-6">
-    <h2 class="text-lg font-semibold text-slate-800">New Trip (Loading)</h2>
+    <h1 class="font-display text-2xl leading-none font-semibold uppercase">
+      {{ t('trips.newForm.title') }}
+    </h1>
 
-    <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
+    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
 
-    <form class="space-y-4 rounded border bg-white p-4" @submit.prevent="onSubmit">
-      <div class="space-y-1">
-        <label class="text-sm font-medium text-slate-600" for="cession_letter"
-          >Cession letter</label
-        >
+    <form
+      class="border-ligne space-y-4 rounded-xl border bg-surface p-6"
+      @submit.prevent="onSubmit"
+    >
+      <div class="space-y-1.5">
+        <label class="text-texte-2 text-sm font-medium" for="cession_letter">{{
+          t('trips.newForm.cessionLetter')
+        }}</label>
         <select
           id="cession_letter"
           v-model="form.cession_letter"
           required
-          class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+          class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           @change="onCessionChange"
         >
-          <option value="" disabled>Select a cession letter</option>
+          <option value="" disabled>{{ t('trips.newForm.selectCessionLetter') }}</option>
           <option v-for="c in cessions" :key="c.id" :value="c.id">
-            {{ c.reference }} ({{ Number(c.remaining_quantity).toLocaleString() }} L remaining)
+            {{ c.reference }} ({{ Number(c.remaining_quantity).toLocaleString() }}
+            {{ t('purchasing.cessionForm.remainingSuffix') }})
           </option>
         </select>
       </div>
 
-      <div v-if="selectedCession" class="space-y-2 rounded border border-slate-200 bg-slate-50 p-3">
-        <div class="flex justify-between text-xs text-slate-500">
-          <span>Cession authorized: {{ cessionAuthorized.toLocaleString() }} L</span>
-          <span>Remaining: {{ cessionRemaining.toLocaleString() }} L</span>
-          <span :class="isOverLimit ? 'font-semibold text-red-600' : ''">
-            Requested: {{ requested.toLocaleString() }} L
+      <div v-if="selectedCession" class="border-ligne space-y-2 rounded-lg border bg-sable p-3">
+        <div class="text-texte-2 flex justify-between text-xs">
+          <span>{{ t('trips.newForm.cessionAuthorized') }} {{ cessionAuthorized.toLocaleString() }} L</span>
+          <span>{{ t('trips.newForm.remaining') }} {{ cessionRemaining.toLocaleString() }} L</span>
+          <span :class="isOverLimit ? 'text-critique font-semibold' : ''">
+            {{ t('trips.newForm.requested') }} {{ requested.toLocaleString() }} L
           </span>
         </div>
-        <div class="flex h-3 w-full overflow-hidden rounded-full bg-slate-200">
-          <div class="bg-slate-300" :style="{ width: 100 - remainingPct + '%' }" />
+        <div class="bg-ligne flex h-3 w-full overflow-hidden rounded-full">
+          <div class="bg-texte-3" :style="{ width: 100 - remainingPct + '%' }" />
           <div
-            :class="isOverLimit ? 'bg-red-500' : 'bg-emerald-500'"
+            :class="isOverLimit ? 'bg-critique' : 'bg-livre'"
             :style="{ width: requestedPct + '%' }"
           />
         </div>
-        <p v-if="isOverLimit" class="text-sm font-medium text-red-600">
-          Exceeds the cession's remaining quantity. Reduce the requested quantity before saving.
+        <p v-if="isOverLimit" class="text-critique text-sm font-medium">
+          {{ t('trips.newForm.exceedsRemaining') }}
         </p>
       </div>
 
-      <div v-if="isAdmin" class="flex items-center gap-2 text-sm text-slate-600">
-        <input id="show_busy" v-model="showBusyTrucks" type="checkbox" class="rounded" />
-        <label for="show_busy">Show occupied trucks (Admin override — force assignment)</label>
+      <div v-if="isAdmin" class="text-texte-2 flex items-center gap-2 text-sm">
+        <input
+          id="show_busy"
+          v-model="showBusyTrucks"
+          type="checkbox"
+          class="border-ligne-forte accent-orange h-5 w-5 rounded"
+        />
+        <label for="show_busy">{{ t('trips.newForm.showBusyTrucks') }}</label>
       </div>
 
       <div class="grid grid-cols-2 gap-4">
-        <div class="space-y-1">
-          <label class="text-sm font-medium text-slate-600" for="truck">Truck</label>
+        <div class="space-y-1.5">
+          <label class="text-texte-2 text-sm font-medium" for="truck">{{
+            t('trips.newForm.truck')
+          }}</label>
           <select
             id="truck"
             v-model="form.truck"
             required
-            class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
             @change="onTruckChange"
           >
-            <option value="" disabled>Select a truck</option>
-            <option v-for="t in trucks" :key="t.id" :value="t.id">
-              {{ t.internal_id }}
-              <template v-if="t.status !== 'AVAILABLE'"> (occupied — {{ t.status }})</template>
+            <option value="" disabled>{{ t('trips.newForm.selectTruck') }}</option>
+            <option v-for="truck in trucks" :key="truck.id" :value="truck.id">
+              {{ truck.internal_id }}
+              <template v-if="truck.status !== 'AVAILABLE'">
+                {{ ' ' + t('trips.newForm.occupied', { status: truckStatusLabel(truck.status) }) }}
+              </template>
             </option>
           </select>
         </div>
 
-        <div class="space-y-1">
-          <label class="text-sm font-medium text-slate-600" for="transporter">Transporter</label>
+        <div class="space-y-1.5">
+          <label class="text-texte-2 text-sm font-medium" for="transporter">{{
+            t('trips.newForm.transporter')
+          }}</label>
           <select
             id="transporter"
             v-model="form.transporter"
             required
-            class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           >
-            <option value="" disabled>Select a transporter</option>
+            <option value="" disabled>{{ t('trips.newForm.selectTransporter') }}</option>
             <option v-for="tr in transporters" :key="tr.id" :value="tr.id">{{ tr.name }}</option>
           </select>
         </div>
 
-        <div class="space-y-1">
-          <label class="text-sm font-medium text-slate-600" for="driver">Driver (optional)</label>
+        <div class="space-y-1.5">
+          <label class="text-texte-2 text-sm font-medium" for="driver">{{
+            t('trips.newForm.driver')
+          }}</label>
           <select
             id="driver"
             v-model="form.driver"
-            class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           >
-            <option value="">No driver</option>
+            <option value="">{{ t('trips.newForm.noDriver') }}</option>
             <option v-for="d in drivers" :key="d.id" :value="d.id">{{ d.name }}</option>
           </select>
         </div>
 
-        <div class="space-y-1">
-          <label class="text-sm font-medium text-slate-600" for="quantity_loaded"
-            >Quantity loaded (L)</label
-          >
+        <div class="space-y-1.5">
+          <label class="text-texte-2 text-sm font-medium" for="quantity_loaded">{{
+            t('trips.newForm.quantityLoaded')
+          }}</label>
           <input
             id="quantity_loaded"
             v-model="form.quantity_loaded"
@@ -269,89 +297,93 @@ async function onSubmit() {
             step="0.01"
             min="0.01"
             required
-            class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
-            :class="isOverLimit ? 'border-red-400' : ''"
+            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+            :class="isOverLimit ? 'border-critique' : ''"
           />
         </div>
 
-        <div class="space-y-1">
-          <label class="text-sm font-medium text-slate-600" for="loading_date">Loading date</label>
+        <div class="space-y-1.5">
+          <label class="text-texte-2 text-sm font-medium" for="loading_date">{{
+            t('trips.newForm.loadingDate')
+          }}</label>
           <input
             id="loading_date"
             v-model="form.loading_date"
             type="date"
             required
-            class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           />
         </div>
 
-        <div class="space-y-1">
-          <label class="text-sm font-medium text-slate-600" for="bl_reference">BL reference</label>
+        <div class="space-y-1.5">
+          <label class="text-texte-2 text-sm font-medium" for="bl_reference">{{
+            t('trips.newForm.blReference')
+          }}</label>
           <input
             id="bl_reference"
             v-model="form.bl_reference"
             required
-            class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           />
         </div>
       </div>
 
-      <div v-if="prefilledOrderId" class="text-sm text-slate-600">
-        Against customer order
-        <span class="font-medium text-slate-800">#{{ prefilledOrderId }}</span>
+      <div v-if="prefilledOrderId" class="text-texte-2 text-sm">
+        {{ t('trips.newForm.againstCustomerOrder') }}
+        <span class="text-texte font-medium">#{{ prefilledOrderId }}</span>
       </div>
-      <div v-else class="space-y-1">
-        <label class="text-sm font-medium text-slate-600" for="customer_order"
-          >Customer order (optional)</label
-        >
+      <div v-else class="space-y-1.5">
+        <label class="text-texte-2 text-sm font-medium" for="customer_order">{{
+          t('trips.newForm.customerOrder')
+        }}</label>
         <select
           id="customer_order"
           v-model="form.customer_order"
-          class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+          class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
         >
-          <option value="">No customer order — direct sale</option>
+          <option value="">{{ t('trips.newForm.noCustomerOrder') }}</option>
           <option v-for="o in customerOrders" :key="o.id" :value="o.id">
             #{{ o.id }} — {{ o.customer_detail?.name }} ({{
               Number(o.remaining_quantity).toLocaleString()
             }}
-            L remaining)
+            {{ t('purchasing.cessionForm.remainingSuffix') }})
           </option>
         </select>
       </div>
 
-      <div class="space-y-1">
-        <label class="text-sm font-medium text-slate-600" for="client">Client (optional)</label>
+      <div class="space-y-1.5">
+        <label class="text-texte-2 text-sm font-medium" for="client">{{
+          t('trips.newForm.client')
+        }}</label>
         <select
           id="client"
           v-model="form.client"
-          class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+          class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
         >
-          <option value="">No client</option>
+          <option value="">{{ t('trips.newForm.noClient') }}</option>
           <option v-for="c in customers" :key="c.id" :value="c.id">{{ c.name }}</option>
         </select>
       </div>
 
-      <div class="space-y-1">
-        <label class="text-sm font-medium text-slate-600" for="notes">Notes</label>
+      <div class="space-y-1.5">
+        <label class="text-texte-2 text-sm font-medium" for="notes">{{
+          t('trips.newForm.notes')
+        }}</label>
         <textarea
           id="notes"
           v-model="form.notes"
           rows="2"
-          class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+          class="border-ligne-forte w-full rounded-lg border bg-white px-3.5 py-2.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
         />
       </div>
 
       <div class="flex justify-end gap-2 pt-2">
-        <button type="button" class="px-3 py-2 text-sm text-slate-500" @click="router.back()">
-          Back
-        </button>
-        <button
-          type="submit"
-          :disabled="saving"
-          class="rounded bg-slate-800 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
-        >
-          {{ saving ? 'Saving…' : 'Create Trip' }}
-        </button>
+        <Button variant="ghost" type="button" @click="router.back()">
+          {{ t('trips.newForm.back') }}
+        </Button>
+        <Button type="submit" variant="primary" :loading="saving">
+          {{ saving ? t('trips.newForm.saving') : t('trips.newForm.createTrip') }}
+        </Button>
       </div>
     </form>
   </div>

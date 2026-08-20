@@ -146,14 +146,14 @@ class TripWorkflowService:
 
         if target_status == current_status:
             raise InvalidTripTransition(
-                f"Trip {trip.reference} is already in status {current_status}."
+                f"Le trajet {trip.reference} est deja au statut {current_status}."
             )
 
         allowed = cls.get_allowed_targets(trip)
         if target_status not in allowed:
             raise InvalidTripTransition(
-                f"Cannot transition trip {trip.reference} from "
-                f"{current_status} to {target_status}."
+                f"Impossible de faire passer le trajet {trip.reference} de "
+                f"{current_status} a {target_status}."
             )
 
         previous_status = trip.status
@@ -217,8 +217,8 @@ class DeliveryService:
             return global_price.price
 
         raise SellingPriceNotConfigured(
-            "No selling price configured for this product/customer yet - "
-            "add a ProductSellingPriceHistory entry before confirming delivery."
+            "Aucun prix de vente configure pour ce produit/client - "
+            "ajoutez une entree ProductSellingPriceHistory avant de confirmer la livraison."
         )
 
     @staticmethod
@@ -242,9 +242,10 @@ class DeliveryService:
 
         if received_qty > trip.quantity_loaded and anomaly_confirmed_by is None:
             raise DeliveryAnomalyConfirmationRequired(
-                f"Received quantity ({received_qty} L) exceeds loaded quantity "
-                f"({trip.quantity_loaded} L) for trip {trip.reference}; an "
-                "authorized anomaly_confirmed_by is required."
+                f"La quantite recue ({received_qty} L) depasse la quantite "
+                f"chargee ({trip.quantity_loaded} L) pour le trajet "
+                f"{trip.reference} ; une confirmation par un utilisateur "
+                "autorise (anomaly_confirmed_by) est requise."
             )
 
         customer = trip.client or (
@@ -252,8 +253,8 @@ class DeliveryService:
         )
         if customer is None:
             raise ValueError(
-                f"Trip {trip.reference} has neither a direct client nor a "
-                "customer order - cannot determine the Sale's customer."
+                f"Le trajet {trip.reference} n'a ni client direct ni commande "
+                "client - impossible de determiner le client de la vente."
             )
 
         # Resolve the selling price before mutating anything, so a missing

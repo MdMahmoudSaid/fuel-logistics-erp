@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import DataTable from './DataTable.vue'
 import EntityForm from './EntityForm.vue'
 import Button from '@/components/ui/Button.vue'
 import type { FieldSchema } from './types'
 import type { ResourceApi } from '@/api/resource'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   title: string
@@ -57,19 +60,19 @@ async function onSubmit() {
     showForm.value = false
     await load()
   } catch {
-    error.value = 'Could not save — check the fields and your permissions.'
+    error.value = t('masterData.saveError')
   }
 }
 
 async function onDelete(row: Record<string, unknown>) {
-  if (!window.confirm('Are you sure you want to delete this record?')) {
+  if (!window.confirm(t('masterData.confirmDelete'))) {
     return
   }
   try {
     await props.resource.remove(row.id as number)
     await load()
   } catch {
-    error.value = 'Could not delete — check your permissions.'
+    error.value = t('masterData.deleteError')
   }
 }
 
@@ -80,7 +83,7 @@ onMounted(load)
   <div class="space-y-4">
     <div class="flex items-center justify-between">
       <h1 class="font-display text-2xl leading-none font-semibold uppercase">{{ title }}</h1>
-      <Button variant="primary" @click="openCreate">Add</Button>
+      <Button variant="primary" @click="openCreate">{{ t('masterData.add') }}</Button>
     </div>
 
     <div class="border-ligne overflow-x-auto rounded-xl border bg-white">
@@ -90,7 +93,7 @@ onMounted(load)
     <div v-if="showForm" class="fixed inset-0 z-30 flex items-center justify-center bg-black/40">
       <div class="bg-surface border-ligne w-full max-w-md rounded-xl border p-6">
         <h2 class="font-display mb-4 text-lg leading-none font-semibold uppercase">
-          {{ editingId === null ? 'New' : 'Edit' }} {{ title }}
+          {{ editingId === null ? t('masterData.new') : t('masterData.edit') }} {{ title }}
         </h2>
         <p v-if="error" class="text-critique mb-2 text-sm">{{ error }}</p>
         <EntityForm

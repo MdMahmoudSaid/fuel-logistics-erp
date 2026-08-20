@@ -3,18 +3,36 @@
 // button - invoices are generated automatically by DeliveryService, never
 // created directly (backend/apps/sales/views.py InvoiceViewSet.create()).
 import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
+import { useRoute, useRouter } from 'vue-router'
 import { invoiceResource } from './api'
 import type { Invoice, InvoiceStatus } from './types'
 import Badge from '@/components/ui/Badge.vue'
+import Button from '@/components/ui/Button.vue'
 import MonoValue from '@/components/ui/MonoValue.vue'
+import Modal from '@/components/ui/Modal.vue'
+import PaymentAllocationForm from '@/modules/finance/PaymentAllocationForm.vue'
 
+const route = useRoute()
 const router = useRouter()
+const { t } = useI18n()
 
 const invoices = ref<Invoice[]>([])
 const loading = ref(false)
 const error = ref('')
 const statusFilter = ref<InvoiceStatus | ''>('')
+const showPaymentModal = ref(false)
+const paymentCustomerId = ref<number | null>(null)
+
+function openPaymentModal() {
+  paymentCustomerId.value = route.query.customer ? Number(route.query.customer) : null
+  showPaymentModal.value = true
+}
+
+function onPaymentSuccess() {
+  showPaymentModal.value = false
+  loadInvoices()
+}
 
 async function loadInvoices() {
   loading.value = true
@@ -25,24 +43,19 @@ async function loadInvoices() {
     const data = await invoiceResource.list(params)
     invoices.value = data.results
   } catch {
-    error.value = 'Could not load invoices.'
+    error.value = t('sales.invoiceList.loadError')
   } finally {
     loading.value = false
   }
 }
 
-onMounted(loadInvoices)
+onMounted(() => {
+  loadInvoices()
+  if (route.query.action === 'payment') openPaymentModal()
+})
 
 function goToDetail(invoice: Invoice) {
   router.push({ name: 'invoice-detail', params: { id: invoice.id } })
-}
-
-const STATUS_LABEL: Record<string, string> = {
-  DRAFT: 'Draft',
-  VALIDATED: 'Validated',
-  PARTIALLY_PAID: 'Partially paid',
-  PAID: 'Paid',
-  CANCELLED: 'Cancelled',
 }
 
 function badgeVariant(status: string) {
@@ -56,7 +69,14 @@ function badgeVariant(status: string) {
 
 <template>
   <div class="space-y-4">
-    <h1 class="font-display text-2xl leading-none font-semibold uppercase">Invoices</h1>
+    <div class="flex items-center justify-between">
+      <h1 class="font-display text-2xl leading-none font-semibold uppercase">
+        {{ t('sales.invoiceList.title') }}
+      </h1>
+      <Button variant="primary" @click="openPaymentModal">
+        {{ t('sales.invoiceList.newPayment') }}
+      </Button>
+    </div>
 
     <div class="flex flex-wrap gap-3">
       <select
@@ -64,12 +84,12 @@ function badgeVariant(status: string) {
         class="border-ligne-forte h-11 rounded-lg border bg-white px-3 text-sm"
         @change="loadInvoices"
       >
-        <option value="">All statuses</option>
-        <option value="DRAFT">Draft</option>
-        <option value="VALIDATED">Validated</option>
-        <option value="PARTIALLY_PAID">Partially paid</option>
-        <option value="PAID">Paid</option>
-        <option value="CANCELLED">Cancelled</option>
+        <option value="">{{ t('sales.invoiceList.allStatuses') }}</option>
+        <option value="DRAFT">{{ t('invoiceStatus.DRAFT') }}</option>
+        <option value="VALIDATED">{{ t('invoiceStatus.VALIDATED') }}</option>
+        <option value="PARTIALLY_PAID">{{ t('invoiceStatus.PARTIALLY_PAID') }}</option>
+        <option value="PAID">{{ t('invoiceStatus.PAID') }}</option>
+        <option value="CANCELLED">{{ t('invoiceStatus.CANCELLED') }}</option>
       </select>
     </div>
 
@@ -79,11 +99,13 @@ function badgeVariant(status: string) {
       <table class="w-full text-left text-sm">
         <thead>
           <tr class="border-ligne text-texte-2 border-b">
-            <th class="px-3 py-2.5 font-medium">Invoice #</th>
-            <th class="px-3 py-2.5 font-medium">Customer</th>
-            <th class="px-3 py-2.5 text-right font-medium">Total</th>
-            <th class="px-3 py-2.5 font-medium">Issued</th>
-            <th class="px-3 py-2.5 font-medium">Status</th>
+            <th class="px-3 py-2.5 font-medium">{{ t('sales.invoiceList.table.invoiceNumber') }}</th>
+            <th class="px-3 py-2.5 font-medium">{{ t('sales.invoiceList.table.customer') }}</th>
+            <th class="px-3 py-2.5 text-right font-medium">
+              {{ t('sales.invoiceList.table.total') }}
+            </th>
+            <th class="px-3 py-2.5 font-medium">{{ t('sales.invoiceList.table.issued') }}</th>
+            <th class="px-3 py-2.5 font-medium">{{ t('sales.invoiceList.table.status') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -104,15 +126,30 @@ function badgeVariant(status: string) {
             <td class="px-3 py-2.5">{{ invoice.issued_date }}</td>
             <td class="px-3 py-2.5">
               <Badge :variant="badgeVariant(invoice.status)">{{
-                STATUS_LABEL[invoice.status]
+                t(`invoiceStatus.${invoice.status}`)
               }}</Badge>
             </td>
           </tr>
           <tr v-if="!loading && invoices.length === 0">
-            <td colspan="5" class="text-texte-3 px-3 py-8 text-center">No invoices yet.</td>
+            <td colspan="5" class="text-texte-3 px-3 py-8 text-center">
+              {{ t('sales.invoiceList.noInvoices') }}
+            </td>
           </tr>
         </tbody>
       </table>
     </div>
+
+    <Modal
+      v-if="showPaymentModal"
+      :title="t('finance.payment.title')"
+      max-width="max-w-3xl"
+      @close="showPaymentModal = false"
+    >
+      <PaymentAllocationForm
+        :initial-customer-id="paymentCustomerId"
+        @success="onPaymentSuccess"
+        @cancel="showPaymentModal = false"
+      />
+    </Modal>
   </div>
 </template>

@@ -76,7 +76,7 @@ describe('ReportsView', () => {
     await wrapper.find('button').trigger('click')
     await flushPromises()
 
-    expect(wrapper.text()).not.toContain('Export CSV')
+    expect(wrapper.text()).not.toContain('Exporter CSV')
   })
 
   it('triggers a CSV export when the role has export permission', async () => {
@@ -86,7 +86,7 @@ describe('ReportsView', () => {
     await wrapper.find('button').trigger('click')
     await flushPromises()
 
-    const exportButton = wrapper.findAll('button').find((b) => b.text() === 'Export CSV')
+    const exportButton = wrapper.findAll('button').find((b) => b.text() === 'Exporter CSV')
     expect(exportButton).toBeTruthy()
     await exportButton!.trigger('click')
     await flushPromises()

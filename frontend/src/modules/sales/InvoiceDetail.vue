@@ -5,15 +5,18 @@
 // a direct PATCH past that point anyway, but hiding the fields avoids the
 // user hitting that rejection in the first place (guide Section 21).
 import { ref, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { invoiceResource, validateInvoice, correctInvoice } from './api'
+import { translateApiError } from '@/i18n/apiErrors'
 import { CORRECTABLE_INVOICE_FIELDS } from './types'
 import type { Invoice } from './types'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const { t } = useI18n()
 
 const invoiceId = computed(() => Number(route.params.id))
 
@@ -33,7 +36,7 @@ async function load() {
       issued_date: invoice.value.issued_date,
     }
   } catch {
-    error.value = 'Could not load this invoice.'
+    error.value = t('sales.invoiceDetail.loadError')
   } finally {
     loading.value = false
   }
@@ -59,7 +62,7 @@ async function onSaveDraft() {
       issued_date: editForm.value.issued_date,
     })
   } catch {
-    saveError.value = 'Could not save — check the fields and your permissions.'
+    saveError.value = t('sales.invoiceDetail.saveError')
   } finally {
     saving.value = false
   }
@@ -75,7 +78,7 @@ async function onValidate() {
     invoice.value = await validateInvoice(invoiceId.value)
   } catch (e) {
     const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-    validateError.value = detail || 'Could not validate this invoice.'
+    validateError.value = translateApiError(detail) || t('sales.invoiceDetail.validateError')
   } finally {
     validating.value = false
   }
@@ -109,7 +112,7 @@ async function onSubmitCorrection() {
     showCorrectionForm.value = false
   } catch (e) {
     const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-    correctionError.value = detail || 'Could not apply this correction.'
+    correctionError.value = translateApiError(detail) || t('sales.invoiceDetail.correctionError')
   } finally {
     correcting.value = false
   }
@@ -132,15 +135,15 @@ function formatDateTime(value: string) {
   <div class="max-w-2xl space-y-6">
     <div class="flex items-center justify-between">
       <h2 class="text-lg font-semibold text-slate-800">
-        Invoice {{ invoice?.invoice_number ?? '' }}
+        {{ t('sales.invoiceDetail.title', { number: invoice?.invoice_number ?? '' }) }}
       </h2>
       <button class="px-3 py-2 text-sm text-slate-500" @click="router.push({ name: 'invoices' })">
-        Back to invoices
+        {{ t('sales.invoiceDetail.backToInvoices') }}
       </button>
     </div>
 
     <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
-    <p v-else-if="loading" class="text-sm text-slate-400">Loading…</p>
+    <p v-else-if="loading" class="text-sm text-slate-400">{{ t('common.loading') }}</p>
 
     <template v-else-if="invoice">
       <section class="space-y-4 rounded border bg-white p-4 text-sm">
@@ -149,7 +152,7 @@ function formatDateTime(value: string) {
             class="rounded-full px-2 py-0.5 text-xs font-medium"
             :class="STATUS_BADGE[invoice.status]"
           >
-            {{ invoice.status }}
+            {{ t(`invoiceStatus.${invoice.status}`) }}
           </span>
           <button
             v-if="isDraft && canValidate"
@@ -159,7 +162,7 @@ function formatDateTime(value: string) {
             class="rounded bg-slate-800 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
             @click="onValidate"
           >
-            {{ validating ? 'Validating…' : 'Validate invoice' }}
+            {{ validating ? t('sales.invoiceDetail.validating') : t('sales.invoiceDetail.validateInvoice') }}
           </button>
           <button
             v-else-if="isValidated && canEdit"
@@ -168,14 +171,14 @@ function formatDateTime(value: string) {
             class="rounded border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700"
             @click="openCorrectionForm"
           >
-            Correct invoice
+            {{ t('sales.invoiceDetail.correctInvoice') }}
           </button>
         </div>
         <p v-if="validateError" class="text-sm text-red-600">{{ validateError }}</p>
 
         <div class="grid grid-cols-2 gap-4">
           <div>
-            <span class="text-slate-500">Customer</span>
+            <span class="text-slate-500">{{ t('sales.invoiceDetail.customer') }}</span>
             <p class="font-medium text-slate-800">
               <RouterLink
                 v-if="invoice.sale_detail?.customer_detail"
@@ -190,25 +193,25 @@ function formatDateTime(value: string) {
             </p>
           </div>
           <div>
-            <span class="text-slate-500">Product</span>
+            <span class="text-slate-500">{{ t('sales.invoiceDetail.product') }}</span>
             <p class="font-medium text-slate-800">
               {{ invoice.sale_detail?.product_detail?.name }}
             </p>
           </div>
           <div>
-            <span class="text-slate-500">Delivered quantity (received, not loaded)</span>
+            <span class="text-slate-500">{{ t('sales.invoiceDetail.deliveredQuantity') }}</span>
             <p class="font-medium text-slate-800">
               {{ Number(invoice.sale_detail?.delivered_quantity ?? 0).toLocaleString() }} L
             </p>
           </div>
           <div>
-            <span class="text-slate-500">Unit selling price</span>
+            <span class="text-slate-500">{{ t('sales.invoiceDetail.unitSellingPrice') }}</span>
             <p class="font-medium text-slate-800">
               {{ invoice.sale_detail?.unit_selling_price }} {{ invoice.sale_detail?.currency }}
             </p>
           </div>
           <div>
-            <span class="text-slate-500">Trip</span>
+            <span class="text-slate-500">{{ t('sales.invoiceDetail.trip') }}</span>
             <RouterLink
               class="font-medium text-slate-800 underline decoration-dotted"
               :to="{ name: 'trip-detail', params: { id: invoice.sale_detail?.trip } }"
@@ -222,9 +225,9 @@ function formatDateTime(value: string) {
           <p v-if="saveError" class="text-sm text-red-600">{{ saveError }}</p>
           <div class="grid grid-cols-2 gap-4">
             <div class="space-y-1">
-              <label class="text-sm font-medium text-slate-600" for="total_amount"
-                >Total amount</label
-              >
+              <label class="text-sm font-medium text-slate-600" for="total_amount">{{
+                t('sales.invoiceDetail.totalAmount')
+              }}</label>
               <input
                 id="total_amount"
                 v-model="editForm.total_amount"
@@ -234,9 +237,9 @@ function formatDateTime(value: string) {
               />
             </div>
             <div class="space-y-1">
-              <label class="text-sm font-medium text-slate-600" for="issued_date"
-                >Issued date</label
-              >
+              <label class="text-sm font-medium text-slate-600" for="issued_date">{{
+                t('sales.invoiceDetail.issuedDate')
+              }}</label>
               <input
                 id="issued_date"
                 v-model="editForm.issued_date"
@@ -252,29 +255,33 @@ function formatDateTime(value: string) {
               class="rounded bg-slate-800 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
               @click="onSaveDraft"
             >
-              {{ saving ? 'Saving…' : 'Save' }}
+              {{ saving ? t('sales.invoiceDetail.saving') : t('sales.invoiceDetail.save') }}
             </button>
           </div>
         </template>
         <div v-else class="text-base font-semibold text-slate-800">
-          Total: {{ Number(invoice.total_amount).toLocaleString() }}
+          {{ t('sales.invoiceDetail.total') }} {{ Number(invoice.total_amount).toLocaleString() }}
           {{ invoice.sale_detail?.currency }}
           <span class="ml-2 text-sm font-normal text-slate-500"
-            >issued {{ invoice.issued_date }}</span
+            >{{ t('sales.invoiceDetail.issued') }} {{ invoice.issued_date }}</span
           >
         </div>
       </section>
 
       <section v-if="showCorrectionForm" class="space-y-3 rounded border bg-white p-4">
-        <h3 class="text-base font-semibold text-slate-800">Correct invoice</h3>
+        <h3 class="text-base font-semibold text-slate-800">
+          {{ t('sales.invoiceDetail.correctionTitle') }}
+        </h3>
         <p class="text-sm text-slate-500">
-          This invoice is validated — the correction is applied under audit and recorded below.
+          {{ t('sales.invoiceDetail.correctionHint') }}
         </p>
         <p v-if="correctionError" class="text-sm text-red-600">{{ correctionError }}</p>
 
         <form id="correction-form" class="space-y-3" @submit.prevent="onSubmitCorrection">
           <div class="space-y-1">
-            <label class="text-sm font-medium text-slate-600" for="correction_field">Field</label>
+            <label class="text-sm font-medium text-slate-600" for="correction_field">{{
+              t('sales.invoiceDetail.field')
+            }}</label>
             <select
               id="correction_field"
               v-model="correctionForm.field"
@@ -284,9 +291,9 @@ function formatDateTime(value: string) {
             </select>
           </div>
           <div class="space-y-1">
-            <label class="text-sm font-medium text-slate-600" for="correction_new_value"
-              >New value</label
-            >
+            <label class="text-sm font-medium text-slate-600" for="correction_new_value">{{
+              t('sales.invoiceDetail.newValue')
+            }}</label>
             <input
               id="correction_new_value"
               v-model="correctionForm.new_value"
@@ -295,7 +302,9 @@ function formatDateTime(value: string) {
             />
           </div>
           <div class="space-y-1">
-            <label class="text-sm font-medium text-slate-600" for="correction_reason">Reason</label>
+            <label class="text-sm font-medium text-slate-600" for="correction_reason">{{
+              t('sales.invoiceDetail.reason')
+            }}</label>
             <textarea
               id="correction_reason"
               v-model="correctionForm.reason"
@@ -310,21 +319,27 @@ function formatDateTime(value: string) {
               class="px-3 py-2 text-sm text-slate-500"
               @click="showCorrectionForm = false"
             >
-              Cancel
+              {{ t('common.cancel') }}
             </button>
             <button
               type="submit"
               :disabled="correcting"
               class="rounded bg-slate-800 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
             >
-              {{ correcting ? 'Applying…' : 'Apply correction' }}
+              {{
+                correcting
+                  ? t('sales.invoiceDetail.applying')
+                  : t('sales.invoiceDetail.applyCorrection')
+              }}
             </button>
           </div>
         </form>
       </section>
 
       <section class="space-y-3 rounded border bg-white p-4">
-        <h3 class="text-base font-semibold text-slate-800">Correction audit trail</h3>
+        <h3 class="text-base font-semibold text-slate-800">
+          {{ t('sales.invoiceDetail.correctionAuditTrail') }}
+        </h3>
         <ol class="space-y-3 border-l border-slate-200 pl-4">
           <li v-for="entry in invoice.corrections" :key="entry.id" class="relative text-sm">
             <span class="absolute -left-[21px] top-1 h-2 w-2 rounded-full bg-slate-400" />
@@ -336,7 +351,9 @@ function formatDateTime(value: string) {
             </p>
             <p class="text-slate-600">{{ entry.reason }}</p>
           </li>
-          <li v-if="!invoice.corrections.length" class="text-slate-400">No corrections yet.</li>
+          <li v-if="!invoice.corrections.length" class="text-slate-400">
+            {{ t('sales.invoiceDetail.noCorrections') }}
+          </li>
         </ol>
       </section>
     </template>

@@ -72,7 +72,7 @@ class ReportViewSet(viewsets.ViewSet):
     def retrieve(self, request, pk=None):
         query_class = REPORT_REGISTRY.get(pk)
         if query_class is None:
-            raise NotFound(f"Unknown report type '{pk}'.")
+            raise NotFound(f"Type de rapport inconnu : '{pk}'.")
 
         # request.query_params carries the same "?range=|&from=&to=" shape
         # the dashboard endpoint accepts; resolve it to date_from/date_to
@@ -104,7 +104,7 @@ class ReportViewSet(viewsets.ViewSet):
         if not _user_can_export(user):
             raise PermissionDenied("Export non autorise pour ce role.")
         if export_format not in _EXPORT_CONTENT_TYPES:
-            raise NotFound(f"Unknown export format '{export_format}'.")
+            raise NotFound(f"Format d'export inconnu : '{export_format}'.")
 
         content = (
             rows_to_csv(query_class.FIELDS, rows)

@@ -2,9 +2,12 @@
 defineOptions({ name: 'DashboardVolumeTrendChart' })
 
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { VolumeDay } from './aggregate'
 
 const props = defineProps<{ days: VolumeDay[] }>()
+
+const { t } = useI18n()
 
 const maxValue = computed(() => Math.max(1, ...props.days.map((d) => d.value)))
 </script>
@@ -12,7 +15,7 @@ const maxValue = computed(() => Math.max(1, ...props.days.map((d) => d.value)))
 <template>
   <div class="border-ligne rounded-xl border bg-white p-4">
     <p class="text-texte-2 mb-4 text-xs font-medium uppercase">
-      Volumes livrés — 14 derniers jours
+      {{ t('dashboard.volumeTrend') }}
     </p>
     <div class="flex h-32 items-end gap-1.5">
       <div

@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import MasterDataView from '@/components/master-data/MasterDataView.vue'
 import type { FieldSchema } from '@/components/master-data/types'
+import { i18n } from '@/i18n'
 
 const fields: FieldSchema[] = [
   { key: 'name', label: 'Name', type: 'text', required: true },
@@ -32,7 +33,10 @@ function makeResource(initialRows: Record<string, unknown>[]) {
 describe('MasterDataView', () => {
   it('loads and renders rows on mount', async () => {
     const resource = makeResource([{ id: 1, name: 'Total Senegal', is_active: true }])
-    const wrapper = mount(MasterDataView, { props: { title: 'Suppliers', resource, fields } })
+    const wrapper = mount(MasterDataView, {
+      props: { title: 'Suppliers', resource, fields },
+      global: { plugins: [i18n] },
+    })
     await flushPromises()
 
     expect(resource.list).toHaveBeenCalled()
@@ -41,7 +45,10 @@ describe('MasterDataView', () => {
 
   it('creates a new record through the Add flow', async () => {
     const resource = makeResource([])
-    const wrapper = mount(MasterDataView, { props: { title: 'Suppliers', resource, fields } })
+    const wrapper = mount(MasterDataView, {
+      props: { title: 'Suppliers', resource, fields },
+      global: { plugins: [i18n] },
+    })
     await flushPromises()
 
     await wrapper.find('button').trigger('click') // "Add" button
@@ -56,12 +63,15 @@ describe('MasterDataView', () => {
   it('deletes a record through the Delete flow', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     const resource = makeResource([{ id: 1, name: 'Total Senegal', is_active: true }])
-    const wrapper = mount(MasterDataView, { props: { title: 'Suppliers', resource, fields } })
+    const wrapper = mount(MasterDataView, {
+      props: { title: 'Suppliers', resource, fields },
+      global: { plugins: [i18n] },
+    })
     await flushPromises()
 
     expect(wrapper.text()).toContain('Total Senegal')
 
-    const deleteButton = wrapper.findAll('button').find((b) => b.text() === 'Delete')
+    const deleteButton = wrapper.findAll('button').find((b) => b.text() === 'Supprimer')
     await deleteButton!.trigger('click')
     await flushPromises()
 

@@ -4,6 +4,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { createRouter, createWebHistory } from 'vue-router'
 import AppShell from '@/modules/shell/AppShell.vue'
 import { useAuthStore } from '@/stores/auth'
+import { i18n } from '@/i18n'
 
 function makeRouter() {
   const stub = { template: '<div />' }
@@ -48,9 +49,9 @@ describe('AppShell navigation', () => {
       role_detail: { id: 3, name: 'Operations', permissions: { operations: ['view'] } },
     }
 
-    const wrapper = mount(AppShell, { global: { plugins: [router] } })
+    const wrapper = mount(AppShell, { global: { plugins: [router, i18n] } })
 
-    expect(wrapper.text()).toContain('Products')
-    expect(wrapper.text()).not.toContain('Users')
+    expect(wrapper.text()).toContain('Produits')
+    expect(wrapper.text()).not.toContain('Utilisateurs')
   })
 })

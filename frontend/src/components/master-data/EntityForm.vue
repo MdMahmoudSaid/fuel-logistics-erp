@@ -1,6 +1,9 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import type { FieldSchema } from './types'
 import Button from '@/components/ui/Button.vue'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   fields: FieldSchema[]
@@ -65,8 +68,8 @@ function setField(key: string, value: unknown) {
     </div>
 
     <div class="flex justify-end gap-2 pt-2">
-      <Button type="button" variant="ghost" @click="$emit('cancel')">Cancel</Button>
-      <Button type="submit" variant="primary">Save</Button>
+      <Button type="button" variant="ghost" @click="$emit('cancel')">{{ t('common.cancel') }}</Button>
+      <Button type="submit" variant="primary">{{ t('common.save') }}</Button>
     </div>
   </form>
 </template>

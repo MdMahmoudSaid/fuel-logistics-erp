@@ -1,37 +1,85 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import GlobalSearchBar from '@/modules/search/GlobalSearchBar.vue'
 import AppLogo from '@/components/AppLogo.vue'
 import Button from '@/components/ui/Button.vue'
+import LanguageSwitcher from '@/components/LanguageSwitcher.vue'
 
-const NAV_ITEMS = [
-  { to: 'home', label: 'Dashboard', module: 'reports' },
-  { to: 'products', label: 'Products', module: 'operations' },
-  { to: 'suppliers', label: 'Suppliers', module: 'purchasing' },
-  { to: 'supplier-orders', label: 'Supplier Orders', module: 'purchasing' },
-  { to: 'cession-letters', label: 'Cession Letters', module: 'purchasing' },
-  { to: 'customers', label: 'Customers', module: 'sales' },
-  { to: 'customer-orders', label: 'Customer Orders', module: 'sales' },
-  { to: 'trips', label: 'Trips & Loading', module: 'operations' },
-  { to: 'sales', label: 'Sales', module: 'sales' },
-  { to: 'invoices', label: 'Invoices', module: 'sales' },
-  { to: 'transporters', label: 'Transporters', module: 'operations' },
-  { to: 'drivers', label: 'Drivers', module: 'operations' },
-  { to: 'trucks', label: 'Trucks', module: 'operations' },
-  { to: 'bank-accounts', label: 'Bank Accounts', module: 'finance' },
-  { to: 'cash-accounts', label: 'Cash Accounts', module: 'finance' },
-  { to: 'customer-payment-new', label: 'Record Customer Payment', module: 'finance' },
-  { to: 'expense-new', label: 'Record Expense', module: 'finance' },
-  { to: 'treasury-transactions', label: 'Treasury Journal', module: 'finance' },
-  { to: 'treasury-transfer', label: 'Internal Transfer', module: 'finance' },
-  { to: 'reports', label: 'Reports', module: 'reports' },
-  { to: 'users', label: 'Users', module: 'admin' },
-  { to: 'roles', label: 'Roles', module: 'admin' },
-  { to: 'loss-tolerance-settings', label: 'Loss Tolerance', module: 'admin' },
-  { to: 'audit-logs', label: 'Audit Log', module: 'admin' },
-] as const
+interface NavItem {
+  to: string
+  labelKey: string
+  module: string
+}
+interface NavGroup {
+  key: string
+  titleKey: string
+  items: NavItem[]
+}
+
+const HOME_ITEM: NavItem = { to: 'home', labelKey: 'navigation.home', module: 'reports' }
+
+// Regroupement métier de la Sidebar (§ simplification nav) : chaque groupe
+// est un accordéon repliable, seule l'entrée "Tableau de bord" reste un
+// lien direct hors groupe.
+const NAV_GROUPS: NavGroup[] = [
+  {
+    key: 'purchasing',
+    titleKey: 'navigation.groups.purchasing',
+    items: [
+      { to: 'suppliers', labelKey: 'navigation.suppliers', module: 'purchasing' },
+      { to: 'supplier-orders', labelKey: 'navigation.supplierOrders', module: 'purchasing' },
+      { to: 'cession-letters', labelKey: 'navigation.cessionLetters', module: 'purchasing' },
+    ],
+  },
+  {
+    key: 'sales',
+    titleKey: 'navigation.groups.sales',
+    items: [
+      { to: 'customers', labelKey: 'navigation.customers', module: 'sales' },
+      { to: 'customer-orders', labelKey: 'navigation.customerOrders', module: 'sales' },
+      { to: 'trips', labelKey: 'navigation.trips', module: 'operations' },
+      { to: 'sales', labelKey: 'navigation.sales', module: 'sales' },
+      { to: 'invoices', labelKey: 'navigation.invoices', module: 'sales' },
+    ],
+  },
+  {
+    key: 'fleet',
+    titleKey: 'navigation.groups.fleet',
+    items: [
+      { to: 'transporters', labelKey: 'navigation.transporters', module: 'operations' },
+      { to: 'drivers', labelKey: 'navigation.drivers', module: 'operations' },
+      { to: 'trucks', labelKey: 'navigation.trucks', module: 'operations' },
+    ],
+  },
+  {
+    key: 'treasury',
+    titleKey: 'navigation.groups.treasury',
+    items: [
+      { to: 'bank-accounts', labelKey: 'navigation.bankAccounts', module: 'finance' },
+      { to: 'cash-accounts', labelKey: 'navigation.cashAccounts', module: 'finance' },
+      { to: 'treasury-transactions', labelKey: 'navigation.treasuryTransactions', module: 'finance' },
+    ],
+  },
+  {
+    key: 'settings',
+    titleKey: 'navigation.groups.settings',
+    items: [
+      { to: 'products', labelKey: 'navigation.products', module: 'operations' },
+      { to: 'users', labelKey: 'navigation.users', module: 'admin' },
+      { to: 'roles', labelKey: 'navigation.roles', module: 'admin' },
+      { to: 'loss-tolerance-settings', labelKey: 'navigation.lossToleranceSettings', module: 'admin' },
+      { to: 'reports', labelKey: 'navigation.reports', module: 'reports' },
+      { to: 'audit-logs', labelKey: 'navigation.auditLogs', module: 'admin' },
+    ],
+  },
+]
+
+const NAV_ITEMS: NavItem[] = [HOME_ITEM, ...NAV_GROUPS.flatMap((group) => group.items)]
+
+const { t } = useI18n()
 
 // Sous-ensemble mis en avant dans la barre de navigation basse mobile
 // (zone tactile 56px, §0.4) ; le reste reste accessible via "Plus".
@@ -50,6 +98,7 @@ function isNavActive(name: string) {
 }
 
 const visibleNavItems = computed(() => NAV_ITEMS.filter((item) => auth.can(item.module, 'view')))
+const homeVisible = computed(() => auth.can(HOME_ITEM.module, 'view'))
 
 const bottomPrimaryItems = computed(() =>
   visibleNavItems.value.filter((item) => (BOTTOM_NAV_KEYS as readonly string[]).includes(item.to)),
@@ -59,6 +108,35 @@ const bottomOverflowItems = computed(() =>
 )
 
 const moreOpen = ref(false)
+
+// Sidebar desktop groupée par domaine métier (accordéons repliables) — les
+// groupes vides (aucune permission) disparaissent entièrement.
+const visibleGroups = computed(() =>
+  NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => auth.can(item.module, 'view')),
+  })).filter((group) => group.items.length > 0),
+)
+
+const openGroups = reactive<Record<string, boolean>>(
+  Object.fromEntries(
+    NAV_GROUPS.map((group) => [group.key, group.items.some((item) => isNavActive(item.to))]),
+  ),
+)
+
+function toggleGroup(key: string) {
+  openGroups[key] = !openGroups[key]
+}
+
+// Garde le groupe de la route active déplié même après navigation, sans
+// jamais refermer un groupe que l'utilisateur a ouvert manuellement.
+watch(
+  () => route.name,
+  (name) => {
+    const activeGroup = NAV_GROUPS.find((group) => group.items.some((item) => item.to === name))
+    if (activeGroup) openGroups[activeGroup.key] = true
+  },
+)
 
 function onLogout() {
   auth.logout()
@@ -82,20 +160,58 @@ onUnmounted(() => {
 <template>
   <div class="bg-sable text-texte flex min-h-screen">
     <!-- Sidebar (desktop) -->
-    <aside class="bg-bitume hidden w-60 shrink-0 flex-col md:flex">
+    <aside class="bg-bitume hidden w-60 shrink-0 flex-col overflow-y-auto md:flex">
       <div class="px-4 py-4">
         <AppLogo tone="light" :size="28" />
       </div>
-      <nav class="flex flex-col gap-0.5 px-2">
+      <nav class="flex flex-col gap-0.5 px-2 pb-4">
         <RouterLink
-          v-for="item in visibleNavItems"
-          :key="item.to"
-          :to="{ name: item.to }"
+          v-if="homeVisible"
+          :to="{ name: HOME_ITEM.to }"
           class="text-sable/70 hover:bg-bitume-2 hover:text-sable flex h-11 items-center rounded-lg border-l-2 border-transparent px-3 text-sm transition"
-          :class="isNavActive(item.to) ? '!border-orange bg-bitume-2 !text-sable font-medium' : ''"
+          :class="isNavActive(HOME_ITEM.to) ? '!border-orange bg-bitume-2 !text-sable font-medium' : ''"
         >
-          {{ item.label }}
+          {{ t(HOME_ITEM.labelKey) }}
         </RouterLink>
+
+        <div v-for="group in visibleGroups" :key="group.key" class="mt-1">
+          <button
+            type="button"
+            class="text-sable/50 hover:text-sable/80 flex min-h-9 w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-xs font-semibold tracking-wide uppercase transition"
+            :aria-expanded="openGroups[group.key]"
+            @click="toggleGroup(group.key)"
+          >
+            <span class="flex-1">{{ t(group.titleKey) }}</span>
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              class="shrink-0 transition-transform"
+              :class="openGroups[group.key] ? 'rotate-180' : ''"
+              aria-hidden="true"
+            >
+              <path
+                d="M6 9l6 6 6-6"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </button>
+          <div v-show="openGroups[group.key]" class="flex flex-col gap-0.5">
+            <RouterLink
+              v-for="item in group.items"
+              :key="item.to"
+              :to="{ name: item.to }"
+              class="text-sable/70 hover:bg-bitume-2 hover:text-sable flex h-11 items-center rounded-lg border-l-2 border-transparent px-3 text-sm transition"
+              :class="isNavActive(item.to) ? '!border-orange bg-bitume-2 !text-sable font-medium' : ''"
+            >
+              {{ t(item.labelKey) }}
+            </RouterLink>
+          </div>
+        </div>
       </nav>
     </aside>
 
@@ -115,7 +231,7 @@ onUnmounted(() => {
             stroke-linejoin="round"
           />
         </svg>
-        Hors ligne — les modifications seront synchronisées au retour du réseau.
+        {{ t('common.offline') }}
       </div>
 
       <header
@@ -125,13 +241,14 @@ onUnmounted(() => {
           <AppLogo :wordmark="false" :size="28" />
         </div>
         <GlobalSearchBar v-if="auth.can('reports', 'view')" class="max-w-md flex-1 md:flex-none" />
-        <span v-else class="text-texte-2 text-sm">Fuel &amp; transport operations</span>
+        <span v-else class="text-texte-2 text-sm">{{ t('common.brandTagline') }}</span>
         <div class="flex items-center gap-4">
           <span v-if="auth.user" class="text-texte-2 hidden text-sm sm:inline">
             {{ auth.user.full_name || auth.user.email }} · {{ auth.user.role_detail?.name }}
           </span>
+          <LanguageSwitcher />
           <Button variant="ghost" size="md" class="!h-9 !px-3 text-sm" @click="onLogout"
-            >Log out</Button
+            >{{ t('header.logout') }}</Button
           >
         </div>
       </header>
@@ -144,7 +261,7 @@ onUnmounted(() => {
     <!-- Bottom nav (mobile) — zone tactile 56px, §0.4 -->
     <nav
       class="bg-bitume border-bitume-2 fixed inset-x-0 bottom-0 z-20 flex h-14 items-stretch border-t md:hidden"
-      aria-label="Navigation principale"
+      :aria-label="t('common.mainNavigation')"
     >
       <RouterLink
         v-for="item in bottomPrimaryItems"
@@ -153,7 +270,7 @@ onUnmounted(() => {
         class="text-sable/70 flex flex-1 flex-col items-center justify-center gap-0.5 text-[11px]"
         :class="isNavActive(item.to) ? '!text-orange' : ''"
       >
-        {{ item.label }}
+        {{ t(item.labelKey) }}
       </RouterLink>
       <button
         v-if="bottomOverflowItems.length"
@@ -162,7 +279,7 @@ onUnmounted(() => {
         :class="moreOpen ? 'text-orange' : ''"
         @click="moreOpen = !moreOpen"
       >
-        Plus
+        {{ t('common.more') }}
       </button>
     </nav>
 
@@ -183,7 +300,7 @@ onUnmounted(() => {
           class="text-texte hover:bg-sable flex h-12 items-center rounded-lg px-3 text-sm"
           @click="moreOpen = false"
         >
-          {{ item.label }}
+          {{ t(item.labelKey) }}
         </RouterLink>
       </div>
     </div>

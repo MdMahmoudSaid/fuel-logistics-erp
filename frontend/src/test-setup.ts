@@ -10,3 +10,14 @@ Object.defineProperty(globalThis, 'localStorage', {
   configurable: true,
   writable: true,
 })
+
+// Every component may call useI18n(), so every @vue/test-utils mount needs
+// the i18n plugin installed — register it once globally instead of passing
+// `global: { plugins: [i18n] }` in each spec file. Imported dynamically
+// (after the localStorage polyfill above runs) because src/i18n/index.ts
+// reads localStorage at module load time, and static imports are hoisted
+// above the polyfill regardless of source order.
+const { config } = await import('@vue/test-utils')
+const { i18n } = await import('@/i18n')
+
+config.global.plugins.push(i18n)

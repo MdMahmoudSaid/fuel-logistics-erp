@@ -3,6 +3,7 @@ import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { createRouter, createWebHistory } from 'vue-router'
 import LoginView from '@/modules/auth/LoginView.vue'
+import { i18n } from '@/i18n'
 
 describe('LoginView', () => {
   beforeEach(() => {
@@ -21,11 +22,11 @@ describe('LoginView', () => {
     await router.isReady()
 
     const wrapper = mount(LoginView, {
-      global: { plugins: [router] },
+      global: { plugins: [router, i18n] },
     })
 
     expect(wrapper.find('input#email').exists()).toBe(true)
     expect(wrapper.find('input#password').exists()).toBe(true)
-    expect(wrapper.find('button[type="submit"]').text()).toContain('Sign in')
+    expect(wrapper.find('button[type="submit"]').text()).toContain('Se connecter')
   })
 })

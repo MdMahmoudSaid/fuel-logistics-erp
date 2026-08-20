@@ -1,6 +1,9 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { MODULES, ACTIONS } from './permissionSchema'
 import Button from '@/components/ui/Button.vue'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   modelValue: { name: string; permissions: Record<string, string[]> }
@@ -32,7 +35,7 @@ function setName(value: string) {
 <template>
   <form class="space-y-4" @submit.prevent="$emit('submit')">
     <div class="space-y-1.5">
-      <label class="text-texte-2 text-sm font-medium" for="role-name">Name</label>
+      <label class="text-texte-2 text-sm font-medium" for="role-name">{{ t('roles.name') }}</label>
       <input
         id="role-name"
         :value="modelValue.name"
@@ -46,15 +49,15 @@ function setName(value: string) {
       <table class="w-full text-left text-sm">
         <thead>
           <tr class="border-ligne text-texte-2 border-b">
-            <th class="px-3 py-2.5 font-medium">Module</th>
-            <th v-for="action in ACTIONS" :key="action" class="px-3 py-2.5 font-medium capitalize">
-              {{ action }}
+            <th class="px-3 py-2.5 font-medium">{{ t('roles.module') }}</th>
+            <th v-for="action in ACTIONS" :key="action" class="px-3 py-2.5 font-medium">
+              {{ t(`roles.actions.${action}`) }}
             </th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="module in MODULES" :key="module" class="border-ligne border-b last:border-0">
-            <td class="px-3 py-2.5 capitalize">{{ module }}</td>
+            <td class="px-3 py-2.5">{{ t(`roles.modules.${module}`) }}</td>
             <td v-for="action in ACTIONS" :key="action" class="px-3 py-2.5 text-center">
               <input
                 type="checkbox"
@@ -69,8 +72,8 @@ function setName(value: string) {
     </div>
 
     <div class="flex justify-end gap-2 pt-2">
-      <Button type="button" variant="ghost" @click="$emit('cancel')">Cancel</Button>
-      <Button type="submit" variant="primary">Save</Button>
+      <Button type="button" variant="ghost" @click="$emit('cancel')">{{ t('common.cancel') }}</Button>
+      <Button type="submit" variant="primary">{{ t('common.save') }}</Button>
     </div>
   </form>
 </template>

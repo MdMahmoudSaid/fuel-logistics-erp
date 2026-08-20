@@ -69,7 +69,7 @@ describe('GlobalSearchBar', () => {
 
     expect(searchGlobal).toHaveBeenCalledWith('AA-111')
     expect(wrapper.text()).toContain('AA-111-BB')
-    expect(wrapper.text()).toContain('IN_TRANSIT')
+    expect(wrapper.text()).toContain('En transit')
     expect(wrapper.text()).toContain('Client X')
   })
 

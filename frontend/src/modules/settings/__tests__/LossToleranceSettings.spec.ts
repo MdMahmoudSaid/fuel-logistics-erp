@@ -32,7 +32,7 @@ describe('LossToleranceSettings', () => {
     await flushPromises()
 
     expect((wrapper.find('#tolerance_litres').element as HTMLInputElement).value).toBe('100.00')
-    expect(wrapper.text()).toContain('Not yet configured')
+    expect(wrapper.text()).toContain('Non encore configuré')
   })
 
   it('saves the new tolerance and shows who last updated it', async () => {

@@ -3,6 +3,7 @@
 // (>=768px, chiffres Mono alignés à droite) / cartes empilées mobile
 // (<768px), avec puces de filtre statut à défilement horizontal.
 import { ref, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { createResourceApi } from '@/api/resource'
 import { customerOrderResource } from './api'
@@ -13,6 +14,7 @@ import MonoValue from '@/components/ui/MonoValue.vue'
 import Button from '@/components/ui/Button.vue'
 
 const router = useRouter()
+const { t } = useI18n()
 
 const orders = ref<CustomerOrder[]>([])
 const customers = ref<CustomerBrief[]>([])
@@ -36,17 +38,6 @@ const STATUSES: CustomerOrderStatus[] = [
   'CLOSED',
   'CANCELLED',
 ]
-
-const STATUS_LABEL: Record<CustomerOrderStatus, string> = {
-  DRAFT: 'Draft',
-  CONFIRMED: 'Confirmed',
-  PARTIALLY_ASSIGNED: 'Partially assigned',
-  IN_PROGRESS: 'In progress',
-  PARTIALLY_DELIVERED: 'Partially delivered',
-  DELIVERED: 'Delivered',
-  CLOSED: 'Closed',
-  CANCELLED: 'Cancelled',
-}
 
 function badgeVariant(status: CustomerOrderStatus) {
   if (status === 'DELIVERED' || status === 'CLOSED') return 'livre' as const
@@ -74,7 +65,7 @@ async function loadOrders() {
     const data = await customerOrderResource.list(params)
     orders.value = data.results
   } catch {
-    error.value = 'Could not load customer orders.'
+    error.value = t('sales.orderList.loadError')
   } finally {
     loading.value = false
   }
@@ -112,8 +103,10 @@ function goToDetail(order: CustomerOrder) {
 <template>
   <div class="space-y-4">
     <div class="flex items-center justify-between">
-      <h1 class="font-display text-2xl leading-none font-semibold uppercase">Customer Orders</h1>
-      <Button variant="primary" @click="goToNew">New Order</Button>
+      <h1 class="font-display text-2xl leading-none font-semibold uppercase">
+        {{ t('sales.orderList.title') }}
+      </h1>
+      <Button variant="primary" @click="goToNew">{{ t('sales.orderList.newOrder') }}</Button>
     </div>
 
     <div class="flex flex-wrap gap-3">
@@ -122,7 +115,7 @@ function goToDetail(order: CustomerOrder) {
         class="border-ligne-forte h-11 rounded-lg border bg-white px-3 text-sm"
         @change="loadOrders"
       >
-        <option value="">All customers</option>
+        <option value="">{{ t('sales.orderList.allCustomers') }}</option>
         <option v-for="c in customers" :key="c.id" :value="c.id">{{ c.name }}</option>
       </select>
       <select
@@ -130,20 +123,20 @@ function goToDetail(order: CustomerOrder) {
         class="border-ligne-forte h-11 rounded-lg border bg-white px-3 text-sm"
         @change="loadOrders"
       >
-        <option value="">All products</option>
+        <option value="">{{ t('sales.orderList.allProducts') }}</option>
         <option v-for="p in products" :key="p.id" :value="p.id">{{ p.name }}</option>
       </select>
     </div>
 
     <div class="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
-      <Chip :active="filters.status === ''" @click="clearStatus">Tous</Chip>
+      <Chip :active="filters.status === ''" @click="clearStatus">{{ t('sales.orderList.all') }}</Chip>
       <Chip
         v-for="status in STATUSES"
         :key="status"
         :active="filters.status === status"
         @click="toggleStatus(status)"
       >
-        {{ STATUS_LABEL[status] }}
+        {{ t(`customerOrderStatus.${status}`) }}
       </Chip>
     </div>
 
@@ -154,13 +147,21 @@ function goToDetail(order: CustomerOrder) {
       <table class="w-full text-left text-sm">
         <thead>
           <tr class="border-ligne text-texte-2 border-b">
-            <th class="px-3 py-2.5 font-medium">Customer</th>
-            <th class="px-3 py-2.5 font-medium">Product</th>
-            <th class="px-3 py-2.5 text-right font-medium">Ordered (L)</th>
-            <th class="px-3 py-2.5 text-right font-medium">Assigned (L)</th>
-            <th class="px-3 py-2.5 text-right font-medium">Delivered (L)</th>
-            <th class="px-3 py-2.5 text-right font-medium">Remaining (L)</th>
-            <th class="px-3 py-2.5 font-medium">Status</th>
+            <th class="px-3 py-2.5 font-medium">{{ t('sales.orderList.table.customer') }}</th>
+            <th class="px-3 py-2.5 font-medium">{{ t('sales.orderList.table.product') }}</th>
+            <th class="px-3 py-2.5 text-right font-medium">
+              {{ t('sales.orderList.table.ordered') }}
+            </th>
+            <th class="px-3 py-2.5 text-right font-medium">
+              {{ t('sales.orderList.table.assigned') }}
+            </th>
+            <th class="px-3 py-2.5 text-right font-medium">
+              {{ t('sales.orderList.table.delivered') }}
+            </th>
+            <th class="px-3 py-2.5 text-right font-medium">
+              {{ t('sales.orderList.table.remaining') }}
+            </th>
+            <th class="px-3 py-2.5 font-medium">{{ t('sales.orderList.table.status') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -185,11 +186,15 @@ function goToDetail(order: CustomerOrder) {
               <MonoValue :value="Number(order.remaining_quantity).toLocaleString()" />
             </td>
             <td class="px-3 py-2.5">
-              <Badge :variant="badgeVariant(order.status)">{{ STATUS_LABEL[order.status] }}</Badge>
+              <Badge :variant="badgeVariant(order.status)">{{
+                t(`customerOrderStatus.${order.status}`)
+              }}</Badge>
             </td>
           </tr>
           <tr v-if="!loading && orders.length === 0">
-            <td colspan="7" class="text-texte-3 px-3 py-8 text-center">No customer orders yet.</td>
+            <td colspan="7" class="text-texte-3 px-3 py-8 text-center">
+              {{ t('sales.orderList.noOrders') }}
+            </td>
           </tr>
         </tbody>
       </table>
@@ -209,19 +214,21 @@ function goToDetail(order: CustomerOrder) {
             <p class="font-medium">{{ order.customer_detail?.name }}</p>
             <p class="text-texte-2 text-xs">{{ order.product_detail?.name }}</p>
           </div>
-          <Badge :variant="badgeVariant(order.status)">{{ STATUS_LABEL[order.status] }}</Badge>
+          <Badge :variant="badgeVariant(order.status)">{{
+            t(`customerOrderStatus.${order.status}`)
+          }}</Badge>
         </div>
         <div class="grid grid-cols-3 gap-2 text-xs">
           <div>
-            <p class="text-texte-3 uppercase">Ordered</p>
+            <p class="text-texte-3 uppercase">{{ t('sales.orderList.table.ordered') }}</p>
             <MonoValue :value="Number(order.quantity_ordered).toLocaleString()" align="left" />
           </div>
           <div>
-            <p class="text-texte-3 uppercase">Delivered</p>
+            <p class="text-texte-3 uppercase">{{ t('sales.orderList.table.delivered') }}</p>
             <MonoValue :value="Number(order.delivered_quantity).toLocaleString()" align="left" />
           </div>
           <div>
-            <p class="text-texte-3 uppercase">Remaining</p>
+            <p class="text-texte-3 uppercase">{{ t('sales.orderList.table.remaining') }}</p>
             <MonoValue :value="Number(order.remaining_quantity).toLocaleString()" align="left" />
           </div>
         </div>
@@ -230,7 +237,7 @@ function goToDetail(order: CustomerOrder) {
         v-if="!loading && orders.length === 0"
         class="text-texte-3 border-ligne rounded-xl border border-dashed p-6 text-center text-sm"
       >
-        No customer orders yet.
+        {{ t('sales.orderList.noOrders') }}
       </p>
     </div>
   </div>

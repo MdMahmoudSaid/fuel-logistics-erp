@@ -1,19 +1,24 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { tripResource, fetchTripHistory, postTripStatus } from './api'
+import { translateApiError } from '@/i18n/apiErrors'
 import DeliveryControlForm from './DeliveryControlForm.vue'
 import { TRIP_STATUSES } from './types'
-import type { Trip, TripStatusHistoryEntry } from './types'
+import type { Trip, TripStatus, TripStatusHistoryEntry } from './types'
 import { fetchReport } from '@/modules/reports/api'
 import { lossSeverityTone, type LossReportRow } from '@/modules/dashboard/aggregate'
 import GaugeBar from '@/components/ui/GaugeBar.vue'
 import MonoValue from '@/components/ui/MonoValue.vue'
+import { useTripStatusLabel } from './tripStatusLabels'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const { t } = useI18n()
+const statusLabel = useTripStatusLabel()
 
 const tripId = computed(() => Number(route.params.id))
 
@@ -31,7 +36,7 @@ async function load() {
       fetchTripHistory(tripId.value),
     ])
   } catch {
-    error.value = 'Could not load this trip.'
+    error.value = t('trips.detail.loadError')
   } finally {
     loading.value = false
   }
@@ -100,7 +105,7 @@ async function onChangeStatus() {
     await load()
   } catch (e) {
     const data = (e as { response?: { data?: { detail?: string } } })?.response?.data
-    statusError.value = data?.detail || 'Could not change status.'
+    statusError.value = translateApiError(data?.detail) || t('trips.detail.statusChangeError')
   } finally {
     changingStatus.value = false
   }
@@ -122,34 +127,36 @@ function formatDateTime(value: string) {
 <template>
   <div class="max-w-3xl space-y-6">
     <div class="flex items-center justify-between">
-      <h2 class="text-lg font-semibold text-slate-800">Trip {{ trip?.reference ?? '' }}</h2>
+      <h2 class="text-lg font-semibold text-slate-800">
+        {{ t('trips.detail.title', { reference: trip?.reference ?? '' }) }}
+      </h2>
       <button class="px-3 py-2 text-sm text-slate-500" @click="router.push({ name: 'trips' })">
-        Back to board
+        {{ t('trips.detail.backToBoard') }}
       </button>
     </div>
 
     <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
-    <p v-else-if="loading" class="text-sm text-slate-400">Loading…</p>
+    <p v-else-if="loading" class="text-sm text-slate-400">{{ t('common.loading') }}</p>
 
     <template v-else-if="trip">
       <section class="grid grid-cols-2 gap-4 rounded border bg-white p-4 text-sm">
         <div>
-          <span class="text-slate-500">Status</span>
+          <span class="text-slate-500">{{ t('trips.detail.status') }}</span>
           <p>
             <span
               class="rounded-full px-2 py-0.5 text-xs font-medium"
               :class="STATUS_BADGE[trip.status] ?? 'bg-amber-100 text-amber-700'"
             >
-              {{ trip.status }}
+              {{ statusLabel(trip.status) }}
             </span>
           </p>
         </div>
         <div>
-          <span class="text-slate-500">Truck</span>
+          <span class="text-slate-500">{{ t('trips.detail.truck') }}</span>
           <p class="font-medium text-slate-800">{{ trip.truck_detail?.internal_id }}</p>
         </div>
         <div>
-          <span class="text-slate-500">Transporter</span>
+          <span class="text-slate-500">{{ t('trips.detail.transporter') }}</span>
           <p class="font-medium text-slate-800">
             <RouterLink
               class="underline decoration-dotted"
@@ -160,39 +167,39 @@ function formatDateTime(value: string) {
           </p>
         </div>
         <div>
-          <span class="text-slate-500">Driver</span>
+          <span class="text-slate-500">{{ t('trips.detail.driver') }}</span>
           <p class="font-medium text-slate-800">{{ trip.driver_detail?.name ?? '—' }}</p>
         </div>
         <div>
-          <span class="text-slate-500">Supplier</span>
+          <span class="text-slate-500">{{ t('trips.detail.supplier') }}</span>
           <p class="font-medium text-slate-800">{{ trip.supplier_detail?.name }}</p>
         </div>
         <div>
-          <span class="text-slate-500">Product</span>
+          <span class="text-slate-500">{{ t('trips.detail.product') }}</span>
           <p class="font-medium text-slate-800">{{ trip.product_detail?.name }}</p>
         </div>
         <div>
-          <span class="text-slate-500">Quantity loaded</span>
+          <span class="text-slate-500">{{ t('trips.detail.quantityLoaded') }}</span>
           <p class="font-medium text-slate-800">
             {{ Number(trip.quantity_loaded).toLocaleString() }} L
           </p>
         </div>
         <div>
-          <span class="text-slate-500">Loading date</span>
+          <span class="text-slate-500">{{ t('trips.detail.loadingDate') }}</span>
           <p class="font-medium text-slate-800">{{ trip.loading_date }}</p>
         </div>
         <div>
-          <span class="text-slate-500">BL reference</span>
+          <span class="text-slate-500">{{ t('trips.detail.blReference') }}</span>
           <p class="font-medium text-slate-800">{{ trip.bl_reference }}</p>
         </div>
         <div>
-          <span class="text-slate-500">Client</span>
+          <span class="text-slate-500">{{ t('trips.detail.client') }}</span>
           <p class="font-medium text-slate-800">
-            {{ trip.client_detail?.name ?? (trip.customer_order ? '—' : 'Direct sale') }}
+            {{ trip.client_detail?.name ?? (trip.customer_order ? '—' : t('trips.directSale')) }}
           </p>
         </div>
         <div v-if="trip.customer_order">
-          <span class="text-slate-500">Customer order</span>
+          <span class="text-slate-500">{{ t('trips.detail.customerOrder') }}</span>
           <p>
             <RouterLink
               class="font-medium text-slate-800 underline decoration-dotted"
@@ -203,29 +210,33 @@ function formatDateTime(value: string) {
           </p>
         </div>
         <div v-if="trip.notes" class="col-span-2">
-          <span class="text-slate-500">Notes</span>
+          <span class="text-slate-500">{{ t('trips.detail.notes') }}</span>
           <p class="font-medium text-slate-800">{{ trip.notes }}</p>
         </div>
       </section>
 
       <section v-if="canChangeStatus" class="space-y-3 rounded border bg-white p-4">
-        <h3 class="text-base font-semibold text-slate-800">Change status</h3>
+        <h3 class="text-base font-semibold text-slate-800">{{ t('trips.detail.changeStatus') }}</h3>
         <p v-if="statusError" class="text-sm text-red-600">{{ statusError }}</p>
 
         <div class="flex flex-wrap items-end gap-2">
           <div class="space-y-1">
-            <label class="text-sm font-medium text-slate-600" for="next_status">Next status</label>
+            <label class="text-sm font-medium text-slate-600" for="next_status">{{
+              t('trips.detail.nextStatus')
+            }}</label>
             <select
               id="next_status"
               v-model="nextStatus"
               class="rounded border border-slate-300 px-2 py-1.5 text-sm"
             >
-              <option value="" disabled>Select a status</option>
-              <option v-for="s in TRIP_STATUSES" :key="s" :value="s">{{ s }}</option>
+              <option value="" disabled>{{ t('trips.detail.selectStatus') }}</option>
+              <option v-for="s in TRIP_STATUSES" :key="s" :value="s">{{ statusLabel(s) }}</option>
             </select>
           </div>
           <div class="flex-1 space-y-1">
-            <label class="text-sm font-medium text-slate-600" for="status_notes">Notes</label>
+            <label class="text-sm font-medium text-slate-600" for="status_notes">{{
+              t('trips.detail.notes')
+            }}</label>
             <input
               id="status_notes"
               v-model="statusNotes"
@@ -238,7 +249,7 @@ function formatDateTime(value: string) {
             class="rounded bg-slate-800 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
             @click="onChangeStatus"
           >
-            {{ changingStatus ? 'Updating…' : 'Apply' }}
+            {{ changingStatus ? t('trips.detail.updating') : t('trips.detail.apply') }}
           </button>
         </div>
       </section>
@@ -251,10 +262,10 @@ function formatDateTime(value: string) {
       />
 
       <section v-if="deliveryData" class="border-ligne space-y-4 rounded-xl border bg-white p-4">
-        <h3 class="text-texte-2 text-sm font-semibold uppercase">Jauges</h3>
+        <h3 class="text-texte-2 text-sm font-semibold uppercase">{{ t('trips.detail.gauges') }}</h3>
         <div class="grid grid-cols-3 gap-4">
           <div>
-            <p class="text-texte-3 text-xs uppercase">Chargé</p>
+            <p class="text-texte-3 text-xs uppercase">{{ t('trips.detail.loaded') }}</p>
             <MonoValue
               :value="Number(deliveryData.loaded_quantity).toLocaleString()"
               unit="L"
@@ -262,7 +273,7 @@ function formatDateTime(value: string) {
             />
           </div>
           <div>
-            <p class="text-texte-3 text-xs uppercase">Livré</p>
+            <p class="text-texte-3 text-xs uppercase">{{ t('trips.detail.delivered') }}</p>
             <MonoValue
               :value="Number(deliveryData.received_quantity).toLocaleString()"
               unit="L"
@@ -270,7 +281,7 @@ function formatDateTime(value: string) {
             />
           </div>
           <div>
-            <p class="text-texte-3 text-xs uppercase">Écart</p>
+            <p class="text-texte-3 text-xs uppercase">{{ t('trips.detail.gap') }}</p>
             <MonoValue
               :value="Number(deliveryData.loss_quantity).toLocaleString()"
               unit="L"
@@ -279,28 +290,29 @@ function formatDateTime(value: string) {
             />
           </div>
         </div>
-        <GaugeBar :value="deliveredPct" tone="livre" label="Livré / Chargé" />
+        <GaugeBar :value="deliveredPct" tone="livre" :label="t('trips.detail.deliveredOverLoaded')" />
         <GaugeBar
           :value="Math.min(100, (lossPct / 5) * 100)"
           :tone="lossSeverityTone(lossPct)"
-          label="Écart"
+          :label="t('trips.detail.gap')"
         />
       </section>
 
       <section class="space-y-3 rounded border bg-white p-4">
-        <h3 class="text-base font-semibold text-slate-800">History</h3>
+        <h3 class="text-base font-semibold text-slate-800">{{ t('trips.detail.history') }}</h3>
         <ol class="space-y-3 border-l border-slate-200 pl-4">
           <li v-for="entry in history" :key="entry.id" class="relative text-sm">
             <span class="absolute -left-[21px] top-1 h-2 w-2 rounded-full bg-slate-400" />
             <p class="font-medium text-slate-800">
-              {{ entry.previous_status }} → {{ entry.new_status }}
+              {{ statusLabel(entry.previous_status as TripStatus) }} →
+              {{ statusLabel(entry.new_status as TripStatus) }}
             </p>
             <p class="text-xs text-slate-500">
               {{ formatDateTime(entry.changed_at) }} · {{ entry.changed_by_detail?.email }}
             </p>
             <p v-if="entry.notes" class="text-slate-600">{{ entry.notes }}</p>
           </li>
-          <li v-if="!history.length" class="text-slate-400">No status changes yet.</li>
+          <li v-if="!history.length" class="text-slate-400">{{ t('trips.detail.noHistory') }}</li>
         </ol>
       </section>
     </template>

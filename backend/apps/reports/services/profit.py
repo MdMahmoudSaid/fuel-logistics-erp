@@ -71,9 +71,9 @@ class TripProfitService:
         expected_price = cls._expected_unit_price(trip)
         if expected_price is None:
             raise ValueError(
-                f"No expected selling price known for trip {trip.reference}; "
-                "set CustomerOrder.expected_price or record a "
-                "ProductSellingPriceHistory entry first."
+                f"Aucun prix de vente attendu connu pour le trajet {trip.reference} ; "
+                "renseignez CustomerOrder.expected_price ou enregistrez d'abord une "
+                "entree ProductSellingPriceHistory."
             )
         revenue = trip.quantity_loaded * expected_price
         return (
@@ -91,8 +91,8 @@ class TripProfitService:
         sale = getattr(trip, "sale", None)
         if sale is None:
             raise ValueError(
-                f"Trip {trip.reference} has no Sale yet; cannot compute its "
-                "current margin."
+                f"Le trajet {trip.reference} n'a pas encore de vente ; impossible de "
+                "calculer sa marge actuelle."
             )
         revenue = sale.delivered_quantity * sale.unit_selling_price
         return (
@@ -111,8 +111,8 @@ class TripProfitService:
         exists."""
         if trip.status != Trip.Status.COMPLETED:
             raise ValueError(
-                f"Trip {trip.reference} is not COMPLETED; only a closed "
-                "trip has a final margin."
+                f"Le trajet {trip.reference} n'est pas COMPLETED ; seul un trajet "
+                "cloture a une marge finale."
             )
         return cls.calculate_current_margin(trip)
 
@@ -123,8 +123,8 @@ class TripProfitService:
         sale = getattr(trip, "sale", None)
         if sale is None:
             raise ValueError(
-                f"Trip {trip.reference} has no Sale yet; cannot break down "
-                "its costs."
+                f"Le trajet {trip.reference} n'a pas encore de vente ; impossible de "
+                "decomposer ses couts."
             )
         expenses_by_category: dict[str, Decimal] = {}
         for allocation in cls._expense_allocations(trip).select_related("expense"):

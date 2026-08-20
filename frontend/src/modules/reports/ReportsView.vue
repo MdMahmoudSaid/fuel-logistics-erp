@@ -2,6 +2,7 @@
 // docs/PHASE_6_PLAN.md Etape 8: report selector + interactive table +
 // CSV/Excel export, driving GET /api/reports/{report_type}/.
 import { ref, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import DateRangeFilter from '@/components/DateRangeFilter.vue'
 import type { DateRangeValue } from '@/components/date-range'
 import { useAuthStore } from '@/stores/auth'
@@ -11,6 +12,20 @@ import type { ReportResponse } from './types'
 import Button from '@/components/ui/Button.vue'
 
 const auth = useAuthStore()
+const { t, te } = useI18n()
+
+function reportLabel(value: string): string {
+  const key = `reports.types.${value}.label`
+  return te(key) ? t(key) : value
+}
+function reportIdLabel(value: string): string {
+  const key = `reports.types.${value}.idLabel`
+  return te(key) ? t(key) : value
+}
+function fieldLabel(field: string): string {
+  const key = `reports.fields.${field}`
+  return te(key) ? t(key) : field.replace(/_/g, ' ')
+}
 const canExport = computed(() => auth.can('reports', 'export'))
 
 const selectedType = ref(REPORT_TYPES[0]!.value)
@@ -39,7 +54,7 @@ async function runReport() {
   try {
     report.value = await fetchReport(selectedType.value, buildParams())
   } catch {
-    error.value = 'Could not load this report.'
+    error.value = t('reports.loadError')
     report.value = null
   } finally {
     loading.value = false
@@ -51,7 +66,7 @@ async function exportReport(format: 'csv' | 'xlsx') {
   try {
     await downloadReportExport(selectedType.value, format, buildParams())
   } catch {
-    error.value = 'Could not export this report.'
+    error.value = t('reports.exportError')
   } finally {
     exporting.value = false
   }
@@ -69,23 +84,23 @@ function cellValue(row: Record<string, unknown>, field: string): string {
 
 <template>
   <div class="max-w-6xl space-y-6">
-    <h1 class="font-display text-2xl leading-none font-semibold uppercase">Reports</h1>
+    <h1 class="font-display text-2xl leading-none font-semibold uppercase">{{ t('reports.title') }}</h1>
 
     <div class="border-ligne flex flex-wrap items-end gap-3 rounded-xl border bg-surface p-4">
       <label class="space-y-1.5 text-sm">
-        <span class="text-texte-2 block font-medium">Report type</span>
+        <span class="text-texte-2 block font-medium">{{ t('reports.reportType') }}</span>
         <select
           v-model="selectedType"
           class="border-ligne-forte h-11 rounded-lg border bg-white px-3 text-sm"
         >
           <option v-for="option in REPORT_TYPES" :key="option.value" :value="option.value">
-            {{ option.label }}
+            {{ reportLabel(option.value) }}
           </option>
         </select>
       </label>
 
       <label v-if="currentOption?.idParam" class="space-y-1.5 text-sm">
-        <span class="text-texte-2 block font-medium">{{ currentOption.idLabel }}</span>
+        <span class="text-texte-2 block font-medium">{{ reportIdLabel(currentOption.value) }}</span>
         <input
           v-model="entityId"
           type="text"
@@ -95,27 +110,27 @@ function cellValue(row: Record<string, unknown>, field: string): string {
 
       <DateRangeFilter @change="onDateRangeChange" />
 
-      <Button variant="primary" :disabled="loading" @click="runReport">Run report</Button>
+      <Button variant="primary" :disabled="loading" @click="runReport">{{ t('reports.runReport') }}</Button>
 
       <template v-if="canExport && report">
         <Button variant="ghost" :disabled="exporting" @click="exportReport('csv')">
-          Export CSV
+          {{ t('reports.exportCsv') }}
         </Button>
         <Button variant="ghost" :disabled="exporting" @click="exportReport('xlsx')">
-          Export Excel
+          {{ t('reports.exportExcel') }}
         </Button>
       </template>
     </div>
 
     <p v-if="error" class="text-critique text-sm">{{ error }}</p>
-    <p v-else-if="loading" class="text-texte-3 text-sm">Loading…</p>
+    <p v-else-if="loading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
     <section v-else-if="report" class="border-ligne overflow-auto rounded-xl border bg-white">
       <table class="w-full text-left text-sm">
         <thead>
           <tr class="border-ligne text-texte-2 border-b">
             <th v-for="field in report.fields" :key="field" class="px-3 py-2.5 font-medium">
-              {{ field }}
+              {{ fieldLabel(field) }}
             </th>
           </tr>
         </thead>
@@ -131,7 +146,7 @@ function cellValue(row: Record<string, unknown>, field: string): string {
           </tr>
           <tr v-if="report.rows.length === 0">
             <td :colspan="report.fields.length" class="text-texte-3 px-3 py-8 text-center">
-              No data for this selection.
+              {{ t('reports.noData') }}
             </td>
           </tr>
         </tbody>

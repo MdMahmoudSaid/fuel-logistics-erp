@@ -182,7 +182,7 @@ describe('TripForm', () => {
     await wrapper.find('#quantity_loaded').setValue('50000')
     await flushPromises()
 
-    expect(wrapper.text()).toContain("Exceeds the cession's remaining quantity")
+    expect(wrapper.text()).toContain("Dépasse la quantité restante de la cession")
   })
 
   it('sends force=true only when the busy-truck override was used', async () => {

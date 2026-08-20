@@ -2,10 +2,13 @@
 // docs/PHASE_6_PLAN.md Etape 8: admin interface to inspect entity
 // modifications with a diff view highlighting changed values.
 import { ref, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { auditLogResource } from './api'
 import type { AuditLog } from './types'
 import Badge from '@/components/ui/Badge.vue'
 import MonoValue from '@/components/ui/MonoValue.vue'
+
+const { t, te } = useI18n()
 
 const logs = ref<AuditLog[]>([])
 const loading = ref(true)
@@ -19,7 +22,7 @@ async function load() {
     const data = await auditLogResource.list()
     logs.value = data.results
   } catch {
-    error.value = 'Could not load the audit log.'
+    error.value = t('auditLog.loadError')
   } finally {
     loading.value = false
   }
@@ -45,6 +48,11 @@ function formatValue(value: unknown): string {
   return value === null || value === undefined ? '—' : String(value)
 }
 
+function actionLabel(action: string): string {
+  const key = `auditLog.actions.${action}`
+  return te(key) ? t(key) : action
+}
+
 function badgeVariant(action: string) {
   if (action === 'CREATE') return 'livre' as const
   if (action === 'UPDATE') return 'transit' as const
@@ -56,29 +64,29 @@ function badgeVariant(action: string) {
 
 <template>
   <div class="max-w-5xl space-y-6">
-    <h1 class="font-display text-2xl leading-none font-semibold uppercase">Audit Log</h1>
+    <h1 class="font-display text-2xl leading-none font-semibold uppercase">{{ t('auditLog.title') }}</h1>
 
     <p v-if="error" class="text-critique text-sm">{{ error }}</p>
-    <p v-else-if="loading" class="text-texte-3 text-sm">Loading…</p>
+    <p v-else-if="loading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
     <section v-else class="border-ligne overflow-auto rounded-xl border bg-white">
       <table class="w-full text-left text-sm">
         <thead>
           <tr class="border-ligne text-texte-2 border-b">
             <th class="font-display px-3 py-2.5 text-xs font-medium tracking-wide uppercase">
-              Timestamp
+              {{ t('auditLog.timestamp') }}
             </th>
             <th class="font-display px-3 py-2.5 text-xs font-medium tracking-wide uppercase">
-              Action
+              {{ t('auditLog.action') }}
             </th>
             <th class="font-display px-3 py-2.5 text-xs font-medium tracking-wide uppercase">
-              Entity
+              {{ t('auditLog.entity') }}
             </th>
             <th class="font-display px-3 py-2.5 text-xs font-medium tracking-wide uppercase">
-              Object ID
+              {{ t('auditLog.objectId') }}
             </th>
             <th class="font-display px-3 py-2.5 text-xs font-medium tracking-wide uppercase">
-              User
+              {{ t('auditLog.user') }}
             </th>
             <th class="px-3 py-2.5"></th>
           </tr>
@@ -93,7 +101,7 @@ function badgeVariant(action: string) {
                 <MonoValue :value="new Date(log.timestamp).toLocaleString()" align="left" />
               </td>
               <td class="px-3 py-2.5">
-                <Badge :variant="badgeVariant(log.action)">{{ log.action }}</Badge>
+                <Badge :variant="badgeVariant(log.action)">{{ actionLabel(log.action) }}</Badge>
               </td>
               <td class="px-3 py-2.5">{{ log.content_type_label }}</td>
               <td class="px-3 py-2.5"><MonoValue :value="log.object_id" align="left" /></td>
@@ -103,14 +111,14 @@ function badgeVariant(action: string) {
             <tr v-if="expandedId === log.id" class="border-ligne bg-sable border-b last:border-0">
               <td colspan="6" class="px-4 py-3">
                 <p v-if="diffKeys(log).length === 0" class="text-texte-3 text-xs">
-                  No field-level changes recorded.
+                  {{ t('auditLog.noChanges') }}
                 </p>
                 <table v-else class="w-full text-xs">
                   <thead>
                     <tr class="text-texte-3">
-                      <th class="py-1 text-left font-medium">Field</th>
-                      <th class="py-1 text-left font-medium">Previous</th>
-                      <th class="py-1 text-left font-medium">New</th>
+                      <th class="py-1 text-left font-medium">{{ t('auditLog.field') }}</th>
+                      <th class="py-1 text-left font-medium">{{ t('auditLog.previous') }}</th>
+                      <th class="py-1 text-left font-medium">{{ t('auditLog.new') }}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -123,12 +131,16 @@ function badgeVariant(action: string) {
                     </tr>
                   </tbody>
                 </table>
-                <p v-if="log.reason" class="text-texte-2 mt-2 text-xs">Reason: {{ log.reason }}</p>
+                <p v-if="log.reason" class="text-texte-2 mt-2 text-xs">
+                  {{ t('auditLog.reason') }} {{ log.reason }}
+                </p>
               </td>
             </tr>
           </template>
           <tr v-if="logs.length === 0">
-            <td colspan="6" class="text-texte-3 px-3 py-8 text-center">No audit entries yet.</td>
+            <td colspan="6" class="text-texte-3 px-3 py-8 text-center">
+              {{ t('auditLog.noEntries') }}
+            </td>
           </tr>
         </tbody>
       </table>

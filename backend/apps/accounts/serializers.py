@@ -14,10 +14,10 @@ class RoleSerializer(serializers.ModelSerializer):
     def validate_permissions(self, value):
         for module, actions in value.items():
             if module not in Role.MODULES:
-                raise serializers.ValidationError(f"Unknown module: {module}")
+                raise serializers.ValidationError(f"Module inconnu : {module}")
             unknown_actions = set(actions) - set(Role.ACTIONS)
             if unknown_actions:
-                raise serializers.ValidationError(f"Unknown actions: {unknown_actions}")
+                raise serializers.ValidationError(f"Actions inconnues : {unknown_actions}")
         return value
 
 

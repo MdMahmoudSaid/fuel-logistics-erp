@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import RoleFormModal from './RoleFormModal.vue'
 import { createResourceApi } from '@/api/resource'
 import Button from '@/components/ui/Button.vue'
+
+const { t } = useI18n()
 
 interface RoleRecord {
   id: number
@@ -52,15 +55,15 @@ onMounted(load)
 <template>
   <div class="space-y-4">
     <div class="flex items-center justify-between">
-      <h1 class="font-display text-2xl leading-none font-semibold uppercase">Roles</h1>
-      <Button variant="primary" @click="openCreate">Add</Button>
+      <h1 class="font-display text-2xl leading-none font-semibold uppercase">{{ t('roles.title') }}</h1>
+      <Button variant="primary" @click="openCreate">{{ t('roles.add') }}</Button>
     </div>
 
     <div class="border-ligne overflow-x-auto rounded-xl border bg-white">
       <table class="w-full text-left text-sm">
         <thead>
           <tr class="border-ligne text-texte-2 border-b">
-            <th class="px-3 py-2.5 font-medium">Name</th>
+            <th class="px-3 py-2.5 font-medium">{{ t('roles.name') }}</th>
             <th class="px-3 py-2.5" />
           </tr>
         </thead>
@@ -72,11 +75,13 @@ onMounted(load)
           >
             <td class="px-3 py-2.5">{{ role.name }}</td>
             <td class="px-3 py-2.5 text-right">
-              <button class="text-texte-2 hover:text-texte" @click="openEdit(role)">Edit</button>
+              <button class="text-texte-2 hover:text-texte" @click="openEdit(role)">
+                {{ t('roles.edit') }}
+              </button>
             </td>
           </tr>
           <tr v-if="roles.length === 0">
-            <td colspan="2" class="text-texte-3 px-3 py-8 text-center">No roles yet.</td>
+            <td colspan="2" class="text-texte-3 px-3 py-8 text-center">{{ t('roles.noRoles') }}</td>
           </tr>
         </tbody>
       </table>
@@ -85,7 +90,7 @@ onMounted(load)
     <div v-if="showForm" class="fixed inset-0 z-30 flex items-center justify-center bg-black/40">
       <div class="bg-surface border-ligne w-full max-w-lg rounded-xl border p-6">
         <h2 class="font-display mb-4 text-lg leading-none font-semibold uppercase">
-          {{ editingId === null ? 'New' : 'Edit' }} Role
+          {{ editingId === null ? t('roles.newRole') : t('roles.editRole') }}
         </h2>
         <RoleFormModal v-model="formValue" @submit="onSubmit" @cancel="showForm = false" />
       </div>

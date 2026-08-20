@@ -38,7 +38,7 @@ describe('AuditLogViewer', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('purchasing.supplierorder')
-    expect(wrapper.text()).toContain('UPDATE')
+    expect(wrapper.text()).toContain('Modification')
     expect(wrapper.text()).toContain('admin@example.com')
   })
 

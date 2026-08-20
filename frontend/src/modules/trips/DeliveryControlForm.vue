@@ -10,9 +10,12 @@
 // "admin" view rights on /api/settings/loss-tolerance/). The authoritative,
 // frozen values always come back in the POST response.
 import { ref, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import { postDeliveryControl, type DeliveryControlPayload } from './api'
+import { translateApiError } from '@/i18n/apiErrors'
 import { fetchLossTolerance } from '@/modules/settings/api'
+import Button from '@/components/ui/Button.vue'
 import type { DeliveryControl, DeliveryMethod } from './types'
 
 const props = defineProps<{
@@ -24,6 +27,7 @@ const emit = defineEmits<{
 }>()
 
 const auth = useAuthStore()
+const { t } = useI18n()
 
 const DEFAULT_TOLERANCE_LITRES = 100
 
@@ -86,7 +90,7 @@ async function onSubmit() {
     emit('confirmed', control)
   } catch (e) {
     const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-    error.value = detail || 'Could not record delivery.'
+    error.value = translateApiError(detail) || t('trips.delivery.recordError')
   } finally {
     saving.value = false
   }
@@ -94,22 +98,24 @@ async function onSubmit() {
 </script>
 
 <template>
-  <form class="space-y-4 rounded border bg-white p-4" @submit.prevent="onSubmit">
-    <h3 class="text-base font-semibold text-slate-800">Delivery / discharge control</h3>
-    <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
+  <form class="border-ligne space-y-4 rounded-xl border bg-surface p-6" @submit.prevent="onSubmit">
+    <h2 class="font-display text-lg leading-none font-semibold uppercase">
+      {{ t('trips.delivery.title') }}
+    </h2>
+    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
 
     <div class="grid grid-cols-2 gap-4">
-      <div class="space-y-1">
-        <span class="text-sm font-medium text-slate-600">Loaded quantity</span>
-        <p id="loaded_quantity_display" class="text-sm font-medium text-slate-800">
+      <div class="space-y-1.5">
+        <span class="text-texte-2 text-sm font-medium">{{ t('trips.delivery.loadedQuantity') }}</span>
+        <p id="loaded_quantity_display" class="text-texte text-sm font-medium">
           {{ loadedQty.toLocaleString() }} L
         </p>
       </div>
 
-      <div class="space-y-1">
-        <label class="text-sm font-medium text-slate-600" for="received_quantity"
-          >Received quantity (L)</label
-        >
+      <div class="space-y-1.5">
+        <label class="text-texte-2 text-sm font-medium" for="received_quantity">{{
+          t('trips.delivery.receivedQuantity')
+        }}</label>
         <input
           id="received_quantity"
           v-model="form.received_quantity"
@@ -117,80 +123,86 @@ async function onSubmit() {
           step="0.01"
           min="0"
           required
-          class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+          class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
         />
       </div>
 
-      <div class="space-y-1">
-        <label class="text-sm font-medium text-slate-600" for="control_date">Control date</label>
+      <div class="space-y-1.5">
+        <label class="text-texte-2 text-sm font-medium" for="control_date">{{
+          t('trips.delivery.controlDate')
+        }}</label>
         <input
           id="control_date"
           v-model="form.control_date"
           type="date"
           required
-          class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+          class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
         />
       </div>
 
-      <div class="space-y-1">
-        <label class="text-sm font-medium text-slate-600" for="method">Method</label>
+      <div class="space-y-1.5">
+        <label class="text-texte-2 text-sm font-medium" for="method">{{
+          t('trips.delivery.method')
+        }}</label>
         <select
           id="method"
           v-model="form.method"
-          class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+          class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
         >
-          <option value="MANUAL_GAUGE">Manual gauge</option>
-          <option value="METER">Meter</option>
+          <option value="MANUAL_GAUGE">{{ t('trips.delivery.manualGauge') }}</option>
+          <option value="METER">{{ t('trips.delivery.meter') }}</option>
         </select>
       </div>
     </div>
 
     <div
       v-if="hasReceivedInput"
-      class="grid grid-cols-2 gap-4 rounded border border-slate-200 bg-slate-50 p-3 text-sm"
+      class="border-ligne grid grid-cols-2 gap-4 rounded-lg border bg-sable p-3 text-sm"
     >
       <div>
-        <span class="text-slate-500">Loss (est.)</span>
-        <p class="font-medium text-slate-800">{{ lossQty.toLocaleString() }} L</p>
+        <span class="text-texte-2">{{ t('trips.delivery.lossEstimate') }}</span>
+        <p class="text-texte font-medium">{{ lossQty.toLocaleString() }} L</p>
       </div>
       <div>
-        <span class="text-slate-500">Chargeable loss (est.)</span>
-        <p class="font-medium text-slate-800">{{ chargeableLossQty.toLocaleString() }} L</p>
+        <span class="text-texte-2">{{ t('trips.delivery.chargeableLossEstimate') }}</span>
+        <p class="text-texte font-medium">{{ chargeableLossQty.toLocaleString() }} L</p>
       </div>
     </div>
 
-    <div v-if="isAnomaly" class="space-y-2 rounded border border-amber-300 bg-amber-50 p-3">
-      <p class="text-sm font-medium text-amber-800">
-        Received quantity exceeds loaded quantity — this is an anomaly and requires authorized
-        confirmation before it can be recorded.
+    <div v-if="isAnomaly" class="border-ecart bg-ecart-tint space-y-2 rounded-lg border p-3">
+      <p class="text-ecart-texte text-sm font-medium">
+        {{ t('trips.delivery.anomalyWarning') }}
       </p>
-      <label v-if="canConfirmAnomaly" class="flex items-center gap-2 text-sm text-amber-900">
-        <input id="anomaly_confirmed" v-model="anomalyConfirmed" type="checkbox" />
-        I confirm this anomaly as an authorized user ({{ auth.user?.email }})
+      <label v-if="canConfirmAnomaly" class="text-ecart-texte flex items-center gap-2 text-sm">
+        <input
+          id="anomaly_confirmed"
+          v-model="anomalyConfirmed"
+          type="checkbox"
+          class="border-ligne-forte accent-orange h-5 w-5 rounded"
+        />
+        {{ t('trips.delivery.anomalyConfirm', { email: auth.user?.email ?? '' }) }}
       </label>
-      <p v-else class="text-sm text-amber-700">
-        Ask an authorized user to confirm this anomaly before it can be recorded.
+      <p v-else class="text-ecart-texte text-sm">
+        {{ t('trips.delivery.anomalyAskAuthorized') }}
       </p>
     </div>
 
-    <div class="space-y-1">
-      <label class="text-sm font-medium text-slate-600" for="notes">Notes</label>
+    <div class="space-y-1.5">
+      <label class="text-texte-2 text-sm font-medium" for="notes">{{
+        t('trips.detail.notes')
+      }}</label>
       <textarea
         id="notes"
         v-model="form.notes"
         rows="2"
-        class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+        class="border-ligne-forte w-full rounded-lg border bg-white px-3.5 py-2.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
       />
     </div>
 
     <div class="flex justify-end">
-      <button
-        type="submit"
-        :disabled="!canSubmit || saving"
-        class="rounded bg-slate-800 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
-      >
-        {{ saving ? 'Recording…' : 'Confirm delivery' }}
-      </button>
+      <Button type="submit" variant="primary" :disabled="!canSubmit" :loading="saving">
+        {{ saving ? t('trips.delivery.recording') : t('trips.delivery.confirmDelivery') }}
+      </Button>
     </div>
   </form>
 </template>
