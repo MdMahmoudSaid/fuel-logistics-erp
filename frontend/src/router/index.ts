@@ -17,7 +17,17 @@ const router = createRouter({
         {
           path: '',
           name: 'home',
-          component: () => import('@/modules/shell/DashboardPlaceholder.vue'),
+          component: () => import('@/modules/dashboard/DashboardView.vue'),
+        },
+        {
+          path: 'reports',
+          name: 'reports',
+          component: () => import('@/modules/reports/ReportsView.vue'),
+        },
+        {
+          path: 'audit-logs',
+          name: 'audit-logs',
+          component: () => import('@/modules/audit/AuditLogViewer.vue'),
         },
         {
           path: 'products',

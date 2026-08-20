@@ -2,8 +2,10 @@
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import GlobalSearchBar from '@/modules/search/GlobalSearchBar.vue'
 
 const NAV_ITEMS = [
+  { to: 'home', label: 'Dashboard', module: 'reports' },
   { to: 'products', label: 'Products', module: 'operations' },
   { to: 'suppliers', label: 'Suppliers', module: 'purchasing' },
   { to: 'supplier-orders', label: 'Supplier Orders', module: 'purchasing' },
@@ -22,9 +24,11 @@ const NAV_ITEMS = [
   { to: 'expense-new', label: 'Record Expense', module: 'finance' },
   { to: 'treasury-transactions', label: 'Treasury Journal', module: 'finance' },
   { to: 'treasury-transfer', label: 'Internal Transfer', module: 'finance' },
+  { to: 'reports', label: 'Reports', module: 'reports' },
   { to: 'users', label: 'Users', module: 'admin' },
   { to: 'roles', label: 'Roles', module: 'admin' },
   { to: 'loss-tolerance-settings', label: 'Loss Tolerance', module: 'admin' },
+  { to: 'audit-logs', label: 'Audit Log', module: 'admin' },
 ] as const
 
 const auth = useAuthStore()
@@ -57,7 +61,8 @@ function onLogout() {
 
     <div class="flex-1">
       <header class="flex items-center justify-between border-b bg-white px-6 py-3 shadow-sm">
-        <span class="text-sm text-slate-500">Fuel &amp; transport operations</span>
+        <GlobalSearchBar v-if="auth.can('reports', 'view')" />
+        <span v-else class="text-sm text-slate-500">Fuel &amp; transport operations</span>
         <div class="flex items-center gap-4 text-sm text-slate-600">
           <span v-if="auth.user">
             {{ auth.user.full_name || auth.user.email }} · {{ auth.user.role_detail?.name }}
