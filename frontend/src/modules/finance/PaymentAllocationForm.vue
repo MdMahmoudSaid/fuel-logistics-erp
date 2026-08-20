@@ -14,6 +14,7 @@ import type {
   InvoiceAllocationInput,
   PaymentMethod,
 } from './types'
+import Button from '@/components/ui/Button.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -136,27 +137,30 @@ async function onSubmit() {
 
 <template>
   <div class="max-w-3xl space-y-6">
-    <h2 class="text-lg font-semibold text-slate-800">New Customer Payment</h2>
+    <h1 class="font-display text-2xl leading-none font-semibold uppercase">New Customer Payment</h1>
 
-    <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
+    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
 
-    <form class="space-y-4 rounded border bg-white p-4" @submit.prevent="onSubmit">
+    <form
+      class="border-ligne space-y-4 rounded-xl border bg-surface p-6"
+      @submit.prevent="onSubmit"
+    >
       <div class="grid grid-cols-2 gap-4">
-        <div class="space-y-1">
-          <label class="text-sm font-medium text-slate-600" for="customer">Customer</label>
+        <div class="space-y-1.5">
+          <label class="text-texte-2 text-sm font-medium" for="customer">Customer</label>
           <select
             id="customer"
             v-model="form.customer"
             required
-            class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           >
             <option value="" disabled>Select a customer</option>
             <option v-for="c in customers" :key="c.id" :value="c.id">{{ c.name }}</option>
           </select>
         </div>
 
-        <div class="space-y-1">
-          <label class="text-sm font-medium text-slate-600" for="amount">Amount</label>
+        <div class="space-y-1.5">
+          <label class="text-texte-2 text-sm font-medium" for="amount">Amount</label>
           <input
             id="amount"
             v-model="form.amount"
@@ -164,27 +168,27 @@ async function onSubmit() {
             step="0.01"
             min="0.01"
             required
-            class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           />
         </div>
 
-        <div class="space-y-1">
-          <label class="text-sm font-medium text-slate-600" for="payment_date">Payment date</label>
+        <div class="space-y-1.5">
+          <label class="text-texte-2 text-sm font-medium" for="payment_date">Payment date</label>
           <input
             id="payment_date"
             v-model="form.payment_date"
             type="date"
             required
-            class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           />
         </div>
 
-        <div class="space-y-1">
-          <label class="text-sm font-medium text-slate-600" for="method">Method</label>
+        <div class="space-y-1.5">
+          <label class="text-texte-2 text-sm font-medium" for="method">Method</label>
           <select
             id="method"
             v-model="form.method"
-            class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           >
             <option value="CASH">Cash</option>
             <option value="BANK_TRANSFER">Bank transfer</option>
@@ -193,54 +197,59 @@ async function onSubmit() {
           </select>
         </div>
 
-        <div class="space-y-1">
-          <label class="text-sm font-medium text-slate-600" for="reference">Reference</label>
+        <div class="space-y-1.5">
+          <label class="text-texte-2 text-sm font-medium" for="reference">Reference</label>
           <input
             id="reference"
             v-model="form.reference"
-            class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           />
         </div>
 
         <div class="flex items-center gap-2 pt-6">
-          <input id="is_indirect" v-model="form.is_indirect" type="checkbox" />
-          <label class="text-sm font-medium text-slate-600" for="is_indirect">
+          <input
+            id="is_indirect"
+            v-model="form.is_indirect"
+            type="checkbox"
+            class="border-ligne-forte accent-orange h-5 w-5 rounded"
+          />
+          <label class="text-texte-2 text-sm font-medium" for="is_indirect">
             Indirect payment (no treasury movement)
           </label>
         </div>
       </div>
 
-      <div v-if="!form.is_indirect" class="grid grid-cols-2 gap-4 border-t pt-4">
-        <div class="space-y-1">
-          <label class="text-sm font-medium text-slate-600" for="account_type">Account type</label>
+      <div v-if="!form.is_indirect" class="border-ligne grid grid-cols-2 gap-4 border-t pt-4">
+        <div class="space-y-1.5">
+          <label class="text-texte-2 text-sm font-medium" for="account_type">Account type</label>
           <select
             id="account_type"
             v-model="form.account_type"
-            class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           >
             <option value="cash">Cash</option>
             <option value="bank">Bank</option>
           </select>
         </div>
-        <div v-if="form.account_type === 'bank'" class="space-y-1">
-          <label class="text-sm font-medium text-slate-600" for="bank_account">Bank account</label>
+        <div v-if="form.account_type === 'bank'" class="space-y-1.5">
+          <label class="text-texte-2 text-sm font-medium" for="bank_account">Bank account</label>
           <select
             id="bank_account"
             v-model="form.bank_account"
             required
-            class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           >
             <option value="" disabled>Select a bank account</option>
             <option v-for="a in bankAccounts" :key="a.id" :value="a.id">{{ a.name }}</option>
           </select>
         </div>
-        <div v-else class="space-y-1">
-          <label class="text-sm font-medium text-slate-600" for="cash_account">Cash account</label>
+        <div v-else class="space-y-1.5">
+          <label class="text-texte-2 text-sm font-medium" for="cash_account">Cash account</label>
           <select
             id="cash_account"
             v-model="form.cash_account"
             required
-            class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           >
             <option value="" disabled>Select a cash account</option>
             <option v-for="a in cashAccounts" :key="a.id" :value="a.id">{{ a.name }}</option>
@@ -248,23 +257,19 @@ async function onSubmit() {
         </div>
       </div>
 
-      <div class="space-y-2 border-t pt-4">
+      <div class="border-ligne space-y-2 border-t pt-4">
         <div class="flex items-center justify-between">
-          <h3 class="text-sm font-semibold text-slate-700">Allocate to invoices</h3>
-          <button
-            type="button"
-            class="text-sm text-slate-500 hover:text-slate-800"
-            @click="addLine"
-          >
+          <h2 class="font-display text-sm font-semibold uppercase">Allocate to invoices</h2>
+          <button type="button" class="text-texte-2 hover:text-texte text-sm" @click="addLine">
             + Add line
           </button>
         </div>
-        <p v-if="loadingInvoices" class="text-sm text-slate-400">Loading unpaid invoices…</p>
+        <p v-if="loadingInvoices" class="text-texte-3 text-sm">Loading unpaid invoices…</p>
 
         <div v-for="(line, index) in lines" :key="index" class="flex items-center gap-2">
           <select
             v-model="line.invoice"
-            class="flex-1 rounded border border-slate-300 px-3 py-2 text-sm"
+            class="border-ligne-forte h-12 flex-1 rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           >
             <option value="">Unallocated credit</option>
             <option v-for="inv in unpaidInvoices" :key="inv.id" :value="inv.id">
@@ -277,33 +282,29 @@ async function onSubmit() {
             step="0.01"
             min="0"
             placeholder="Amount"
-            class="w-40 rounded border border-slate-300 px-3 py-2 text-sm"
+            class="border-ligne-forte h-12 w-40 rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           />
           <button
             type="button"
-            class="text-sm text-red-500 hover:text-red-700"
+            class="text-critique text-sm hover:brightness-90"
             @click="removeLine(index)"
           >
             Remove
           </button>
         </div>
 
-        <p class="text-sm text-slate-500">
+        <p class="text-texte-2 text-sm">
           Allocated: {{ allocatedTotal.toLocaleString() }} · Remaining unallocated:
-          <span :class="unallocatedRemainder < 0 ? 'font-medium text-red-600' : ''">
+          <span :class="unallocatedRemainder < 0 ? 'text-critique font-medium' : ''">
             {{ unallocatedRemainder.toLocaleString() }}
           </span>
         </p>
       </div>
 
       <div class="flex justify-end">
-        <button
-          type="submit"
-          :disabled="saving"
-          class="rounded bg-slate-800 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
-        >
+        <Button type="submit" variant="primary" :loading="saving">
           {{ saving ? 'Saving…' : 'Record payment' }}
-        </button>
+        </Button>
       </div>
     </form>
   </div>

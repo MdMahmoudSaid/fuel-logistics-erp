@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import RoleFormModal from './RoleFormModal.vue'
 import { createResourceApi } from '@/api/resource'
+import Button from '@/components/ui/Button.vue'
 
 interface RoleRecord {
   id: number
@@ -51,24 +52,41 @@ onMounted(load)
 <template>
   <div class="space-y-4">
     <div class="flex items-center justify-between">
-      <h2 class="text-lg font-semibold text-slate-800">Roles</h2>
-      <button class="rounded bg-slate-800 px-3 py-2 text-sm font-medium text-white" @click="openCreate">
-        Add
-      </button>
+      <h1 class="font-display text-2xl leading-none font-semibold uppercase">Roles</h1>
+      <Button variant="primary" @click="openCreate">Add</Button>
     </div>
 
-    <ul class="divide-y rounded border bg-white">
-      <li v-for="role in roles" :key="role.id" class="flex items-center justify-between px-3 py-2 text-sm">
-        <span>{{ role.name }}</span>
-        <button class="text-slate-500 hover:text-slate-800" @click="openEdit(role)">Edit</button>
-      </li>
-    </ul>
+    <div class="border-ligne overflow-x-auto rounded-xl border bg-white">
+      <table class="w-full text-left text-sm">
+        <thead>
+          <tr class="border-ligne text-texte-2 border-b">
+            <th class="px-3 py-2.5 font-medium">Name</th>
+            <th class="px-3 py-2.5" />
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="role in roles"
+            :key="role.id"
+            class="border-ligne hover:bg-sable border-b last:border-0"
+          >
+            <td class="px-3 py-2.5">{{ role.name }}</td>
+            <td class="px-3 py-2.5 text-right">
+              <button class="text-texte-2 hover:text-texte" @click="openEdit(role)">Edit</button>
+            </td>
+          </tr>
+          <tr v-if="roles.length === 0">
+            <td colspan="2" class="text-texte-3 px-3 py-8 text-center">No roles yet.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
 
-    <div v-if="showForm" class="fixed inset-0 flex items-center justify-center bg-black/30">
-      <div class="w-full max-w-lg rounded-lg bg-white p-6 shadow-lg">
-        <h3 class="mb-4 text-base font-semibold text-slate-800">
+    <div v-if="showForm" class="fixed inset-0 z-30 flex items-center justify-center bg-black/40">
+      <div class="bg-surface border-ligne w-full max-w-lg rounded-xl border p-6">
+        <h2 class="font-display mb-4 text-lg leading-none font-semibold uppercase">
           {{ editingId === null ? 'New' : 'Edit' }} Role
-        </h3>
+        </h2>
         <RoleFormModal v-model="formValue" @submit="onSubmit" @cancel="showForm = false" />
       </div>
     </div>

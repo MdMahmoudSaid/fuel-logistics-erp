@@ -3,6 +3,9 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { cessionLetterResource } from './api'
 import type { CessionLetter } from './types'
+import Badge from '@/components/ui/Badge.vue'
+import MonoValue from '@/components/ui/MonoValue.vue'
+import Button from '@/components/ui/Button.vue'
 
 const router = useRouter()
 
@@ -36,29 +39,31 @@ function goToDetail(cession: CessionLetter) {
   router.push({ name: 'cession-letter-detail', params: { id: cession.id } })
 }
 
-const STATUS_BADGE: Record<string, string> = {
-  ACTIVE: 'bg-emerald-100 text-emerald-700',
-  EXHAUSTED: 'bg-amber-100 text-amber-700',
-  CANCELLED: 'bg-red-100 text-red-700',
+const STATUS_LABEL: Record<string, string> = {
+  ACTIVE: 'Active',
+  EXHAUSTED: 'Exhausted',
+  CANCELLED: 'Cancelled',
+}
+
+function badgeVariant(status: string) {
+  if (status === 'ACTIVE') return 'livre' as const
+  if (status === 'EXHAUSTED') return 'ecart' as const
+  if (status === 'CANCELLED') return 'critique' as const
+  return 'neutre' as const
 }
 </script>
 
 <template>
   <div class="space-y-4">
     <div class="flex items-center justify-between">
-      <h2 class="text-lg font-semibold text-slate-800">Cession Letters</h2>
-      <button
-        class="rounded bg-slate-800 px-3 py-2 text-sm font-medium text-white"
-        @click="goToNew"
-      >
-        New Cession
-      </button>
+      <h1 class="font-display text-2xl leading-none font-semibold uppercase">Cession Letters</h1>
+      <Button variant="primary" @click="goToNew">New Cession</Button>
     </div>
 
-    <div class="flex flex-wrap gap-3 rounded border bg-white p-3">
+    <div class="flex flex-wrap gap-3">
       <select
         v-model="statusFilter"
-        class="rounded border border-slate-300 px-2 py-1.5 text-sm"
+        class="border-ligne-forte h-11 rounded-lg border bg-white px-3 text-sm"
         @change="load"
       >
         <option value="">All statuses</option>
@@ -68,47 +73,42 @@ const STATUS_BADGE: Record<string, string> = {
       </select>
     </div>
 
-    <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
+    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
 
-    <div class="overflow-x-auto rounded border bg-white">
+    <div class="border-ligne overflow-x-auto rounded-xl border bg-white">
       <table class="w-full text-left text-sm">
         <thead>
-          <tr class="border-b text-slate-500">
-            <th class="px-3 py-2 font-medium">Reference</th>
-            <th class="px-3 py-2 font-medium text-right">Authorized (L)</th>
-            <th class="px-3 py-2 font-medium text-right">Remaining (L)</th>
-            <th class="px-3 py-2 font-medium">Issue date</th>
-            <th class="px-3 py-2 font-medium">Status</th>
+          <tr class="border-ligne text-texte-2 border-b">
+            <th class="px-3 py-2.5 font-medium">Reference</th>
+            <th class="px-3 py-2.5 text-right font-medium">Authorized (L)</th>
+            <th class="px-3 py-2.5 text-right font-medium">Remaining (L)</th>
+            <th class="px-3 py-2.5 font-medium">Issue date</th>
+            <th class="px-3 py-2.5 font-medium">Status</th>
           </tr>
         </thead>
         <tbody>
           <tr
             v-for="cession in cessions"
             :key="cession.id"
-            class="cursor-pointer border-b last:border-0 hover:bg-slate-50"
+            class="border-ligne hover:bg-sable cursor-pointer border-b last:border-0"
             @click="goToDetail(cession)"
           >
-            <td class="px-3 py-2 font-medium text-slate-800">{{ cession.reference }}</td>
-            <td class="px-3 py-2 text-right">
-              {{ Number(cession.authorized_quantity).toLocaleString() }}
+            <td class="px-3 py-2.5"><MonoValue :value="cession.reference" align="left" /></td>
+            <td class="px-3 py-2.5 text-right">
+              <MonoValue :value="Number(cession.authorized_quantity).toLocaleString()" />
             </td>
-            <td class="px-3 py-2 text-right">
-              {{ Number(cession.remaining_quantity).toLocaleString() }}
+            <td class="px-3 py-2.5 text-right">
+              <MonoValue :value="Number(cession.remaining_quantity).toLocaleString()" />
             </td>
-            <td class="px-3 py-2">{{ cession.issue_date }}</td>
-            <td class="px-3 py-2">
-              <span
-                class="rounded-full px-2 py-0.5 text-xs font-medium"
-                :class="STATUS_BADGE[cession.status]"
-              >
-                {{ cession.status }}
-              </span>
+            <td class="px-3 py-2.5">{{ cession.issue_date }}</td>
+            <td class="px-3 py-2.5">
+              <Badge :variant="badgeVariant(cession.status)">{{
+                STATUS_LABEL[cession.status]
+              }}</Badge>
             </td>
           </tr>
           <tr v-if="!loading && cessions.length === 0">
-            <td colspan="5" class="px-3 py-6 text-center text-slate-400">
-              No cession letters yet.
-            </td>
+            <td colspan="5" class="text-texte-3 px-3 py-8 text-center">No cession letters yet.</td>
           </tr>
         </tbody>
       </table>

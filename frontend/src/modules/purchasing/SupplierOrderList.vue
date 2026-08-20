@@ -5,6 +5,9 @@ import { createResourceApi } from '@/api/resource'
 import { supplierOrderResource } from './api'
 import type { SupplierOrder } from './types'
 import type { SupplierBrief, ProductBrief } from './types'
+import Badge from '@/components/ui/Badge.vue'
+import MonoValue from '@/components/ui/MonoValue.vue'
+import Button from '@/components/ui/Button.vue'
 
 const router = useRouter()
 
@@ -58,29 +61,30 @@ function goToLedger(supplierId: number) {
   router.push({ name: 'supplier-ledger', params: { id: supplierId } })
 }
 
-const STATUS_BADGE: Record<string, string> = {
-  DRAFT: 'bg-slate-100 text-slate-600',
-  CONFIRMED: 'bg-emerald-100 text-emerald-700',
-  CANCELLED: 'bg-red-100 text-red-700',
+const STATUS_LABEL: Record<string, string> = {
+  DRAFT: 'Draft',
+  CONFIRMED: 'Confirmed',
+  CANCELLED: 'Cancelled',
+}
+
+function badgeVariant(status: string) {
+  if (status === 'CONFIRMED') return 'livre' as const
+  if (status === 'CANCELLED') return 'critique' as const
+  return 'neutre' as const
 }
 </script>
 
 <template>
   <div class="space-y-4">
     <div class="flex items-center justify-between">
-      <h2 class="text-lg font-semibold text-slate-800">Supplier Orders</h2>
-      <button
-        class="rounded bg-slate-800 px-3 py-2 text-sm font-medium text-white"
-        @click="goToNew"
-      >
-        New Order
-      </button>
+      <h1 class="font-display text-2xl leading-none font-semibold uppercase">Supplier Orders</h1>
+      <Button variant="primary" @click="goToNew">New Order</Button>
     </div>
 
-    <div class="flex flex-wrap gap-3 rounded border bg-white p-3">
+    <div class="flex flex-wrap gap-3">
       <select
         v-model="filters.supplier"
-        class="rounded border border-slate-300 px-2 py-1.5 text-sm"
+        class="border-ligne-forte h-11 rounded-lg border bg-white px-3 text-sm"
         @change="loadOrders"
       >
         <option value="">All suppliers</option>
@@ -88,7 +92,7 @@ const STATUS_BADGE: Record<string, string> = {
       </select>
       <select
         v-model="filters.product"
-        class="rounded border border-slate-300 px-2 py-1.5 text-sm"
+        class="border-ligne-forte h-11 rounded-lg border bg-white px-3 text-sm"
         @change="loadOrders"
       >
         <option value="">All products</option>
@@ -96,7 +100,7 @@ const STATUS_BADGE: Record<string, string> = {
       </select>
       <select
         v-model="filters.status"
-        class="rounded border border-slate-300 px-2 py-1.5 text-sm"
+        class="border-ligne-forte h-11 rounded-lg border bg-white px-3 text-sm"
         @change="loadOrders"
       >
         <option value="">All statuses</option>
@@ -106,59 +110,52 @@ const STATUS_BADGE: Record<string, string> = {
       </select>
     </div>
 
-    <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
+    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
 
-    <div class="overflow-x-auto rounded border bg-white">
+    <div class="border-ligne overflow-x-auto rounded-xl border bg-white">
       <table class="w-full text-left text-sm">
         <thead>
-          <tr class="border-b text-slate-500">
-            <th class="px-3 py-2 font-medium">Reference</th>
-            <th class="px-3 py-2 font-medium">Supplier</th>
-            <th class="px-3 py-2 font-medium">Product</th>
-            <th class="px-3 py-2 font-medium text-right">Purchased (L)</th>
-            <th class="px-3 py-2 font-medium text-right">Reliquat (L)</th>
-            <th class="px-3 py-2 font-medium">Status</th>
+          <tr class="border-ligne text-texte-2 border-b">
+            <th class="px-3 py-2.5 font-medium">Reference</th>
+            <th class="px-3 py-2.5 font-medium">Supplier</th>
+            <th class="px-3 py-2.5 font-medium">Product</th>
+            <th class="px-3 py-2.5 text-right font-medium">Purchased (L)</th>
+            <th class="px-3 py-2.5 text-right font-medium">Reliquat (L)</th>
+            <th class="px-3 py-2.5 font-medium">Status</th>
           </tr>
         </thead>
         <tbody>
           <tr
             v-for="order in orders"
             :key="order.id"
-            class="cursor-pointer border-b last:border-0 hover:bg-slate-50"
+            class="border-ligne hover:bg-sable cursor-pointer border-b last:border-0"
             @click="goToDetail(order)"
           >
-            <td class="px-3 py-2 font-medium text-slate-800">{{ order.reference }}</td>
-            <td class="px-3 py-2">
+            <td class="px-3 py-2.5"><MonoValue :value="order.reference" align="left" /></td>
+            <td class="px-3 py-2.5">
               <button
-                class="text-slate-600 underline decoration-dotted hover:text-slate-900"
+                class="text-texte-2 hover:text-texte underline decoration-dotted"
                 @click.stop="goToLedger(order.supplier)"
               >
                 {{ order.supplier_detail?.name }}
               </button>
             </td>
-            <td class="px-3 py-2">{{ order.product_detail?.name }}</td>
-            <td class="px-3 py-2 text-right">
-              {{ Number(order.quantity_litres).toLocaleString() }}
+            <td class="px-3 py-2.5">{{ order.product_detail?.name }}</td>
+            <td class="px-3 py-2.5 text-right">
+              <MonoValue :value="Number(order.quantity_litres).toLocaleString()" />
             </td>
-            <td
-              class="px-3 py-2 text-right font-medium"
-              :class="Number(order.reliquat) <= 0 ? 'text-red-600' : 'text-slate-800'"
-            >
-              {{ Number(order.reliquat).toLocaleString() }}
+            <td class="px-3 py-2.5 text-right">
+              <MonoValue
+                :value="Number(order.reliquat).toLocaleString()"
+                :class="Number(order.reliquat) <= 0 ? 'text-critique' : ''"
+              />
             </td>
-            <td class="px-3 py-2">
-              <span
-                class="rounded-full px-2 py-0.5 text-xs font-medium"
-                :class="STATUS_BADGE[order.status]"
-              >
-                {{ order.status }}
-              </span>
+            <td class="px-3 py-2.5">
+              <Badge :variant="badgeVariant(order.status)">{{ STATUS_LABEL[order.status] }}</Badge>
             </td>
           </tr>
           <tr v-if="!loading && orders.length === 0">
-            <td colspan="6" class="px-3 py-6 text-center text-slate-400">
-              No supplier orders yet.
-            </td>
+            <td colspan="6" class="text-texte-3 px-3 py-8 text-center">No supplier orders yet.</td>
           </tr>
         </tbody>
       </table>

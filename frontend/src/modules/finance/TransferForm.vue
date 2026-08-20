@@ -7,6 +7,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { createResourceApi } from '@/api/resource'
 import { recordTransfer } from './api'
+import Button from '@/components/ui/Button.vue'
 
 const router = useRouter()
 
@@ -75,67 +76,70 @@ async function onSubmit() {
 
 <template>
   <div class="max-w-xl space-y-6">
-    <h2 class="text-lg font-semibold text-slate-800">Internal Transfer</h2>
+    <h1 class="font-display text-2xl leading-none font-semibold uppercase">Internal Transfer</h1>
 
-    <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
-    <p v-if="sameAccount" class="text-sm text-red-600">
+    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
+    <p v-if="sameAccount" class="text-critique text-sm">
       Source and destination cannot be the same account.
     </p>
 
-    <form class="space-y-4 rounded border bg-white p-4" @submit.prevent="onSubmit">
+    <form
+      class="border-ligne space-y-4 rounded-xl border bg-surface p-6"
+      @submit.prevent="onSubmit"
+    >
       <div class="grid grid-cols-2 gap-4">
-        <div class="space-y-1">
-          <label class="text-sm font-medium text-slate-600" for="source_type"
+        <div class="space-y-1.5">
+          <label class="text-texte-2 text-sm font-medium" for="source_type"
             >From account type</label
           >
           <select
             id="source_type"
             v-model="form.source_account_type"
-            class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           >
             <option value="bank">Bank</option>
             <option value="cash">Cash</option>
           </select>
         </div>
-        <div class="space-y-1">
-          <label class="text-sm font-medium text-slate-600" for="source_id">From account</label>
+        <div class="space-y-1.5">
+          <label class="text-texte-2 text-sm font-medium" for="source_id">From account</label>
           <select
             id="source_id"
             v-model="form.source_account_id"
             required
-            class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           >
             <option value="" disabled>Select an account</option>
             <option v-for="a in sourceOptions" :key="a.id" :value="a.id">{{ a.name }}</option>
           </select>
         </div>
 
-        <div class="space-y-1">
-          <label class="text-sm font-medium text-slate-600" for="dest_type">To account type</label>
+        <div class="space-y-1.5">
+          <label class="text-texte-2 text-sm font-medium" for="dest_type">To account type</label>
           <select
             id="dest_type"
             v-model="form.dest_account_type"
-            class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           >
             <option value="bank">Bank</option>
             <option value="cash">Cash</option>
           </select>
         </div>
-        <div class="space-y-1">
-          <label class="text-sm font-medium text-slate-600" for="dest_id">To account</label>
+        <div class="space-y-1.5">
+          <label class="text-texte-2 text-sm font-medium" for="dest_id">To account</label>
           <select
             id="dest_id"
             v-model="form.dest_account_id"
             required
-            class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           >
             <option value="" disabled>Select an account</option>
             <option v-for="a in destOptions" :key="a.id" :value="a.id">{{ a.name }}</option>
           </select>
         </div>
 
-        <div class="space-y-1">
-          <label class="text-sm font-medium text-slate-600" for="amount">Amount</label>
+        <div class="space-y-1.5">
+          <label class="text-texte-2 text-sm font-medium" for="amount">Amount</label>
           <input
             id="amount"
             v-model="form.amount"
@@ -143,38 +147,34 @@ async function onSubmit() {
             step="0.01"
             min="0.01"
             required
-            class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           />
         </div>
-        <div class="space-y-1">
-          <label class="text-sm font-medium text-slate-600" for="date">Date</label>
+        <div class="space-y-1.5">
+          <label class="text-texte-2 text-sm font-medium" for="date">Date</label>
           <input
             id="date"
             v-model="form.date"
             type="date"
             required
-            class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           />
         </div>
 
-        <div class="col-span-2 space-y-1">
-          <label class="text-sm font-medium text-slate-600" for="reference">Reference</label>
+        <div class="col-span-2 space-y-1.5">
+          <label class="text-texte-2 text-sm font-medium" for="reference">Reference</label>
           <input
             id="reference"
             v-model="form.reference"
-            class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           />
         </div>
       </div>
 
       <div class="flex justify-end">
-        <button
-          type="submit"
-          :disabled="saving || sameAccount"
-          class="rounded bg-slate-800 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
-        >
+        <Button type="submit" variant="primary" :disabled="sameAccount" :loading="saving">
           {{ saving ? 'Transferring…' : 'Transfer' }}
-        </button>
+        </Button>
       </div>
     </form>
   </div>

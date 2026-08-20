@@ -6,6 +6,8 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { invoiceResource } from './api'
 import type { Invoice, InvoiceStatus } from './types'
+import Badge from '@/components/ui/Badge.vue'
+import MonoValue from '@/components/ui/MonoValue.vue'
 
 const router = useRouter()
 
@@ -35,23 +37,31 @@ function goToDetail(invoice: Invoice) {
   router.push({ name: 'invoice-detail', params: { id: invoice.id } })
 }
 
-const STATUS_BADGE: Record<string, string> = {
-  DRAFT: 'bg-slate-100 text-slate-600',
-  VALIDATED: 'bg-sky-100 text-sky-700',
-  PARTIALLY_PAID: 'bg-amber-100 text-amber-700',
-  PAID: 'bg-emerald-100 text-emerald-700',
-  CANCELLED: 'bg-red-100 text-red-700',
+const STATUS_LABEL: Record<string, string> = {
+  DRAFT: 'Draft',
+  VALIDATED: 'Validated',
+  PARTIALLY_PAID: 'Partially paid',
+  PAID: 'Paid',
+  CANCELLED: 'Cancelled',
+}
+
+function badgeVariant(status: string) {
+  if (status === 'PAID') return 'livre' as const
+  if (status === 'VALIDATED') return 'transit' as const
+  if (status === 'PARTIALLY_PAID') return 'ecart' as const
+  if (status === 'CANCELLED') return 'critique' as const
+  return 'neutre' as const
 }
 </script>
 
 <template>
   <div class="space-y-4">
-    <h2 class="text-lg font-semibold text-slate-800">Invoices</h2>
+    <h1 class="font-display text-2xl leading-none font-semibold uppercase">Invoices</h1>
 
-    <div class="flex flex-wrap gap-3 rounded border bg-white p-3">
+    <div class="flex flex-wrap gap-3">
       <select
         v-model="statusFilter"
-        class="rounded border border-slate-300 px-2 py-1.5 text-sm"
+        class="border-ligne-forte h-11 rounded-lg border bg-white px-3 text-sm"
         @change="loadInvoices"
       >
         <option value="">All statuses</option>
@@ -63,44 +73,43 @@ const STATUS_BADGE: Record<string, string> = {
       </select>
     </div>
 
-    <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
+    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
 
-    <div class="overflow-x-auto rounded border bg-white">
+    <div class="border-ligne overflow-x-auto rounded-xl border bg-white">
       <table class="w-full text-left text-sm">
         <thead>
-          <tr class="border-b text-slate-500">
-            <th class="px-3 py-2 font-medium">Invoice #</th>
-            <th class="px-3 py-2 font-medium">Customer</th>
-            <th class="px-3 py-2 font-medium text-right">Total</th>
-            <th class="px-3 py-2 font-medium">Issued</th>
-            <th class="px-3 py-2 font-medium">Status</th>
+          <tr class="border-ligne text-texte-2 border-b">
+            <th class="px-3 py-2.5 font-medium">Invoice #</th>
+            <th class="px-3 py-2.5 font-medium">Customer</th>
+            <th class="px-3 py-2.5 text-right font-medium">Total</th>
+            <th class="px-3 py-2.5 font-medium">Issued</th>
+            <th class="px-3 py-2.5 font-medium">Status</th>
           </tr>
         </thead>
         <tbody>
           <tr
             v-for="invoice in invoices"
             :key="invoice.id"
-            class="cursor-pointer border-b last:border-0 hover:bg-slate-50"
+            class="border-ligne hover:bg-sable cursor-pointer border-b last:border-0"
             @click="goToDetail(invoice)"
           >
-            <td class="px-3 py-2 font-medium text-slate-800">{{ invoice.invoice_number }}</td>
-            <td class="px-3 py-2">{{ invoice.sale_detail?.customer_detail?.name }}</td>
-            <td class="px-3 py-2 text-right">
-              {{ Number(invoice.total_amount).toLocaleString() }}
-              {{ invoice.sale_detail?.currency }}
+            <td class="px-3 py-2.5"><MonoValue :value="invoice.invoice_number" align="left" /></td>
+            <td class="px-3 py-2.5">{{ invoice.sale_detail?.customer_detail?.name }}</td>
+            <td class="px-3 py-2.5 text-right">
+              <MonoValue
+                :value="Number(invoice.total_amount).toLocaleString()"
+                :unit="invoice.sale_detail?.currency"
+              />
             </td>
-            <td class="px-3 py-2">{{ invoice.issued_date }}</td>
-            <td class="px-3 py-2">
-              <span
-                class="rounded-full px-2 py-0.5 text-xs font-medium"
-                :class="STATUS_BADGE[invoice.status]"
-              >
-                {{ invoice.status }}
-              </span>
+            <td class="px-3 py-2.5">{{ invoice.issued_date }}</td>
+            <td class="px-3 py-2.5">
+              <Badge :variant="badgeVariant(invoice.status)">{{
+                STATUS_LABEL[invoice.status]
+              }}</Badge>
             </td>
           </tr>
           <tr v-if="!loading && invoices.length === 0">
-            <td colspan="5" class="px-3 py-6 text-center text-slate-400">No invoices yet.</td>
+            <td colspan="5" class="text-texte-3 px-3 py-8 text-center">No invoices yet.</td>
           </tr>
         </tbody>
       </table>

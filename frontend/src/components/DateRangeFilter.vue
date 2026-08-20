@@ -35,7 +35,7 @@ onMounted(apply)
   <div class="flex flex-wrap items-center gap-2">
     <select
       v-model="selected"
-      class="rounded border px-2 py-1.5 text-sm text-slate-700"
+      class="border-ligne-forte h-11 rounded-lg border bg-white px-3 text-sm"
       @change="apply"
     >
       <option v-for="preset in PRESETS" :key="preset.value" :value="preset.value">
@@ -46,11 +46,16 @@ onMounted(apply)
       <input
         v-model="from"
         type="date"
-        class="rounded border px-2 py-1.5 text-sm"
+        class="border-ligne-forte h-11 rounded-lg border bg-white px-3 text-sm"
         @change="apply"
       />
-      <span class="text-slate-400">→</span>
-      <input v-model="to" type="date" class="rounded border px-2 py-1.5 text-sm" @change="apply" />
+      <span class="text-texte-3">→</span>
+      <input
+        v-model="to"
+        type="date"
+        class="border-ligne-forte h-11 rounded-lg border bg-white px-3 text-sm"
+        @change="apply"
+      />
     </template>
   </div>
 </template>

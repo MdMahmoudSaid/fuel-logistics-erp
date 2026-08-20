@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { MODULES, ACTIONS } from './permissionSchema'
+import Button from '@/components/ui/Button.vue'
 
 const props = defineProps<{
   modelValue: { name: string; permissions: Record<string, string[]> }
@@ -16,9 +17,7 @@ function isChecked(module: string, action: string) {
 
 function toggle(module: string, action: string) {
   const current = props.modelValue.permissions[module] ?? []
-  const next = current.includes(action)
-    ? current.filter((a) => a !== action)
-    : [...current, action]
+  const next = current.includes(action) ? current.filter((a) => a !== action) : [...current, action]
   emit('update:modelValue', {
     ...props.modelValue,
     permissions: { ...props.modelValue.permissions, [module]: next },
@@ -32,47 +31,46 @@ function setName(value: string) {
 
 <template>
   <form class="space-y-4" @submit.prevent="$emit('submit')">
-    <div class="space-y-1">
-      <label class="text-sm font-medium text-slate-600" for="role-name">Name</label>
+    <div class="space-y-1.5">
+      <label class="text-texte-2 text-sm font-medium" for="role-name">Name</label>
       <input
         id="role-name"
         :value="modelValue.name"
         required
-        class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+        class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
         @input="setName(($event.target as HTMLInputElement).value)"
       />
     </div>
 
-    <table class="w-full text-left text-sm">
-      <thead>
-        <tr class="border-b text-slate-500">
-          <th class="px-2 py-1 font-medium">Module</th>
-          <th v-for="action in ACTIONS" :key="action" class="px-2 py-1 font-medium capitalize">
-            {{ action }}
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="module in MODULES" :key="module" class="border-b last:border-0">
-          <td class="px-2 py-1 capitalize">{{ module }}</td>
-          <td v-for="action in ACTIONS" :key="action" class="px-2 py-1 text-center">
-            <input
-              type="checkbox"
-              :checked="isChecked(module, action)"
-              @change="toggle(module, action)"
-            />
-          </td>
-        </tr>
-      </tbody>
-    </table>
+    <div class="border-ligne overflow-x-auto rounded-xl border">
+      <table class="w-full text-left text-sm">
+        <thead>
+          <tr class="border-ligne text-texte-2 border-b">
+            <th class="px-3 py-2.5 font-medium">Module</th>
+            <th v-for="action in ACTIONS" :key="action" class="px-3 py-2.5 font-medium capitalize">
+              {{ action }}
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="module in MODULES" :key="module" class="border-ligne border-b last:border-0">
+            <td class="px-3 py-2.5 capitalize">{{ module }}</td>
+            <td v-for="action in ACTIONS" :key="action" class="px-3 py-2.5 text-center">
+              <input
+                type="checkbox"
+                class="border-ligne-forte accent-orange h-4 w-4 rounded"
+                :checked="isChecked(module, action)"
+                @change="toggle(module, action)"
+              />
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
 
     <div class="flex justify-end gap-2 pt-2">
-      <button type="button" class="px-3 py-2 text-sm text-slate-500" @click="$emit('cancel')">
-        Cancel
-      </button>
-      <button type="submit" class="rounded bg-slate-800 px-3 py-2 text-sm font-medium text-white">
-        Save
-      </button>
+      <Button type="button" variant="ghost" @click="$emit('cancel')">Cancel</Button>
+      <Button type="submit" variant="primary">Save</Button>
     </div>
   </form>
 </template>

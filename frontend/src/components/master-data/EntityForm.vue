@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { FieldSchema } from './types'
+import Button from '@/components/ui/Button.vue'
 
 const props = defineProps<{
   fields: FieldSchema[]
@@ -19,8 +20,8 @@ function setField(key: string, value: unknown) {
 
 <template>
   <form class="space-y-3" @submit.prevent="$emit('submit')">
-    <div v-for="field in fields" :key="field.key" class="space-y-1">
-      <label class="text-sm font-medium text-slate-600" :for="field.key">{{ field.label }}</label>
+    <div v-for="field in fields" :key="field.key" class="space-y-1.5">
+      <label class="text-texte-2 text-sm font-medium" :for="field.key">{{ field.label }}</label>
 
       <input
         v-if="field.type === 'text' || field.type === 'number' || field.type === 'password'"
@@ -28,7 +29,7 @@ function setField(key: string, value: unknown) {
         :type="field.type"
         :required="field.required"
         :value="modelValue[field.key] as string | number | undefined"
-        class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+        class="border-ligne-forte text-texte placeholder:text-texte-3 focus-visible:outline-bitume h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
         @input="setField(field.key, ($event.target as HTMLInputElement).value)"
       />
 
@@ -36,7 +37,7 @@ function setField(key: string, value: unknown) {
         v-else-if="field.type === 'textarea'"
         :id="field.key"
         :value="modelValue[field.key] as string | undefined"
-        class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+        class="border-ligne-forte text-texte placeholder:text-texte-3 focus-visible:outline-bitume w-full rounded-lg border bg-white px-3.5 py-2.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
         rows="3"
         @input="setField(field.key, ($event.target as HTMLTextAreaElement).value)"
       />
@@ -45,7 +46,7 @@ function setField(key: string, value: unknown) {
         v-else-if="field.type === 'select'"
         :id="field.key"
         :value="modelValue[field.key] as string | undefined"
-        class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+        class="border-ligne-forte text-texte focus-visible:outline-bitume h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
         @change="setField(field.key, ($event.target as HTMLSelectElement).value)"
       >
         <option v-for="opt in field.options" :key="opt.value" :value="opt.value">
@@ -57,18 +58,15 @@ function setField(key: string, value: unknown) {
         v-else-if="field.type === 'checkbox'"
         :id="field.key"
         type="checkbox"
+        class="border-ligne-forte accent-orange h-5 w-5 rounded"
         :checked="Boolean(modelValue[field.key])"
         @change="setField(field.key, ($event.target as HTMLInputElement).checked)"
       />
     </div>
 
     <div class="flex justify-end gap-2 pt-2">
-      <button type="button" class="px-3 py-2 text-sm text-slate-500" @click="$emit('cancel')">
-        Cancel
-      </button>
-      <button type="submit" class="rounded bg-slate-800 px-3 py-2 text-sm font-medium text-white">
-        Save
-      </button>
+      <Button type="button" variant="ghost" @click="$emit('cancel')">Cancel</Button>
+      <Button type="submit" variant="primary">Save</Button>
     </div>
   </form>
 </template>

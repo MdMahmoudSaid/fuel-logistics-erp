@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import GlobalSearchBar from '@/modules/search/GlobalSearchBar.vue'
 import AppLogo from '@/components/AppLogo.vue'
@@ -39,6 +39,15 @@ const BOTTOM_NAV_KEYS = ['home', 'trips', 'sales', 'reports'] as const
 
 const auth = useAuthStore()
 const router = useRouter()
+const route = useRoute()
+
+// `home` lives at path '' under the parent '/', so its resolved path is
+// '/' — vue-router's default (non-exact) active-class matching treats every
+// other route's path as starting with '/' and highlights Dashboard on top
+// of the real active item. Match on route name instead.
+function isNavActive(name: string) {
+  return route.name === name
+}
 
 const visibleNavItems = computed(() => NAV_ITEMS.filter((item) => auth.can(item.module, 'view')))
 
@@ -83,7 +92,7 @@ onUnmounted(() => {
           :key="item.to"
           :to="{ name: item.to }"
           class="text-sable/70 hover:bg-bitume-2 hover:text-sable flex h-11 items-center rounded-lg border-l-2 border-transparent px-3 text-sm transition"
-          active-class="!border-orange bg-bitume-2 !text-sable font-medium"
+          :class="isNavActive(item.to) ? '!border-orange bg-bitume-2 !text-sable font-medium' : ''"
         >
           {{ item.label }}
         </RouterLink>
@@ -142,7 +151,7 @@ onUnmounted(() => {
         :key="item.to"
         :to="{ name: item.to }"
         class="text-sable/70 flex flex-1 flex-col items-center justify-center gap-0.5 text-[11px]"
-        active-class="!text-orange"
+        :class="isNavActive(item.to) ? '!text-orange' : ''"
       >
         {{ item.label }}
       </RouterLink>

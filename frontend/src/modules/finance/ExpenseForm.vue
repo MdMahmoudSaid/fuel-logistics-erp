@@ -8,6 +8,7 @@ import { useRouter } from 'vue-router'
 import { createResourceApi } from '@/api/resource'
 import { expenseResource, fetchCustomerLedger, recordIndirectExpense } from './api'
 import { EXPENSE_CATEGORIES } from './types'
+import Button from '@/components/ui/Button.vue'
 import type {
   CustomerBrief,
   CustomerLedgerInvoice,
@@ -109,18 +110,21 @@ async function onSubmit() {
 
 <template>
   <div class="max-w-2xl space-y-6">
-    <h2 class="text-lg font-semibold text-slate-800">New Expense</h2>
+    <h1 class="font-display text-2xl leading-none font-semibold uppercase">New Expense</h1>
 
-    <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
+    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
 
-    <form class="space-y-4 rounded border bg-white p-4" @submit.prevent="onSubmit">
+    <form
+      class="border-ligne space-y-4 rounded-xl border bg-surface p-6"
+      @submit.prevent="onSubmit"
+    >
       <div class="grid grid-cols-2 gap-4">
-        <div class="space-y-1">
-          <label class="text-sm font-medium text-slate-600" for="category">Category</label>
+        <div class="space-y-1.5">
+          <label class="text-texte-2 text-sm font-medium" for="category">Category</label>
           <select
             id="category"
             v-model="form.category"
-            class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           >
             <option v-for="c in EXPENSE_CATEGORIES" :key="c.value" :value="c.value">
               {{ c.label }}
@@ -128,14 +132,14 @@ async function onSubmit() {
           </select>
         </div>
 
-        <div class="space-y-1">
-          <label class="text-sm font-medium text-slate-600" for="calculation_method"
+        <div class="space-y-1.5">
+          <label class="text-texte-2 text-sm font-medium" for="calculation_method"
             >Calculation method</label
           >
           <select
             id="calculation_method"
             v-model="form.calculation_method"
-            class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           >
             <option value="FIXED">Fixed</option>
             <option value="PER_LITRE">Per litre</option>
@@ -146,8 +150,8 @@ async function onSubmit() {
           </select>
         </div>
 
-        <div class="space-y-1">
-          <label class="text-sm font-medium text-slate-600" for="amount">Amount</label>
+        <div class="space-y-1.5">
+          <label class="text-texte-2 text-sm font-medium" for="amount">Amount</label>
           <input
             id="amount"
             v-model="form.amount"
@@ -155,68 +159,71 @@ async function onSubmit() {
             step="0.01"
             min="0.01"
             required
-            class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           />
         </div>
 
-        <div class="space-y-1">
-          <label class="text-sm font-medium text-slate-600" for="date">Date</label>
+        <div class="space-y-1.5">
+          <label class="text-texte-2 text-sm font-medium" for="date">Date</label>
           <input
             id="date"
             v-model="form.date"
             type="date"
             required
-            class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           />
         </div>
       </div>
 
-      <div class="space-y-1">
-        <label class="text-sm font-medium text-slate-600" for="notes">Notes</label>
+      <div class="space-y-1.5">
+        <label class="text-texte-2 text-sm font-medium" for="notes">Notes</label>
         <textarea
           id="notes"
           v-model="form.notes"
           rows="2"
-          class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+          class="border-ligne-forte w-full rounded-lg border bg-white px-3.5 py-2.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
         />
       </div>
 
-      <div class="flex items-center gap-2 border-t pt-4">
-        <input id="paid_by_customer" v-model="paidByCustomerDirectly" type="checkbox" />
-        <label class="text-sm font-medium text-slate-600" for="paid_by_customer">
+      <div class="border-ligne flex items-center gap-2 border-t pt-4">
+        <input
+          id="paid_by_customer"
+          v-model="paidByCustomerDirectly"
+          type="checkbox"
+          class="border-ligne-forte accent-orange h-5 w-5 rounded"
+        />
+        <label class="text-texte-2 text-sm font-medium" for="paid_by_customer">
           Paid directly by customer
         </label>
       </div>
 
       <template v-if="paidByCustomerDirectly">
-        <p class="text-sm text-slate-500">
+        <p class="text-texte-2 text-sm">
           This reduces the customer's receivable and marks the expense paid — no treasury movement
           is recorded.
         </p>
         <div class="grid grid-cols-2 gap-4">
-          <div class="space-y-1">
-            <label class="text-sm font-medium text-slate-600" for="indirect_customer"
-              >Customer</label
-            >
+          <div class="space-y-1.5">
+            <label class="text-texte-2 text-sm font-medium" for="indirect_customer">Customer</label>
             <select
               id="indirect_customer"
               v-model="indirectForm.customer"
               required
-              class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
               @change="onCustomerChange"
             >
               <option value="" disabled>Select a customer</option>
               <option v-for="c in customers" :key="c.id" :value="c.id">{{ c.name }}</option>
             </select>
           </div>
-          <div class="space-y-1">
-            <label class="text-sm font-medium text-slate-600" for="indirect_invoice"
+          <div class="space-y-1.5">
+            <label class="text-texte-2 text-sm font-medium" for="indirect_invoice"
               >Apply to invoice (optional)</label
             >
             <select
               id="indirect_invoice"
               v-model="indirectForm.invoice"
-              class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
             >
               <option value="">Unallocated credit</option>
               <option v-for="inv in customerInvoices" :key="inv.id" :value="inv.id">
@@ -228,18 +235,14 @@ async function onSubmit() {
         </div>
       </template>
 
-      <div v-else class="space-y-2 border-t pt-4">
+      <div v-else class="border-ligne space-y-2 border-t pt-4">
         <div class="flex items-center justify-between">
-          <h3 class="text-sm font-semibold text-slate-700">Allocation (optional)</h3>
-          <button
-            type="button"
-            class="text-sm text-slate-500 hover:text-slate-800"
-            @click="addLine"
-          >
+          <h2 class="font-display text-sm font-semibold uppercase">Allocation (optional)</h2>
+          <button type="button" class="text-texte-2 hover:text-texte text-sm" @click="addLine">
             + Add line
           </button>
         </div>
-        <p class="text-xs text-slate-500">
+        <p class="text-texte-3 text-xs">
           Split this expense across trips/trucks/customers via content type id + object id (guide
           Section 8.7: "a customs payment may affect several trips").
         </p>
@@ -248,24 +251,24 @@ async function onSubmit() {
             v-model="line.content_type"
             type="number"
             placeholder="Content type id"
-            class="w-36 rounded border border-slate-300 px-3 py-2 text-sm"
+            class="border-ligne-forte h-12 w-36 rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           />
           <input
             v-model="line.object_id"
             type="number"
             placeholder="Object id"
-            class="w-28 rounded border border-slate-300 px-3 py-2 text-sm"
+            class="border-ligne-forte h-12 w-28 rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           />
           <input
             v-model="line.allocated_amount"
             type="number"
             step="0.01"
             placeholder="Amount"
-            class="w-32 rounded border border-slate-300 px-3 py-2 text-sm"
+            class="border-ligne-forte h-12 w-32 rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           />
           <button
             type="button"
-            class="text-sm text-red-500 hover:text-red-700"
+            class="text-critique text-sm hover:brightness-90"
             @click="removeLine(index)"
           >
             Remove
@@ -274,13 +277,9 @@ async function onSubmit() {
       </div>
 
       <div class="flex justify-end">
-        <button
-          type="submit"
-          :disabled="saving"
-          class="rounded bg-slate-800 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
-        >
+        <Button type="submit" variant="primary" :loading="saving">
           {{ saving ? 'Saving…' : 'Save expense' }}
-        </button>
+        </Button>
       </div>
     </form>
   </div>

@@ -6,6 +6,7 @@
 import { ref, onMounted } from 'vue'
 import { fetchLossTolerance, updateLossTolerance } from './api'
 import type { LossToleranceConfig } from './types'
+import Button from '@/components/ui/Button.vue'
 
 const config = ref<LossToleranceConfig | null>(null)
 const toleranceLitres = ref('')
@@ -48,21 +49,23 @@ function formatDateTime(value: string) {
 
 <template>
   <div class="max-w-md space-y-6">
-    <h2 class="text-lg font-semibold text-slate-800">Loss Tolerance</h2>
-    <p class="text-sm text-slate-500">
+    <h1 class="font-display text-2xl leading-none font-semibold uppercase">Loss Tolerance</h1>
+    <p class="text-texte-2 text-sm">
       Default tolerance (litres) applied when a discharge's loss is checked against the
       transporter's chargeable deduction. Frozen onto each delivery at the moment it is confirmed —
       changing it here only affects deliveries confirmed afterwards.
     </p>
 
-    <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
-    <p v-else-if="loading" class="text-sm text-slate-400">Loading…</p>
+    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
+    <p v-else-if="loading" class="text-texte-3 text-sm">Loading…</p>
 
-    <form v-else class="space-y-4 rounded border bg-white p-4" @submit.prevent="onSubmit">
-      <div class="space-y-1">
-        <label class="text-sm font-medium text-slate-600" for="tolerance_litres"
-          >Tolerance (L)</label
-        >
+    <form
+      v-else
+      class="border-ligne space-y-4 rounded-xl border bg-surface p-6"
+      @submit.prevent="onSubmit"
+    >
+      <div class="space-y-1.5">
+        <label class="text-texte-2 text-sm font-medium" for="tolerance_litres">Tolerance (L)</label>
         <input
           id="tolerance_litres"
           v-model="toleranceLitres"
@@ -70,11 +73,11 @@ function formatDateTime(value: string) {
           step="0.01"
           min="0"
           required
-          class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+          class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
         />
       </div>
 
-      <p class="text-xs text-slate-500">
+      <p class="text-texte-3 text-xs">
         <template v-if="config?.updated_by_detail">
           Last updated by {{ config.updated_by_detail.email }}
           <template v-if="config.updated_at"> on {{ formatDateTime(config.updated_at) }}</template>
@@ -83,13 +86,9 @@ function formatDateTime(value: string) {
       </p>
 
       <div class="flex justify-end">
-        <button
-          type="submit"
-          :disabled="saving"
-          class="rounded bg-slate-800 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
-        >
+        <Button type="submit" variant="primary" :loading="saving">
           {{ saving ? 'Saving…' : 'Save' }}
-        </button>
+        </Button>
       </div>
     </form>
   </div>

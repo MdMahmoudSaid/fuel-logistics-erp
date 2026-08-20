@@ -4,6 +4,8 @@
 import { ref, onMounted } from 'vue'
 import { auditLogResource } from './api'
 import type { AuditLog } from './types'
+import Badge from '@/components/ui/Badge.vue'
+import MonoValue from '@/components/ui/MonoValue.vue'
 
 const logs = ref<AuditLog[]>([])
 const loading = ref(true)
@@ -43,62 +45,69 @@ function formatValue(value: unknown): string {
   return value === null || value === undefined ? '—' : String(value)
 }
 
-const ACTION_BADGE: Record<string, string> = {
-  CREATE: 'bg-emerald-100 text-emerald-700',
-  UPDATE: 'bg-sky-100 text-sky-700',
-  DELETE: 'bg-red-100 text-red-700',
-  CANCEL: 'bg-amber-100 text-amber-700',
-  REVERSE: 'bg-purple-100 text-purple-700',
+function badgeVariant(action: string) {
+  if (action === 'CREATE') return 'livre' as const
+  if (action === 'UPDATE') return 'transit' as const
+  if (action === 'DELETE') return 'critique' as const
+  if (action === 'CANCEL' || action === 'REVERSE') return 'ecart' as const
+  return 'neutre' as const
 }
 </script>
 
 <template>
   <div class="max-w-5xl space-y-6">
-    <h2 class="text-lg font-semibold text-slate-800">Audit Log</h2>
+    <h1 class="font-display text-2xl leading-none font-semibold uppercase">Audit Log</h1>
 
-    <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
-    <p v-else-if="loading" class="text-sm text-slate-400">Loading…</p>
+    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
+    <p v-else-if="loading" class="text-texte-3 text-sm">Loading…</p>
 
-    <section v-else class="overflow-auto rounded border bg-white">
+    <section v-else class="border-ligne overflow-auto rounded-xl border bg-white">
       <table class="w-full text-left text-sm">
         <thead>
-          <tr class="border-b text-slate-500">
-            <th class="px-2 py-1.5 font-medium">Timestamp</th>
-            <th class="px-2 py-1.5 font-medium">Action</th>
-            <th class="px-2 py-1.5 font-medium">Entity</th>
-            <th class="px-2 py-1.5 font-medium">Object ID</th>
-            <th class="px-2 py-1.5 font-medium">User</th>
-            <th class="px-2 py-1.5"></th>
+          <tr class="border-ligne text-texte-2 border-b">
+            <th class="font-display px-3 py-2.5 text-xs font-medium tracking-wide uppercase">
+              Timestamp
+            </th>
+            <th class="font-display px-3 py-2.5 text-xs font-medium tracking-wide uppercase">
+              Action
+            </th>
+            <th class="font-display px-3 py-2.5 text-xs font-medium tracking-wide uppercase">
+              Entity
+            </th>
+            <th class="font-display px-3 py-2.5 text-xs font-medium tracking-wide uppercase">
+              Object ID
+            </th>
+            <th class="font-display px-3 py-2.5 text-xs font-medium tracking-wide uppercase">
+              User
+            </th>
+            <th class="px-3 py-2.5"></th>
           </tr>
         </thead>
         <tbody>
           <template v-for="log in logs" :key="log.id">
             <tr
-              class="cursor-pointer border-b last:border-0 hover:bg-slate-50"
+              class="border-ligne hover:bg-sable cursor-pointer border-b last:border-0"
               @click="toggle(log.id)"
             >
-              <td class="px-2 py-1.5">{{ new Date(log.timestamp).toLocaleString() }}</td>
-              <td class="px-2 py-1.5">
-                <span
-                  class="rounded-full px-2 py-0.5 text-xs font-medium"
-                  :class="ACTION_BADGE[log.action]"
-                >
-                  {{ log.action }}
-                </span>
+              <td class="px-3 py-2.5">
+                <MonoValue :value="new Date(log.timestamp).toLocaleString()" align="left" />
               </td>
-              <td class="px-2 py-1.5">{{ log.content_type_label }}</td>
-              <td class="px-2 py-1.5">{{ log.object_id }}</td>
-              <td class="px-2 py-1.5">{{ log.user_email || '—' }}</td>
-              <td class="px-2 py-1.5 text-slate-400">{{ expandedId === log.id ? '▲' : '▼' }}</td>
+              <td class="px-3 py-2.5">
+                <Badge :variant="badgeVariant(log.action)">{{ log.action }}</Badge>
+              </td>
+              <td class="px-3 py-2.5">{{ log.content_type_label }}</td>
+              <td class="px-3 py-2.5"><MonoValue :value="log.object_id" align="left" /></td>
+              <td class="px-3 py-2.5">{{ log.user_email || '—' }}</td>
+              <td class="text-texte-3 px-3 py-2.5">{{ expandedId === log.id ? '▲' : '▼' }}</td>
             </tr>
-            <tr v-if="expandedId === log.id" class="border-b bg-slate-50 last:border-0">
+            <tr v-if="expandedId === log.id" class="border-ligne bg-sable border-b last:border-0">
               <td colspan="6" class="px-4 py-3">
-                <p v-if="diffKeys(log).length === 0" class="text-xs text-slate-400">
+                <p v-if="diffKeys(log).length === 0" class="text-texte-3 text-xs">
                   No field-level changes recorded.
                 </p>
                 <table v-else class="w-full text-xs">
                   <thead>
-                    <tr class="text-slate-400">
+                    <tr class="text-texte-3">
                       <th class="py-1 text-left font-medium">Field</th>
                       <th class="py-1 text-left font-medium">Previous</th>
                       <th class="py-1 text-left font-medium">New</th>
@@ -106,22 +115,20 @@ const ACTION_BADGE: Record<string, string> = {
                   </thead>
                   <tbody>
                     <tr v-for="key in diffKeys(log)" :key="key">
-                      <td class="py-1 pr-4 font-medium text-slate-600">{{ key }}</td>
-                      <td class="py-1 pr-4 text-red-600 line-through">
+                      <td class="text-texte-2 py-1 pr-4 font-medium">{{ key }}</td>
+                      <td class="text-critique py-1 pr-4 line-through">
                         {{ formatValue(log.previous_value?.[key]) }}
                       </td>
-                      <td class="py-1 text-emerald-700">{{ formatValue(log.new_value?.[key]) }}</td>
+                      <td class="text-livre-texte py-1">{{ formatValue(log.new_value?.[key]) }}</td>
                     </tr>
                   </tbody>
                 </table>
-                <p v-if="log.reason" class="mt-2 text-xs text-slate-500">
-                  Reason: {{ log.reason }}
-                </p>
+                <p v-if="log.reason" class="text-texte-2 mt-2 text-xs">Reason: {{ log.reason }}</p>
               </td>
             </tr>
           </template>
           <tr v-if="logs.length === 0">
-            <td colspan="6" class="px-2 py-4 text-center text-slate-400">No audit entries yet.</td>
+            <td colspan="6" class="text-texte-3 px-3 py-8 text-center">No audit entries yet.</td>
           </tr>
         </tbody>
       </table>

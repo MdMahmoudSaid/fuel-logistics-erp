@@ -6,6 +6,7 @@ import { ref, onMounted } from 'vue'
 import { createResourceApi } from '@/api/resource'
 import { saleResource } from './api'
 import type { Sale, CustomerBrief, ProductBrief } from './types'
+import MonoValue from '@/components/ui/MonoValue.vue'
 
 const sales = ref<Sale[]>([])
 const customers = ref<CustomerBrief[]>([])
@@ -47,12 +48,12 @@ onMounted(async () => {
 
 <template>
   <div class="space-y-4">
-    <h2 class="text-lg font-semibold text-slate-800">Sales</h2>
+    <h1 class="font-display text-2xl leading-none font-semibold uppercase">Sales</h1>
 
-    <div class="flex flex-wrap gap-3 rounded border bg-white p-3">
+    <div class="flex flex-wrap gap-3">
       <select
         v-model="filters.customer"
-        class="rounded border border-slate-300 px-2 py-1.5 text-sm"
+        class="border-ligne-forte h-11 rounded-lg border bg-white px-3 text-sm"
         @change="loadSales"
       >
         <option value="">All customers</option>
@@ -60,7 +61,7 @@ onMounted(async () => {
       </select>
       <select
         v-model="filters.product"
-        class="rounded border border-slate-300 px-2 py-1.5 text-sm"
+        class="border-ligne-forte h-11 rounded-lg border bg-white px-3 text-sm"
         @change="loadSales"
       >
         <option value="">All products</option>
@@ -68,44 +69,51 @@ onMounted(async () => {
       </select>
     </div>
 
-    <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
+    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
 
-    <div class="overflow-x-auto rounded border bg-white">
+    <div class="border-ligne overflow-x-auto rounded-xl border bg-white">
       <table class="w-full text-left text-sm">
         <thead>
-          <tr class="border-b text-slate-500">
-            <th class="px-3 py-2 font-medium">Trip</th>
-            <th class="px-3 py-2 font-medium">Customer</th>
-            <th class="px-3 py-2 font-medium">Product</th>
-            <th class="px-3 py-2 font-medium text-right">Delivered (L)</th>
-            <th class="px-3 py-2 font-medium text-right">Unit price</th>
-            <th class="px-3 py-2 font-medium text-right">Subtotal</th>
+          <tr class="border-ligne text-texte-2 border-b">
+            <th class="px-3 py-2.5 font-medium">Trip</th>
+            <th class="px-3 py-2.5 font-medium">Customer</th>
+            <th class="px-3 py-2.5 font-medium">Product</th>
+            <th class="px-3 py-2.5 text-right font-medium">Delivered (L)</th>
+            <th class="px-3 py-2.5 text-right font-medium">Unit price</th>
+            <th class="px-3 py-2.5 text-right font-medium">Subtotal</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="sale in sales" :key="sale.id" class="border-b last:border-0 hover:bg-slate-50">
-            <td class="px-3 py-2">
+          <tr
+            v-for="sale in sales"
+            :key="sale.id"
+            class="border-ligne hover:bg-sable border-b last:border-0"
+          >
+            <td class="px-3 py-2.5">
               <RouterLink
-                class="text-slate-800 underline decoration-dotted"
+                class="text-texte-2 hover:text-texte underline decoration-dotted"
                 :to="{ name: 'trip-detail', params: { id: sale.trip } }"
               >
                 {{ sale.trip_reference }}
               </RouterLink>
             </td>
-            <td class="px-3 py-2 font-medium text-slate-800">{{ sale.customer_detail?.name }}</td>
-            <td class="px-3 py-2">{{ sale.product_detail?.name }}</td>
-            <td class="px-3 py-2 text-right">
-              {{ Number(sale.delivered_quantity).toLocaleString() }}
+            <td class="px-3 py-2.5 font-medium">{{ sale.customer_detail?.name }}</td>
+            <td class="px-3 py-2.5">{{ sale.product_detail?.name }}</td>
+            <td class="px-3 py-2.5 text-right">
+              <MonoValue :value="Number(sale.delivered_quantity).toLocaleString()" />
             </td>
-            <td class="px-3 py-2 text-right">
-              {{ Number(sale.unit_selling_price).toLocaleString() }} {{ sale.currency }}
+            <td class="px-3 py-2.5 text-right">
+              <MonoValue
+                :value="Number(sale.unit_selling_price).toLocaleString()"
+                :unit="sale.currency"
+              />
             </td>
-            <td class="px-3 py-2 text-right font-medium">
-              {{ Number(sale.subtotal).toLocaleString() }} {{ sale.currency }}
+            <td class="px-3 py-2.5 text-right">
+              <MonoValue :value="Number(sale.subtotal).toLocaleString()" :unit="sale.currency" />
             </td>
           </tr>
           <tr v-if="!loading && sales.length === 0">
-            <td colspan="6" class="px-3 py-6 text-center text-slate-400">No sales yet.</td>
+            <td colspan="6" class="text-texte-3 px-3 py-8 text-center">No sales yet.</td>
           </tr>
         </tbody>
       </table>

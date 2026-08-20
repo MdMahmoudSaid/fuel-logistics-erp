@@ -13,12 +13,12 @@ describe('RoleFormModal', () => {
     await operationsRow!.findAll('input[type="checkbox"]')[0]!.setValue(true)
 
     let emitted = wrapper.emitted('update:modelValue')!
-    expect((emitted[0]![0] as { permissions: Record<string, string[]> }).permissions.operations).toEqual([
-      'view',
-    ])
+    expect(
+      (emitted[0]![0] as { permissions: Record<string, string[]> }).permissions.operations,
+    ).toEqual(['view'])
 
     await wrapper.setProps({
-      modelValue: (emitted[0]![0] as { name: string; permissions: Record<string, string[]> }),
+      modelValue: emitted[0]![0] as { name: string; permissions: Record<string, string[]> },
     })
     await wrapper.findAll('tbody tr')[0]!.findAll('input[type="checkbox"]')[0]!.setValue(false)
 
