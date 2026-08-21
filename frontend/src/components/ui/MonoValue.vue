@@ -19,7 +19,7 @@ withDefaults(
 </script>
 
 <template>
-  <span class="font-mono tabular-nums" :class="align === 'right' ? 'text-right' : 'text-left'">
-    {{ value }}<span v-if="unit" class="text-texte-2 ml-1">{{ unit }}</span>
+  <span class="font-mono tabular-nums" :class="align === 'right' ? 'text-right' : 'text-start'">
+    {{ value }}<span v-if="unit" class="text-texte-2 ms-1">{{ unit }}</span>
   </span>
 </template>

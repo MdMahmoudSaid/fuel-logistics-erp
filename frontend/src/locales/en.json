@@ -122,6 +122,8 @@
     "deleteError": "Could not delete — check your permissions.",
     "confirmDelete": "Are you sure you want to delete this record?",
     "noRecords": "No records yet.",
+    "statusActive": "Active",
+    "statusInactive": "Inactive",
     "titles": {
       "products": "Products",
       "suppliers": "Suppliers",

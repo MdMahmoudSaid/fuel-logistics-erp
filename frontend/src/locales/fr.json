@@ -122,6 +122,8 @@
     "deleteError": "Impossible de supprimer — vérifiez vos droits.",
     "confirmDelete": "Voulez-vous vraiment supprimer cet enregistrement ?",
     "noRecords": "Aucun enregistrement.",
+    "statusActive": "Actif",
+    "statusInactive": "Inactif",
     "titles": {
       "products": "Produits",
       "suppliers": "Fournisseurs",

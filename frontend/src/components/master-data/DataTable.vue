@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
+import type { FieldType } from './types'
 
 defineProps<{
-  columns: { key: string; label: string }[]
+  columns: { key: string; label: string; type?: FieldType }[]
   rows: Record<string, unknown>[]
 }>()
 
@@ -12,7 +13,7 @@ const { t } = useI18n()
 </script>
 
 <template>
-  <table class="w-full text-left text-sm">
+  <table class="w-full text-start text-sm">
     <thead>
       <tr class="border-ligne text-texte-2 border-b">
         <th v-for="col in columns" :key="col.key" class="px-3 py-2.5 font-medium">
@@ -27,14 +28,21 @@ const { t } = useI18n()
         :key="String(row.id)"
         class="border-ligne hover:bg-sable border-b last:border-0"
       >
-        <td v-for="col in columns" :key="col.key" class="px-3 py-2.5">{{ row[col.key] }}</td>
-        <td class="px-3 py-2.5 text-right whitespace-nowrap">
-          <button class="text-texte-2 hover:text-texte" @click="$emit('edit', row)">
-            {{ t('masterData.edit') }}
-          </button>
-          <button class="text-critique ml-3 hover:brightness-90" @click="$emit('delete', row)">
-            {{ t('common.delete') }}
-          </button>
+        <td v-for="col in columns" :key="col.key" class="px-3 py-2.5">
+          <template v-if="col.type === 'checkbox'">
+            {{ row[col.key] ? t('masterData.statusActive') : t('masterData.statusInactive') }}
+          </template>
+          <template v-else>{{ row[col.key] }}</template>
+        </td>
+        <td class="px-3 py-2.5 text-end whitespace-nowrap">
+          <span class="inline-flex items-center gap-3">
+            <button class="text-texte-2 hover:text-texte" @click="$emit('edit', row)">
+              {{ t('masterData.edit') }}
+            </button>
+            <button class="text-critique hover:brightness-90" @click="$emit('delete', row)">
+              {{ t('common.delete') }}
+            </button>
+          </span>
         </td>
       </tr>
       <tr v-if="rows.length === 0">

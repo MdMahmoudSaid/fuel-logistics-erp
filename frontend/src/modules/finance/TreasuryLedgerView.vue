@@ -133,7 +133,7 @@ const TYPE_BADGE: Record<string, string> = {
     <p v-else-if="loading" class="text-sm text-slate-400">{{ t('common.loading') }}</p>
 
     <section v-else class="border-ligne rounded-xl border bg-white p-4">
-      <table class="w-full text-left text-sm">
+      <table class="w-full text-start text-sm">
         <thead>
           <tr class="border-ligne text-texte-2 border-b">
             <th class="px-2 py-1.5 font-medium">{{ t('finance.treasuryLedger.table.date') }}</th>
@@ -142,7 +142,7 @@ const TYPE_BADGE: Record<string, string> = {
             <th class="px-2 py-1.5 font-medium">
               {{ t('finance.treasuryLedger.table.reference') }}
             </th>
-            <th class="px-2 py-1.5 text-right font-medium">
+            <th class="px-2 py-1.5 text-end font-medium">
               {{ t('finance.treasuryLedger.table.amount') }}
             </th>
           </tr>
@@ -159,14 +159,14 @@ const TYPE_BADGE: Record<string, string> = {
               </span>
               <span
                 v-if="txn.is_transfer"
-                class="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600"
+                class="ms-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600"
               >
                 {{ t('transactionType.TRANSFER') }}
               </span>
             </td>
             <td class="px-2 py-1.5">{{ accountLabel(txn) }}</td>
             <td class="px-2 py-1.5">{{ txn.reference || '—' }}</td>
-            <td class="px-2 py-1.5 text-right">
+            <td class="px-2 py-1.5 text-end">
               <MonoValue
                 :value="(txn.type === 'MONEY_OUT' ? '−' : '') + Number(txn.amount).toLocaleString()"
                 :class="txn.type === 'MONEY_OUT' ? 'text-critique' : 'text-texte'"

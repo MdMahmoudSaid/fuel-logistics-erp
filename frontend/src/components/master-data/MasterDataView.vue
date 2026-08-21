@@ -24,7 +24,7 @@ const error = ref('')
 const columns = computed(() =>
   props.fields
     .filter((f) => f.type !== 'textarea' && f.type !== 'password')
-    .map((f) => ({ key: f.key, label: f.label })),
+    .map((f) => ({ key: f.key, label: f.label, type: f.type })),
 )
 
 async function load() {

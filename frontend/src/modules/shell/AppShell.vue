@@ -168,7 +168,7 @@ onUnmounted(() => {
         <RouterLink
           v-if="homeVisible"
           :to="{ name: HOME_ITEM.to }"
-          class="text-sable/70 hover:bg-bitume-2 hover:text-sable flex h-11 items-center rounded-lg border-l-2 border-transparent px-3 text-sm transition"
+          class="text-sable/70 hover:bg-bitume-2 hover:text-sable flex h-11 items-center rounded-lg border-s-2 border-transparent px-3 text-sm transition"
           :class="isNavActive(HOME_ITEM.to) ? '!border-orange bg-bitume-2 !text-sable font-medium' : ''"
         >
           {{ t(HOME_ITEM.labelKey) }}
@@ -177,7 +177,7 @@ onUnmounted(() => {
         <div v-for="group in visibleGroups" :key="group.key" class="mt-1">
           <button
             type="button"
-            class="text-sable/50 hover:text-sable/80 flex min-h-9 w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-xs font-semibold tracking-wide uppercase transition"
+            class="text-sable/50 hover:text-sable/80 flex min-h-9 w-full items-center gap-2 rounded-lg px-3 py-1.5 text-start text-xs font-semibold tracking-wide uppercase transition"
             :aria-expanded="openGroups[group.key]"
             @click="toggleGroup(group.key)"
           >
@@ -205,7 +205,7 @@ onUnmounted(() => {
               v-for="item in group.items"
               :key="item.to"
               :to="{ name: item.to }"
-              class="text-sable/70 hover:bg-bitume-2 hover:text-sable flex h-11 items-center rounded-lg border-l-2 border-transparent px-3 text-sm transition"
+              class="text-sable/70 hover:bg-bitume-2 hover:text-sable flex h-11 items-center rounded-lg border-s-2 border-transparent px-3 text-sm transition"
               :class="isNavActive(item.to) ? '!border-orange bg-bitume-2 !text-sable font-medium' : ''"
             >
               {{ t(item.labelKey) }}
