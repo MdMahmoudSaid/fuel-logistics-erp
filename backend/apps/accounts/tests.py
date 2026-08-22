@@ -147,3 +147,17 @@ def test_token_refresh_issues_new_access_token():
 
     assert refresh_response.status_code == 200
     assert "access" in refresh_response.data
+
+
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.contrib.auth.password_validation import validate_password
+
+
+def test_pin_validator_accepts_four_digits():
+    validate_password("1234")
+
+
+@pytest.mark.parametrize("bad_pin", ["123", "12345", "abcd", "12a4", ""])
+def test_pin_validator_rejects_invalid_pin(bad_pin):
+    with pytest.raises(DjangoValidationError):
+        validate_password(bad_pin)
