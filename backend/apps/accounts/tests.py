@@ -179,3 +179,25 @@ def test_user_is_locked_when_locked_until_in_future():
     user.locked_until = timezone.now() + timedelta(minutes=5)
     user.save()
     assert user.is_locked() is True
+
+
+@pytest.mark.django_db
+def test_login_with_phone_and_pin_returns_tokens():
+    User.objects.create_user(phone="+22212300001", pin="1234")
+    client = APIClient()
+
+    response = client.post("/api/auth/login/", {"phone": "+22212300001", "pin": "1234"})
+
+    assert response.status_code == 200
+    assert "access" in response.data
+    assert "refresh" in response.data
+
+
+@pytest.mark.django_db
+def test_login_with_wrong_pin_returns_401():
+    User.objects.create_user(phone="+22212300002", pin="1234")
+    client = APIClient()
+
+    response = client.post("/api/auth/login/", {"phone": "+22212300002", "pin": "0000"})
+
+    assert response.status_code == 401
