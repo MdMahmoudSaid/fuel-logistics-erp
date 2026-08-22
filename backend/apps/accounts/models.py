@@ -36,21 +36,28 @@ class Role(TimeStampedModel):
 
 
 class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
-    """Custom user, email-based login (§38)."""
+    """Custom user, phone-based login with PIN (§38)."""
 
-    email = models.EmailField(unique=True)
+    phone = models.CharField(max_length=20, unique=True)
+    email = models.EmailField(blank=True)
     full_name = models.CharField(max_length=150, blank=True)
-    phone = models.CharField(max_length=30, blank=True)
     role = models.ForeignKey(
         Role, null=True, blank=True, on_delete=models.PROTECT, related_name="users"
     )
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
+    failed_pin_attempts = models.IntegerField(default=0)
+    locked_until = models.DateTimeField(null=True, blank=True)
 
     objects = UserManager()
 
-    USERNAME_FIELD = "email"
+    USERNAME_FIELD = "phone"
     REQUIRED_FIELDS = []
 
     def __str__(self) -> str:
-        return self.email
+        return self.phone
+
+    def is_locked(self) -> bool:
+        from django.utils import timezone
+
+        return bool(self.locked_until and self.locked_until > timezone.now())

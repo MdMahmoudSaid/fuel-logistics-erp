@@ -161,3 +161,21 @@ def test_pin_validator_accepts_four_digits():
 def test_pin_validator_rejects_invalid_pin(bad_pin):
     with pytest.raises(DjangoValidationError):
         validate_password(bad_pin)
+
+
+@pytest.mark.django_db
+def test_new_user_is_not_locked_by_default():
+    user = User.objects.create_user(phone="+22212345611", pin="1234")
+    assert user.is_locked() is False
+
+
+@pytest.mark.django_db
+def test_user_is_locked_when_locked_until_in_future():
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    user = User.objects.create_user(phone="+22212345612", pin="1234")
+    user.locked_until = timezone.now() + timedelta(minutes=5)
+    user.save()
+    assert user.is_locked() is True
