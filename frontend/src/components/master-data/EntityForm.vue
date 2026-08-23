@@ -48,7 +48,7 @@ function setField(key: string, value: unknown) {
       <input
         v-else-if="field.type === 'pin'"
         :id="field.key"
-        type="text"
+        type="password"
         inputmode="numeric"
         pattern="\d{4}"
         minlength="4"
