@@ -43,6 +43,7 @@ describe('AppShell navigation', () => {
     const auth = useAuthStore()
     auth.user = {
       id: 1,
+      phone: '+22212345678',
       email: 'ops@example.com',
       full_name: 'Ops User',
       role: 3,

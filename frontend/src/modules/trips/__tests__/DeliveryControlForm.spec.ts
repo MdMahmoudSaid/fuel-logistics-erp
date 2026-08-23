@@ -43,6 +43,7 @@ function setAdminUser() {
   const auth = useAuthStore()
   auth.user = {
     id: 1,
+    phone: '+22212345678',
     email: 'admin@example.com',
     full_name: 'Admin',
     role: 1,
@@ -58,6 +59,7 @@ function setOpsUser() {
   const auth = useAuthStore()
   auth.user = {
     id: 2,
+    phone: '+22212345678',
     email: 'ops@example.com',
     full_name: 'Ops',
     role: 2,

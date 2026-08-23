@@ -79,6 +79,7 @@ function setAdminUser() {
   const auth = useAuthStore()
   auth.user = {
     id: 1,
+    phone: '+22212345678',
     email: 'admin@example.com',
     full_name: 'Admin',
     role: 1,

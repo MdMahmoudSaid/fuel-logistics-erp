@@ -30,7 +30,7 @@ Depuis la racine du projet (`fuel-logistics-erp/`) :
 cp .env.example .env
 
 # 2. Construire les images et démarrer les 3 services (db, backend, frontend)
-docker compose up --build
+docker compose up --build && docker compose up --build -V
 ```
 
 Le premier `--build` télécharge/installe les dépendances (peut prendre quelques minutes). Les migrations Django s'appliquent automatiquement au démarrage du backend.
@@ -140,4 +140,4 @@ npm run dev
 
 - Le code est monté en volume (`./backend:/app`, `./frontend:/app`) : les modifications de fichiers sont prises en compte à chaud (hot reload), aucun rebuild nécessaire pour du simple code.
 - Un rebuild (`docker compose build`) n'est nécessaire que si tu ajoutes/changes une dépendance dans `requirements/*.txt` ou `package.json`.
-- Un compte de test créé pendant la recette Phase 6 existe encore en base (si tu n'as pas fait `down -v`) : `recette-phase6@test.local` / `Recette123!` (rôle Admin).
+- Le compte de test créé pendant la recette Phase 6 (`recette-phase6@test.local` / `Recette123!`) ne fonctionne plus : l'authentification est passée à téléphone + PIN. Crée un nouveau compte via `python manage.py createsuperuser` (il te demandera un téléphone et un PIN à 4 chiffres) ou via l'écran Utilisateurs une fois connecté avec un compte existant.
