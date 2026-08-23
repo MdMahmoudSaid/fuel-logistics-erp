@@ -2,6 +2,7 @@
 import { useI18n } from 'vue-i18n'
 import type { FieldSchema } from './types'
 import Button from '@/components/ui/Button.vue'
+import CountryPhoneInput from '@/components/ui/CountryPhoneInput.vue'
 
 const { t } = useI18n()
 
@@ -34,6 +35,28 @@ function setField(key: string, value: unknown) {
         :value="modelValue[field.key] as string | number | undefined"
         class="border-ligne-forte text-texte placeholder:text-texte-3 focus-visible:outline-bitume h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
         @input="setField(field.key, ($event.target as HTMLInputElement).value)"
+      />
+
+      <CountryPhoneInput
+        v-else-if="field.type === 'phone'"
+        :id="field.key"
+        :model-value="(modelValue[field.key] as string) ?? ''"
+        :required="field.required"
+        @update:model-value="setField(field.key, $event)"
+      />
+
+      <input
+        v-else-if="field.type === 'pin'"
+        :id="field.key"
+        type="text"
+        inputmode="numeric"
+        pattern="\d{4}"
+        minlength="4"
+        maxlength="4"
+        :required="field.required"
+        :value="modelValue[field.key] as string | undefined"
+        class="border-ligne-forte text-texte placeholder:text-texte-3 focus-visible:outline-bitume h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+        @input="setField(field.key, ($event.target as HTMLInputElement).value.replace(/\D/g, '').slice(0, 4))"
       />
 
       <textarea

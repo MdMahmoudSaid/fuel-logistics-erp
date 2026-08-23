@@ -14,4 +14,26 @@ describe('EntityForm', () => {
 
     expect(wrapper.find('input#password').attributes('type')).toBe('password')
   })
+
+  it('renders a phone field with the CountryPhoneInput component', () => {
+    const fields: FieldSchema[] = [{ key: 'phone', label: 'Phone', type: 'phone' }]
+    const wrapper = mount(EntityForm, {
+      props: { fields, modelValue: {} },
+      global: { plugins: [i18n] },
+    })
+
+    expect(wrapper.find('input#phone').exists()).toBe(true)
+  })
+
+  it('renders a pin field as a 4-digit numeric input', () => {
+    const fields: FieldSchema[] = [{ key: 'pin', label: 'PIN', type: 'pin' }]
+    const wrapper = mount(EntityForm, {
+      props: { fields, modelValue: {} },
+      global: { plugins: [i18n] },
+    })
+
+    const input = wrapper.find('input#pin')
+    expect(input.attributes('inputmode')).toBe('numeric')
+    expect(input.attributes('maxlength')).toBe('4')
+  })
 })

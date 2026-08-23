@@ -20,11 +20,20 @@ const showForm = ref(false)
 const editingId = ref<number | null>(null)
 const formValue = ref<Record<string, unknown>>({})
 const error = ref('')
+const showInactive = ref(false)
 
 const columns = computed(() =>
   props.fields
-    .filter((f) => f.type !== 'textarea' && f.type !== 'password')
-    .map((f) => ({ key: f.key, label: f.label, type: f.type })),
+    .filter((f) => f.type !== 'textarea' && f.type !== 'password' && f.type !== 'pin')
+    .map((f) => ({ key: f.key, label: f.label, type: f.type, options: f.options })),
+)
+
+const hasActiveField = computed(() => props.fields.some((f) => f.key === 'is_active'))
+
+const visibleRows = computed(() =>
+  hasActiveField.value && !showInactive.value
+    ? rows.value.filter((r) => r.is_active !== false)
+    : rows.value,
 )
 
 async function load() {
@@ -76,6 +85,15 @@ async function onDelete(row: Record<string, unknown>) {
   }
 }
 
+async function onToggleActive(row: Record<string, unknown>) {
+  try {
+    await props.resource.update(row.id as number, { is_active: !row.is_active })
+    await load()
+  } catch {
+    error.value = t('masterData.toggleError')
+  }
+}
+
 onMounted(load)
 </script>
 
@@ -83,11 +101,24 @@ onMounted(load)
   <div class="space-y-4">
     <div class="flex items-center justify-between">
       <h1 class="font-display text-2xl leading-none font-semibold uppercase">{{ title }}</h1>
-      <Button variant="primary" @click="openCreate">{{ t('masterData.add') }}</Button>
+      <div class="flex items-center gap-4">
+        <label v-if="hasActiveField" class="text-texte-2 flex items-center gap-2 text-sm">
+          <input v-model="showInactive" type="checkbox" class="accent-orange" />
+          {{ t('masterData.showInactive') }}
+        </label>
+        <Button variant="primary" @click="openCreate">{{ t('masterData.add') }}</Button>
+      </div>
     </div>
 
     <div class="border-ligne overflow-x-auto rounded-xl border bg-white">
-      <DataTable :columns="columns" :rows="rows" @edit="openEdit" @delete="onDelete" />
+      <DataTable
+        :columns="columns"
+        :rows="visibleRows"
+        :active-toggle="hasActiveField"
+        @edit="openEdit"
+        @delete="onDelete"
+        @toggle-active="onToggleActive"
+      />
     </div>
 
     <div v-if="showForm" class="fixed inset-0 z-30 flex items-center justify-center bg-black/40">
