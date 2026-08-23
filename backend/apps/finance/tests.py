@@ -50,7 +50,7 @@ def test_bank_account_current_balance_sums_money_in_and_out():
     computed live from TreasuryTransaction, never stored."""
     admin_role = Role.objects.get(name=Role.NAME_ADMIN)
     admin_user = User.objects.create_user(
-        email="admin-balance@example.com", password="testpass123", role=admin_role
+        phone="+2220000011", pin="1234", role=admin_role
     )
     account = BankAccount.objects.create(name="Main BOA Account", opening_balance="1000000.00")
 
@@ -75,7 +75,7 @@ def test_cash_account_currency_defaults_to_xof():
 @pytest.fixture
 def finance_client():
     role = Role.objects.get(name=Role.NAME_FINANCE)
-    user = User.objects.create_user(email="fin@example.com", password="testpass123", role=role)
+    user = User.objects.create_user(phone="+2220000003", pin="1234", role=role)
     client = APIClient()
     client.force_authenticate(user)
     return client
@@ -129,7 +129,7 @@ def test_operations_role_can_create_truck_but_not_bank_account():
     user must be able to create a Truck (operations module) but must be
     denied creating a BankAccount (finance module)."""
     role = Role.objects.get(name=Role.NAME_OPERATIONS)
-    user = User.objects.create_user(email="ops@example.com", password="testpass123", role=role)
+    user = User.objects.create_user(phone="+2220000001", pin="1234", role=role)
     client = APIClient()
     client.force_authenticate(user)
 
@@ -159,8 +159,8 @@ def test_operations_role_can_create_truck_but_not_bank_account():
 def _make_trip_for_deduction(suffix):
     admin_role = Role.objects.get(name=Role.NAME_ADMIN)
     admin_user = User.objects.create_user(
-        email=f"admin-deduction-{suffix}@example.com",
-        password="testpass123",
+        phone=(f"+222{suffix}")[:20],
+        pin="1234",
         role=admin_role,
     )
     product = Product.objects.get(code="gasoil")
@@ -243,8 +243,8 @@ def test_transport_deduction_requires_positive_chargeable_quantity():
 def _make_invoice_for_payment(suffix, total_amount=None, customer=None):
     admin_role = Role.objects.get(name=Role.NAME_ADMIN)
     admin_user = User.objects.create_user(
-        email=f"admin-payment-{suffix}@example.com",
-        password="testpass123",
+        phone=(f"+222{suffix}")[:20],
+        pin="1234",
         role=admin_role,
     )
     product = Product.objects.get(code="gasoil")
@@ -429,8 +429,8 @@ def test_payment_allocation_invoice_null_means_unallocated_credit():
 def _make_supplier_order(suffix):
     admin_role = Role.objects.get(name=Role.NAME_ADMIN)
     admin_user = User.objects.create_user(
-        email=f"admin-suppay-{suffix}@example.com",
-        password="testpass123",
+        phone=(f"+222{suffix}")[:20],
+        pin="1234",
         role=admin_role,
     )
     product = Product.objects.get(code="gasoil")
@@ -658,7 +658,7 @@ def test_expense_allocation_requires_positive_amount():
 def treasury_user():
     admin_role = Role.objects.get(name=Role.NAME_ADMIN)
     return User.objects.create_user(
-        email="admin-treasury@example.com", password="testpass123", role=admin_role
+        phone="+2220000012", pin="1234", role=admin_role
     )
 
 

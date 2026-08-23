@@ -18,7 +18,7 @@ def test_supplier_order_total_amount_calculation():
     # Setup
     admin_role = Role.objects.get(name=Role.NAME_ADMIN)
     admin_user = User.objects.create_user(
-        email="admin@example.com", password="testpass123", role=admin_role
+        phone="+2220000002", pin="1234", role=admin_role
     )
     product = Product.objects.get(code="gasoil")
     supplier = Supplier.objects.create(name="Total", country="Senegal")
@@ -42,7 +42,7 @@ def test_supplier_order_total_amount_calculation():
 def test_cession_letter_validation_limits():
     admin_role = Role.objects.get(name=Role.NAME_ADMIN)
     admin_user = User.objects.create_user(
-        email="admin@example.com", password="testpass123", role=admin_role
+        phone="+2220000002", pin="1234", role=admin_role
     )
     product = Product.objects.get(code="essence")
     supplier = Supplier.objects.create(name="Shell", country="Mali")
@@ -96,7 +96,7 @@ def test_cession_letter_validation_limits():
 def test_cession_cancellation_releases_reliquat():
     admin_role = Role.objects.get(name=Role.NAME_ADMIN)
     admin_user = User.objects.create_user(
-        email="admin@example.com", password="testpass123", role=admin_role
+        phone="+2220000002", pin="1234", role=admin_role
     )
     product = Product.objects.get(code="gasoil")
     supplier = Supplier.objects.create(name="Total", country="Senegal")
@@ -134,11 +134,11 @@ def test_cession_cancellation_releases_reliquat():
 def test_supplier_permissions():
     ops_role = Role.objects.get(name=Role.NAME_OPERATIONS)
     ops_user = User.objects.create_user(
-        email="ops@example.com", password="testpass123", role=ops_role
+        phone="+2220000001", pin="1234", role=ops_role
     )
     admin_role = Role.objects.get(name=Role.NAME_ADMIN)
     admin_user = User.objects.create_user(
-        email="admin@example.com", password="testpass123", role=admin_role
+        phone="+2220000002", pin="1234", role=admin_role
     )
 
     product = Product.objects.get(code="gasoil")
@@ -181,7 +181,7 @@ def test_supplier_permissions():
 def test_supplier_ledger_endpoint():
     admin_role = Role.objects.get(name=Role.NAME_ADMIN)
     admin_user = User.objects.create_user(
-        email="admin@example.com", password="testpass123", role=admin_role
+        phone="+2220000002", pin="1234", role=admin_role
     )
     product = Product.objects.get(code="gasoil")
     supplier = Supplier.objects.create(name="Total", country="Senegal")
@@ -220,7 +220,7 @@ def test_concurrency_select_for_update():
     # Ce test requiert transaction=True pour pouvoir simuler le blocage concurrentiel en BDD.
     admin_role = Role.objects.get(name=Role.NAME_ADMIN)
     admin_user = User.objects.create_user(
-        email="admin-concurrent@example.com", password="testpass123", role=admin_role
+        phone="+2220000015", pin="1234", role=admin_role
     )
     product = Product.objects.get(code="gasoil")
     supplier = Supplier.objects.create(name="Total", country="Senegal")

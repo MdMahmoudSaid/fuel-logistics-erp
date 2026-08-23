@@ -54,8 +54,8 @@ FULL_SEQUENCE_AFTER_ASSIGNED = [
 def _setup_fixtures(order_suffix="001"):
     admin_role = Role.objects.get(name=Role.NAME_ADMIN)
     admin_user = User.objects.create_user(
-        email=f"admin-trip-{order_suffix}@example.com",
-        password="testpass123",
+        phone=(f"+222{order_suffix}")[:20],
+        pin="1234",
         role=admin_role,
     )
     product = Product.objects.get(code="gasoil")
@@ -489,7 +489,7 @@ def test_trip_serializer_rejects_force_from_non_admin():
     fx = _setup_fixtures("SER-NOADMIN")
     ops_role = Role.objects.get(name=Role.NAME_OPERATIONS)
     ops_user = User.objects.create_user(
-        email="ops-ser@example.com", password="testpass123", role=ops_role
+        phone="+2220000016", pin="1234", role=ops_role
     )
     truck = _make_truck("TRK-SER-NOADMIN")
     _make_trip(fx, truck, "TRIP-SER-NOADMIN-001")
@@ -681,7 +681,7 @@ def test_api_truck_lock_rejected_then_admin_force_succeeds():
 
     ops_role = Role.objects.get(name=Role.NAME_OPERATIONS)
     ops_user = User.objects.create_user(
-        email="ops-api-lock@example.com", password="testpass123", role=ops_role
+        phone="+2220000017", pin="1234", role=ops_role
     )
     payload = _api_trip_payload(fx, truck, quantity="10000.00")
 
@@ -758,7 +758,7 @@ def test_api_customer_order_permissions_gate_on_sales_module():
 
     ops_role = Role.objects.get(name=Role.NAME_OPERATIONS)
     ops_user = User.objects.create_user(
-        email="ops-perm@example.com", password="testpass123", role=ops_role
+        phone="+2220000018", pin="1234", role=ops_role
     )
 
     client = APIClient()
@@ -1133,7 +1133,7 @@ def test_api_delivery_control_denied_without_operations_permission():
 
     finance_role = Role.objects.get(name=Role.NAME_FINANCE)
     finance_user = User.objects.create_user(
-        email="finance-dc-perm@example.com", password="testpass123", role=finance_role
+        phone="+2220000019", pin="1234", role=finance_role
     )
     client = APIClient()
     client.force_authenticate(finance_user)

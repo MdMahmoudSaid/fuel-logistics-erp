@@ -22,7 +22,7 @@ from apps.trips.models import Trip
 def _make_admin(suffix):
     admin_role = Role.objects.get(name=Role.NAME_ADMIN)
     return User.objects.create_user(
-        email=f"admin-view-{suffix}@example.com", password="testpass123", role=admin_role
+        phone=(f"+222{suffix}")[:20], pin="1234", role=admin_role
     )
 
 
@@ -121,7 +121,7 @@ def test_dashboard_summary_filters_by_explicit_date_range():
 @pytest.mark.django_db
 def test_dashboard_summary_requires_reports_permission():
     role = _make_role_without_reports("DASH")
-    user = User.objects.create_user(email="norep-dash@example.com", password="testpass123", role=role)
+    user = User.objects.create_user(phone="+2220000013", pin="1234", role=role)
 
     client = APIClient()
     client.force_authenticate(user)
@@ -209,7 +209,7 @@ def test_report_endpoint_export_xlsx_returns_a_valid_workbook():
 @pytest.mark.django_db
 def test_report_export_requires_export_permission_not_just_view():
     role = Role.objects.create(name="ViewOnlyReports", permissions={"reports": ["view"]})
-    user = User.objects.create_user(email="view-only@example.com", password="testpass123", role=role)
+    user = User.objects.create_user(phone="+2220000014", pin="1234", role=role)
 
     client = APIClient()
     client.force_authenticate(user)

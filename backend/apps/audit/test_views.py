@@ -16,7 +16,7 @@ from apps.suppliers.models import Supplier
 def _make_admin(suffix):
     admin_role = Role.objects.get(name=Role.NAME_ADMIN)
     return User.objects.create_user(
-        email=f"admin-auditview-{suffix}@example.com", password="testpass123", role=admin_role
+        phone=(f"+222{suffix}")[:20], pin="1234", role=admin_role
     )
 
 
@@ -82,7 +82,7 @@ def test_audit_log_endpoint_is_read_only():
 @pytest.mark.django_db
 def test_non_admin_role_cannot_list_audit_logs():
     role = Role.objects.create(name="NoAdmin", permissions={"reports": ["view"]})
-    user = User.objects.create_user(email="no-admin@example.com", password="testpass123", role=role)
+    user = User.objects.create_user(phone="+2220000010", pin="1234", role=role)
 
     client = APIClient()
     client.force_authenticate(user)

@@ -31,7 +31,7 @@ def test_product_seed_data_present_after_migration():
 @pytest.mark.django_db
 def test_product_api_crud_authenticated():
     role = Role.objects.get(name=Role.NAME_OPERATIONS)
-    user = User.objects.create_user(email="ops@example.com", password="testpass123", role=role)
+    user = User.objects.create_user(phone="+2220000001", pin="1234", role=role)
     client = APIClient()
     client.force_authenticate(user)
 
@@ -58,7 +58,7 @@ def test_product_api_crud_authenticated():
 @pytest.mark.django_db
 def test_product_create_denied_without_operations_permission():
     role = Role.objects.get(name=Role.NAME_FINANCE)
-    user = User.objects.create_user(email="fin@example.com", password="testpass123", role=role)
+    user = User.objects.create_user(phone="+2220000003", pin="1234", role=role)
     client = APIClient()
     client.force_authenticate(user)
 
@@ -73,7 +73,7 @@ def test_product_list_readable_by_a_role_scoped_only_to_purchasing():
     # couldn't load the product dropdown when creating a SupplierOrder,
     # because ProductViewSet.list was gated entirely behind "operations".
     role = Role.objects.create(name="Purchasing Only", permissions={"purchasing": ["view", "create"]})
-    user = User.objects.create_user(email="purchasing-only@example.com", password="testpass123", role=role)
+    user = User.objects.create_user(phone="+2220000004", pin="1234", role=role)
     client = APIClient()
     client.force_authenticate(user)
 
@@ -103,7 +103,7 @@ def test_loss_tolerance_defaults_to_100_litres_when_unconfigured():
 def test_loss_tolerance_config_is_a_singleton_row():
     role = Role.objects.get(name=Role.NAME_ADMIN)
     admin = User.objects.create_user(
-        email="admin-tolerance@example.com", password="testpass123", role=role
+        phone="+2220000005", pin="1234", role=role
     )
 
     first = LossToleranceConfig(tolerance_litres=Decimal("100.00"), updated_by=admin)
@@ -120,7 +120,7 @@ def test_loss_tolerance_config_is_a_singleton_row():
 def test_loss_tolerance_config_cannot_be_deleted():
     role = Role.objects.get(name=Role.NAME_ADMIN)
     admin = User.objects.create_user(
-        email="admin-tolerance-del@example.com", password="testpass123", role=role
+        phone="+2220000006", pin="1234", role=role
     )
     config = LossToleranceConfig.objects.create(
         tolerance_litres=Decimal("100.00"), updated_by=admin
@@ -141,7 +141,7 @@ def test_loss_tolerance_config_cannot_be_deleted():
 def test_api_loss_tolerance_get_returns_spec_default_when_unconfigured():
     role = Role.objects.get(name=Role.NAME_ADMIN)
     admin = User.objects.create_user(
-        email="admin-tol-get@example.com", password="testpass123", role=role
+        phone="+2220000007", pin="1234", role=role
     )
     client = APIClient()
     client.force_authenticate(admin)
@@ -158,7 +158,7 @@ def test_api_loss_tolerance_get_returns_spec_default_when_unconfigured():
 def test_api_loss_tolerance_patch_by_admin_persists_and_freezes_actor():
     role = Role.objects.get(name=Role.NAME_ADMIN)
     admin = User.objects.create_user(
-        email="admin-tol-patch@example.com", password="testpass123", role=role
+        phone="+2220000008", pin="1234", role=role
     )
     client = APIClient()
     client.force_authenticate(admin)
@@ -176,7 +176,7 @@ def test_api_loss_tolerance_patch_by_admin_persists_and_freezes_actor():
 def test_api_loss_tolerance_patch_denied_for_non_admin():
     role = Role.objects.get(name=Role.NAME_OPERATIONS)
     ops = User.objects.create_user(
-        email="ops-tol@example.com", password="testpass123", role=role
+        phone="+2220000009", pin="1234", role=role
     )
     client = APIClient()
     client.force_authenticate(ops)

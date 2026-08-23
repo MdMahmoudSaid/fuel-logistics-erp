@@ -21,7 +21,7 @@ def test_driver_creation_with_only_name_succeeds():
 @pytest.fixture
 def ops_client():
     role = Role.objects.get(name=Role.NAME_OPERATIONS)
-    user = User.objects.create_user(email="ops@example.com", password="testpass123", role=role)
+    user = User.objects.create_user(phone="+2220000001", pin="1234", role=role)
     client = APIClient()
     client.force_authenticate(user)
     return client

@@ -14,7 +14,7 @@ def test_supplier_str():
 @pytest.mark.django_db
 def test_supplier_crud_requires_purchasing_permission():
     ops_role = Role.objects.get(name=Role.NAME_OPERATIONS)  # no purchasing:create
-    ops_user = User.objects.create_user(email="ops@example.com", password="testpass123", role=ops_role)
+    ops_user = User.objects.create_user(phone="+2220000001", pin="1234", role=ops_role)
     client = APIClient()
     client.force_authenticate(ops_user)
 
@@ -22,7 +22,7 @@ def test_supplier_crud_requires_purchasing_permission():
     assert denied.status_code == 403
 
     admin_role = Role.objects.get(name=Role.NAME_ADMIN)
-    admin_user = User.objects.create_user(email="admin@example.com", password="testpass123", role=admin_role)
+    admin_user = User.objects.create_user(phone="+2220000002", pin="1234", role=admin_role)
     client.force_authenticate(admin_user)
 
     created = client.post("/api/suppliers/", {"name": "Shell Mali", "country": "Mali"})

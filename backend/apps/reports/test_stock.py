@@ -19,7 +19,7 @@ from apps.trips.models import Trip
 def _make_admin(suffix):
     admin_role = Role.objects.get(name=Role.NAME_ADMIN)
     return User.objects.create_user(
-        email=f"admin-stock-{suffix}@example.com", password="testpass123", role=admin_role
+        phone=(f"+222{suffix}")[:20], pin="1234", role=admin_role
     )
 
 

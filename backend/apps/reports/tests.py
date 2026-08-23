@@ -21,8 +21,8 @@ from apps.trips.models import Trip
 def _make_trip(suffix, customer_order=None, status=Trip.Status.DELIVERED):
     admin_role = Role.objects.get(name=Role.NAME_ADMIN)
     admin_user = User.objects.create_user(
-        email=f"admin-profit-{suffix}@example.com",
-        password="testpass123",
+        phone=(f"+222{suffix}")[:20],
+        pin="1234",
         role=admin_role,
     )
     product = Product.objects.get(code="gasoil")

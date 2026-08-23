@@ -31,8 +31,8 @@ from apps.trips.models import Trip
 def _setup_fixtures(suffix):
     admin_role = Role.objects.get(name=Role.NAME_ADMIN)
     admin_user = User.objects.create_user(
-        email=f"admin-sales-{suffix}@example.com",
-        password="testpass123",
+        phone=(f"+222{suffix}")[:20],
+        pin="1234",
         role=admin_role,
     )
     product = Product.objects.get(code="gasoil")
