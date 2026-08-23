@@ -201,3 +201,25 @@ def test_login_with_wrong_pin_returns_401():
     response = client.post("/api/auth/login/", {"phone": "+22212300002", "pin": "0000"})
 
     assert response.status_code == 401
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("invalid_pin", ["123", "12345", "abcd", "12a4"])
+def test_admin_cannot_create_user_with_invalid_pin(invalid_pin):
+    admin_role = Role.objects.get(name=Role.NAME_ADMIN)
+    admin = User.objects.create_user(phone="+22212345616", pin="1234", role=admin_role)
+    client = APIClient()
+    client.force_authenticate(admin)
+
+    create_response = client.post(
+        "/api/accounts/users/",
+        {
+            "phone": "+22212345698",
+            "pin": invalid_pin,
+            "full_name": "Weak Pin",
+            "role": admin_role.id,
+        },
+    )
+    assert create_response.status_code == 400
+    assert "pin" in create_response.data
+    assert not User.objects.filter(phone="+22212345698").exists()

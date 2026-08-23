@@ -22,25 +22,25 @@ class RoleSerializer(serializers.ModelSerializer):
 
 
 class UserSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True, required=False, min_length=8)
+    pin = serializers.CharField(write_only=True, required=False, min_length=4, max_length=4)
     role_detail = RoleSerializer(source="role", read_only=True)
 
     class Meta:
         model = User
         fields = [
             "id",
+            "phone",
             "email",
             "full_name",
-            "phone",
             "role",
             "role_detail",
             "is_active",
-            "password",
+            "pin",
             "created_at",
         ]
         read_only_fields = ["id", "created_at"]
 
-    def validate_password(self, value):
+    def validate_pin(self, value):
         try:
             validate_password(value, self.instance)
         except DjangoValidationError as exc:
@@ -48,17 +48,17 @@ class UserSerializer(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data):
-        password = validated_data.pop("password", None)
+        pin = validated_data.pop("pin", None)
         user = User(**validated_data)
-        if password:
-            user.set_password(password)
+        if pin:
+            user.set_password(pin)
         user.save()
         return user
 
     def update(self, instance, validated_data):
-        password = validated_data.pop("password", None)
+        pin = validated_data.pop("pin", None)
         user = super().update(instance, validated_data)
-        if password:
-            user.set_password(password)
+        if pin:
+            user.set_password(pin)
             user.save()
         return user
