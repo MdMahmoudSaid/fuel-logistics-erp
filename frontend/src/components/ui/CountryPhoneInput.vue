@@ -11,6 +11,7 @@ import {
   DEFAULT_ISO2,
   findCountryForPhone,
 } from '@/data/countries'
+import { blockNonDigitInput } from '@/utils/numeric-input'
 
 const props = withDefaults(
   defineProps<{
@@ -175,6 +176,7 @@ function onDropdownBlur() {
         :aria-invalid="!!error"
         class="border-ligne-forte text-texte placeholder:text-texte-3 focus-visible:outline-bitume h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
         :class="error ? 'border-critique' : ''"
+        @beforeinput="blockNonDigitInput"
         @input="onNumberInput"
       />
     </div>

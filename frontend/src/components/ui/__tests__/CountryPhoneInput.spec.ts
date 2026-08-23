@@ -58,4 +58,21 @@ describe('CountryPhoneInput', () => {
 
     expect(wrapper.find('input#phone').attributes('maxlength')).toBe('9')
   })
+
+  it('blocks a typed letter in the number field before it is inserted', () => {
+    const wrapper = mount(CountryPhoneInput, {
+      props: { id: 'phone', modelValue: '' },
+      global: { plugins: [i18n] },
+    })
+
+    const input = wrapper.find('input#phone').element
+    const event = new InputEvent('beforeinput', {
+      inputType: 'insertText',
+      data: 'a',
+      cancelable: true,
+    })
+    input.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+  })
 })

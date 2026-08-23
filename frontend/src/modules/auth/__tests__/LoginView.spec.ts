@@ -29,4 +29,30 @@ describe('LoginView', () => {
     expect(wrapper.find('input#pin').exists()).toBe(true)
     expect(wrapper.find('button[type="submit"]').text()).toContain('Se connecter')
   })
+
+  it('blocks a typed letter in the PIN field before it is inserted', async () => {
+    const router = createRouter({
+      history: createWebHistory(),
+      routes: [
+        { path: '/', name: 'home', component: { template: '<div />' } },
+        { path: '/login', name: 'login', component: LoginView },
+      ],
+    })
+    router.push('/login')
+    await router.isReady()
+
+    const wrapper = mount(LoginView, {
+      global: { plugins: [router, i18n] },
+    })
+
+    const input = wrapper.find('input#pin').element
+    const event = new InputEvent('beforeinput', {
+      inputType: 'insertText',
+      data: 'a',
+      cancelable: true,
+    })
+    input.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+  })
 })

@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 import AppLogo from '@/components/AppLogo.vue'
 import CountryPhoneInput from '@/components/ui/CountryPhoneInput.vue'
 import Button from '@/components/ui/Button.vue'
+import { blockNonDigitInput } from '@/utils/numeric-input'
 
 const { t } = useI18n()
 
@@ -104,6 +105,7 @@ async function onSubmit() {
                 autocomplete="current-password"
                 required
                 class="border-ligne-forte text-texte placeholder:text-texte-3 focus-visible:outline-bitume h-12 w-full rounded-lg border bg-white px-3.5 pr-11 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+                @beforeinput="blockNonDigitInput"
                 @input="onPinInput"
               />
               <div class="absolute inset-y-0 right-1.5 flex items-center">

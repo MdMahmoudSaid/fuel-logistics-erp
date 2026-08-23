@@ -3,6 +3,7 @@ import { useI18n } from 'vue-i18n'
 import type { FieldSchema } from './types'
 import Button from '@/components/ui/Button.vue'
 import CountryPhoneInput from '@/components/ui/CountryPhoneInput.vue'
+import { blockNonDigitInput } from '@/utils/numeric-input'
 
 const { t } = useI18n()
 
@@ -56,6 +57,7 @@ function setField(key: string, value: unknown) {
         :required="field.required"
         :value="modelValue[field.key] as string | undefined"
         class="border-ligne-forte text-texte placeholder:text-texte-3 focus-visible:outline-bitume h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+        @beforeinput="blockNonDigitInput"
         @input="setField(field.key, ($event.target as HTMLInputElement).value.replace(/\D/g, '').slice(0, 4))"
       />
 
