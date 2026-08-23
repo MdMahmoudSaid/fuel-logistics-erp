@@ -5,6 +5,7 @@ import {
   PHONE_DIGIT_RULES,
   DEFAULT_DIGIT_RULE,
   DEFAULT_ISO2,
+  formatPhoneDisplay,
 } from '@/data/countries'
 
 describe('countries data', () => {
@@ -28,5 +29,15 @@ describe('countries data', () => {
     expect(PHONE_DIGIT_RULES.XX).toBeUndefined()
     expect(DEFAULT_DIGIT_RULE).toEqual({ min: 6, max: 14 })
     expect(COUNTRIES.some((c) => c.iso2 === DEFAULT_ISO2)).toBe(true)
+  })
+
+  it('formats a normalized phone value with a space between the dial code and the number', () => {
+    expect(formatPhoneDisplay('+22212340000')).toBe('+222 12340000')
+    expect(formatPhoneDisplay('+22112345678')).toBe('+221 12345678')
+  })
+
+  it('returns the raw value unchanged when it has no matching dial code or is empty', () => {
+    expect(formatPhoneDisplay('')).toBe('')
+    expect(formatPhoneDisplay('not-a-phone')).toBe('not-a-phone')
   })
 })

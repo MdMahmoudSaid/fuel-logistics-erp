@@ -19,6 +19,20 @@ export const PHONE_DIGIT_RULES: Record<string, { min: number; max: number }> = {
   NE: { min: 8, max: 8 },
 }
 
+export function findCountryForPhone(value: string): Country | undefined {
+  return [...COUNTRIES]
+    .filter((c) => value.startsWith(c.dialCode))
+    .sort((a, b) => b.dialCode.length - a.dialCode.length)[0]
+}
+
+export function formatPhoneDisplay(value: string): string {
+  if (!value) return value
+  const match = findCountryForPhone(value)
+  if (!match) return value
+  const national = value.slice(match.dialCode.length)
+  return national ? `${match.dialCode} ${national}` : match.dialCode
+}
+
 export const DEFAULT_DIGIT_RULE = { min: 6, max: 14 }
 
 export const COUNTRIES: Country[] = [

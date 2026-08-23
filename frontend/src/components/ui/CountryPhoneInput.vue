@@ -9,6 +9,7 @@ import {
   PHONE_DIGIT_RULES,
   DEFAULT_DIGIT_RULE,
   DEFAULT_ISO2,
+  findCountryForPhone,
 } from '@/data/countries'
 
 const props = withDefaults(
@@ -29,9 +30,7 @@ const { t, locale } = useI18n()
 
 function parsePhone(value: string): { iso2: string; national: string } {
   if (!value) return { iso2: DEFAULT_ISO2, national: '' }
-  const match = [...COUNTRIES]
-    .filter((c) => value.startsWith(c.dialCode))
-    .sort((a, b) => b.dialCode.length - a.dialCode.length)[0]
+  const match = findCountryForPhone(value)
   if (!match) return { iso2: DEFAULT_ISO2, national: value.replace(/\D/g, '') }
   return { iso2: match.iso2, national: value.slice(match.dialCode.length) }
 }
