@@ -37,6 +37,19 @@ describe('CountryPhoneInput', () => {
     expect(wrapper.text()).toContain('+222')
   })
 
+  it('matches accented country names when the query has no accents', async () => {
+    const wrapper = mount(CountryPhoneInput, {
+      props: { id: 'phone', modelValue: '' },
+      global: { plugins: [i18n] },
+    })
+
+    const dropdown = wrapper.findAll('input')[0]
+    await dropdown.trigger('focus')
+    await dropdown.setValue('Sene')
+
+    expect(wrapper.text()).toContain('+221')
+  })
+
   it('enforces the Senegal 9-digit rule via the maxlength attribute', async () => {
     const wrapper = mount(CountryPhoneInput, {
       props: { id: 'phone', modelValue: '+221123456789' },

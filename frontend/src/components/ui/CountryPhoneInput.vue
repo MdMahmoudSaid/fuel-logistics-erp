@@ -76,12 +76,18 @@ const orderedCountries = computed(() => {
   return [...priority, ...rest]
 })
 
+const DIACRITICS_RE = new RegExp('[̀-ͯ]', 'g')
+
+function normalizeSearch(value: string): string {
+  return value.normalize('NFD').replace(DIACRITICS_RE, '').toLowerCase()
+}
+
 const filteredCountries = computed(() => {
-  const q = query.value.trim().toLowerCase()
+  const q = normalizeSearch(query.value.trim())
   if (!q) return orderedCountries.value
   return orderedCountries.value.filter(
     (c) =>
-      countryName(c.iso2).toLowerCase().includes(q) ||
+      normalizeSearch(countryName(c.iso2)).includes(q) ||
       c.dialCode.includes(q) ||
       c.iso2.toLowerCase().includes(q),
   )
