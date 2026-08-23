@@ -9,6 +9,7 @@ interface RoleDetail {
 
 interface User {
   id: number
+  phone: string
   email: string
   full_name: string
   role: number | null
@@ -33,8 +34,8 @@ export const useAuthStore = defineStore('auth', {
   },
 
   actions: {
-    async login(email: string, password: string) {
-      const { data } = await authHttp.post('/auth/login/', { email, password })
+    async login(phone: string, pin: string) {
+      const { data } = await authHttp.post('/auth/login/', { phone, pin })
       this.setTokens(data.access, data.refresh)
       await this.fetchMe()
     },

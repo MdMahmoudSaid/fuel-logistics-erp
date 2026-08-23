@@ -4,26 +4,30 @@ import { useI18n } from 'vue-i18n'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import AppLogo from '@/components/AppLogo.vue'
-import Input from '@/components/ui/Input.vue'
+import CountryPhoneInput from '@/components/ui/CountryPhoneInput.vue'
 import Button from '@/components/ui/Button.vue'
 
 const { t } = useI18n()
 
-const email = ref('')
-const password = ref('')
+const phone = ref('')
+const pin = ref('')
 const error = ref('')
 const loading = ref(false)
-const showPassword = ref(false)
+const showPin = ref(false)
 
 const auth = useAuthStore()
 const router = useRouter()
 const route = useRoute()
 
+function onPinInput(event: Event) {
+  pin.value = (event.target as HTMLInputElement).value.replace(/\D/g, '').slice(0, 4)
+}
+
 async function onSubmit() {
   error.value = ''
   loading.value = true
   try {
-    await auth.login(email.value, password.value)
+    await auth.login(phone.value, pin.value)
     const redirect = (route.query.redirect as string) || '/'
     router.push(redirect)
   } catch {
@@ -82,58 +86,63 @@ async function onSubmit() {
             <p class="text-texte-2 mt-1 text-sm">{{ t('auth.subtitle') }}</p>
           </div>
 
-          <Input
-            id="email"
-            v-model="email"
-            :label="t('auth.emailLabel')"
-            type="email"
-            autocomplete="username"
-            required
-          />
-          <Input
-            id="password"
-            v-model="password"
-            :label="t('auth.passwordLabel')"
-            :type="showPassword ? 'text' : 'password'"
-            autocomplete="current-password"
-            required
-          >
-            <template #suffix>
-              <button
-                type="button"
-                class="text-texte-3 hover:text-texte-2 flex h-8 w-8 items-center justify-center rounded-md transition"
-                :aria-label="showPassword ? t('auth.hidePassword') : t('auth.showPassword')"
-                @click="showPassword = !showPassword"
-              >
-                <svg
-                  v-if="showPassword"
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  aria-hidden="true"
+          <CountryPhoneInput id="phone" v-model="phone" :label="t('auth.phoneLabel')" required />
+
+          <div class="space-y-1.5">
+            <label for="pin" class="text-texte-2 text-sm font-medium">
+              {{ t('auth.pinLabel') }}
+            </label>
+            <div class="relative">
+              <input
+                id="pin"
+                :value="pin"
+                :type="showPin ? 'text' : 'password'"
+                inputmode="numeric"
+                pattern="\d{4}"
+                minlength="4"
+                maxlength="4"
+                autocomplete="current-password"
+                required
+                class="border-ligne-forte text-texte placeholder:text-texte-3 focus-visible:outline-bitume h-12 w-full rounded-lg border bg-white px-3.5 pr-11 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+                @input="onPinInput"
+              />
+              <div class="absolute inset-y-0 right-1.5 flex items-center">
+                <button
+                  type="button"
+                  class="text-texte-3 hover:text-texte-2 flex h-8 w-8 items-center justify-center rounded-md transition"
+                  :aria-label="showPin ? t('auth.hidePassword') : t('auth.showPassword')"
+                  @click="showPin = !showPin"
                 >
-                  <path
-                    d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.4 5.5A9.9 9.9 0 0 1 12 5.2c4.2 0 7.8 2.6 9.5 6.3a10.5 10.5 0 0 1-2.9 3.7M6.5 6.9A10.6 10.6 0 0 0 2.5 11.5c1.7 3.7 5.3 6.3 9.5 6.3a9.6 9.6 0 0 0 3.4-.6"
-                    stroke="currentColor"
-                    stroke-width="1.8"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  />
-                </svg>
-                <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path
-                    d="M2.5 11.5C4.2 7.8 7.8 5.2 12 5.2s7.8 2.6 9.5 6.3c-1.7 3.7-5.3 6.3-9.5 6.3s-7.8-2.6-9.5-6.3Z"
-                    stroke="currentColor"
-                    stroke-width="1.8"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  />
-                  <circle cx="12" cy="11.5" r="2.6" stroke="currentColor" stroke-width="1.8" />
-                </svg>
-              </button>
-            </template>
-          </Input>
+                  <svg
+                    v-if="showPin"
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.4 5.5A9.9 9.9 0 0 1 12 5.2c4.2 0 7.8 2.6 9.5 6.3a10.5 10.5 0 0 1-2.9 3.7M6.5 6.9A10.6 10.6 0 0 0 2.5 11.5c1.7 3.7 5.3 6.3 9.5 6.3a9.6 9.6 0 0 0 3.4-.6"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                  <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path
+                      d="M2.5 11.5C4.2 7.8 7.8 5.2 12 5.2s7.8 2.6 9.5 6.3c-1.7 3.7-5.3 6.3-9.5 6.3s-7.8-2.6-9.5-6.3Z"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                    <circle cx="12" cy="11.5" r="2.6" stroke="currentColor" stroke-width="1.8" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
 
           <p v-if="error" class="text-critique text-sm" role="alert">{{ error }}</p>
 

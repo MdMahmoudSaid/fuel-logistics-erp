@@ -37,7 +37,8 @@ describe('auth store', () => {
     const auth = useAuthStore()
     auth.user = {
       id: 1,
-      email: 'ops@example.com',
+      phone: '+22112345678',
+      email: '',
       full_name: '',
       role: 3,
       role_detail: { id: 3, name: 'Operations', permissions: { operations: ['view', 'create'] } },

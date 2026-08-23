@@ -25,8 +25,8 @@ describe('LoginView', () => {
       global: { plugins: [router, i18n] },
     })
 
-    expect(wrapper.find('input#email').exists()).toBe(true)
-    expect(wrapper.find('input#password').exists()).toBe(true)
+    expect(wrapper.find('input#phone').exists()).toBe(true)
+    expect(wrapper.find('input#pin').exists()).toBe(true)
     expect(wrapper.find('button[type="submit"]').text()).toContain('Se connecter')
   })
 })

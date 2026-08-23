@@ -57,13 +57,14 @@
     "tagline": "Fuel, trips & treasury tracking — end to end.",
     "title": "Sign in",
     "subtitle": "Access your operations workspace.",
-    "emailLabel": "Email",
-    "passwordLabel": "Password",
+    "phoneLabel": "Phone number",
+    "pinLabel": "PIN code",
     "signIn": "Sign in",
     "signingIn": "Signing in…",
-    "invalidCredentials": "Invalid email or password.",
-    "showPassword": "Show password",
-    "hidePassword": "Hide password"
+    "invalidCredentials": "Invalid phone number or PIN.",
+    "accountLocked": "Account locked. Try again in a few minutes.",
+    "showPassword": "Show PIN",
+    "hidePassword": "Hide PIN"
   },
   "dateRange": {
     "today": "Today",

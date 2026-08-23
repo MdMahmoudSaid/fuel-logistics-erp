@@ -57,13 +57,14 @@
     "tagline": "تتبع الوقود والرحلات والخزينة — من البداية إلى النهاية.",
     "title": "تسجيل الدخول",
     "subtitle": "ادخل إلى مساحة العمليات الخاصة بك.",
-    "emailLabel": "البريد الإلكتروني",
-    "passwordLabel": "كلمة المرور",
+    "phoneLabel": "رقم الهاتف",
+    "pinLabel": "رمز PIN",
     "signIn": "تسجيل الدخول",
     "signingIn": "جارٍ تسجيل الدخول…",
-    "invalidCredentials": "البريد الإلكتروني أو كلمة المرور غير صحيحة.",
-    "showPassword": "إظهار كلمة المرور",
-    "hidePassword": "إخفاء كلمة المرور"
+    "invalidCredentials": "رقم الهاتف أو رمز PIN غير صحيح.",
+    "accountLocked": "الحساب مقفل. حاول مرة أخرى بعد بضع دقائق.",
+    "showPassword": "إظهار رمز PIN",
+    "hidePassword": "إخفاء رمز PIN"
   },
   "dateRange": {
     "today": "اليوم",

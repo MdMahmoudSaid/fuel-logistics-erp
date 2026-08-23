@@ -57,13 +57,14 @@
     "tagline": "Suivi carburant, trajets & trésorerie — bout en bout.",
     "title": "Connexion",
     "subtitle": "Accédez à votre espace opérations.",
-    "emailLabel": "Email",
-    "passwordLabel": "Mot de passe",
+    "phoneLabel": "Téléphone",
+    "pinLabel": "Code PIN",
     "signIn": "Se connecter",
     "signingIn": "Connexion en cours…",
-    "invalidCredentials": "Email ou mot de passe invalide.",
-    "showPassword": "Afficher le mot de passe",
-    "hidePassword": "Masquer le mot de passe"
+    "invalidCredentials": "Numéro de téléphone ou code PIN invalide.",
+    "accountLocked": "Compte verrouillé. Réessayez dans quelques minutes.",
+    "showPassword": "Afficher le code PIN",
+    "hidePassword": "Masquer le code PIN"
   },
   "dateRange": {
     "today": "Aujourd'hui",
