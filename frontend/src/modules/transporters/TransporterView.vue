@@ -11,7 +11,7 @@ const resource = createResourceApi('/transporters/')
 const fields = computed<FieldSchema[]>(() => [
   { key: 'name', label: t('masterData.fields.name'), type: 'text', required: true },
   { key: 'company_name', label: t('masterData.fields.company'), type: 'text' },
-  { key: 'phone', label: t('masterData.fields.phone'), type: 'text' },
+  { key: 'phone', label: t('masterData.fields.phone'), type: 'phone' },
   { key: 'address', label: t('masterData.fields.address'), type: 'text' },
   { key: 'is_active', label: t('masterData.fields.active'), type: 'checkbox' },
 ])

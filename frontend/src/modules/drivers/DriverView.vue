@@ -10,7 +10,7 @@ const { t } = useI18n()
 const resource = createResourceApi('/drivers/')
 const fields = computed<FieldSchema[]>(() => [
   { key: 'name', label: t('masterData.fields.name'), type: 'text', required: true },
-  { key: 'phone', label: t('masterData.fields.phone'), type: 'text' },
+  { key: 'phone', label: t('masterData.fields.phone'), type: 'phone' },
   { key: 'license_number', label: t('masterData.fields.licence'), type: 'text' },
   { key: 'notes', label: t('masterData.fields.notes'), type: 'textarea' },
 ])
