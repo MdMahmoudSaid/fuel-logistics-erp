@@ -162,13 +162,14 @@
       "roleId": "Rôle",
       "password": "Mot de passe",
       "pin": "Code PIN",
-      "internalId": "Identifiant interne",
+      "internalId": "Identifiant interne (auto si vide)",
       "tractorReg": "Immat. tracteur",
       "tankerReg": "Immat. citerne",
       "capacityLitres": "Capacité (L)",
       "ownership": "Type de propriété",
-      "ownerTransporterId": "ID transporteur propriétaire",
-      "defaultDriverId": "ID chauffeur par défaut"
+      "ownerTransporterId": "Transporteur propriétaire",
+      "defaultDriverId": "Chauffeur par défaut",
+      "none": "Aucun"
     },
     "ownershipOptions": {
       "companyOwned": "Propriété de l'entreprise",
