@@ -10,7 +10,7 @@ import { customerOrderResource } from '@/modules/sales/api'
 import type { CustomerOrder } from '@/modules/sales/types'
 import { tripResource } from './api'
 import type { Trip, TruckBrief, TransporterBrief, DriverBrief, CustomerBrief } from './types'
-import { translateApiError } from '@/i18n/apiErrors'
+import { translateApiError, extractFieldErrors } from '@/i18n/apiErrors'
 import Button from '@/components/ui/Button.vue'
 
 const route = useRoute()
@@ -64,6 +64,7 @@ const form = ref({
 
 const saving = ref(false)
 const error = ref('')
+const fieldErrors = ref<Record<string, string>>({})
 
 async function loadTrucks() {
   const params = showBusyTrucks.value ? {} : { status: 'AVAILABLE' }
@@ -144,6 +145,7 @@ async function onSubmit() {
   }
   saving.value = true
   error.value = ''
+  fieldErrors.value = {}
   const payload: Partial<Trip> = {
     truck: Number(form.value.truck),
     transporter: Number(form.value.transporter),
@@ -164,10 +166,15 @@ async function onSubmit() {
     const created = await tripResource.create(payload)
     router.push({ name: 'trip-detail', params: { id: created.id } })
   } catch (e) {
-    const data = (e as { response?: { data?: Record<string, string[] | string> } })?.response?.data
-    const firstEntry = data ? Object.values(data)[0] : undefined
-    const detail = Array.isArray(firstEntry) ? firstEntry[0] : firstEntry
-    error.value = translateApiError(detail) || t('trips.newForm.saveError')
+    const response = (e as { response?: { status?: number; data?: Record<string, unknown> } })
+      ?.response
+    const body = response?.status === 400 ? response.data : undefined
+    fieldErrors.value = extractFieldErrors(body)
+    const generic = body?.detail ?? body?.non_field_errors
+    const genericMessage = Array.isArray(generic) ? generic[0] : generic
+    error.value =
+      translateApiError(typeof genericMessage === 'string' ? genericMessage : undefined) ??
+      (Object.keys(fieldErrors.value).length ? '' : t('trips.newForm.saveError'))
   } finally {
     saving.value = false
   }
@@ -203,6 +210,9 @@ async function onSubmit() {
             {{ t('purchasing.cessionForm.remainingSuffix') }})
           </option>
         </select>
+        <p v-if="fieldErrors.cession_letter" class="text-critique text-xs">
+          {{ fieldErrors.cession_letter }}
+        </p>
       </div>
 
       <div v-if="selectedCession" class="border-ligne space-y-2 rounded-lg border bg-sable p-3">
@@ -255,6 +265,7 @@ async function onSubmit() {
               </template>
             </option>
           </select>
+          <p v-if="fieldErrors.truck" class="text-critique text-xs">{{ fieldErrors.truck }}</p>
         </div>
 
         <div class="space-y-1.5">
@@ -270,6 +281,9 @@ async function onSubmit() {
             <option value="" disabled>{{ t('trips.newForm.selectTransporter') }}</option>
             <option v-for="tr in transporters" :key="tr.id" :value="tr.id">{{ tr.name }}</option>
           </select>
+          <p v-if="fieldErrors.transporter" class="text-critique text-xs">
+            {{ fieldErrors.transporter }}
+          </p>
         </div>
 
         <div class="space-y-1.5">
@@ -284,6 +298,7 @@ async function onSubmit() {
             <option value="">{{ t('trips.newForm.noDriver') }}</option>
             <option v-for="d in drivers" :key="d.id" :value="d.id">{{ d.name }}</option>
           </select>
+          <p v-if="fieldErrors.driver" class="text-critique text-xs">{{ fieldErrors.driver }}</p>
         </div>
 
         <div class="space-y-1.5">
@@ -300,6 +315,9 @@ async function onSubmit() {
             class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
             :class="isOverLimit ? 'border-critique' : ''"
           />
+          <p v-if="fieldErrors.quantity_loaded" class="text-critique text-xs">
+            {{ fieldErrors.quantity_loaded }}
+          </p>
         </div>
 
         <div class="space-y-1.5">
@@ -313,6 +331,9 @@ async function onSubmit() {
             required
             class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           />
+          <p v-if="fieldErrors.loading_date" class="text-critique text-xs">
+            {{ fieldErrors.loading_date }}
+          </p>
         </div>
 
         <div class="space-y-1.5">
@@ -325,6 +346,9 @@ async function onSubmit() {
             required
             class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           />
+          <p v-if="fieldErrors.bl_reference" class="text-critique text-xs">
+            {{ fieldErrors.bl_reference }}
+          </p>
         </div>
       </div>
 
@@ -349,6 +373,9 @@ async function onSubmit() {
             {{ t('purchasing.cessionForm.remainingSuffix') }})
           </option>
         </select>
+        <p v-if="fieldErrors.customer_order" class="text-critique text-xs">
+          {{ fieldErrors.customer_order }}
+        </p>
       </div>
 
       <div class="space-y-1.5">
@@ -363,6 +390,7 @@ async function onSubmit() {
           <option value="">{{ t('trips.newForm.noClient') }}</option>
           <option v-for="c in customers" :key="c.id" :value="c.id">{{ c.name }}</option>
         </select>
+        <p v-if="fieldErrors.client" class="text-critique text-xs">{{ fieldErrors.client }}</p>
       </div>
 
       <div class="space-y-1.5">
@@ -375,6 +403,7 @@ async function onSubmit() {
           rows="2"
           class="border-ligne-forte w-full rounded-lg border bg-white px-3.5 py-2.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
         />
+        <p v-if="fieldErrors.notes" class="text-critique text-xs">{{ fieldErrors.notes }}</p>
       </div>
 
       <div class="flex justify-end gap-2 pt-2">

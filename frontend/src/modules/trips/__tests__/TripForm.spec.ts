@@ -215,4 +215,34 @@ describe('TripForm', () => {
 
     expect(createTrip).toHaveBeenCalledWith(expect.objectContaining({ force: false }))
   })
+
+  it('surfaces a per-field 400 error under the matching field instead of the first one found', async () => {
+    createTrip.mockRejectedValueOnce({
+      response: {
+        status: 400,
+        data: { truck: ['Autre erreur.'], bl_reference: ['Cette référence existe déjà.'] },
+      },
+    })
+    const router = makeRouter()
+    await router.isReady()
+    const wrapper = mount(TripForm, { global: { plugins: [router] } })
+    await flushPromises()
+
+    await wrapper.find('#cession_letter').setValue('9')
+    await flushPromises()
+    await wrapper.find('#truck').setValue('1')
+    await wrapper.find('#transporter').setValue('') // no transporters seeded; leave as-is
+    await wrapper.find('#quantity_loaded').setValue('20000')
+    await wrapper.find('#loading_date').setValue('2026-08-18')
+    await wrapper.find('#bl_reference').setValue('BL-DUP')
+
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    const blContainer = wrapper.find('#bl_reference').element.closest('div')
+    expect(blContainer?.textContent).toContain('Cette référence existe déjà.')
+
+    const truckContainer = wrapper.find('#truck').element.closest('div')
+    expect(truckContainer?.textContent).toContain('Autre erreur.')
+  })
 })
