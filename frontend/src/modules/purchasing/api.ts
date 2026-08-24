@@ -15,6 +15,12 @@ export function fetchNextSupplierOrderReference(): Promise<string> {
     .then((r) => r.data.reference)
 }
 
+export function fetchNextCessionLetterReference(): Promise<string> {
+  return apiClient
+    .get<{ reference: string }>('/cession-letters/next-reference/')
+    .then((r) => r.data.reference)
+}
+
 // Generic attachment upload (backend/apps/documents). The target object must
 // already exist — content_type/object_id are validated against an allowlist
 // and existence-checked server-side (see apps.documents.views).

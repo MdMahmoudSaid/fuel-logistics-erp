@@ -478,6 +478,7 @@
       "newTitle": "Nouvelle lettre de cession",
       "editTitle": "Lettre de cession {reference}",
       "reference": "Référence",
+      "referenceGenerated": "Généré automatiquement",
       "supplierOrder": "Commande fournisseur",
       "selectSupplierOrder": "Sélectionner une commande fournisseur",
       "remainingSuffix": "L restants",

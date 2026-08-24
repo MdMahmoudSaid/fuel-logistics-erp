@@ -2,7 +2,13 @@
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { cessionLetterResource, supplierOrderResource, uploadDocument } from './api'
+import {
+  cessionLetterResource,
+  supplierOrderResource,
+  uploadDocument,
+  fetchNextCessionLetterReference,
+} from './api'
+import { translateApiError, extractFieldErrors } from '@/i18n/apiErrors'
 import Button from '@/components/ui/Button.vue'
 import type { CessionLetter, CessionLetterStatus, SupplierOrder } from './types'
 
@@ -28,6 +34,7 @@ const form = ref({
 
 const saving = ref(false)
 const error = ref('')
+const fieldErrors = ref<Record<string, string>>({})
 
 async function loadOrder(id: number) {
   order.value = await supplierOrderResource.get!(id)
@@ -47,6 +54,8 @@ onMounted(async () => {
     await loadOrder(cession.value.supplier_order)
     return
   }
+
+  form.value.reference = await fetchNextCessionLetterReference()
 
   const preselected = route.query.supplier_order ? Number(route.query.supplier_order) : null
   if (preselected) {
@@ -93,8 +102,8 @@ const overflowPct = computed(() => pct(Math.max(requested.value - Math.max(ceili
 async function onSubmit() {
   saving.value = true
   error.value = ''
+  fieldErrors.value = {}
   const payload = {
-    reference: form.value.reference,
     supplier_order: Number(form.value.supplier_order),
     authorized_quantity: form.value.authorized_quantity,
     issue_date: form.value.issue_date,
@@ -112,9 +121,15 @@ async function onSubmit() {
   } catch (e) {
     // The server enforces the same limit under a row lock (concurrency-safe)
     // even though the bar above already warns the user client-side.
-    const detail = (e as { response?: { data?: { authorized_quantity?: string[] } } })?.response
-      ?.data?.authorized_quantity?.[0]
-    error.value = detail || t('purchasing.cessionForm.saveError')
+    const response = (e as { response?: { status?: number; data?: Record<string, unknown> } })
+      ?.response
+    const body = response?.status === 400 ? response.data : undefined
+    fieldErrors.value = extractFieldErrors(body)
+    const generic = body?.detail ?? body?.non_field_errors
+    const genericMessage = Array.isArray(generic) ? generic[0] : generic
+    error.value =
+      translateApiError(typeof genericMessage === 'string' ? genericMessage : undefined) ??
+      (Object.keys(fieldErrors.value).length ? '' : t('purchasing.cessionForm.saveError'))
   } finally {
     saving.value = false
   }
@@ -171,9 +186,14 @@ async function onUploadDocument() {
         <input
           id="reference"
           v-model="form.reference"
-          required
-          class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+          disabled
+          autocomplete="off"
+          class="border-ligne-forte h-12 w-full rounded-lg border bg-sable px-3.5 text-texte-2"
         />
+        <p class="text-texte-3 text-xs">{{ t('purchasing.cessionForm.referenceGenerated') }}</p>
+        <p v-if="fieldErrors.reference" class="text-critique text-xs">
+          {{ fieldErrors.reference }}
+        </p>
       </div>
 
       <div v-if="!route.query.supplier_order || !isNew" class="space-y-1.5">
@@ -202,6 +222,9 @@ async function onUploadDocument() {
             {{ order.reference }} — {{ order.supplier_detail?.name }}
           </option>
         </select>
+        <p v-if="fieldErrors.supplier_order" class="text-critique text-xs">
+          {{ fieldErrors.supplier_order }}
+        </p>
       </div>
       <p v-else-if="order" class="text-texte-2 text-sm">
         {{ t('purchasing.cessionForm.againstOrder') }}
@@ -256,6 +279,9 @@ async function onUploadDocument() {
             class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
             :class="isOverLimit ? 'border-critique' : ''"
           />
+          <p v-if="fieldErrors.authorized_quantity" class="text-critique text-xs">
+            {{ fieldErrors.authorized_quantity }}
+          </p>
         </div>
 
         <div class="space-y-1.5">
@@ -269,6 +295,9 @@ async function onUploadDocument() {
             required
             class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           />
+          <p v-if="fieldErrors.issue_date" class="text-critique text-xs">
+            {{ fieldErrors.issue_date }}
+          </p>
         </div>
 
         <div v-if="!isNew" class="space-y-1.5">
@@ -284,6 +313,7 @@ async function onUploadDocument() {
             <option value="EXHAUSTED">{{ t('cessionStatus.EXHAUSTED') }}</option>
             <option value="CANCELLED">{{ t('cessionStatus.CANCELLED') }}</option>
           </select>
+          <p v-if="fieldErrors.status" class="text-critique text-xs">{{ fieldErrors.status }}</p>
         </div>
       </div>
 
@@ -297,6 +327,7 @@ async function onUploadDocument() {
           rows="2"
           class="border-ligne-forte w-full rounded-lg border bg-white px-3.5 py-2.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
         />
+        <p v-if="fieldErrors.notes" class="text-critique text-xs">{{ fieldErrors.notes }}</p>
       </div>
 
       <div class="flex justify-end gap-2 pt-2">

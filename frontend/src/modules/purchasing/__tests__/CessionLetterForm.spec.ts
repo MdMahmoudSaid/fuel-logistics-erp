@@ -4,6 +4,10 @@ import { createRouter, createWebHistory } from 'vue-router'
 import CessionLetterForm from '../CessionLetterForm.vue'
 import type { SupplierOrder } from '../types'
 
+function paginated<T>(results: T[]) {
+  return { count: results.length, next: null, previous: null, results }
+}
+
 // Order: 100,000 L purchased, 60,000 L already allocated to other cessions
 // (reliquat = 40,000 L). This is exactly the spec §6 worked example.
 const ORDER: SupplierOrder = {
@@ -31,10 +35,21 @@ const ORDER: SupplierOrder = {
   updated_at: '',
 }
 
+const create = vi.fn()
+const fetchNextCessionLetterReference = vi.fn(async () => 'CES-202608-0003')
 vi.mock('../api', () => ({
-  supplierOrderResource: { get: vi.fn(async () => ORDER) },
-  cessionLetterResource: { get: vi.fn(), create: vi.fn(), update: vi.fn(), list: vi.fn() },
+  supplierOrderResource: {
+    get: vi.fn(async () => ORDER),
+    list: vi.fn(async () => paginated([])),
+  },
+  cessionLetterResource: {
+    get: vi.fn(),
+    create: (payload: Record<string, unknown>) => create(payload),
+    update: vi.fn(),
+    list: vi.fn(),
+  },
   uploadDocument: vi.fn(),
+  fetchNextCessionLetterReference: () => fetchNextCessionLetterReference(),
 }))
 
 function makeRouter(query: Record<string, string> = {}) {
@@ -50,6 +65,40 @@ function makeRouter(query: Record<string, string> = {}) {
   router.push({ name: 'cession-letter-new', query })
   return router
 }
+
+describe('CessionLetterForm', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('pre-fills the reference as a read-only, server-generated value', async () => {
+    const router = makeRouter({ supplier_order: '5' })
+    await router.isReady()
+    const wrapper = mount(CessionLetterForm, { global: { plugins: [router] } })
+    await flushPromises()
+
+    const input = wrapper.find<HTMLInputElement>('#reference')
+    expect(input.attributes('disabled')).toBeDefined()
+    expect(input.element.value).toBe('CES-202608-0003')
+    expect(fetchNextCessionLetterReference).toHaveBeenCalled()
+  })
+
+  it('surfaces any field error, not just authorized_quantity', async () => {
+    create.mockRejectedValueOnce({
+      response: { status: 400, data: { issue_date: ['Ce champ est requis.'] } },
+    })
+    const router = makeRouter({ supplier_order: '5' })
+    await router.isReady()
+    const wrapper = mount(CessionLetterForm, { global: { plugins: [router] } })
+    await flushPromises()
+
+    await wrapper.find('#authorized_quantity').setValue('1000')
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Ce champ est requis.')
+  })
+})
 
 describe('CessionLetterForm live allocation bar', () => {
   beforeEach(() => {
