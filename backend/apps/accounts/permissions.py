@@ -5,6 +5,7 @@ ACTION_MAP = {
     "retrieve": "view",
     "ledger": "view",
     "reliquat": "view",
+    "next_reference": "view",
     "trips": "view",
     "history": "view",
     # Dashboard's single custom read action (docs/PHASE_6_PLAN.md Etape 5).

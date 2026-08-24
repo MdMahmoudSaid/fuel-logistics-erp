@@ -1,10 +1,11 @@
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import MethodNotAllowed
 from rest_framework.response import Response
 
 from apps.accounts.permissions import HasModulePermission
+from apps.core.reference import generate_monthly_reference
 from apps.purchasing.models import CessionLetter, SupplierOrder
 from apps.purchasing.serializers import CessionLetterSerializer, SupplierOrderSerializer
 from apps.purchasing.services import SupplierStockService
@@ -22,6 +23,10 @@ _NO_HARD_DELETE_DETAIL = (
 )
 
 
+_SUPPLIER_ORDER_REFERENCE_PREFIX = "ACH"
+_MAX_REFERENCE_ATTEMPTS = 5
+
+
 class SupplierOrderViewSet(viewsets.ModelViewSet):
     queryset = SupplierOrder.objects.all()
     serializer_class = SupplierOrderSerializer
@@ -29,8 +34,29 @@ class SupplierOrderViewSet(viewsets.ModelViewSet):
     permission_classes = [HasModulePermission]
     module = "purchasing"
 
+    @transaction.atomic
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+
+    @transaction.atomic
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
+        for _ in range(_MAX_REFERENCE_ATTEMPTS):
+            reference = generate_monthly_reference(
+                SupplierOrder, "reference", _SUPPLIER_ORDER_REFERENCE_PREFIX
+            )
+            try:
+                with transaction.atomic():
+                    serializer.save(reference=reference, created_by=self.request.user)
+                return
+            except IntegrityError:
+                continue
+        raise IntegrityError(
+            "Impossible de generer une reference de commande fournisseur "
+            f"unique apres {_MAX_REFERENCE_ATTEMPTS} tentatives."
+        )
 
     def destroy(self, request, *args, **kwargs):
         raise MethodNotAllowed("DELETE", detail=_NO_HARD_DELETE_DETAIL)
@@ -52,6 +78,17 @@ class SupplierOrderViewSet(viewsets.ModelViewSet):
             },
             status=status.HTTP_200_OK,
         )
+
+    @action(detail=False, methods=["get"], url_path="next-reference")
+    def next_reference(self, request):
+        """Non-reserving preview of the reference the next created
+        SupplierOrder will receive - for form display only, not a
+        reservation. GET /api/supplier-orders/next-reference/
+        """
+        reference = generate_monthly_reference(
+            SupplierOrder, "reference", _SUPPLIER_ORDER_REFERENCE_PREFIX
+        )
+        return Response({"reference": reference})
 
 
 class CessionLetterViewSet(viewsets.ModelViewSet):

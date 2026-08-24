@@ -103,6 +103,7 @@ class SupplierOrderSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             "id",
+            "reference",
             "total_amount",
             "created_by",
             "created_at",

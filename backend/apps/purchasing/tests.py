@@ -274,3 +274,49 @@ def test_concurrency_select_for_update():
     # Une des requêtes doit avoir réussi (201 Created) et l'autre échoué (400 Bad Request)
     assert 201 in results
     assert 400 in results
+
+
+@pytest.mark.django_db
+def test_supplier_order_reference_is_server_generated():
+    admin_role = Role.objects.get(name=Role.NAME_ADMIN)
+    admin_user = User.objects.create_user(
+        phone="+2220000040", pin="1234", role=admin_role
+    )
+    product = Product.objects.get(code="gasoil")
+    supplier = Supplier.objects.create(name="Total", country="Senegal")
+
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    response = client.post(
+        "/api/supplier-orders/",
+        {
+            "reference": "CLIENT-SUPPLIED-IGNORED",
+            "supplier": supplier.id,
+            "product": product.id,
+            "purchase_date": "2026-08-18",
+            "quantity_litres": "50000.00",
+            "unit_price": "600.0000",
+        },
+    )
+    assert response.status_code == 201
+    assert response.data["reference"] != "CLIENT-SUPPLIED-IGNORED"
+    assert response.data["reference"].startswith("ACH-")
+
+
+@pytest.mark.django_db
+def test_supplier_order_next_reference_endpoint():
+    admin_role = Role.objects.get(name=Role.NAME_ADMIN)
+    admin_user = User.objects.create_user(
+        phone="+2220000041", pin="1234", role=admin_role
+    )
+    client = APIClient()
+    client.force_authenticate(admin_user)
+
+    response = client.get("/api/supplier-orders/next-reference/")
+    assert response.status_code == 200
+    assert response.data["reference"].startswith("ACH-")
+
+    # Non-reserving: calling it again without creating anything returns the
+    # same preview value.
+    response_again = client.get("/api/supplier-orders/next-reference/")
+    assert response_again.data["reference"] == response.data["reference"]
