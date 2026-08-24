@@ -185,3 +185,108 @@ def test_api_loss_tolerance_patch_denied_for_non_admin():
 
     assert response.status_code == 403
     assert LossToleranceConfig.get_current_tolerance() == Decimal("100.00")
+
+
+# ---------------------------------------------------------------------------
+# Task 1: Shared monthly reference generator
+# ---------------------------------------------------------------------------
+
+from datetime import datetime
+
+from django.utils import timezone
+
+from apps.core.reference import generate_monthly_reference
+from apps.purchasing.models import SupplierOrder
+from apps.suppliers.models import Supplier
+
+
+@pytest.mark.django_db
+def test_generate_monthly_reference_starts_at_0001():
+    reference = generate_monthly_reference(SupplierOrder, "reference", "ACH")
+    yyyymm = timezone.now().strftime("%Y%m")
+    assert reference == f"ACH-{yyyymm}-0001"
+
+
+@pytest.mark.django_db
+def test_generate_monthly_reference_increments_within_month():
+    admin_role = Role.objects.get(name=Role.NAME_ADMIN)
+    admin_user = User.objects.create_user(
+        phone="+2220000030", pin="1234", role=admin_role
+    )
+    product = Product.objects.get(code="gasoil")
+    supplier = Supplier.objects.create(name="Total", country="Senegal")
+    now = timezone.now()
+    yyyymm = now.strftime("%Y%m")
+
+    SupplierOrder.objects.create(
+        reference=f"ACH-{yyyymm}-0001",
+        supplier=supplier,
+        product=product,
+        purchase_date="2026-08-18",
+        quantity_litres=Decimal("100.00"),
+        unit_price=Decimal("600.00"),
+        created_by=admin_user,
+    )
+    SupplierOrder.objects.create(
+        reference=f"ACH-{yyyymm}-0002",
+        supplier=supplier,
+        product=product,
+        purchase_date="2026-08-18",
+        quantity_litres=Decimal("100.00"),
+        unit_price=Decimal("600.00"),
+        created_by=admin_user,
+    )
+
+    reference = generate_monthly_reference(SupplierOrder, "reference", "ACH")
+    assert reference == f"ACH-{yyyymm}-0003"
+
+
+@pytest.mark.django_db
+def test_generate_monthly_reference_ignores_legacy_format():
+    admin_role = Role.objects.get(name=Role.NAME_ADMIN)
+    admin_user = User.objects.create_user(
+        phone="+2220000031", pin="1234", role=admin_role
+    )
+    product = Product.objects.get(code="gasoil")
+    supplier = Supplier.objects.create(name="Total", country="Senegal")
+
+    # Hand-typed/legacy reference that doesn't match PREFIX-YYYYMM-NNNN.
+    SupplierOrder.objects.create(
+        reference="SO-LEGACY-9999",
+        supplier=supplier,
+        product=product,
+        purchase_date="2026-08-18",
+        quantity_litres=Decimal("100.00"),
+        unit_price=Decimal("600.00"),
+        created_by=admin_user,
+    )
+
+    reference = generate_monthly_reference(SupplierOrder, "reference", "ACH")
+    yyyymm = timezone.now().strftime("%Y%m")
+    assert reference == f"ACH-{yyyymm}-0001"
+
+
+@pytest.mark.django_db
+def test_generate_monthly_reference_scoped_to_current_month():
+    admin_role = Role.objects.get(name=Role.NAME_ADMIN)
+    admin_user = User.objects.create_user(
+        phone="+2220000032", pin="1234", role=admin_role
+    )
+    product = Product.objects.get(code="gasoil")
+    supplier = Supplier.objects.create(name="Total", country="Senegal")
+
+    # A reference from a different (earlier) month must not affect this
+    # month's count.
+    SupplierOrder.objects.create(
+        reference="ACH-202001-0099",
+        supplier=supplier,
+        product=product,
+        purchase_date="2026-08-18",
+        quantity_litres=Decimal("100.00"),
+        unit_price=Decimal("600.00"),
+        created_by=admin_user,
+    )
+
+    reference = generate_monthly_reference(SupplierOrder, "reference", "ACH")
+    yyyymm = timezone.now().strftime("%Y%m")
+    assert reference == f"ACH-{yyyymm}-0001"
