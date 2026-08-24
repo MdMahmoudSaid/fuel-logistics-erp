@@ -17,3 +17,16 @@ export function translateApiError(detail: string | undefined | null): string | u
   }
   return detail
 }
+
+export function extractFieldErrors(
+  data: Record<string, unknown> | undefined | null,
+): Record<string, string> {
+  const fieldErrors: Record<string, string> = {}
+  if (!data) return fieldErrors
+  for (const [field, value] of Object.entries(data)) {
+    if (field === 'detail' || field === 'non_field_errors') continue
+    const message = Array.isArray(value) ? value[0] : value
+    if (typeof message === 'string') fieldErrors[field] = message
+  }
+  return fieldErrors
+}
