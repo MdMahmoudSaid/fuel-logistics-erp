@@ -4,6 +4,7 @@ from decimal import Decimal
 import pytest
 from django.db import IntegrityError, transaction
 from django.urls import resolve
+from django.utils import timezone
 from django.urls.exceptions import Resolver404
 from rest_framework.test import APIClient
 
@@ -904,6 +905,29 @@ def test_delivery_service_happy_path_creates_deduction_sale_and_invoice():
     assert invoice.status == "DRAFT"
     assert invoice.total_amount == sale.subtotal
     assert invoice.issued_date.isoformat() == "2026-08-18"
+
+
+@pytest.mark.django_db
+def test_delivery_confirmation_generates_fac_invoice_number():
+    fx = _fixtures_with_customer("FAC-FORMAT")
+    trip = _deliverable_trip(fx, "TRIP-FAC-FORMAT-001")
+    ProductSellingPriceHistory.objects.create(
+        product=fx["product"], customer=fx["customer"],
+        price=Decimal("650.0000"), changed_by=fx["admin_user"],
+    )
+
+    DeliveryService.record_delivery(
+        trip_id=trip.id,
+        received_qty=Decimal("44850.00"),
+        control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE,
+        controller=fx["admin_user"],
+    )
+
+    invoice = trip.sale.invoice
+    yyyymm = timezone.now().strftime("%Y%m")
+    assert invoice.invoice_number.startswith(f"FAC-{yyyymm}-")
+    assert not invoice.invoice_number.startswith("INV-")
 
 
 @pytest.mark.django_db

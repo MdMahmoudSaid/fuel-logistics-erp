@@ -11,15 +11,20 @@
 
 from decimal import Decimal
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from apps.core.models import LossToleranceConfig
+from apps.core.reference import generate_monthly_reference
 from apps.finance.models import TransportDeduction
 from apps.sales.models import Invoice, ProductSellingPriceHistory, Sale
 from apps.sales.services import CustomerOrderService
 from apps.transport.models import Truck
 from apps.trips.models import DeliveryControl, Trip, TripStatusHistory
+
+
+_INVOICE_REFERENCE_PREFIX = "FAC"
+_MAX_INVOICE_REFERENCE_ATTEMPTS = 5
 
 
 class InvalidTripTransition(ValueError):
@@ -297,11 +302,26 @@ class DeliveryService:
             unit_selling_price=unit_selling_price,
         )
 
-        Invoice.objects.create(
-            invoice_number=f"INV-{trip.reference}",
-            sale=sale,
-            total_amount=sale.subtotal,
-            issued_date=control_date,
-        )
+        invoice = None
+        for _ in range(_MAX_INVOICE_REFERENCE_ATTEMPTS):
+            invoice_number = generate_monthly_reference(
+                Invoice, "invoice_number", _INVOICE_REFERENCE_PREFIX
+            )
+            try:
+                with transaction.atomic():
+                    invoice = Invoice.objects.create(
+                        invoice_number=invoice_number,
+                        sale=sale,
+                        total_amount=sale.subtotal,
+                        issued_date=control_date,
+                    )
+                break
+            except IntegrityError:
+                continue
+        else:
+            raise IntegrityError(
+                "Impossible de generer un numero de facture unique apres "
+                f"{_MAX_INVOICE_REFERENCE_ATTEMPTS} tentatives."
+            )
 
         return control
