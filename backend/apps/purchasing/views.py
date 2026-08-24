@@ -24,6 +24,7 @@ _NO_HARD_DELETE_DETAIL = (
 
 
 _SUPPLIER_ORDER_REFERENCE_PREFIX = "ACH"
+_CESSION_LETTER_REFERENCE_PREFIX = "CES"
 _MAX_REFERENCE_ATTEMPTS = 5
 
 
@@ -107,7 +108,30 @@ class CessionLetterViewSet(viewsets.ModelViewSet):
         return super().update(request, *args, **kwargs)
 
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
+        for _ in range(_MAX_REFERENCE_ATTEMPTS):
+            reference = generate_monthly_reference(
+                CessionLetter, "reference", _CESSION_LETTER_REFERENCE_PREFIX
+            )
+            try:
+                with transaction.atomic():
+                    serializer.save(reference=reference, created_by=self.request.user)
+                return
+            except IntegrityError:
+                continue
+        raise IntegrityError(
+            "Impossible de generer une reference de lettre de cession "
+            f"unique apres {_MAX_REFERENCE_ATTEMPTS} tentatives."
+        )
 
     def destroy(self, request, *args, **kwargs):
         raise MethodNotAllowed("DELETE", detail=_NO_HARD_DELETE_DETAIL)
+
+    @action(detail=False, methods=["get"], url_path="next-reference")
+    def next_reference(self, request):
+        """Non-reserving preview of the reference the next created
+        CessionLetter will receive. GET /api/cession-letters/next-reference/
+        """
+        reference = generate_monthly_reference(
+            CessionLetter, "reference", _CESSION_LETTER_REFERENCE_PREFIX
+        )
+        return Response({"reference": reference})

@@ -320,3 +320,51 @@ def test_supplier_order_next_reference_endpoint():
     # same preview value.
     response_again = client.get("/api/supplier-orders/next-reference/")
     assert response_again.data["reference"] == response.data["reference"]
+
+
+@pytest.mark.django_db
+def test_cession_letter_reference_is_server_generated():
+    admin_role = Role.objects.get(name=Role.NAME_ADMIN)
+    admin_user = User.objects.create_user(
+        phone="+2220000042", pin="1234", role=admin_role
+    )
+    product = Product.objects.get(code="gasoil")
+    supplier = Supplier.objects.create(name="Total", country="Senegal")
+    order = SupplierOrder.objects.create(
+        reference="SO-CES-GEN-001",
+        supplier=supplier,
+        product=product,
+        purchase_date="2026-08-18",
+        quantity_litres=Decimal("100000.00"),
+        unit_price=Decimal("600.00"),
+        created_by=admin_user,
+    )
+
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    response = client.post(
+        "/api/cession-letters/",
+        {
+            "reference": "CLIENT-SUPPLIED-IGNORED",
+            "supplier_order": order.id,
+            "authorized_quantity": "1000.00",
+            "issue_date": "2026-08-18",
+        },
+    )
+    assert response.status_code == 201
+    assert response.data["reference"] != "CLIENT-SUPPLIED-IGNORED"
+    assert response.data["reference"].startswith("CES-")
+
+
+@pytest.mark.django_db
+def test_cession_letter_next_reference_endpoint():
+    admin_role = Role.objects.get(name=Role.NAME_ADMIN)
+    admin_user = User.objects.create_user(
+        phone="+2220000043", pin="1234", role=admin_role
+    )
+    client = APIClient()
+    client.force_authenticate(admin_user)
+
+    response = client.get("/api/cession-letters/next-reference/")
+    assert response.status_code == 200
+    assert response.data["reference"].startswith("CES-")

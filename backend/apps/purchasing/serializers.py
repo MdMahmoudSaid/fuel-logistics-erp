@@ -33,7 +33,7 @@ class CessionLetterSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "created_by", "created_at", "updated_at"]
+        read_only_fields = ["id", "reference", "created_by", "created_at", "updated_at"]
 
     def get_loaded_quantity(self, obj) -> str:
         loaded = obj.authorized_quantity - SupplierStockService.get_cession_remaining(obj)
