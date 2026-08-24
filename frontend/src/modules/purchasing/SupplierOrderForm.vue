@@ -3,7 +3,8 @@ import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { createResourceApi } from '@/api/resource'
-import { supplierOrderResource, uploadDocument } from './api'
+import { translateApiError, extractFieldErrors } from '@/i18n/apiErrors'
+import { supplierOrderResource, uploadDocument, fetchNextSupplierOrderReference } from './api'
 import Button from '@/components/ui/Button.vue'
 import type { SupplierOrder, SupplierOrderStatus, SupplierBrief, ProductBrief } from './types'
 
@@ -33,6 +34,7 @@ const form = ref({
 
 const saving = ref(false)
 const error = ref('')
+const fieldErrors = ref<Record<string, string>>({})
 
 const supplierResource = createResourceApi<SupplierBrief>('/suppliers/')
 const productResource = createResourceApi<ProductBrief>('/products/')
@@ -61,14 +63,17 @@ onMounted(async () => {
   ])
   suppliers.value = supplierData.results
   products.value = productData.results
+  if (isNew.value) {
+    form.value.reference = await fetchNextSupplierOrderReference()
+  }
   await loadOrder()
 })
 
 async function onSubmit() {
   saving.value = true
   error.value = ''
+  fieldErrors.value = {}
   const payload = {
-    reference: form.value.reference,
     supplier: Number(form.value.supplier),
     product: Number(form.value.product),
     purchase_date: form.value.purchase_date,
@@ -88,8 +93,20 @@ async function onSubmit() {
     } else {
       order.value = await supplierOrderResource.update(orderId.value!, payload)
     }
-  } catch {
-    error.value = t('purchasing.orderForm.saveError')
+  } catch (e) {
+    const response = (e as { response?: { status?: number; data?: Record<string, unknown> } })
+      ?.response
+    const body = response?.status === 400 ? response.data : undefined
+    if (body) {
+      fieldErrors.value = extractFieldErrors(body)
+      const generic = body.detail ?? body.non_field_errors
+      const genericMessage = Array.isArray(generic) ? generic[0] : generic
+      error.value =
+        translateApiError(typeof genericMessage === 'string' ? genericMessage : undefined) ??
+        (Object.keys(fieldErrors.value).length ? '' : t('purchasing.orderForm.saveError'))
+    } else {
+      error.value = t('purchasing.orderForm.saveError')
+    }
   } finally {
     saving.value = false
   }
@@ -154,9 +171,14 @@ function goToNewCession() {
         <input
           id="reference"
           v-model="form.reference"
-          required
-          class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+          disabled
+          autocomplete="off"
+          class="border-ligne-forte h-12 w-full rounded-lg border bg-sable px-3.5 text-texte-2"
         />
+        <p class="text-texte-3 text-xs">{{ t('purchasing.orderForm.referenceGenerated') }}</p>
+        <p v-if="fieldErrors.reference" class="text-critique text-xs">
+          {{ fieldErrors.reference }}
+        </p>
       </div>
 
       <div class="space-y-1.5">
@@ -172,6 +194,7 @@ function goToNewCession() {
           <option value="CONFIRMED">{{ t('supplierOrderStatus.CONFIRMED') }}</option>
           <option value="CANCELLED">{{ t('supplierOrderStatus.CANCELLED') }}</option>
         </select>
+        <p v-if="fieldErrors.status" class="text-critique text-xs">{{ fieldErrors.status }}</p>
       </div>
 
       <div class="space-y-1.5">
@@ -187,6 +210,7 @@ function goToNewCession() {
           <option value="" disabled>{{ t('purchasing.orderForm.selectSupplier') }}</option>
           <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
         </select>
+        <p v-if="fieldErrors.supplier" class="text-critique text-xs">{{ fieldErrors.supplier }}</p>
       </div>
 
       <div class="space-y-1.5">
@@ -202,6 +226,7 @@ function goToNewCession() {
           <option value="" disabled>{{ t('purchasing.orderForm.selectProduct') }}</option>
           <option v-for="p in products" :key="p.id" :value="p.id">{{ p.name }}</option>
         </select>
+        <p v-if="fieldErrors.product" class="text-critique text-xs">{{ fieldErrors.product }}</p>
       </div>
 
       <div class="space-y-1.5">
@@ -215,6 +240,9 @@ function goToNewCession() {
           required
           class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
         />
+        <p v-if="fieldErrors.purchase_date" class="text-critique text-xs">
+          {{ fieldErrors.purchase_date }}
+        </p>
       </div>
 
       <div class="space-y-1.5">
@@ -228,6 +256,7 @@ function goToNewCession() {
         >
           <option value="XOF">XOF</option>
         </select>
+        <p v-if="fieldErrors.currency" class="text-critique text-xs">{{ fieldErrors.currency }}</p>
       </div>
 
       <div class="space-y-1.5">
@@ -243,6 +272,9 @@ function goToNewCession() {
           required
           class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
         />
+        <p v-if="fieldErrors.quantity_litres" class="text-critique text-xs">
+          {{ fieldErrors.quantity_litres }}
+        </p>
       </div>
 
       <div class="space-y-1.5">
@@ -258,6 +290,9 @@ function goToNewCession() {
           required
           class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
         />
+        <p v-if="fieldErrors.unit_price" class="text-critique text-xs">
+          {{ fieldErrors.unit_price }}
+        </p>
       </div>
 
       <div class="space-y-1.5">
@@ -272,13 +307,18 @@ function goToNewCession() {
           min="0"
           class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
         />
+        <p v-if="fieldErrors.optional_costs" class="text-critique text-xs">
+          {{ fieldErrors.optional_costs }}
+        </p>
       </div>
 
       <div v-if="order" class="space-y-1.5">
         <span class="text-texte-2 text-sm font-medium">{{
           t('purchasing.orderForm.totalAmount')
         }}</span>
-        <p class="text-texte rounded-lg border border-transparent px-3.5 py-2.5 text-sm font-semibold">
+        <p
+          class="text-texte rounded-lg border border-transparent px-3.5 py-2.5 text-sm font-semibold"
+        >
           {{ Number(order.total_amount).toLocaleString() }} {{ order.currency }}
         </p>
       </div>
@@ -305,6 +345,7 @@ function goToNewCession() {
           rows="2"
           class="border-ligne-forte w-full rounded-lg border bg-white px-3.5 py-2.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
         />
+        <p v-if="fieldErrors.notes" class="text-critique text-xs">{{ fieldErrors.notes }}</p>
       </div>
 
       <div class="col-span-2 flex justify-end gap-2 pt-2">
@@ -358,7 +399,9 @@ function goToNewCession() {
           :disabled="!documentFile || uploadingDoc"
           @click="onUploadDocument"
         >
-          {{ uploadingDoc ? t('purchasing.orderForm.uploading') : t('purchasing.orderForm.upload') }}
+          {{
+            uploadingDoc ? t('purchasing.orderForm.uploading') : t('purchasing.orderForm.upload')
+          }}
         </Button>
       </div>
     </section>

@@ -519,6 +519,7 @@
       "newTitle": "Nouvelle commande fournisseur",
       "editTitle": "Commande fournisseur {reference}",
       "reference": "Référence",
+      "referenceGenerated": "Généré automatiquement",
       "status": "Statut",
       "supplier": "Fournisseur",
       "selectSupplier": "Sélectionner un fournisseur",

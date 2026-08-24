@@ -9,6 +9,12 @@ export function fetchSupplierLedger(supplierId: number): Promise<SupplierLedger>
   return apiClient.get<SupplierLedger>(`/suppliers/${supplierId}/ledger/`).then((r) => r.data)
 }
 
+export function fetchNextSupplierOrderReference(): Promise<string> {
+  return apiClient
+    .get<{ reference: string }>('/supplier-orders/next-reference/')
+    .then((r) => r.data.reference)
+}
+
 // Generic attachment upload (backend/apps/documents). The target object must
 // already exist — content_type/object_id are validated against an allowlist
 // and existence-checked server-side (see apps.documents.views).
