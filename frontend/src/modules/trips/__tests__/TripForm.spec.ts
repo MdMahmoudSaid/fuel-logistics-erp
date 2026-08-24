@@ -69,6 +69,9 @@ const BUSY_TRUCK = {
   default_driver: null,
 }
 
+const AVAILABLE_TRANSPORTER = { id: 10, name: 'Diallo Transport' }
+const BUSY_TRANSPORTER = { id: 11, name: 'Sow Transport' }
+
 function paginated<T>(results: T[]) {
   return { count: results.length, next: null, previous: null, results }
 }
@@ -79,6 +82,12 @@ vi.mock('@/api/resource', () => ({
       if (basePath === '/trucks/') {
         const trucks = params?.status ? [AVAILABLE_TRUCK] : [AVAILABLE_TRUCK, BUSY_TRUCK]
         return paginated(trucks)
+      }
+      if (basePath === '/transporters/') {
+        const transporters = params?.available
+          ? [AVAILABLE_TRANSPORTER]
+          : [AVAILABLE_TRANSPORTER, BUSY_TRANSPORTER]
+        return paginated(transporters)
       }
       return paginated([])
     }),
@@ -132,6 +141,16 @@ describe('TripForm', () => {
     expect(wrapper.text()).not.toContain('TRK-002')
   })
 
+  it('defaults the transporter picker to available transporters only', async () => {
+    const router = makeRouter()
+    await router.isReady()
+    const wrapper = mount(TripForm, { global: { plugins: [router] } })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Diallo Transport')
+    expect(wrapper.text()).not.toContain('Sow Transport')
+  })
+
   it('hides the occupied-trucks override from a non-Admin user', async () => {
     const router = makeRouter()
     await router.isReady()
@@ -170,6 +189,7 @@ describe('TripForm', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('TRK-002')
+    expect(wrapper.text()).toContain('Sow Transport')
   })
 
   it('warns when the requested quantity exceeds the cession remaining balance', async () => {
@@ -205,7 +225,7 @@ describe('TripForm', () => {
     await wrapper.find('#cession_letter').setValue('9')
     await flushPromises()
     await wrapper.find('#truck').setValue('1')
-    await wrapper.find('#transporter').setValue('') // no transporters seeded; leave as-is
+    await wrapper.find('#transporter').setValue(String(AVAILABLE_TRANSPORTER.id))
     await wrapper.find('#quantity_loaded').setValue('20000')
     await wrapper.find('#loading_date').setValue('2026-08-18')
     await wrapper.find('#bl_reference').setValue('BL-001')
@@ -231,7 +251,7 @@ describe('TripForm', () => {
     await wrapper.find('#cession_letter').setValue('9')
     await flushPromises()
     await wrapper.find('#truck').setValue('1')
-    await wrapper.find('#transporter').setValue('') // no transporters seeded; leave as-is
+    await wrapper.find('#transporter').setValue(String(AVAILABLE_TRANSPORTER.id))
     await wrapper.find('#quantity_loaded').setValue('20000')
     await wrapper.find('#loading_date').setValue('2026-08-18')
     await wrapper.find('#bl_reference').setValue('BL-DUP')

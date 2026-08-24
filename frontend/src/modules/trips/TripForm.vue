@@ -37,10 +37,10 @@ const drivers = ref<DriverBrief[]>([])
 const customers = ref<CustomerBrief[]>([])
 const customerOrders = ref<CustomerOrder[]>([])
 
-// Truck picker filters to AVAILABLE by default (plan Etape 9). Only an
-// Admin can flip this to see occupied trucks and force an assignment —
-// mirrors the Admin-only override the backend enforces regardless
-// (backend/apps/trips/serializers.py._validate_truck_availability).
+// Truck & transporter pickers filter to available-only by default (plan
+// Etape 9). Only an Admin can flip this to see occupied ones and force an
+// assignment — mirrors the Admin-only override the backend enforces
+// regardless (backend/apps/trips/serializers.py._validate_truck_availability).
 const isAdmin = computed(() => auth.user?.role_detail?.name === 'Admin')
 const showBusyTrucks = ref(false)
 
@@ -48,6 +48,12 @@ const trucksResource = createResourceApi<TruckBrief>('/trucks/')
 const transporterResource = createResourceApi<TransporterBrief>('/transporters/')
 const driverResource = createResourceApi<DriverBrief>('/drivers/')
 const customerResource = createResourceApi<CustomerBrief>('/customers/')
+
+async function loadTransporters() {
+  const params = showBusyTrucks.value ? {} : { available: true }
+  const data = await transporterResource.list(params)
+  transporters.value = data.results
+}
 
 const form = ref({
   cession_letter: '',
@@ -72,7 +78,7 @@ async function loadTrucks() {
   trucks.value = data.results
 }
 
-watch(showBusyTrucks, loadTrucks)
+watch(showBusyTrucks, () => Promise.all([loadTrucks(), loadTransporters()]))
 
 async function onCessionChange() {
   const cession = cessions.value.find((c) => c.id === Number(form.value.cession_letter)) ?? null
@@ -103,17 +109,15 @@ const ASSIGNABLE_ORDER_STATUSES = [
 ]
 
 onMounted(async () => {
-  const [cessionData, transporterData, driverData, customerData] = await Promise.all([
+  const [cessionData, driverData, customerData] = await Promise.all([
     cessionLetterResource.list({ status: 'ACTIVE' }),
-    transporterResource.list(),
     driverResource.list(),
     customerResource.list(),
   ])
   cessions.value = cessionData.results
-  transporters.value = transporterData.results
   drivers.value = driverData.results
   customers.value = customerData.results
-  await loadTrucks()
+  await Promise.all([loadTrucks(), loadTransporters()])
 
   if (!prefilledOrderId.value) {
     const orderData = await customerOrderResource.list()
@@ -343,9 +347,9 @@ async function onSubmit() {
           <input
             id="bl_reference"
             v-model="form.bl_reference"
-            required
             class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           />
+          <p class="text-texte-3 text-xs">{{ t('trips.newForm.blReferenceHint') }}</p>
           <p v-if="fieldErrors.bl_reference" class="text-critique text-xs">
             {{ fieldErrors.bl_reference }}
           </p>
