@@ -271,6 +271,7 @@ function badgeVariant(status: TripStatus) {
           {{ t(`customerOrderStatus.${form.status}`) }}
           <span class="text-texte-3 text-xs">{{ t('sales.orderForm.computedFromTrips') }}</span>
         </p>
+        <p v-if="fieldErrors.status" class="text-critique text-xs">{{ fieldErrors.status }}</p>
       </div>
 
       <div class="col-span-2 space-y-1.5">

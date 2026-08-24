@@ -148,4 +148,32 @@ describe('CustomerOrderForm field errors', () => {
     const quantityContainer = wrapper.find('#quantity_ordered').element.closest('div')
     expect(quantityContainer?.textContent).toContain('Doit être positif.')
   })
+
+  it('surfaces a status field error instead of silently swallowing it', async () => {
+    createOrder.mockRejectedValueOnce({
+      response: { status: 400, data: { status: ['Statut invalide.'] } },
+    })
+    const stub = { template: '<div />' }
+    const router = createRouter({
+      history: createWebHistory(),
+      routes: [
+        { path: '/customer-orders/new', name: 'customer-order-new', component: CustomerOrderForm },
+        { path: '/customer-orders/:id', name: 'customer-order-detail', component: stub },
+        { path: '/customer-orders', name: 'customer-orders', component: stub },
+      ],
+    })
+    router.push({ name: 'customer-order-new' })
+    await router.isReady()
+    const wrapper = mount(CustomerOrderForm, { global: { plugins: [router] } })
+    await flushPromises()
+
+    await wrapper.find('#customer').setValue('1')
+    await wrapper.find('#product').setValue('1')
+    await wrapper.find('#quantity_ordered').setValue('100')
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    const statusContainer = wrapper.find('#status').element.closest('div')
+    expect(statusContainer?.textContent).toContain('Statut invalide.')
+  })
 })
