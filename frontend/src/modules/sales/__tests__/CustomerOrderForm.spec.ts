@@ -40,11 +40,12 @@ vi.mock('@/api/resource', () => ({
 }))
 
 let orderToReturn: CustomerOrder
+const createOrder = vi.fn(async (payload: Record<string, unknown>) => ({ id: 99, ...payload }))
 vi.mock('../api', () => ({
   customerOrderResource: {
     get: vi.fn(async () => orderToReturn),
     update: vi.fn(),
-    create: vi.fn(),
+    create: (payload: Record<string, unknown>) => createOrder(payload),
   },
   fetchCustomerOrderTrips: vi.fn(async () => []),
 }))
@@ -112,5 +113,39 @@ describe('CustomerOrderForm status guard', () => {
     expect(wrapper.find('#status').exists()).toBe(false)
     expect(wrapper.text()).toContain('Partiellement affectée')
     expect(wrapper.text()).toContain('calculé à partir de la progression des trajets')
+  })
+})
+
+describe('CustomerOrderForm field errors', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('surfaces a per-field 400 error under the matching field instead of a generic message', async () => {
+    createOrder.mockRejectedValueOnce({
+      response: { status: 400, data: { quantity_ordered: ['Doit être positif.'] } },
+    })
+    const stub = { template: '<div />' }
+    const router = createRouter({
+      history: createWebHistory(),
+      routes: [
+        { path: '/customer-orders/new', name: 'customer-order-new', component: CustomerOrderForm },
+        { path: '/customer-orders/:id', name: 'customer-order-detail', component: stub },
+        { path: '/customer-orders', name: 'customer-orders', component: stub },
+      ],
+    })
+    router.push({ name: 'customer-order-new' })
+    await router.isReady()
+    const wrapper = mount(CustomerOrderForm, { global: { plugins: [router] } })
+    await flushPromises()
+
+    await wrapper.find('#customer').setValue('1')
+    await wrapper.find('#product').setValue('1')
+    await wrapper.find('#quantity_ordered').setValue('-1')
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    const quantityContainer = wrapper.find('#quantity_ordered').element.closest('div')
+    expect(quantityContainer?.textContent).toContain('Doit être positif.')
   })
 })

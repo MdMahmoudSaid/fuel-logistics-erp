@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { createResourceApi } from '@/api/resource'
+import { translateApiError, extractFieldErrors } from '@/i18n/apiErrors'
 import { customerOrderResource, fetchCustomerOrderTrips } from './api'
 import { MANUALLY_SETTABLE_STATUSES } from './types'
 import type { CustomerOrder, CustomerOrderStatus, CustomerBrief, ProductBrief } from './types'
@@ -35,6 +36,7 @@ const form = ref({
 
 const saving = ref(false)
 const error = ref('')
+const fieldErrors = ref<Record<string, string>>({})
 
 const customerResource = createResourceApi<CustomerBrief>('/customers/')
 const productResource = createResourceApi<ProductBrief>('/products/')
@@ -73,6 +75,7 @@ onMounted(async () => {
 async function onSubmit() {
   saving.value = true
   error.value = ''
+  fieldErrors.value = {}
   const payload: Partial<CustomerOrder> = {
     customer: Number(form.value.customer),
     product: Number(form.value.product),
@@ -90,8 +93,16 @@ async function onSubmit() {
       order.value = await customerOrderResource.update(orderId.value!, payload)
       form.value.status = order.value.status
     }
-  } catch {
-    error.value = t('sales.orderForm.saveError')
+  } catch (e) {
+    const response = (e as { response?: { status?: number; data?: Record<string, unknown> } })
+      ?.response
+    const body = response?.status === 400 ? response.data : undefined
+    fieldErrors.value = extractFieldErrors(body)
+    const generic = body?.detail ?? body?.non_field_errors
+    const genericMessage = Array.isArray(generic) ? generic[0] : generic
+    error.value =
+      translateApiError(typeof genericMessage === 'string' ? genericMessage : undefined) ??
+      (Object.keys(fieldErrors.value).length ? '' : t('sales.orderForm.saveError'))
   } finally {
     saving.value = false
   }
@@ -188,6 +199,7 @@ function badgeVariant(status: TripStatus) {
           <option value="" disabled>{{ t('sales.orderForm.selectCustomer') }}</option>
           <option v-for="c in customers" :key="c.id" :value="c.id">{{ c.name }}</option>
         </select>
+        <p v-if="fieldErrors.customer" class="text-critique text-xs">{{ fieldErrors.customer }}</p>
       </div>
 
       <div class="space-y-1.5">
@@ -203,6 +215,7 @@ function badgeVariant(status: TripStatus) {
           <option value="" disabled>{{ t('sales.orderForm.selectProduct') }}</option>
           <option v-for="p in products" :key="p.id" :value="p.id">{{ p.name }}</option>
         </select>
+        <p v-if="fieldErrors.product" class="text-critique text-xs">{{ fieldErrors.product }}</p>
       </div>
 
       <div class="space-y-1.5">
@@ -218,6 +231,9 @@ function badgeVariant(status: TripStatus) {
           required
           class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
         />
+        <p v-if="fieldErrors.quantity_ordered" class="text-critique text-xs">
+          {{ fieldErrors.quantity_ordered }}
+        </p>
       </div>
 
       <div class="space-y-1.5">
@@ -232,6 +248,9 @@ function badgeVariant(status: TripStatus) {
           min="0"
           class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
         />
+        <p v-if="fieldErrors.expected_price" class="text-critique text-xs">
+          {{ fieldErrors.expected_price }}
+        </p>
       </div>
 
       <div class="space-y-1.5">
@@ -264,6 +283,7 @@ function badgeVariant(status: TripStatus) {
           rows="2"
           class="border-ligne-forte w-full rounded-lg border bg-white px-3.5 py-2.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
         />
+        <p v-if="fieldErrors.notes" class="text-critique text-xs">{{ fieldErrors.notes }}</p>
       </div>
 
       <div class="col-span-2 flex justify-end gap-2 pt-2">
