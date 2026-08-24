@@ -104,3 +104,73 @@ def test_truck_crud_via_api(ops_client):
     updated = ops_client.patch(f"/api/trucks/{truck_id}/", {"notes": "Needs tyre check"})
     assert updated.status_code == 200
     assert updated.data["notes"] == "Needs tyre check"
+
+
+@pytest.mark.django_db
+def test_truck_defaults_to_active():
+    truck = Truck.objects.create(
+        internal_id="TRK-ACTIVE-001",
+        tractor_registration="AA-123-SN",
+        tanker_registration="BB-456-SN",
+        capacity_litres="45000.00",
+    )
+    assert truck.is_active is True
+
+
+@pytest.mark.django_db
+def test_truck_internal_id_is_generated_when_left_blank(ops_client):
+    created = ops_client.post(
+        "/api/trucks/",
+        {
+            "tractor_registration": "EE-111-SN",
+            "tanker_registration": "FF-222-SN",
+            "capacity_litres": "45000.00",
+            "ownership_type": "COMPANY_OWNED",
+        },
+    )
+    assert created.status_code == 201, created.data
+    assert created.data["internal_id"].startswith("TRK-")
+
+
+@pytest.mark.django_db
+def test_truck_internal_id_generation_increments_and_skips_legacy_format(ops_client):
+    Truck.objects.create(
+        internal_id="TRK-0001",
+        tractor_registration="GG-333-SN",
+        tanker_registration="HH-444-SN",
+        capacity_litres="45000.00",
+    )
+    Truck.objects.create(
+        internal_id="LEGACY-CODE-9999",
+        tractor_registration="II-555-SN",
+        tanker_registration="JJ-666-SN",
+        capacity_litres="45000.00",
+    )
+
+    created = ops_client.post(
+        "/api/trucks/",
+        {
+            "tractor_registration": "KK-777-SN",
+            "tanker_registration": "LL-888-SN",
+            "capacity_litres": "45000.00",
+            "ownership_type": "COMPANY_OWNED",
+        },
+    )
+    assert created.status_code == 201, created.data
+    assert created.data["internal_id"] == "TRK-0002"
+
+
+@pytest.mark.django_db
+def test_truck_provided_internal_id_is_kept(ops_client):
+    created = ops_client.post(
+        "/api/trucks/",
+        {
+            "internal_id": "CUSTOM-ID-42",
+            "tractor_registration": "MM-999-SN",
+            "tanker_registration": "NN-000-SN",
+            "capacity_litres": "45000.00",
+            "ownership_type": "COMPANY_OWNED",
+        },
+    )
+    assert created.status_code == 201, created.data
+    assert created.data["internal_id"] == "CUSTOM-ID-42"

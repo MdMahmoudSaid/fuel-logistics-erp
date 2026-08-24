@@ -57,6 +57,7 @@ class Truck(TimeStampedModel):
         Driver, null=True, blank=True, on_delete=models.SET_NULL, related_name="trucks"
     )
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.AVAILABLE)
+    is_active = models.BooleanField(default=True)
     notes = models.TextField(blank=True)
 
     class Meta:

@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.db import IntegrityError, transaction
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -8,6 +9,28 @@ from apps.accounts.permissions import HasModulePermission
 
 from .models import Driver, Transporter, Truck
 from .serializers import DriverSerializer, TransporterSerializer, TruckSerializer
+
+_TRUCK_ID_PREFIX = "TRK-"
+_TRUCK_ID_WIDTH = 4
+_MAX_TRUCK_ID_ATTEMPTS = 5
+
+
+def _generate_next_truck_internal_id() -> str:
+    """Sequential, zero-padded internal id (TRK-0001, TRK-0002, ...) - same
+    regex-scoped/retry approach as apps.trips.views._generate_next_reference,
+    used only when the user leaves the field blank on creation."""
+    last = (
+        Truck.objects.filter(internal_id__regex=rf"^{_TRUCK_ID_PREFIX}\d{{{_TRUCK_ID_WIDTH}}}$")
+        .order_by("-internal_id")
+        .first()
+    )
+    last_number = 0
+    if last:
+        try:
+            last_number = int(last.internal_id.removeprefix(_TRUCK_ID_PREFIX))
+        except ValueError:
+            last_number = 0
+    return f"{_TRUCK_ID_PREFIX}{last_number + 1:0{_TRUCK_ID_WIDTH}d}"
 
 
 class TransporterViewSet(viewsets.ModelViewSet):
@@ -88,6 +111,26 @@ class TruckViewSet(viewsets.ModelViewSet):
     filterset_fields = ["status", "ownership_type"]
     permission_classes = [HasModulePermission]
     module = "operations"
+
+    @transaction.atomic
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+
+    def perform_create(self, serializer):
+        if serializer.validated_data.get("internal_id"):
+            serializer.save()
+            return
+        for _ in range(_MAX_TRUCK_ID_ATTEMPTS):
+            try:
+                with transaction.atomic():
+                    serializer.save(internal_id=_generate_next_truck_internal_id())
+                return
+            except IntegrityError:
+                continue
+        raise IntegrityError(
+            "Impossible de generer un identifiant interne de camion unique "
+            f"apres {_MAX_TRUCK_ID_ATTEMPTS} tentatives."
+        )
 
     @action(detail=True, methods=["get"])
     def trips(self, request, pk=None):
