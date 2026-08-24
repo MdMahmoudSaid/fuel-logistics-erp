@@ -6,6 +6,7 @@ from rest_framework.exceptions import MethodNotAllowed
 from rest_framework.response import Response
 
 from apps.accounts.permissions import HasModulePermission
+from apps.core.reference import generate_monthly_reference
 
 from .models import Trip
 from .serializers import (
@@ -91,11 +92,16 @@ class TripViewSet(viewsets.ModelViewSet):
         return super().update(request, *args, **kwargs)
 
     def perform_create(self, serializer):
+        extra = {}
+        if not serializer.validated_data.get("bl_reference"):
+            extra["bl_reference"] = generate_monthly_reference(Trip, "bl_reference", "BL")
         for _ in range(_MAX_REFERENCE_ATTEMPTS):
             reference = _generate_next_reference()
             try:
                 with transaction.atomic():
-                    serializer.save(reference=reference, created_by=self.request.user)
+                    serializer.save(
+                        reference=reference, created_by=self.request.user, **extra
+                    )
                 return
             except IntegrityError:
                 continue

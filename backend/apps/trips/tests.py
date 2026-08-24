@@ -699,6 +699,35 @@ def test_api_truck_lock_rejected_then_admin_force_succeeds():
 
 
 @pytest.mark.django_db
+def test_api_bl_reference_is_generated_when_left_blank():
+    fx = _setup_fixtures("API-BL-GEN")
+    truck = _make_truck("TRK-API-BL-GEN")
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+
+    response = client.post(
+        "/api/trips/", _api_trip_payload(fx, truck, bl_reference="")
+    )
+    assert response.status_code == 201, response.data
+    yyyymm = timezone.now().strftime("%Y%m")
+    assert response.data["bl_reference"].startswith(f"BL-{yyyymm}-")
+
+
+@pytest.mark.django_db
+def test_api_bl_reference_provided_by_user_is_kept():
+    fx = _setup_fixtures("API-BL-KEEP")
+    truck = _make_truck("TRK-API-BL-KEEP")
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+
+    response = client.post(
+        "/api/trips/", _api_trip_payload(fx, truck, bl_reference="BL-PAPIER-777")
+    )
+    assert response.status_code == 201, response.data
+    assert response.data["bl_reference"] == "BL-PAPIER-777"
+
+
+@pytest.mark.django_db
 def test_api_direct_sale_trip_without_customer_order():
     fx = _setup_fixtures("API-DIRECT")
     truck = _make_truck("TRK-API-DIRECT")

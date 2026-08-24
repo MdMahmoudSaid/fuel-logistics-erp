@@ -55,6 +55,10 @@ class TripSerializer(serializers.ModelSerializer):
     # Not a model field: lets an Admin bypass the active-truck lock (plan
     # §1.D). Always popped out of validated_data in validate() below.
     force = serializers.BooleanField(write_only=True, required=False, default=False)
+    # Optional: TripViewSet.perform_create generates BL-YYYYMM-NNNN when left
+    # blank, unlike the always-server-generated references in apps.purchasing
+    # (user may have a real paper BL number to record).
+    bl_reference = serializers.CharField(required=False, allow_blank=True)
 
     class Meta:
         model = Trip
