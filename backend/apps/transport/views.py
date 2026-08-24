@@ -40,6 +40,18 @@ class TransporterViewSet(viewsets.ModelViewSet):
     permission_classes = [HasModulePermission]
     module = "operations"
 
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if self.request.query_params.get("available") == "true":
+            # Imported lazily: apps.transport sits below apps.trips in the
+            # app dependency graph (same convention as the `trips` action
+            # below).
+            from apps.trips.services import TransporterAvailabilityService
+
+            available_ids = TransporterAvailabilityService.get_available_transporters()
+            queryset = queryset.filter(pk__in=available_ids)
+        return queryset
+
     @action(detail=True, methods=["get"])
     def ledger(self, request, pk=None):
         """Transporter settlement breakdown: gross fees earned, loss

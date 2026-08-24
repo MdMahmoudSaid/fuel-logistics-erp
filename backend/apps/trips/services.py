@@ -19,7 +19,7 @@ from apps.core.reference import generate_monthly_reference
 from apps.finance.models import TransportDeduction
 from apps.sales.models import Invoice, ProductSellingPriceHistory, Sale
 from apps.sales.services import CustomerOrderService
-from apps.transport.models import Truck
+from apps.transport.models import Transporter, Truck
 from apps.trips.models import DeliveryControl, Trip, TripStatusHistory
 
 
@@ -72,6 +72,20 @@ class TruckAvailabilityService:
             status__in=Trip.TERMINAL_STATUSES
         ).values_list("truck_id", flat=True)
         return Truck.objects.exclude(pk__in=active_truck_ids)
+
+
+class TransporterAvailabilityService:
+    """Same "no trip in a non-terminal status" rule as
+    TruckAvailabilityService, applied to Transporter (TripForm's "Afficher
+    les camions occupes" toggle filters both pickers together)."""
+
+    @staticmethod
+    def get_available_transporters():
+        """QuerySet of transporters with no active trip."""
+        active_transporter_ids = Trip.objects.exclude(
+            status__in=Trip.TERMINAL_STATUSES
+        ).values_list("transporter_id", flat=True)
+        return Transporter.objects.exclude(pk__in=active_transporter_ids)
 
 
 class TripWorkflowService:

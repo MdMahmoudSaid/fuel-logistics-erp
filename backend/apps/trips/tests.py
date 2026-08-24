@@ -24,6 +24,7 @@ from apps.trips.services import (
     DeliveryService,
     InvalidTripTransition,
     SellingPriceNotConfigured,
+    TransporterAvailabilityService,
     TripWorkflowService,
     TruckAvailabilityService,
 )
@@ -232,6 +233,41 @@ def test_truck_becomes_available_again_after_trip_completes():
     second_trip = _make_trip(fx, truck, "TRIP-CYCLE-002")
     assert second_trip.pk != trip.pk
     assert TruckAvailabilityService.is_truck_available(truck.id) is False
+
+
+@pytest.mark.django_db
+def test_transporter_availability_service_tracks_active_trips():
+    fx = _setup_fixtures("TRANS-AVAIL")
+    truck = _make_truck("TRK-TRANS-AVAIL")
+
+    assert fx["transporter"] in TransporterAvailabilityService.get_available_transporters()
+
+    _make_trip(fx, truck, "TRIP-TRANS-AVAIL-001")
+
+    assert (
+        fx["transporter"] not in TransporterAvailabilityService.get_available_transporters()
+    )
+
+
+@pytest.mark.django_db
+def test_api_transporters_available_filter_excludes_busy_transporter():
+    fx = _setup_fixtures("TRANS-API")
+    truck = _make_truck("TRK-TRANS-API")
+    idle_transporter = Transporter.objects.create(name="Idle Transport")
+    _make_trip(fx, truck, "TRIP-TRANS-API-001")  # occupies fx["transporter"]
+
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+
+    response = client.get("/api/transporters/?available=true")
+    assert response.status_code == 200
+    names = {t["name"] for t in response.data["results"]}
+    assert idle_transporter.name in names
+    assert fx["transporter"].name not in names
+
+    unfiltered = client.get("/api/transporters/")
+    names_unfiltered = {t["name"] for t in unfiltered.data["results"]}
+    assert fx["transporter"].name in names_unfiltered
 
 
 @pytest.mark.django_db
