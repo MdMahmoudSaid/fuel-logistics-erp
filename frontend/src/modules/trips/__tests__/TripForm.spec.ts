@@ -80,7 +80,7 @@ vi.mock('@/api/resource', () => ({
   createResourceApi: vi.fn((basePath: string) => ({
     list: vi.fn(async (params?: Record<string, unknown>) => {
       if (basePath === '/trucks/') {
-        const trucks = params?.status ? [AVAILABLE_TRUCK] : [AVAILABLE_TRUCK, BUSY_TRUCK]
+        const trucks = params?.available ? [AVAILABLE_TRUCK] : [AVAILABLE_TRUCK, BUSY_TRUCK]
         return paginated(trucks)
       }
       if (basePath === '/transporters/') {

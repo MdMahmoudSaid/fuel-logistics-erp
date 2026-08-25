@@ -73,7 +73,7 @@ const error = ref('')
 const fieldErrors = ref<Record<string, string>>({})
 
 async function loadTrucks() {
-  const params = showBusyTrucks.value ? {} : { status: 'AVAILABLE' }
+  const params = showBusyTrucks.value ? {} : { available: true }
   const data = await trucksResource.list(params)
   trucks.value = data.results
 }
