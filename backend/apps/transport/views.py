@@ -124,6 +124,21 @@ class TruckViewSet(viewsets.ModelViewSet):
     permission_classes = [HasModulePermission]
     module = "operations"
 
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if self.request.query_params.get("available") == "true":
+            # Imported lazily: apps.transport sits below apps.trips in the
+            # app dependency graph. Trip.status is the actual source of
+            # truth for availability - the stored Truck.status field is
+            # never written back to ON_TRIP anywhere, so filtering on it
+            # directly would silently include occupied trucks.
+            from apps.trips.services import TruckAvailabilityService
+
+            queryset = queryset.filter(
+                pk__in=TruckAvailabilityService.get_available_trucks()
+            )
+        return queryset
+
     @transaction.atomic
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)

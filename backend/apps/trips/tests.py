@@ -271,6 +271,51 @@ def test_api_transporters_available_filter_excludes_busy_transporter():
 
 
 @pytest.mark.django_db
+def test_truck_and_transporter_become_available_once_delivered_even_if_not_completed():
+    """A DELIVERED trip has physically returned its truck - it must not
+    keep blocking a new assignment just because nobody has clicked through
+    the administrative DELIVERED -> COMPLETED step yet (regression: real
+    data had trips sitting in DELIVERED indefinitely, which emptied the
+    transporter picker entirely and never actually freed any truck)."""
+    fx = _setup_fixtures("DELIVERED-FREE")
+    truck = _make_truck("TRK-DELIVERED-FREE")
+    trip = _make_trip(fx, truck, "TRIP-DELIVERED-FREE-001")
+
+    assert TruckAvailabilityService.is_truck_available(truck.id) is False
+    assert fx["transporter"] not in TransporterAvailabilityService.get_available_transporters()
+
+    for target in FULL_SEQUENCE_AFTER_ASSIGNED[:-1]:  # stop at DELIVERED
+        TripWorkflowService.transition_trip(trip.id, target, fx["admin_user"])
+    trip.refresh_from_db()
+    assert trip.status == Trip.Status.DELIVERED
+
+    assert TruckAvailabilityService.is_truck_available(truck.id) is True
+    assert truck in TruckAvailabilityService.get_available_trucks()
+    assert fx["transporter"] in TransporterAvailabilityService.get_available_transporters()
+
+
+@pytest.mark.django_db
+def test_api_trucks_available_filter_excludes_only_truly_active_trucks():
+    fx = _setup_fixtures("TRUCK-API-AVAIL")
+    idle_truck = _make_truck("TRK-API-AVAIL-IDLE")
+    busy_truck = _make_truck("TRK-API-AVAIL-BUSY")
+    _make_trip(fx, busy_truck, "TRIP-API-AVAIL-001")  # stays ASSIGNED: truly active
+
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+
+    response = client.get("/api/trucks/?available=true")
+    assert response.status_code == 200
+    ids = {t["internal_id"] for t in response.data["results"]}
+    assert idle_truck.internal_id in ids
+    assert busy_truck.internal_id not in ids
+
+    unfiltered = client.get("/api/trucks/")
+    ids_unfiltered = {t["internal_id"] for t in unfiltered.data["results"]}
+    assert busy_truck.internal_id in ids_unfiltered
+
+
+@pytest.mark.django_db
 def test_workflow_rejects_skipping_a_status():
     fx = _setup_fixtures("SKIP")
     truck = _make_truck("TRK-SKIP")

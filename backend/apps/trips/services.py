@@ -48,10 +48,11 @@ class SellingPriceNotConfigured(ValueError):
 class TruckAvailabilityService:
     @staticmethod
     def is_truck_available(truck_id) -> bool:
-        """True if the truck has no trip in a non-terminal status."""
+        """True if the truck has no trip in a non-terminal, non-delivered
+        status (Trip.NON_OCCUPYING_STATUSES)."""
         return not (
             Trip.objects.filter(truck_id=truck_id)
-            .exclude(status__in=Trip.TERMINAL_STATUSES)
+            .exclude(status__in=Trip.NON_OCCUPYING_STATUSES)
             .exists()
         )
 
@@ -60,7 +61,7 @@ class TruckAvailabilityService:
         """The truck's current in-progress trip, if any (most recent first)."""
         return (
             Trip.objects.filter(truck_id=truck_id)
-            .exclude(status__in=Trip.TERMINAL_STATUSES)
+            .exclude(status__in=Trip.NON_OCCUPYING_STATUSES)
             .order_by("-created_at")
             .first()
         )
@@ -69,13 +70,13 @@ class TruckAvailabilityService:
     def get_available_trucks():
         """QuerySet of trucks with no active trip."""
         active_truck_ids = Trip.objects.exclude(
-            status__in=Trip.TERMINAL_STATUSES
+            status__in=Trip.NON_OCCUPYING_STATUSES
         ).values_list("truck_id", flat=True)
         return Truck.objects.exclude(pk__in=active_truck_ids)
 
 
 class TransporterAvailabilityService:
-    """Same "no trip in a non-terminal status" rule as
+    """Same "no trip in a non-terminal, non-delivered status" rule as
     TruckAvailabilityService, applied to Transporter (TripForm's "Afficher
     les camions occupes" toggle filters both pickers together)."""
 
@@ -83,7 +84,7 @@ class TransporterAvailabilityService:
     def get_available_transporters():
         """QuerySet of transporters with no active trip."""
         active_transporter_ids = Trip.objects.exclude(
-            status__in=Trip.TERMINAL_STATUSES
+            status__in=Trip.NON_OCCUPYING_STATUSES
         ).values_list("transporter_id", flat=True)
         return Transporter.objects.exclude(pk__in=active_transporter_ids)
 

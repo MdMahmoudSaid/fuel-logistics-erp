@@ -37,10 +37,19 @@ class Trip(TimeStampedModel):
         BLOCKED = "BLOCKED", "Blocked"
         CANCELLED = "CANCELLED", "Cancelled"
 
-    # A trip in either of these statuses is finished for good: it no longer
-    # occupies its truck and no longer counts as "active" for locking
-    # purposes (plan Section 1.D / TruckAvailabilityService).
+    # A trip in either of these statuses is finished for good (never
+    # reopened, excluded from the active status board, etc.).
     TERMINAL_STATUSES = {Status.COMPLETED, Status.CANCELLED}
+
+    # For the narrower purpose of "does this trip still occupy its truck/
+    # transporter for a NEW assignment" (TruckAvailabilityService /
+    # TransporterAvailabilityService), DELIVERED also releases the
+    # resource: the load has physically arrived and the truck is empty and
+    # free, even if nobody has clicked through the administrative
+    # DELIVERED -> COMPLETED step yet. Deliberately NOT folded into
+    # TERMINAL_STATUSES, which other rules (is_active(), CANCELLABLE_FROM,
+    # the active status board) rely on staying just {COMPLETED, CANCELLED}.
+    NON_OCCUPYING_STATUSES = TERMINAL_STATUSES | {Status.DELIVERED}
 
     reference = models.CharField(max_length=50, unique=True)
     truck = models.ForeignKey(
