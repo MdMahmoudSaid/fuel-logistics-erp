@@ -398,6 +398,7 @@
       "bank": "Bank",
       "allocateToInvoices": "Allocate to invoices",
       "addLine": "+ Add line",
+      "autoAllocate": "Auto-allocate (FIFO)",
       "loadingInvoices": "Loading unpaid invoices…",
       "unallocatedCredit": "Unallocated credit",
       "amountPlaceholder": "Amount",

@@ -48,6 +48,10 @@ interface AllocationLine {
   amount: string
 }
 const lines = ref<AllocationLine[]>([{ invoice: '', amount: '' }])
+// Tracks whether the user has hand-edited a line since the last FIFO
+// auto-fill - once true, changing the global amount no longer overwrites
+// their edits (they can still force a fresh pass via the auto-allocate button).
+const autoAllocateDirty = ref(false)
 
 const saving = ref(false)
 const error = ref('')
@@ -66,7 +70,56 @@ async function loadInvoices() {
   }
 }
 
-watch(() => form.value.customer, loadInvoices)
+function runFifoAutoAllocate() {
+  const amount = Number(form.value.amount)
+  if (!amount || amount <= 0 || unpaidInvoices.value.length === 0) return
+
+  const oldestFirst = [...unpaidInvoices.value].sort((a, b) =>
+    a.issued_date === b.issued_date ? a.id - b.id : a.issued_date < b.issued_date ? -1 : 1,
+  )
+
+  let remaining = amount
+  const newLines: AllocationLine[] = []
+  for (const invoice of oldestFirst) {
+    if (remaining <= 0) break
+    const outstanding = Number(invoice.outstanding)
+    if (outstanding <= 0) continue
+    const allocated = Math.min(remaining, outstanding)
+    newLines.push({ invoice: String(invoice.id), amount: allocated.toFixed(2) })
+    remaining -= allocated
+  }
+  if (remaining > 0.001) {
+    newLines.push({ invoice: '', amount: remaining.toFixed(2) })
+  }
+
+  lines.value = newLines.length > 0 ? newLines : [{ invoice: '', amount: '' }]
+}
+
+function autoAllocate() {
+  autoAllocateDirty.value = false
+  runFifoAutoAllocate()
+}
+
+function markLinesDirty() {
+  autoAllocateDirty.value = true
+}
+
+watch(
+  () => form.value.customer,
+  async () => {
+    autoAllocateDirty.value = false
+    lines.value = [{ invoice: '', amount: '' }]
+    await loadInvoices()
+    runFifoAutoAllocate()
+  },
+)
+
+watch(
+  () => form.value.amount,
+  () => {
+    if (!autoAllocateDirty.value) runFifoAutoAllocate()
+  },
+)
 
 onMounted(async () => {
   const [customerData, bankData, cashData] = await Promise.all([
@@ -86,10 +139,12 @@ onMounted(async () => {
 
 function addLine() {
   lines.value.push({ invoice: '', amount: '' })
+  autoAllocateDirty.value = true
 }
 
 function removeLine(index: number) {
   lines.value.splice(index, 1)
+  autoAllocateDirty.value = true
 }
 
 const allocatedTotal = computed(() =>
@@ -277,9 +332,19 @@ async function onSubmit() {
           <h2 class="font-display text-sm font-semibold uppercase">
             {{ t('finance.payment.allocateToInvoices') }}
           </h2>
-          <button type="button" class="text-texte-2 hover:text-texte text-sm" @click="addLine">
-            {{ t('finance.payment.addLine') }}
-          </button>
+          <div class="flex items-center gap-3">
+            <button
+              type="button"
+              data-test="auto-allocate"
+              class="text-texte-2 hover:text-texte text-sm"
+              @click="autoAllocate"
+            >
+              {{ t('finance.payment.autoAllocate') }}
+            </button>
+            <button type="button" class="text-texte-2 hover:text-texte text-sm" @click="addLine">
+              {{ t('finance.payment.addLine') }}
+            </button>
+          </div>
         </div>
         <p v-if="loadingInvoices" class="text-texte-3 text-sm">
           {{ t('finance.payment.loadingInvoices') }}
@@ -288,7 +353,9 @@ async function onSubmit() {
         <div v-for="(line, index) in lines" :key="index" class="flex items-center gap-2">
           <select
             v-model="line.invoice"
+            data-test="line-invoice"
             class="border-ligne-forte h-12 flex-1 rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+            @change="markLinesDirty"
           >
             <option value="">{{ t('finance.payment.unallocatedCredit') }}</option>
             <option v-for="inv in unpaidInvoices" :key="inv.id" :value="inv.id">
@@ -300,8 +367,10 @@ async function onSubmit() {
             type="number"
             step="0.01"
             min="0"
+            data-test="line-amount"
             :placeholder="t('finance.payment.amountPlaceholder')"
             class="border-ligne-forte h-12 w-40 rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+            @input="markLinesDirty"
           />
           <button
             type="button"
@@ -313,7 +382,9 @@ async function onSubmit() {
         </div>
 
         <p class="text-texte-2 text-sm">
-          {{ t('finance.payment.allocatedSummary', { allocated: allocatedTotal.toLocaleString() }) }}
+          {{
+            t('finance.payment.allocatedSummary', { allocated: allocatedTotal.toLocaleString() })
+          }}
           <span :class="unallocatedRemainder < 0 ? 'text-critique font-medium' : ''">
             {{ unallocatedRemainder.toLocaleString() }}
           </span>

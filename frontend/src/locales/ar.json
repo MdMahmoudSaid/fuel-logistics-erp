@@ -398,6 +398,7 @@
       "bank": "البنك",
       "allocateToInvoices": "توزيع على الفواتير",
       "addLine": "+ إضافة سطر",
+      "autoAllocate": "توزيع تلقائي (FIFO)",
       "loadingInvoices": "جارٍ تحميل الفواتير غير المدفوعة…",
       "unallocatedCredit": "رصيد غير مخصَّص",
       "amountPlaceholder": "المبلغ",

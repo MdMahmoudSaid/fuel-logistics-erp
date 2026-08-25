@@ -400,6 +400,7 @@
       "bank": "Banque",
       "allocateToInvoices": "Répartir sur les factures",
       "addLine": "+ Ajouter une ligne",
+      "autoAllocate": "Répartir auto (FIFO)",
       "loadingInvoices": "Chargement des factures impayées…",
       "unallocatedCredit": "Crédit non alloué",
       "amountPlaceholder": "Montant",
