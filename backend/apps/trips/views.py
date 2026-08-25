@@ -12,15 +12,18 @@ from apps.reports.services.profit import TripProfitService
 
 from .models import Trip
 from .serializers import (
+    AssignCustomerRequestSerializer,
     DeliveryControlRequestSerializer,
     DeliveryControlSerializer,
     TripSerializer,
     TripStatusHistorySerializer,
 )
 from .services import (
+    CustomerAlreadySoldError,
     DeliveryAnomalyConfirmationRequired,
     DeliveryService,
     InvalidTripTransition,
+    TripCostService,
     TripWorkflowService,
 )
 
@@ -167,6 +170,43 @@ class TripViewSet(viewsets.ModelViewSet):
             return Response({"available": False})
         breakdown = TripProfitService.get_cost_breakdown(trip)
         return Response({"available": True, **decimals_to_str(breakdown)})
+
+    @action(detail=True, methods=["get"], url_path="cost-basis")
+    def cost_basis(self, request, pk=None):
+        """Fuel purchase cost, transport cost, allocated expenses (by
+        category) and the resulting total/unit cost for this trip
+        (TripCostService.calculate_trip_cost_basis) - available from the
+        moment a trip is loaded, unlike /margin/ which needs a Sale.
+
+        GET /api/trips/{id}/cost-basis/
+        """
+        trip = self.get_object()
+        cost_basis = TripCostService.calculate_trip_cost_basis(trip)
+        return Response(decimals_to_str(cost_basis))
+
+    @action(detail=True, methods=["post"], url_path="assign-customer")
+    def assign_customer(self, request, pk=None):
+        """Attach/replace this trip's direct customer
+        (TripCostService.assign_customer_for_sale) - rejected once the
+        trip already has a Sale.
+
+        POST /api/trips/{id}/assign-customer/  body: {customer}
+        """
+        trip = self.get_object()
+        input_serializer = AssignCustomerRequestSerializer(data=request.data)
+        input_serializer.is_valid(raise_exception=True)
+        customer = input_serializer.validated_data["customer"]
+
+        try:
+            trip = TripCostService.assign_customer_for_sale(
+                trip.id, customer.id, request.user
+            )
+        except CustomerAlreadySoldError as exc:
+            return Response(
+                {"detail": str(exc)}, status=http_status.HTTP_400_BAD_REQUEST
+            )
+
+        return Response(TripSerializer(trip, context={"request": request}).data)
 
     @action(detail=True, methods=["get"], url_path="suggested-selling-price")
     def suggested_selling_price(self, request, pk=None):

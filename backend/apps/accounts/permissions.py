@@ -26,6 +26,12 @@ ACTION_MAP = {
     # Delivery confirmation (docs/PHASE_4_PLAN.md Etape 6) is the same kind
     # of routine operations action as a trip status transition above.
     "delivery_control": "edit",
+    # Trip cost basis (Task 1, client modifications plan) is a read-only
+    # decomposition, same "view" tier as margin/suggested_selling_price.
+    "cost_basis": "view",
+    # Assigning a direct customer to a trip is routine operations work,
+    # same "edit" tier as a trip status transition/delivery confirmation.
+    "assign_customer": "edit",
     # Invoice validation freezes financial data - gate it behind "validate"
     # (Role.ACTIONS), same tier as SupplierOrder/CessionLetter confirmation.
     "validate": "validate",

@@ -6,6 +6,7 @@ from rest_framework import serializers
 from apps.accounts.models import Role, User
 from apps.accounts.serializers import UserSerializer
 from apps.core.serializers import ProductSerializer
+from apps.customers.models import Customer
 from apps.customers.serializers import CustomerSerializer
 from apps.documents.models import Document
 from apps.purchasing.services import SupplierStockService
@@ -81,6 +82,7 @@ class TripSerializer(serializers.ModelSerializer):
             "client",
             "client_detail",
             "customer_order",
+            "destination_type",
             "loading_date",
             "bl_reference",
             "status",
@@ -98,6 +100,10 @@ class TripSerializer(serializers.ModelSerializer):
             "id",
             "reference",
             "status",
+            # Server-computed from client/customer_order presence (see
+            # _normalize_destination_type below), never taken from client
+            # input directly.
+            "destination_type",
             "created_by",
             "created_at",
             "updated_at",
@@ -109,8 +115,48 @@ class TripSerializer(serializers.ModelSerializer):
         self._validate_cession_quantity(data)
         self._validate_truck_capacity(data)
         self._validate_truck_availability(data, force)
+        self._validate_client_customer_order_consistency(data)
+        self._normalize_destination_type(data)
 
         return data
+
+    def _resolve(self, data, field):
+        """`data[field]` if the caller touched it this request, else the
+        current value on `self.instance` (None for a create). Distinct from
+        the `data.get(x) or instance.x` pattern used by the checks above:
+        those fields are never legitimately cleared to None/blank, but
+        `client`/`customer_order` explicitly can be (moving a trip back to
+        COMPANY_STOCK), so falling back on a falsy-but-provided value here
+        would silently ignore that clear."""
+        if field in data:
+            return data[field]
+        return getattr(self.instance, field, None)
+
+    def _validate_client_customer_order_consistency(self, data):
+        client = self._resolve(data, "client")
+        customer_order = self._resolve(data, "customer_order")
+        if client and customer_order and customer_order.customer_id != client.id:
+            raise serializers.ValidationError(
+                {
+                    "client": (
+                        "Le client direct ne correspond pas au client de la "
+                        "commande client associee a ce trajet."
+                    )
+                }
+            )
+
+    def _normalize_destination_type(self, data):
+        """Plan Section (Global Constraints): destination_type is derived,
+        never independently settable - CUSTOMER whenever either a direct
+        client or a customer order is attached, COMPANY_STOCK otherwise
+        (the "Stock de l'entreprise" first-class state)."""
+        client = self._resolve(data, "client")
+        customer_order = self._resolve(data, "customer_order")
+        data["destination_type"] = (
+            Trip.DestinationType.CUSTOMER
+            if (client or customer_order)
+            else Trip.DestinationType.COMPANY_STOCK
+        )
 
     def _validate_cession_quantity(self, data):
         cession_letter = data.get("cession_letter") or (
@@ -263,3 +309,16 @@ class DeliveryControlRequestSerializer(serializers.Serializer):
         required=False,
         allow_null=True,
     )
+
+
+class AssignCustomerRequestSerializer(serializers.Serializer):
+    """Input validation for POST /api/trips/{id}/assign-customer/.
+
+    Not a ModelSerializer: the actual mutation (plus its "reject once a
+    Sale exists" rule) is owned exclusively by
+    TripCostService.assign_customer_for_sale() under a Trip row lock (same
+    convention as DeliveryControlRequestSerializer above) - this only
+    validates the customer id before the view hands it to that service.
+    """
+
+    customer = serializers.PrimaryKeyRelatedField(queryset=Customer.objects.all())

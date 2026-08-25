@@ -2,6 +2,7 @@ import itertools
 from decimal import Decimal
 
 import pytest
+from django.contrib.contenttypes.models import ContentType
 from django.db import IntegrityError, transaction
 from django.urls import resolve
 from django.utils import timezone
@@ -11,7 +12,12 @@ from rest_framework.test import APIClient
 from apps.accounts.models import Role, User
 from apps.core.models import LossToleranceConfig, Product
 from apps.customers.models import Customer
-from apps.finance.models import TransportDeduction
+from apps.finance.models import (
+    Expense,
+    ExpenseAllocation,
+    TransportDeduction,
+    TransportPayment,
+)
 from apps.purchasing.models import CessionLetter, SupplierOrder
 from apps.sales.models import CustomerOrder, ProductSellingPriceHistory
 from apps.sales.services import CustomerOrderService
@@ -20,11 +26,13 @@ from apps.transport.models import Transporter, Truck
 from apps.trips.models import DeliveryControl, Trip, TripStatusHistory
 from apps.trips.serializers import TripSerializer, TripStatusHistorySerializer
 from apps.trips.services import (
+    CustomerAlreadySoldError,
     DeliveryAnomalyConfirmationRequired,
     DeliveryService,
     InvalidTripTransition,
     SellingPriceNotConfigured,
     TransporterAvailabilityService,
+    TripCostService,
     TripWorkflowService,
     TruckAvailabilityService,
 )
@@ -1508,3 +1516,323 @@ def test_api_trip_margin_breakdown_after_delivery():
     assert response.data["transport_cost"] == "0.00"
     assert response.data["total_expenses"] == "0.00"
     assert response.data["margin"] == "2152500.00"
+
+
+# ---------------------------------------------------------------------------
+# Task 1 (client modifications plan): Trip.destination_type,
+# TripCostService.calculate_trip_cost_basis, and
+# TripCostService.assign_customer_for_sale.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_trip_with_no_client_and_no_customer_order_defaults_to_company_stock():
+    fx = _setup_fixtures("DEST-STOCK")
+    truck = _make_truck("TRK-DEST-STOCK")
+
+    trip = _make_trip(fx, truck, "TRIP-DEST-STOCK-001")
+
+    assert trip.client is None
+    assert trip.customer_order is None
+    assert trip.destination_type == Trip.DestinationType.COMPANY_STOCK
+
+
+@pytest.mark.django_db
+def test_trip_serializer_normalizes_destination_type_to_company_stock_by_default():
+    fx = _setup_fixtures("DEST-DEFAULT")
+    truck = _make_truck("TRK-DEST-DEFAULT")
+
+    serializer = TripSerializer(
+        data=_trip_payload(fx, truck, "TRIP-DEST-DEFAULT-001"),
+        context={"request": _FakeRequest(fx["admin_user"])},
+    )
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["destination_type"] == Trip.DestinationType.COMPANY_STOCK
+
+
+@pytest.mark.django_db
+def test_trip_serializer_normalizes_destination_type_to_customer_when_client_given():
+    fx = _setup_fixtures("DEST-CLIENT")
+    truck = _make_truck("TRK-DEST-CLIENT")
+    customer = Customer.objects.create(name="Dest Client")
+
+    serializer = TripSerializer(
+        data=_trip_payload(fx, truck, "TRIP-DEST-CLIENT-001", client=customer.id),
+        context={"request": _FakeRequest(fx["admin_user"])},
+    )
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["destination_type"] == Trip.DestinationType.CUSTOMER
+
+
+@pytest.mark.django_db
+def test_trip_serializer_normalizes_destination_type_to_customer_when_customer_order_given():
+    fx = _setup_fixtures("DEST-ORDER")
+    truck = _make_truck("TRK-DEST-ORDER")
+    customer = Customer.objects.create(name="Dest Order Client")
+    order = CustomerOrder.objects.create(
+        customer=customer,
+        product=fx["product"],
+        quantity_ordered=Decimal("45000.00"),
+    )
+
+    serializer = TripSerializer(
+        data=_trip_payload(fx, truck, "TRIP-DEST-ORDER-001", customer_order=order.id),
+        context={"request": _FakeRequest(fx["admin_user"])},
+    )
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["destination_type"] == Trip.DestinationType.CUSTOMER
+
+
+@pytest.mark.django_db
+def test_trip_serializer_rejects_client_and_customer_order_for_different_customers():
+    fx = _setup_fixtures("DEST-MISMATCH")
+    truck = _make_truck("TRK-DEST-MISMATCH")
+    customer_a = Customer.objects.create(name="Customer A")
+    customer_b = Customer.objects.create(name="Customer B")
+    order = CustomerOrder.objects.create(
+        customer=customer_b,
+        product=fx["product"],
+        quantity_ordered=Decimal("45000.00"),
+    )
+
+    serializer = TripSerializer(
+        data=_trip_payload(
+            fx,
+            truck,
+            "TRIP-DEST-MISMATCH-001",
+            client=customer_a.id,
+            customer_order=order.id,
+        ),
+        context={"request": _FakeRequest(fx["admin_user"])},
+    )
+    assert not serializer.is_valid()
+    assert "client" in serializer.errors
+
+
+@pytest.mark.django_db
+def test_trip_serializer_accepts_client_matching_customer_order_customer():
+    fx = _setup_fixtures("DEST-MATCH")
+    truck = _make_truck("TRK-DEST-MATCH")
+    customer = Customer.objects.create(name="Matching Customer")
+    order = CustomerOrder.objects.create(
+        customer=customer,
+        product=fx["product"],
+        quantity_ordered=Decimal("45000.00"),
+    )
+
+    serializer = TripSerializer(
+        data=_trip_payload(
+            fx,
+            truck,
+            "TRIP-DEST-MATCH-001",
+            client=customer.id,
+            customer_order=order.id,
+        ),
+        context={"request": _FakeRequest(fx["admin_user"])},
+    )
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["destination_type"] == Trip.DestinationType.CUSTOMER
+
+
+@pytest.mark.django_db
+def test_assign_customer_for_sale_changes_destination_type_before_delivery():
+    fx = _setup_fixtures("ASSIGN-PRE")
+    truck = _make_truck("TRK-ASSIGN-PRE")
+    trip = _make_trip(fx, truck, "TRIP-ASSIGN-PRE-001")
+    _advance_to_quantity_control(trip, fx["admin_user"])
+    customer = Customer.objects.create(name="Assign Client Pre")
+
+    updated = TripCostService.assign_customer_for_sale(trip.id, customer.id, fx["admin_user"])
+
+    assert updated.client_id == customer.id
+    assert updated.destination_type == Trip.DestinationType.CUSTOMER
+    trip.refresh_from_db()
+    assert trip.client_id == customer.id
+    assert trip.destination_type == Trip.DestinationType.CUSTOMER
+
+
+@pytest.mark.django_db
+def test_assign_customer_for_sale_rejected_once_sale_exists():
+    fx = _fixtures_with_customer("ASSIGN-SOLD")
+    trip = _deliverable_trip(fx, "TRIP-ASSIGN-SOLD-001")
+    ProductSellingPriceHistory.objects.create(
+        product=fx["product"],
+        customer=fx["customer"],
+        price=Decimal("650.0000"),
+        changed_by=fx["admin_user"],
+    )
+    DeliveryService.record_delivery(
+        trip_id=trip.id,
+        received_qty=Decimal("44850.00"),
+        control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE,
+        controller=fx["admin_user"],
+    )
+    other_customer = Customer.objects.create(name="Other Customer")
+
+    with pytest.raises(CustomerAlreadySoldError):
+        TripCostService.assign_customer_for_sale(trip.id, other_customer.id, fx["admin_user"])
+
+    trip.refresh_from_db()
+    assert trip.client_id == fx["customer"].id  # unchanged - assignment was rejected
+
+
+@pytest.mark.django_db
+def test_trip_cost_service_calculates_cost_basis_from_fuel_transport_and_expenses():
+    fx = _setup_fixtures("COST-SVC")
+    truck = _make_truck("TRK-COST-SVC")
+    trip = _make_trip(fx, truck, "TRIP-COST-SVC-001", quantity=Decimal("40000.00"))
+
+    TransportPayment.objects.create(
+        trip=trip,
+        transporter=fx["transporter"],
+        calculation_method=TransportPayment.CalculationMethod.FIXED,
+        base_amount=Decimal("800000.00"),
+    )
+    customs_expense = Expense.objects.create(
+        category=Expense.Category.CUSTOMS,
+        amount=Decimal("1200000.00"),
+        calculation_method=Expense.CalculationMethod.MANUAL,
+        date="2026-08-18",
+    )
+    ExpenseAllocation.objects.create(
+        expense=customs_expense,
+        content_type=ContentType.objects.get_for_model(Trip),
+        object_id=trip.id,
+        allocated_amount=Decimal("1200000.00"),
+    )
+    # Cancelled expenses must never be counted in the cost basis.
+    cancelled_expense = Expense.objects.create(
+        category=Expense.Category.OTHER,
+        amount=Decimal("999999.00"),
+        calculation_method=Expense.CalculationMethod.MANUAL,
+        date="2026-08-18",
+        status=Expense.Status.CANCELLED,
+    )
+    ExpenseAllocation.objects.create(
+        expense=cancelled_expense,
+        content_type=ContentType.objects.get_for_model(Trip),
+        object_id=trip.id,
+        allocated_amount=Decimal("999999.00"),
+    )
+
+    basis = TripCostService.calculate_trip_cost_basis(trip)
+
+    assert basis["fuel_purchase_cost"] == Decimal("24000000.000000")  # 40000 x 600
+    assert basis["transport_cost"] == Decimal("800000.00")
+    assert basis["expenses_by_category"] == {Expense.Category.CUSTOMS: Decimal("1200000.00")}
+    assert basis["total_expenses"] == Decimal("1200000.00")
+    assert basis["total_cost"] == Decimal("26000000.000000")
+    assert basis["quantity"] == Decimal("40000.00")
+    assert basis["unit_cost"] == Decimal("650")
+
+
+@pytest.mark.django_db
+def test_api_trip_cost_basis_breaks_down_fuel_transport_and_expenses():
+    fx = _setup_fixtures("API-COST-BASIS")
+    truck = _make_truck("TRK-API-COST-BASIS")
+    trip = _make_trip(fx, truck, "TRIP-API-COST-BASIS-001", quantity=Decimal("40000.00"))
+
+    TransportPayment.objects.create(
+        trip=trip,
+        transporter=fx["transporter"],
+        calculation_method=TransportPayment.CalculationMethod.FIXED,
+        base_amount=Decimal("800000.00"),
+    )
+    customs_expense = Expense.objects.create(
+        category=Expense.Category.CUSTOMS,
+        amount=Decimal("1200000.00"),
+        calculation_method=Expense.CalculationMethod.MANUAL,
+        date="2026-08-18",
+    )
+    ExpenseAllocation.objects.create(
+        expense=customs_expense,
+        content_type=ContentType.objects.get_for_model(Trip),
+        object_id=trip.id,
+        allocated_amount=Decimal("1200000.00"),
+    )
+    other_expense = Expense.objects.create(
+        category=Expense.Category.OTHER,
+        amount=Decimal("300000.00"),
+        calculation_method=Expense.CalculationMethod.MANUAL,
+        date="2026-08-18",
+    )
+    ExpenseAllocation.objects.create(
+        expense=other_expense,
+        content_type=ContentType.objects.get_for_model(Trip),
+        object_id=trip.id,
+        allocated_amount=Decimal("300000.00"),
+    )
+    cancelled_expense = Expense.objects.create(
+        category=Expense.Category.OTHER,
+        amount=Decimal("999999.00"),
+        calculation_method=Expense.CalculationMethod.MANUAL,
+        date="2026-08-18",
+        status=Expense.Status.CANCELLED,
+    )
+    ExpenseAllocation.objects.create(
+        expense=cancelled_expense,
+        content_type=ContentType.objects.get_for_model(Trip),
+        object_id=trip.id,
+        allocated_amount=Decimal("999999.00"),
+    )
+
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+    response = client.get(f"/api/trips/{trip.id}/cost-basis/")
+
+    assert response.status_code == 200
+    assert Decimal(response.data["fuel_purchase_cost"]) == Decimal("24000000.000000")
+    assert Decimal(response.data["transport_cost"]) == Decimal("800000.00")
+    assert Decimal(response.data["expenses_by_category"]["customs"]) == Decimal("1200000.00")
+    assert Decimal(response.data["expenses_by_category"]["other"]) == Decimal("300000.00")
+    assert "999999.00" not in str(response.data["expenses_by_category"])
+    assert Decimal(response.data["total_cost"]) == Decimal("26300000.000000")
+    assert Decimal(response.data["quantity"]) == Decimal("40000.00")
+    assert Decimal(response.data["unit_cost"]) == Decimal("657.5")
+
+
+@pytest.mark.django_db
+def test_api_assign_customer_endpoint_sets_client_and_destination_type():
+    fx = _setup_fixtures("API-ASSIGN")
+    truck = _make_truck("TRK-API-ASSIGN")
+    trip = _make_trip(fx, truck, "TRIP-API-ASSIGN-001")
+    customer = Customer.objects.create(name="API Assign Client")
+
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+    response = client.post(
+        f"/api/trips/{trip.id}/assign-customer/", {"customer": customer.id}
+    )
+
+    assert response.status_code == 200, response.data
+    assert response.data["client"] == customer.id
+    assert response.data["destination_type"] == Trip.DestinationType.CUSTOMER
+
+
+@pytest.mark.django_db
+def test_api_assign_customer_endpoint_rejected_once_sale_exists():
+    fx = _fixtures_with_customer("API-ASSIGN-SOLD")
+    trip = _deliverable_trip(fx, "TRIP-API-ASSIGN-SOLD-001")
+    ProductSellingPriceHistory.objects.create(
+        product=fx["product"],
+        customer=fx["customer"],
+        price=Decimal("650.0000"),
+        changed_by=fx["admin_user"],
+    )
+    DeliveryService.record_delivery(
+        trip_id=trip.id,
+        received_qty=Decimal("44850.00"),
+        control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE,
+        controller=fx["admin_user"],
+    )
+    other_customer = Customer.objects.create(name="API Other Customer")
+
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+    response = client.post(
+        f"/api/trips/{trip.id}/assign-customer/", {"customer": other_customer.id}
+    )
+
+    assert response.status_code == 400

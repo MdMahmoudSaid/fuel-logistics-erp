@@ -11,12 +11,14 @@
 
 from decimal import Decimal
 
+from django.contrib.contenttypes.models import ContentType
 from django.db import IntegrityError, transaction
+from django.db.models import Sum
 from django.utils import timezone
 
 from apps.core.models import LossToleranceConfig
 from apps.core.reference import generate_monthly_reference
-from apps.finance.models import TransportDeduction
+from apps.finance.models import Expense, ExpenseAllocation, TransportDeduction, TransportPayment
 from apps.sales.models import Invoice, ProductSellingPriceHistory, Sale
 from apps.sales.services import CustomerOrderService
 from apps.transport.models import Transporter, Truck
@@ -26,9 +28,18 @@ from apps.trips.models import DeliveryControl, Trip, TripStatusHistory
 _INVOICE_REFERENCE_PREFIX = "FAC"
 _MAX_INVOICE_REFERENCE_ATTEMPTS = 5
 
+_ZERO = Decimal("0.00")
+
 
 class InvalidTripTransition(ValueError):
     """Raised when a requested Trip status transition isn't allowed."""
+
+
+class CustomerAlreadySoldError(ValueError):
+    """Raised when TripCostService.assign_customer_for_sale() is called on
+    a trip that already has a Sale - the customer for a sold trip is fixed
+    at delivery time (DeliveryService.record_delivery), never mutated
+    after the fact."""
 
 
 class DeliveryAnomalyConfirmationRequired(ValueError):
@@ -87,6 +98,108 @@ class TransporterAvailabilityService:
             status__in=Trip.NON_OCCUPYING_STATUSES
         ).values_list("transporter_id", flat=True)
         return Transporter.objects.exclude(pk__in=active_transporter_ids)
+
+
+class TripCostService:
+    """Owns a trip's cost basis (fuel + transport + allocated expenses) and
+    direct-customer assignment (Task 1 of the client modifications plan).
+
+    Deliberately separate from TripProfitService (apps.reports.services.
+    profit): that service computes *margin*, which requires a Sale/revenue
+    and is unavailable before delivery. A trip's cost basis, by contrast,
+    is knowable as soon as it's loaded - callers (later tasks: pricing
+    suggestions, company-stock valuation) need it long before any Sale
+    exists, so it must not share that precondition.
+    """
+
+    @staticmethod
+    def _fuel_purchase_cost(trip: Trip) -> Decimal:
+        return trip.quantity_loaded * trip.supplier_order.unit_price
+
+    @staticmethod
+    def _transport_cost(trip: Trip) -> Decimal:
+        return (
+            TransportPayment.objects.filter(trip=trip).aggregate(total=Sum("base_amount"))[
+                "total"
+            ]
+            or _ZERO
+        )
+
+    @staticmethod
+    def _expenses_by_category(trip: Trip) -> dict:
+        allocations = (
+            ExpenseAllocation.objects.filter(
+                content_type=ContentType.objects.get_for_model(Trip), object_id=trip.id
+            )
+            .exclude(expense__status=Expense.Status.CANCELLED)
+            .select_related("expense")
+        )
+        breakdown: dict[str, Decimal] = {}
+        for allocation in allocations:
+            category = allocation.expense.category
+            breakdown[category] = breakdown.get(category, _ZERO) + allocation.allocated_amount
+        return breakdown
+
+    @classmethod
+    def calculate_trip_cost_basis(cls, trip: Trip) -> dict:
+        """Detailed cost decomposition for `trip`, computed live from its
+        related records and never stored (same "recompute on every read"
+        convention as TripProfitService.get_cost_breakdown, guide Section
+        9.3) - a belated expense allocation changes this on the very next
+        read with no manual recompute step.
+
+        Later tasks consume `unit_cost`, `total_cost` and
+        `expenses_by_category` by these exact key names - do not rename.
+        """
+        fuel_purchase_cost = cls._fuel_purchase_cost(trip)
+        transport_cost = cls._transport_cost(trip)
+        expenses_by_category = cls._expenses_by_category(trip)
+        total_expenses = sum(expenses_by_category.values(), _ZERO)
+        total_cost = fuel_purchase_cost + transport_cost + total_expenses
+        unit_cost = total_cost / trip.quantity_loaded
+        return {
+            "fuel_purchase_cost": fuel_purchase_cost,
+            "transport_cost": transport_cost,
+            "expenses_by_category": expenses_by_category,
+            "total_expenses": total_expenses,
+            "total_cost": total_cost,
+            "quantity": trip.quantity_loaded,
+            "unit_cost": unit_cost,
+        }
+
+    @staticmethod
+    @transaction.atomic
+    def assign_customer_for_sale(trip_id, customer_id, actor) -> Trip:
+        """Attach/replace `trip`'s direct customer (Trip.client), under a
+        row lock (same concurrency convention as
+        TripWorkflowService.transition_trip, guide Section 15).
+
+        A trip is not required to have a client at creation (plan Global
+        Constraints: COMPANY_STOCK is a valid, first-class state) - this is
+        how one gets assigned later, e.g. once company stock is earmarked
+        for a customer. Rejected once the trip already has a Sale: the
+        sold customer is fixed at delivery time and must never be mutated
+        after the fact.
+
+        `actor` is accepted (rather than only `trip_id`/`customer_id`) to
+        match the actor-carrying signature every other Trip-mutating
+        service method in this module uses. Not yet written anywhere -
+        reserved for a future audit trail entry (no TripClientHistory model
+        exists yet, same situation apps.audit was in for the truck
+        force-override log before AuditLog landed).
+        """
+        trip = Trip.objects.select_for_update().get(pk=trip_id)
+
+        if hasattr(trip, "sale"):
+            raise CustomerAlreadySoldError(
+                f"Le trajet {trip.reference} a deja une vente enregistree ; "
+                "impossible de modifier son client."
+            )
+
+        trip.client_id = customer_id
+        trip.destination_type = Trip.DestinationType.CUSTOMER
+        trip.save(update_fields=["client", "destination_type", "updated_at"])
+        return trip
 
 
 class TripWorkflowService:

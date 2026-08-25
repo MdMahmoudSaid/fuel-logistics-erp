@@ -51,6 +51,17 @@ class Trip(TimeStampedModel):
     # the active status board) rely on staying just {COMPLETED, CANCELLED}.
     NON_OCCUPYING_STATUSES = TERMINAL_STATUSES | {Status.DELIVERED}
 
+    class DestinationType(models.TextChoices):
+        """Makes the "no client, no customer order" state a first-class,
+        queryable value (client's most important structural request - see
+        docs/plan.md Global Constraints) rather than something only
+        inferrable by checking `client is None and customer_order is None`.
+        Never mandatory at trip creation: a trip with neither is a valid,
+        common state (fuel routed to company stock, sold/assigned later)."""
+
+        COMPANY_STOCK = "COMPANY_STOCK", "Stock de l'entreprise"
+        CUSTOMER = "CUSTOMER", "Client"
+
     reference = models.CharField(max_length=50, unique=True)
     truck = models.ForeignKey(
         "transport.Truck", on_delete=models.PROTECT, related_name="trips"
@@ -92,6 +103,11 @@ class Trip(TimeStampedModel):
         blank=True,
         related_name="trips",
     )
+    destination_type = models.CharField(
+        max_length=20,
+        choices=DestinationType.choices,
+        default=DestinationType.COMPANY_STOCK,
+    )
     loading_date = models.DateField()
     bl_reference = models.CharField(max_length=100)
     status = models.CharField(
@@ -104,6 +120,12 @@ class Trip(TimeStampedModel):
 
     class Meta:
         ordering = ["-loading_date", "-id"]
+        indexes = [
+            models.Index(fields=["destination_type"]),
+            models.Index(fields=["client"]),
+            models.Index(fields=["customer_order"]),
+            models.Index(fields=["loading_date"]),
+        ]
         constraints = [
             models.CheckConstraint(
                 condition=models.Q(quantity_loaded__gt=0),
