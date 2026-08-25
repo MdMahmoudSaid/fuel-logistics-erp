@@ -30,6 +30,7 @@ const prefilledOrderId = computed(() =>
 const cessions = ref<CessionLetter[]>([])
 const selectedCession = ref<CessionLetter | null>(null)
 const selectedSupplierOrder = ref<SupplierOrder | null>(null)
+const selectedTruck = ref<TruckBrief | null>(null)
 
 const trucks = ref<TruckBrief[]>([])
 const transporters = ref<TransporterBrief[]>([])
@@ -90,6 +91,7 @@ async function onCessionChange() {
 
 function onTruckChange() {
   const truck = trucks.value.find((t) => t.id === Number(form.value.truck))
+  selectedTruck.value = truck ?? null
   if (!truck) return
   // Convenience prefill only — the transporter/driver fields stay editable
   // (roadmap/phase_3_truck_operations.md: transporter "defaults from
@@ -142,9 +144,27 @@ function pct(value: number) {
 const remainingPct = computed(() => pct(cessionRemaining.value))
 const requestedPct = computed(() => pct(Math.min(requested.value, cessionRemaining.value)))
 
+// --- Truck capacity guard: quantity_loaded must never exceed the selected
+// truck's capacity_litres, checked live client-side and enforced again by
+// TripSerializer._validate_truck_capacity server-side. ---
+const truckCapacity = computed(() => Number(selectedTruck.value?.capacity_litres ?? 0))
+const exceedsCapacity = computed(
+  () => selectedTruck.value != null && requested.value > truckCapacity.value,
+)
+const capacityErrorMessage = computed(() =>
+  t('trips.newForm.exceedsCapacity', {
+    quantity: requested.value.toLocaleString(),
+    capacity: truckCapacity.value.toLocaleString(),
+  }),
+)
+
 async function onSubmit() {
   if (!selectedCession.value || !selectedSupplierOrder.value) {
     error.value = t('trips.newForm.selectCessionFirst')
+    return
+  }
+  if (exceedsCapacity.value) {
+    fieldErrors.value = { ...fieldErrors.value, quantity_loaded: capacityErrorMessage.value }
     return
   }
   saving.value = true
@@ -317,9 +337,12 @@ async function onSubmit() {
             min="0.01"
             required
             class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-            :class="isOverLimit ? 'border-critique' : ''"
+            :class="isOverLimit || exceedsCapacity ? 'border-critique' : ''"
           />
-          <p v-if="fieldErrors.quantity_loaded" class="text-critique text-xs">
+          <p v-if="exceedsCapacity" class="text-critique text-xs">
+            {{ capacityErrorMessage }}
+          </p>
+          <p v-else-if="fieldErrors.quantity_loaded" class="text-critique text-xs">
             {{ fieldErrors.quantity_loaded }}
           </p>
         </div>
@@ -414,7 +437,7 @@ async function onSubmit() {
         <Button variant="ghost" type="button" @click="router.back()">
           {{ t('trips.newForm.back') }}
         </Button>
-        <Button type="submit" variant="primary" :loading="saving">
+        <Button type="submit" variant="primary" :loading="saving" :disabled="exceedsCapacity">
           {{ saving ? t('trips.newForm.saving') : t('trips.newForm.createTrip') }}
         </Button>
       </div>

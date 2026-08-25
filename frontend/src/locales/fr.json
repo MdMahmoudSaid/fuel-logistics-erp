@@ -245,6 +245,7 @@
       "remaining": "Restant :",
       "requested": "Demandé :",
       "exceedsRemaining": "Dépasse la quantité restante de la cession. Réduisez la quantité demandée avant d'enregistrer.",
+      "exceedsCapacity": "La quantité chargée ({quantity} L) ne peut pas dépasser la capacité maximale du camion ({capacity} L).",
       "showBusyTrucks": "Afficher les camions et transporteurs occupés (dérogation Admin — forcer l'affectation)",
       "truck": "Camion",
       "selectTruck": "Sélectionner un camion",

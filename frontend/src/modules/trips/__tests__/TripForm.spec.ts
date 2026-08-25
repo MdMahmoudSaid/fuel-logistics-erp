@@ -207,6 +207,29 @@ describe('TripForm', () => {
     expect(wrapper.text()).toContain("Dépasse la quantité restante de la cession")
   })
 
+  it('blocks submission and warns when the quantity exceeds the selected truck capacity', async () => {
+    const router = makeRouter()
+    await router.isReady()
+    const wrapper = mount(TripForm, { global: { plugins: [router] } })
+    await flushPromises()
+
+    await wrapper.find('#cession_letter').setValue('9')
+    await flushPromises()
+    await wrapper.find('#truck').setValue('1') // AVAILABLE_TRUCK, capacity_litres 45000
+    await wrapper.find('#transporter').setValue(String(AVAILABLE_TRANSPORTER.id))
+    await wrapper.find('#quantity_loaded').setValue('50000')
+    await wrapper.find('#loading_date').setValue('2026-08-18')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('ne peut pas dépasser la capacité maximale du camion')
+    expect(wrapper.find('button[type="submit"]').attributes('disabled')).toBeDefined()
+
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createTrip).not.toHaveBeenCalled()
+  })
+
   it('sends force=true only when the busy-truck override was used', async () => {
     const router = makeRouter()
     await router.isReady()

@@ -244,6 +244,7 @@
       "remaining": "Remaining:",
       "requested": "Requested:",
       "exceedsRemaining": "Exceeds the cession's remaining quantity. Reduce the requested quantity before saving.",
+      "exceedsCapacity": "The loaded quantity ({quantity} L) cannot exceed the truck's maximum capacity ({capacity} L).",
       "showBusyTrucks": "Show occupied trucks (Admin override — force assignment)",
       "truck": "Truck",
       "selectTruck": "Select a truck",

@@ -553,6 +553,31 @@ def test_trip_serializer_accepts_quantity_within_cession_remaining():
 
 
 @pytest.mark.django_db
+def test_trip_serializer_rejects_quantity_over_truck_capacity():
+    fx = _setup_fixtures("SER-CAP")
+    truck = _make_truck("TRK-SER-CAP")  # capacity_litres = 45000.00
+
+    serializer = TripSerializer(
+        data=_trip_payload(fx, truck, "TRIP-SER-CAP-001", quantity=Decimal("50000.00")),
+        context={"request": _FakeRequest(fx["admin_user"])},
+    )
+    assert not serializer.is_valid()
+    assert "quantity_loaded" in serializer.errors
+
+
+@pytest.mark.django_db
+def test_trip_serializer_accepts_quantity_equal_to_truck_capacity():
+    fx = _setup_fixtures("SER-CAP-OK")
+    truck = _make_truck("TRK-SER-CAP-OK")  # capacity_litres = 45000.00
+
+    serializer = TripSerializer(
+        data=_trip_payload(fx, truck, "TRIP-SER-CAP-OK-001", quantity=Decimal("45000.00")),
+        context={"request": _FakeRequest(fx["admin_user"])},
+    )
+    assert serializer.is_valid(), serializer.errors
+
+
+@pytest.mark.django_db
 def test_trip_serializer_rejects_active_truck_without_force():
     fx = _setup_fixtures("SER-LOCK")
     truck = _make_truck("TRK-SER-LOCK")

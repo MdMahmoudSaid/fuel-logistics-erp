@@ -107,6 +107,7 @@ class TripSerializer(serializers.ModelSerializer):
         force = data.pop("force", False)
 
         self._validate_cession_quantity(data)
+        self._validate_truck_capacity(data)
         self._validate_truck_availability(data, force)
 
         return data
@@ -132,6 +133,25 @@ class TripSerializer(serializers.ModelSerializer):
             )
         except ValueError as exc:
             raise serializers.ValidationError({"quantity_loaded": str(exc)})
+
+    def _validate_truck_capacity(self, data):
+        truck = data.get("truck") or (self.instance.truck if self.instance else None)
+        quantity_loaded = data.get("quantity_loaded")
+        if quantity_loaded is None and self.instance:
+            quantity_loaded = self.instance.quantity_loaded
+
+        if truck is None or quantity_loaded is None:
+            return
+
+        if quantity_loaded > truck.capacity_litres:
+            raise serializers.ValidationError(
+                {
+                    "quantity_loaded": (
+                        f"La quantite chargee ({quantity_loaded} L) ne peut pas "
+                        f"depasser la capacite maximale du camion ({truck.capacity_litres} L)."
+                    )
+                }
+            )
 
     def _validate_truck_availability(self, data, force):
         truck = data.get("truck") or (self.instance.truck if self.instance else None)
