@@ -14,13 +14,13 @@ const driverResource = createResourceApi<{ id: number; name: string }>('/drivers
 const transporters = ref<{ id: number; name: string }[]>([])
 const drivers = ref<{ id: number; name: string }[]>([])
 
-onMounted(async () => {
-  const [transporterData, driverData] = await Promise.all([
-    transporterResource.list(),
-    driverResource.list(),
-  ])
-  transporters.value = transporterData.results
-  drivers.value = driverData.results
+onMounted(() => {
+  Promise.all([transporterResource.list(), driverResource.list()])
+    .then(([transporterData, driverData]) => {
+      transporters.value = transporterData.results
+      drivers.value = driverData.results
+    })
+    .catch(() => {})
 })
 
 const fields = computed<FieldSchema[]>(() => [
