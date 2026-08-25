@@ -107,6 +107,11 @@ export interface TransportPayment {
   transporter_detail: TransporterBrief | null
   calculation_method: TransportPaymentCalculationMethod
   base_amount: string
+  // Only set (and required) when calculation_method is PER_LITRE - the
+  // backend derives base_amount from trip.quantity_loaded * this value and
+  // rejects a client-supplied base_amount for that method (backend/apps/
+  // finance/serializers.py TransportPaymentSerializer.validate()).
+  unit_price_per_litre: string | null
   deduction_amount: string
   advance_applied: number | null
   net_amount: string

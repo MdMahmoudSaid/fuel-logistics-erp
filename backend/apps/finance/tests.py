@@ -571,6 +571,100 @@ def test_transport_payment_net_amount_without_advance():
 
 
 # ---------------------------------------------------------------------------
+# Client modification Task 2: transporter fees per litre create payable
+# debt - TransportPayment.unit_price_per_litre auto-computes base_amount
+# for calculation_method=PER_LITRE, and a mismatched transporter is
+# rejected (docs/notes-et-demandes-client-modifications-application.md).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_transport_payment_per_litre_computes_base_amount_via_api(finance_client):
+    """calculation_method=PER_LITRE with unit_price_per_litre=60 on a trip
+    carrying 45 000 L must auto-compute base_amount=2 700 000.00 - the
+    client must never be able to submit base_amount directly."""
+    trip, transporter = _make_trip_for_deduction("PERLITRE")
+
+    response = finance_client.post(
+        "/api/transport-payments/",
+        {
+            "trip": trip.id,
+            "transporter": transporter.id,
+            "calculation_method": TransportPayment.CalculationMethod.PER_LITRE,
+            "unit_price_per_litre": "60.0000",
+            "base_amount": "1.00",  # must be ignored/overridden by the server
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.data["base_amount"] == "2700000.00"
+    assert response.data["net_amount"] == "2700000.00"
+
+    payment = TransportPayment.objects.get(pk=response.data["id"])
+    assert payment.unit_price_per_litre == Decimal("60.0000")
+    assert payment.base_amount == Decimal("2700000.00")
+
+
+@pytest.mark.django_db
+def test_transport_payment_per_litre_requires_unit_price(finance_client):
+    trip, transporter = _make_trip_for_deduction("PERLITRE-NOPRICE")
+
+    response = finance_client.post(
+        "/api/transport-payments/",
+        {
+            "trip": trip.id,
+            "transporter": transporter.id,
+            "calculation_method": TransportPayment.CalculationMethod.PER_LITRE,
+        },
+    )
+
+    assert response.status_code == 400
+    assert "unit_price_per_litre" in response.data
+
+
+@pytest.mark.django_db
+def test_transport_payment_per_litre_appears_in_transporter_outstanding_when_not_paid(
+    finance_client,
+):
+    trip, transporter = _make_trip_for_deduction("PERLITRE-OUTSTANDING")
+
+    created = finance_client.post(
+        "/api/transport-payments/",
+        {
+            "trip": trip.id,
+            "transporter": transporter.id,
+            "calculation_method": TransportPayment.CalculationMethod.PER_LITRE,
+            "unit_price_per_litre": "60.0000",
+        },
+    )
+    assert created.status_code == 201
+    assert created.data["status"] == TransportPayment.Status.PLANNED
+
+    ledger = finance_client.get(f"/api/transporters/{transporter.id}/ledger/")
+
+    assert ledger.status_code == 200
+    assert ledger.data["net_outstanding"] == "2700000.00"
+
+
+@pytest.mark.django_db
+def test_transport_payment_rejects_transporter_not_matching_trip(finance_client):
+    trip, _transporter = _make_trip_for_deduction("PERLITRE-MISMATCH")
+    other_transporter = Transporter.objects.create(name="Autre Transporteur")
+
+    response = finance_client.post(
+        "/api/transport-payments/",
+        {
+            "trip": trip.id,
+            "transporter": other_transporter.id,
+            "calculation_method": TransportPayment.CalculationMethod.PER_LITRE,
+            "unit_price_per_litre": "60.0000",
+        },
+    )
+
+    assert response.status_code == 400
+
+
+# ---------------------------------------------------------------------------
 # Phase 5 Etape 4: Expense / ExpenseAllocation (docs/PHASE_5_PLAN.md;
 # guide Section 8.7/8.8)
 # ---------------------------------------------------------------------------

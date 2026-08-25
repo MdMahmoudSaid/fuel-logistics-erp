@@ -184,18 +184,53 @@ class TransportPaymentSerializer(serializers.ModelSerializer):
         model = TransportPayment
         fields = [
             "id", "trip", "trip_reference", "transporter", "transporter_detail",
-            "calculation_method", "base_amount", "deduction_amount", "advance_applied",
-            "net_amount", "status", "created_at", "updated_at",
+            "calculation_method", "base_amount", "unit_price_per_litre", "deduction_amount",
+            "advance_applied", "net_amount", "status", "created_at", "updated_at",
         ]
         read_only_fields = ["id", "net_amount", "created_at", "updated_at"]
+        extra_kwargs = {"base_amount": {"required": False}}
 
     def validate(self, data):
         advance = data.get("advance_applied", getattr(self.instance, "advance_applied", None))
         transporter = data.get("transporter", getattr(self.instance, "transporter", None))
+        trip = data.get("trip", getattr(self.instance, "trip", None))
+        calculation_method = data.get(
+            "calculation_method", getattr(self.instance, "calculation_method", None)
+        )
+        unit_price_per_litre = data.get(
+            "unit_price_per_litre", getattr(self.instance, "unit_price_per_litre", None)
+        )
+
         if advance and transporter and advance.transporter_id != transporter.id:
             raise serializers.ValidationError(
                 "L'avance selectionnee n'appartient pas a ce transporteur."
             )
+
+        if trip and transporter and transporter.id != trip.transporter_id:
+            raise serializers.ValidationError(
+                "Le transporteur ne correspond pas au transporteur du voyage."
+            )
+
+        if calculation_method == TransportPayment.CalculationMethod.PER_LITRE:
+            if unit_price_per_litre is None:
+                raise serializers.ValidationError(
+                    {"unit_price_per_litre": "Le prix par litre est requis pour ce mode de calcul."}
+                )
+            if trip is None:
+                raise serializers.ValidationError(
+                    {"trip": "Le voyage est requis pour calculer le montant au litre."}
+                )
+            # base_amount is derived, never trusted from client input (guide:
+            # transport cost per litre must create/update the transporter
+            # payable line automatically).
+            data["base_amount"] = (trip.quantity_loaded * unit_price_per_litre).quantize(
+                Decimal("0.01")
+            )
+        elif data.get("base_amount") is None and getattr(self.instance, "base_amount", None) is None:
+            raise serializers.ValidationError(
+                {"base_amount": "Ce champ est obligatoire."}
+            )
+
         return data
 
 

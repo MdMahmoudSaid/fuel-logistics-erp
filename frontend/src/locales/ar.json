@@ -240,6 +240,7 @@
       "addExpense": "+ إضافة مصروف",
       "noExpenses": "لا توجد مصاريف مسجَّلة لهذه الرحلة.",
       "expensesLoadError": "تعذر تحميل مصاريف هذه الرحلة.",
+      "addTransportFee": "+ إضافة رسوم نقل (لكل لتر)",
       "margin": "ربحية الرحلة",
       "marginUnavailable": "متاحة بعد تأكيد التسليم.",
       "marginLoadError": "تعذر تحميل ربحية هذه الرحلة.",
@@ -372,6 +373,17 @@
       "saving": "جارٍ الحفظ…",
       "save": "حفظ المصروف",
       "saveError": "تعذر حفظ هذا المصروف — تحقق من الحقول."
+    },
+    "transportPayment": {
+      "title": "رسوم النقل (لكل لتر)",
+      "trip": "الرحلة",
+      "transporter": "الناقل",
+      "quantityLoaded": "الكمية المحمَّلة",
+      "unitPricePerLitre": "سعر الوحدة لكل لتر",
+      "calculation": "المبلغ المستحق",
+      "saving": "جارٍ الحفظ…",
+      "save": "حفظ رسوم النقل",
+      "saveError": "تعذر حفظ رسوم النقل هذه — تحقق من الحقول."
     },
     "allocationKind": {
       "trip": "رحلة",

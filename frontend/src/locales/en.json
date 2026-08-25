@@ -240,6 +240,7 @@
       "addExpense": "+ Add expense",
       "noExpenses": "No expenses recorded for this trip.",
       "expensesLoadError": "Could not load this trip's expenses.",
+      "addTransportFee": "+ Add transport fee (per litre)",
       "margin": "Trip profitability",
       "marginUnavailable": "Available once delivery is confirmed.",
       "marginLoadError": "Could not load this trip's profitability.",
@@ -372,6 +373,17 @@
       "saving": "Saving…",
       "save": "Save expense",
       "saveError": "Could not save this expense — check the fields."
+    },
+    "transportPayment": {
+      "title": "Transport fee (per litre)",
+      "trip": "Trip",
+      "transporter": "Transporter",
+      "quantityLoaded": "Quantity loaded",
+      "unitPricePerLitre": "Unit price per litre",
+      "calculation": "Payable amount",
+      "saving": "Saving…",
+      "save": "Save transport fee",
+      "saveError": "Could not save this transport fee — check the fields."
     },
     "allocationKind": {
       "trip": "Trip",

@@ -343,6 +343,9 @@ class TransportPayment(TimeStampedModel):
     )
     calculation_method = models.CharField(max_length=20, choices=CalculationMethod.choices)
     base_amount = models.DecimalField(max_digits=16, decimal_places=2)
+    unit_price_per_litre = models.DecimalField(
+        max_digits=14, decimal_places=4, null=True, blank=True
+    )
     deduction_amount = models.DecimalField(max_digits=16, decimal_places=2, default=0)
     advance_applied = models.ForeignKey(
         TransporterAdvance,

@@ -18,6 +18,7 @@ import Card from '@/components/ui/Card.vue'
 import { useTripStatusLabel } from './tripStatusLabels'
 import { expenseResource } from '@/modules/finance/api'
 import ExpenseForm from '@/modules/finance/ExpenseForm.vue'
+import TransportPaymentForm from '@/modules/finance/TransportPaymentForm.vue'
 import type { Expense } from '@/modules/finance/types'
 
 const route = useRoute()
@@ -58,6 +59,10 @@ const expensesError = ref('')
 const showExpenseForm = ref(false)
 const canManageExpenses = computed(() => auth.can('finance', 'create'))
 
+// Client modification Task 2: transporter fees per litre create payable
+// debt - same "finance" module create permission gates both forms.
+const showTransportPaymentForm = ref(false)
+
 async function loadExpenses() {
   expensesError.value = ''
   try {
@@ -80,6 +85,11 @@ function tripAllocation(expense: Expense) {
 async function onExpenseSaved() {
   showExpenseForm.value = false
   await Promise.all([loadExpenses(), loadMargin()])
+}
+
+async function onTransportPaymentSaved() {
+  showTransportPaymentForm.value = false
+  await loadMargin()
 }
 
 // TripProfitService.get_cost_breakdown (guide Section 9.1) - only
@@ -398,9 +408,18 @@ function formatDateTime(value: string) {
             </li>
           </ul>
 
-          <Button v-if="canManageExpenses" variant="ghost" @click="showExpenseForm = true">
-            {{ t('trips.detail.addExpense') }}
-          </Button>
+          <div class="flex gap-2">
+            <Button v-if="canManageExpenses" variant="ghost" @click="showExpenseForm = true">
+              {{ t('trips.detail.addExpense') }}
+            </Button>
+            <Button
+              v-if="canManageExpenses"
+              variant="ghost"
+              @click="showTransportPaymentForm = true"
+            >
+              {{ t('trips.detail.addTransportFee') }}
+            </Button>
+          </div>
         </div>
       </Card>
 
@@ -463,6 +482,23 @@ function formatDateTime(value: string) {
             :preset-allocation="{ kind: 'trip', objectId: trip.id, label: trip.reference }"
             @success="onExpenseSaved"
             @cancel="showExpenseForm = false"
+          />
+        </div>
+      </div>
+
+      <div
+        v-if="showTransportPaymentForm"
+        class="fixed inset-0 z-30 flex items-center justify-center bg-black/40"
+      >
+        <div class="w-full max-w-lg">
+          <TransportPaymentForm
+            :trip-id="trip.id"
+            :trip-reference="trip.reference"
+            :transporter-id="trip.transporter"
+            :transporter-name="trip.transporter_detail?.name ?? ''"
+            :quantity-loaded="trip.quantity_loaded"
+            @success="onTransportPaymentSaved"
+            @cancel="showTransportPaymentForm = false"
           />
         </div>
       </div>

@@ -241,6 +241,7 @@
       "addExpense": "+ Ajouter un frais",
       "noExpenses": "Aucun frais enregistré pour ce trajet.",
       "expensesLoadError": "Impossible de charger les frais de ce trajet.",
+      "addTransportFee": "+ Ajouter des frais de transport (au litre)",
       "margin": "Rentabilité du trajet",
       "marginUnavailable": "Disponible une fois la livraison confirmée.",
       "marginLoadError": "Impossible de charger la rentabilité de ce trajet.",
@@ -374,6 +375,17 @@
       "saving": "Enregistrement…",
       "save": "Enregistrer la dépense",
       "saveError": "Impossible d'enregistrer cette dépense — vérifiez les champs."
+    },
+    "transportPayment": {
+      "title": "Frais de transport (au litre)",
+      "trip": "Trajet",
+      "transporter": "Transporteur",
+      "quantityLoaded": "Quantité chargée",
+      "unitPricePerLitre": "Prix unitaire au litre",
+      "calculation": "Montant à payer",
+      "saving": "Enregistrement…",
+      "save": "Enregistrer les frais de transport",
+      "saveError": "Impossible d'enregistrer ces frais de transport — vérifiez les champs."
     },
     "allocationKind": {
       "trip": "Trajet",
