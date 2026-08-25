@@ -12,6 +12,10 @@ import { invoiceResource, validateInvoice, correctInvoice } from './api'
 import { translateApiError } from '@/i18n/apiErrors'
 import { CORRECTABLE_INVOICE_FIELDS } from './types'
 import type { Invoice } from './types'
+import Badge from '@/components/ui/Badge.vue'
+import Button from '@/components/ui/Button.vue'
+import Card from '@/components/ui/Card.vue'
+import MonoValue from '@/components/ui/MonoValue.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -118,12 +122,12 @@ async function onSubmitCorrection() {
   }
 }
 
-const STATUS_BADGE: Record<string, string> = {
-  DRAFT: 'bg-slate-100 text-slate-600',
-  VALIDATED: 'bg-sky-100 text-sky-700',
-  PARTIALLY_PAID: 'bg-amber-100 text-amber-700',
-  PAID: 'bg-emerald-100 text-emerald-700',
-  CANCELLED: 'bg-red-100 text-red-700',
+function badgeVariant(status: string) {
+  if (status === 'PAID') return 'livre' as const
+  if (status === 'VALIDATED') return 'transit' as const
+  if (status === 'PARTIALLY_PAID') return 'ecart' as const
+  if (status === 'CANCELLED') return 'critique' as const
+  return 'neutre' as const
 }
 
 function formatDateTime(value: string) {
@@ -134,52 +138,50 @@ function formatDateTime(value: string) {
 <template>
   <div class="max-w-2xl space-y-6">
     <div class="flex items-center justify-between">
-      <h2 class="text-lg font-semibold text-slate-800">
+      <h1 class="font-display text-2xl leading-none font-semibold uppercase">
         {{ t('sales.invoiceDetail.title', { number: invoice?.invoice_number ?? '' }) }}
-      </h2>
-      <button class="px-3 py-2 text-sm text-slate-500" @click="router.push({ name: 'invoices' })">
+      </h1>
+      <Button variant="ghost" @click="router.push({ name: 'invoices' })">
         {{ t('sales.invoiceDetail.backToInvoices') }}
-      </button>
+      </Button>
     </div>
 
-    <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
-    <p v-else-if="loading" class="text-sm text-slate-400">{{ t('common.loading') }}</p>
+    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
+    <p v-else-if="loading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
     <template v-else-if="invoice">
-      <section class="space-y-4 rounded border bg-white p-4 text-sm">
+      <section class="border-ligne space-y-4 rounded-xl border bg-white p-4 text-sm">
         <div class="flex items-center justify-between">
-          <span
-            class="rounded-full px-2 py-0.5 text-xs font-medium"
-            :class="STATUS_BADGE[invoice.status]"
-          >
+          <Badge :variant="badgeVariant(invoice.status)">
             {{ t(`invoiceStatus.${invoice.status}`) }}
-          </span>
-          <button
+          </Badge>
+          <Button
             v-if="isDraft && canValidate"
             id="validate-invoice"
-            type="button"
             :disabled="validating"
-            class="rounded bg-slate-800 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
             @click="onValidate"
           >
-            {{ validating ? t('sales.invoiceDetail.validating') : t('sales.invoiceDetail.validateInvoice') }}
-          </button>
-          <button
+            {{
+              validating
+                ? t('sales.invoiceDetail.validating')
+                : t('sales.invoiceDetail.validateInvoice')
+            }}
+          </Button>
+          <Button
             v-else-if="isValidated && canEdit"
             id="correct-invoice"
-            type="button"
-            class="rounded border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700"
+            variant="ghost"
             @click="openCorrectionForm"
           >
             {{ t('sales.invoiceDetail.correctInvoice') }}
-          </button>
+          </Button>
         </div>
-        <p v-if="validateError" class="text-sm text-red-600">{{ validateError }}</p>
+        <p v-if="validateError" class="text-critique text-sm">{{ validateError }}</p>
 
         <div class="grid grid-cols-2 gap-4">
           <div>
-            <span class="text-slate-500">{{ t('sales.invoiceDetail.customer') }}</span>
-            <p class="font-medium text-slate-800">
+            <span class="text-texte-2">{{ t('sales.invoiceDetail.customer') }}</span>
+            <p class="text-texte font-medium">
               <RouterLink
                 v-if="invoice.sale_detail?.customer_detail"
                 class="underline decoration-dotted"
@@ -193,27 +195,37 @@ function formatDateTime(value: string) {
             </p>
           </div>
           <div>
-            <span class="text-slate-500">{{ t('sales.invoiceDetail.product') }}</span>
-            <p class="font-medium text-slate-800">
+            <span class="text-texte-2">{{ t('sales.invoiceDetail.product') }}</span>
+            <p class="text-texte font-medium">
               {{ invoice.sale_detail?.product_detail?.name }}
             </p>
           </div>
           <div>
-            <span class="text-slate-500">{{ t('sales.invoiceDetail.deliveredQuantity') }}</span>
-            <p class="font-medium text-slate-800">
-              {{ Number(invoice.sale_detail?.delivered_quantity ?? 0).toLocaleString() }} L
+            <span class="text-texte-2">{{ t('sales.invoiceDetail.deliveredQuantity') }}</span>
+            <p>
+              <MonoValue
+                class="font-medium"
+                align="left"
+                :value="Number(invoice.sale_detail?.delivered_quantity ?? 0).toLocaleString()"
+                unit="L"
+              />
             </p>
           </div>
           <div>
-            <span class="text-slate-500">{{ t('sales.invoiceDetail.unitSellingPrice') }}</span>
-            <p class="font-medium text-slate-800">
-              {{ invoice.sale_detail?.unit_selling_price }} {{ invoice.sale_detail?.currency }}
+            <span class="text-texte-2">{{ t('sales.invoiceDetail.unitSellingPrice') }}</span>
+            <p>
+              <MonoValue
+                class="font-medium"
+                align="left"
+                :value="invoice.sale_detail?.unit_selling_price ?? ''"
+                :unit="invoice.sale_detail?.currency"
+              />
             </p>
           </div>
           <div>
-            <span class="text-slate-500">{{ t('sales.invoiceDetail.trip') }}</span>
+            <span class="text-texte-2">{{ t('sales.invoiceDetail.trip') }}</span>
             <RouterLink
-              class="font-medium text-slate-800 underline decoration-dotted"
+              class="text-texte font-medium underline decoration-dotted"
               :to="{ name: 'trip-detail', params: { id: invoice.sale_detail?.trip } }"
             >
               {{ invoice.sale_detail?.trip_reference }}
@@ -222,10 +234,10 @@ function formatDateTime(value: string) {
         </div>
 
         <template v-if="isDraft && canEdit">
-          <p v-if="saveError" class="text-sm text-red-600">{{ saveError }}</p>
+          <p v-if="saveError" class="text-critique text-sm">{{ saveError }}</p>
           <div class="grid grid-cols-2 gap-4">
             <div class="space-y-1">
-              <label class="text-sm font-medium text-slate-600" for="total_amount">{{
+              <label class="text-texte-2 text-sm font-medium" for="total_amount">{{
                 t('sales.invoiceDetail.totalAmount')
               }}</label>
               <input
@@ -233,129 +245,112 @@ function formatDateTime(value: string) {
                 v-model="editForm.total_amount"
                 type="number"
                 step="0.01"
-                class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                class="border-ligne-forte h-11 w-full rounded-lg border bg-white px-3 text-sm"
               />
             </div>
             <div class="space-y-1">
-              <label class="text-sm font-medium text-slate-600" for="issued_date">{{
+              <label class="text-texte-2 text-sm font-medium" for="issued_date">{{
                 t('sales.invoiceDetail.issuedDate')
               }}</label>
               <input
                 id="issued_date"
                 v-model="editForm.issued_date"
                 type="date"
-                class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                class="border-ligne-forte h-11 w-full rounded-lg border bg-white px-3 text-sm"
               />
             </div>
           </div>
           <div class="flex justify-end">
-            <button
-              type="button"
-              :disabled="saving"
-              class="rounded bg-slate-800 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-              @click="onSaveDraft"
-            >
+            <Button :disabled="saving" @click="onSaveDraft">
               {{ saving ? t('sales.invoiceDetail.saving') : t('sales.invoiceDetail.save') }}
-            </button>
+            </Button>
           </div>
         </template>
-        <div v-else class="text-base font-semibold text-slate-800">
+        <div v-else class="text-texte text-base font-semibold">
           {{ t('sales.invoiceDetail.total') }} {{ Number(invoice.total_amount).toLocaleString() }}
           {{ invoice.sale_detail?.currency }}
-          <span class="ml-2 text-sm font-normal text-slate-500"
+          <span class="text-texte-2 ms-2 text-sm font-normal"
             >{{ t('sales.invoiceDetail.issued') }} {{ invoice.issued_date }}</span
           >
         </div>
       </section>
 
-      <section v-if="showCorrectionForm" class="space-y-3 rounded border bg-white p-4">
-        <h3 class="text-base font-semibold text-slate-800">
-          {{ t('sales.invoiceDetail.correctionTitle') }}
-        </h3>
-        <p class="text-sm text-slate-500">
-          {{ t('sales.invoiceDetail.correctionHint') }}
-        </p>
-        <p v-if="correctionError" class="text-sm text-red-600">{{ correctionError }}</p>
+      <Card v-if="showCorrectionForm" :title="t('sales.invoiceDetail.correctionTitle')">
+        <div class="space-y-3">
+          <p class="text-texte-2 text-sm">
+            {{ t('sales.invoiceDetail.correctionHint') }}
+          </p>
+          <p v-if="correctionError" class="text-critique text-sm">{{ correctionError }}</p>
 
-        <form id="correction-form" class="space-y-3" @submit.prevent="onSubmitCorrection">
-          <div class="space-y-1">
-            <label class="text-sm font-medium text-slate-600" for="correction_field">{{
-              t('sales.invoiceDetail.field')
-            }}</label>
-            <select
-              id="correction_field"
-              v-model="correctionForm.field"
-              class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
-            >
-              <option v-for="f in CORRECTABLE_INVOICE_FIELDS" :key="f" :value="f">{{ f }}</option>
-            </select>
-          </div>
-          <div class="space-y-1">
-            <label class="text-sm font-medium text-slate-600" for="correction_new_value">{{
-              t('sales.invoiceDetail.newValue')
-            }}</label>
-            <input
-              id="correction_new_value"
-              v-model="correctionForm.new_value"
-              required
-              class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
-            />
-          </div>
-          <div class="space-y-1">
-            <label class="text-sm font-medium text-slate-600" for="correction_reason">{{
-              t('sales.invoiceDetail.reason')
-            }}</label>
-            <textarea
-              id="correction_reason"
-              v-model="correctionForm.reason"
-              required
-              rows="2"
-              class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
-            />
-          </div>
-          <div class="flex justify-end gap-2">
-            <button
-              type="button"
-              class="px-3 py-2 text-sm text-slate-500"
-              @click="showCorrectionForm = false"
-            >
-              {{ t('common.cancel') }}
-            </button>
-            <button
-              type="submit"
-              :disabled="correcting"
-              class="rounded bg-slate-800 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
-            >
-              {{
-                correcting
-                  ? t('sales.invoiceDetail.applying')
-                  : t('sales.invoiceDetail.applyCorrection')
-              }}
-            </button>
-          </div>
-        </form>
-      </section>
+          <form id="correction-form" class="space-y-3" @submit.prevent="onSubmitCorrection">
+            <div class="space-y-1">
+              <label class="text-texte-2 text-sm font-medium" for="correction_field">{{
+                t('sales.invoiceDetail.field')
+              }}</label>
+              <select
+                id="correction_field"
+                v-model="correctionForm.field"
+                class="border-ligne-forte h-11 w-full rounded-lg border bg-white px-3 text-sm"
+              >
+                <option v-for="f in CORRECTABLE_INVOICE_FIELDS" :key="f" :value="f">{{ f }}</option>
+              </select>
+            </div>
+            <div class="space-y-1">
+              <label class="text-texte-2 text-sm font-medium" for="correction_new_value">{{
+                t('sales.invoiceDetail.newValue')
+              }}</label>
+              <input
+                id="correction_new_value"
+                v-model="correctionForm.new_value"
+                required
+                class="border-ligne-forte h-11 w-full rounded-lg border bg-white px-3 text-sm"
+              />
+            </div>
+            <div class="space-y-1">
+              <label class="text-texte-2 text-sm font-medium" for="correction_reason">{{
+                t('sales.invoiceDetail.reason')
+              }}</label>
+              <textarea
+                id="correction_reason"
+                v-model="correctionForm.reason"
+                required
+                rows="2"
+                class="border-ligne-forte w-full rounded-lg border bg-white px-3 py-2 text-sm"
+              />
+            </div>
+            <div class="flex justify-end gap-2">
+              <Button type="button" variant="ghost" @click="showCorrectionForm = false">
+                {{ t('common.cancel') }}
+              </Button>
+              <Button type="submit" :disabled="correcting">
+                {{
+                  correcting
+                    ? t('sales.invoiceDetail.applying')
+                    : t('sales.invoiceDetail.applyCorrection')
+                }}
+              </Button>
+            </div>
+          </form>
+        </div>
+      </Card>
 
-      <section class="space-y-3 rounded border bg-white p-4">
-        <h3 class="text-base font-semibold text-slate-800">
-          {{ t('sales.invoiceDetail.correctionAuditTrail') }}
-        </h3>
-        <ol class="space-y-3 border-l border-slate-200 pl-4">
+      <Card :title="t('sales.invoiceDetail.correctionAuditTrail')">
+        <ol class="border-ligne space-y-3 border-l ps-4">
           <li v-for="entry in invoice.corrections" :key="entry.id" class="relative text-sm">
-            <span class="absolute -left-[21px] top-1 h-2 w-2 rounded-full bg-slate-400" />
-            <p class="font-medium text-slate-800">
+            <span class="bg-texte-3 absolute top-1 -start-[21px] h-2 w-2 rounded-full" />
+            <p class="text-texte font-medium">
               {{ entry.field_name }}: {{ entry.previous_value }} → {{ entry.new_value }}
             </p>
-            <p class="text-xs text-slate-500">
+            <p class="text-texte-2 text-xs">
               {{ formatDateTime(entry.corrected_at) }} · {{ entry.corrected_by_detail?.email }}
             </p>
-            <p class="text-slate-600">{{ entry.reason }}</p>
+            <p class="text-texte-2">{{ entry.reason }}</p>
           </li>
-          <li v-if="!invoice.corrections.length" class="text-slate-400">
+          <li v-if="!invoice.corrections.length" class="text-texte-3">
             {{ t('sales.invoiceDetail.noCorrections') }}
           </li>
         </ol>
-      </section>
+      </Card>
     </template>
   </div>
 </template>

@@ -227,7 +227,9 @@ const lossGaugeTone = computed(() => lossSeverityTone(avgLossPct.value))
 
       <!-- À traiter -->
       <section class="border-ligne rounded-xl border bg-white p-4">
-        <h2 class="text-texte-2 mb-3 text-sm font-semibold uppercase">{{ t('dashboard.toTreat') }}</h2>
+        <h2 class="text-texte-2 mb-3 text-sm font-semibold uppercase">
+          {{ t('dashboard.toTreat') }}
+        </h2>
         <div class="grid gap-4 sm:grid-cols-2">
           <div class="space-y-2">
             <p class="text-texte-3 text-xs font-medium uppercase">
@@ -285,106 +287,130 @@ const lossGaugeTone = computed(() => lossSeverityTone(avgLossPct.value))
 
     <!-- Détail de la période sélectionnée (KPI historiques) -->
     <div class="flex flex-wrap items-center justify-between gap-3 pt-2">
-      <h2 class="text-texte-2 text-sm font-semibold uppercase">{{ t('dashboard.periodDetail') }}</h2>
+      <h2 class="text-texte-2 text-sm font-semibold uppercase">
+        {{ t('dashboard.periodDetail') }}
+      </h2>
       <DateRangeFilter @change="load" />
     </div>
 
-    <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
-    <p v-else-if="loading" class="text-sm text-slate-400">{{ t('common.loading') }}</p>
+    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
+    <p v-else-if="loading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
     <div v-else-if="summary" class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      <section class="rounded border bg-white p-4">
-        <h3 class="mb-3 text-sm font-semibold text-slate-500">{{ t('dashboard.sections.operations') }}</h3>
+      <section class="border-ligne rounded-xl border bg-white p-4">
+        <h3 class="text-texte-2 mb-3 text-sm font-semibold uppercase">
+          {{ t('dashboard.sections.operations') }}
+        </h3>
         <dl class="space-y-1 text-sm">
           <div class="flex justify-between">
-            <dt class="text-slate-500">{{ t('dashboard.fields.trips') }}</dt>
-            <dd class="font-medium text-slate-800">{{ summary.operations.trips_count }}</dd>
+            <dt class="text-texte-2">{{ t('dashboard.fields.trips') }}</dt>
+            <dd class="text-texte font-mono font-medium tabular-nums">
+              {{ summary.operations.trips_count }}
+            </dd>
           </div>
           <div class="flex justify-between">
-            <dt class="text-slate-500">{{ t('dashboard.fields.active') }}</dt>
-            <dd class="font-medium text-slate-800">{{ summary.operations.active_trips_count }}</dd>
+            <dt class="text-texte-2">{{ t('dashboard.fields.active') }}</dt>
+            <dd class="text-texte font-mono font-medium tabular-nums">
+              {{ summary.operations.active_trips_count }}
+            </dd>
           </div>
           <div class="flex justify-between">
-            <dt class="text-slate-500">{{ t('dashboard.fields.delivered') }}</dt>
-            <dd class="font-medium text-slate-800">
+            <dt class="text-texte-2">{{ t('dashboard.fields.delivered') }}</dt>
+            <dd class="text-texte font-mono font-medium tabular-nums">
               {{ summary.operations.delivered_trips_count }}
             </dd>
           </div>
         </dl>
       </section>
 
-      <section class="rounded border bg-white p-4">
-        <h3 class="mb-3 text-sm font-semibold text-slate-500">{{ t('dashboard.sections.fuel') }}</h3>
+      <section class="border-ligne rounded-xl border bg-white p-4">
+        <h3 class="text-texte-2 mb-3 text-sm font-semibold uppercase">
+          {{ t('dashboard.sections.fuel') }}
+        </h3>
         <dl class="space-y-1 text-sm">
           <div class="flex justify-between">
-            <dt class="text-slate-500">{{ t('dashboard.fields.quantityLoaded') }}</dt>
-            <dd class="font-medium text-slate-800">
+            <dt class="text-texte-2">{{ t('dashboard.fields.quantityLoaded') }}</dt>
+            <dd class="text-texte font-mono font-medium tabular-nums">
               {{ formatNumber(summary.fuel.quantity_loaded) }} L
             </dd>
           </div>
           <div class="flex justify-between">
-            <dt class="text-slate-500">{{ t('dashboard.fields.theoreticalStock') }}</dt>
-            <dd class="font-medium text-slate-800">
+            <dt class="text-texte-2">{{ t('dashboard.fields.theoreticalStock') }}</dt>
+            <dd class="text-texte font-mono font-medium tabular-nums">
               {{ formatNumber(summary.fuel.theoretical_stock) }} L
             </dd>
           </div>
         </dl>
       </section>
 
-      <section class="rounded border bg-white p-4">
-        <h3 class="mb-3 text-sm font-semibold text-slate-500">{{ t('dashboard.sections.sales') }}</h3>
+      <section class="border-ligne rounded-xl border bg-white p-4">
+        <h3 class="text-texte-2 mb-3 text-sm font-semibold uppercase">
+          {{ t('dashboard.sections.sales') }}
+        </h3>
         <dl class="space-y-1 text-sm">
           <div class="flex justify-between">
-            <dt class="text-slate-500">{{ t('dashboard.fields.salesCount') }}</dt>
-            <dd class="font-medium text-slate-800">{{ summary.sales.sales_count }}</dd>
+            <dt class="text-texte-2">{{ t('dashboard.fields.salesCount') }}</dt>
+            <dd class="text-texte font-mono font-medium tabular-nums">
+              {{ summary.sales.sales_count }}
+            </dd>
           </div>
           <div class="flex justify-between">
-            <dt class="text-slate-500">{{ t('dashboard.fields.revenue') }}</dt>
-            <dd class="font-medium text-slate-800">{{ formatNumber(summary.sales.revenue) }}</dd>
+            <dt class="text-texte-2">{{ t('dashboard.fields.revenue') }}</dt>
+            <dd class="text-texte font-mono font-medium tabular-nums">
+              {{ formatNumber(summary.sales.revenue) }}
+            </dd>
           </div>
         </dl>
       </section>
 
-      <section class="rounded border bg-white p-4">
-        <h3 class="mb-3 text-sm font-semibold text-slate-500">{{ t('dashboard.sections.transport') }}</h3>
+      <section class="border-ligne rounded-xl border bg-white p-4">
+        <h3 class="text-texte-2 mb-3 text-sm font-semibold uppercase">
+          {{ t('dashboard.sections.transport') }}
+        </h3>
         <dl class="space-y-1 text-sm">
           <div class="flex justify-between">
-            <dt class="text-slate-500">{{ t('dashboard.fields.settlements') }}</dt>
-            <dd class="font-medium text-slate-800">{{ summary.transport.settlements_count }}</dd>
+            <dt class="text-texte-2">{{ t('dashboard.fields.settlements') }}</dt>
+            <dd class="text-texte font-mono font-medium tabular-nums">
+              {{ summary.transport.settlements_count }}
+            </dd>
           </div>
           <div class="flex justify-between">
-            <dt class="text-slate-500">{{ t('dashboard.fields.transportCost') }}</dt>
-            <dd class="font-medium text-slate-800">
+            <dt class="text-texte-2">{{ t('dashboard.fields.transportCost') }}</dt>
+            <dd class="text-texte font-mono font-medium tabular-nums">
               {{ formatNumber(summary.transport.transport_cost) }}
             </dd>
           </div>
         </dl>
       </section>
 
-      <section class="rounded border bg-white p-4">
-        <h3 class="mb-3 text-sm font-semibold text-slate-500">{{ t('dashboard.sections.finance') }}</h3>
+      <section class="border-ligne rounded-xl border bg-white p-4">
+        <h3 class="text-texte-2 mb-3 text-sm font-semibold uppercase">
+          {{ t('dashboard.sections.finance') }}
+        </h3>
         <dl class="space-y-1 text-sm">
           <div class="flex justify-between">
-            <dt class="text-slate-500">{{ t('dashboard.fields.expenses') }}</dt>
-            <dd class="font-medium text-slate-800">
+            <dt class="text-texte-2">{{ t('dashboard.fields.expenses') }}</dt>
+            <dd class="text-texte font-mono font-medium tabular-nums">
               {{ formatNumber(summary.finance.expenses_total) }}
             </dd>
           </div>
           <div class="flex justify-between">
-            <dt class="text-slate-500">{{ t('dashboard.fields.treasuryBalance') }}</dt>
-            <dd class="font-medium text-slate-800">
+            <dt class="text-texte-2">{{ t('dashboard.fields.treasuryBalance') }}</dt>
+            <dd class="text-texte font-mono font-medium tabular-nums">
               {{ formatNumber(summary.finance.treasury_balance) }}
             </dd>
           </div>
         </dl>
       </section>
 
-      <section class="rounded border bg-white p-4">
-        <h3 class="mb-3 text-sm font-semibold text-slate-500">{{ t('dashboard.sections.profit') }}</h3>
+      <section class="border-ligne rounded-xl border bg-white p-4">
+        <h3 class="text-texte-2 mb-3 text-sm font-semibold uppercase">
+          {{ t('dashboard.sections.profit') }}
+        </h3>
         <dl class="space-y-1 text-sm">
           <div class="flex justify-between">
-            <dt class="text-slate-500">{{ t('dashboard.fields.totalMargin') }}</dt>
-            <dd class="font-medium text-slate-800">
+            <dt class="text-texte-2">{{ t('dashboard.fields.totalMargin') }}</dt>
+            <dd class="text-texte font-mono font-medium tabular-nums">
               {{ formatNumber(summary.profit.total_margin) }}
             </dd>
           </div>

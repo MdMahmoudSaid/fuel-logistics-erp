@@ -4,6 +4,10 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { fetchSupplierLedger } from '@/modules/purchasing/api'
 import type { SupplierLedger } from '@/modules/purchasing/types'
+import Badge from '@/components/ui/Badge.vue'
+import Button from '@/components/ui/Button.vue'
+import Card from '@/components/ui/Card.vue'
+import MonoValue from '@/components/ui/MonoValue.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -29,63 +33,64 @@ async function load() {
 
 onMounted(load)
 
-const STATUS_BADGE: Record<string, string> = {
-  DRAFT: 'bg-slate-100 text-slate-600',
-  CONFIRMED: 'bg-emerald-100 text-emerald-700',
-  CANCELLED: 'bg-red-100 text-red-700',
+function badgeVariant(status: string) {
+  if (status === 'CONFIRMED') return 'livre' as const
+  if (status === 'CANCELLED') return 'critique' as const
+  return 'neutre' as const
 }
 </script>
 
 <template>
   <div class="max-w-4xl space-y-6">
     <div class="flex items-center justify-between">
-      <h2 class="text-lg font-semibold text-slate-800">
+      <h1 class="font-display text-2xl leading-none font-semibold uppercase">
         {{ t('purchasing.supplierLedger.title', { name: ledger?.supplier.name ?? '…' }) }}
-      </h2>
-      <button class="px-3 py-2 text-sm text-slate-500" @click="router.push({ name: 'suppliers' })">
+      </h1>
+      <Button variant="ghost" @click="router.push({ name: 'suppliers' })">
         {{ t('purchasing.supplierLedger.back') }}
-      </button>
+      </Button>
     </div>
 
-    <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
-    <p v-else-if="loading" class="text-sm text-slate-400">{{ t('common.loading') }}</p>
+    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
+    <p v-else-if="loading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
     <template v-else-if="ledger">
       <section class="grid grid-cols-3 gap-4">
-        <div class="rounded border bg-white p-4">
-          <p class="text-xs text-slate-500">{{ t('purchasing.supplierLedger.totalPurchased') }}</p>
-          <p class="text-lg font-semibold text-slate-800">
-            {{ Number(ledger.total_purchased).toLocaleString() }}
-          </p>
+        <div class="border-ligne rounded-xl border bg-white p-4">
+          <p class="text-texte-2 text-xs">{{ t('purchasing.supplierLedger.totalPurchased') }}</p>
+          <MonoValue
+            class="text-lg font-semibold"
+            align="left"
+            :value="Number(ledger.total_purchased).toLocaleString()"
+          />
         </div>
-        <div class="rounded border bg-white p-4">
-          <p class="text-xs text-slate-500">{{ t('purchasing.supplierLedger.totalPaid') }}</p>
-          <p class="text-lg font-semibold text-slate-800">
-            {{ Number(ledger.total_paid).toLocaleString() }}
-          </p>
+        <div class="border-ligne rounded-xl border bg-white p-4">
+          <p class="text-texte-2 text-xs">{{ t('purchasing.supplierLedger.totalPaid') }}</p>
+          <MonoValue
+            class="text-lg font-semibold"
+            align="left"
+            :value="Number(ledger.total_paid).toLocaleString()"
+          />
         </div>
-        <div class="rounded border bg-white p-4">
-          <p class="text-xs text-slate-500">
+        <div class="border-ligne rounded-xl border bg-white p-4">
+          <p class="text-texte-2 text-xs">
             {{ t('purchasing.supplierLedger.outstandingBalance') }}
           </p>
-          <p
+          <MonoValue
             class="text-lg font-semibold"
-            :class="Number(ledger.outstanding_balance) > 0 ? 'text-amber-600' : 'text-emerald-600'"
-          >
-            {{ Number(ledger.outstanding_balance).toLocaleString() }}
-          </p>
+            align="left"
+            :class="Number(ledger.outstanding_balance) > 0 ? 'text-ecart' : 'text-livre'"
+            :value="Number(ledger.outstanding_balance).toLocaleString()"
+          />
         </div>
       </section>
 
-      <section class="rounded border bg-white p-4">
-        <h3 class="mb-3 text-base font-semibold text-slate-800">
-          {{ t('purchasing.supplierLedger.reliquatByProduct') }}
-        </h3>
-        <table class="w-full text-left text-sm">
+      <Card :title="t('purchasing.supplierLedger.reliquatByProduct')">
+        <table class="w-full text-start text-sm">
           <thead>
-            <tr class="border-b text-slate-500">
-              <th class="px-2 py-1.5 font-medium">{{ t('purchasing.supplierLedger.product') }}</th>
-              <th class="px-2 py-1.5 font-medium text-right">
+            <tr class="border-ligne text-texte-2 border-b">
+              <th class="px-3 py-2.5 font-medium">{{ t('purchasing.supplierLedger.product') }}</th>
+              <th class="px-3 py-2.5 text-end font-medium">
                 {{ t('purchasing.supplierLedger.totalReliquat') }}
               </th>
             </tr>
@@ -94,121 +99,128 @@ const STATUS_BADGE: Record<string, string> = {
             <tr
               v-for="item in ledger.reliquat_summary"
               :key="item.product_id"
-              class="border-b last:border-0"
+              class="border-ligne border-b last:border-0"
             >
-              <td class="px-2 py-1.5">{{ item.product_name }}</td>
-              <td
-                class="px-2 py-1.5 text-right font-medium"
-                :class="Number(item.total_reliquat) <= 0 ? 'text-red-600' : 'text-slate-800'"
-              >
-                {{ Number(item.total_reliquat).toLocaleString() }}
+              <td class="px-3 py-2.5">{{ item.product_name }}</td>
+              <td class="px-3 py-2.5 text-end">
+                <MonoValue
+                  :class="Number(item.total_reliquat) <= 0 ? 'text-critique' : 'text-texte'"
+                  :value="Number(item.total_reliquat).toLocaleString()"
+                />
               </td>
             </tr>
             <tr v-if="ledger.reliquat_summary.length === 0">
-              <td colspan="2" class="px-2 py-4 text-center text-slate-400">
+              <td colspan="2" class="text-texte-3 px-3 py-8 text-center">
                 {{ t('purchasing.supplierLedger.noPurchaseHistory') }}
               </td>
             </tr>
           </tbody>
         </table>
-      </section>
+      </Card>
 
-      <section class="rounded border bg-white p-4">
-        <h3 class="mb-3 text-base font-semibold text-slate-800">
-          {{ t('purchasing.supplierLedger.purchaseHistory') }}
-        </h3>
-        <table class="w-full text-left text-sm">
+      <Card :title="t('purchasing.supplierLedger.purchaseHistory')">
+        <table class="w-full text-start text-sm">
           <thead>
-            <tr class="border-b text-slate-500">
-              <th class="px-2 py-1.5 font-medium">{{ t('purchasing.supplierLedger.table.reference') }}</th>
-              <th class="px-2 py-1.5 font-medium">{{ t('purchasing.supplierLedger.table.product') }}</th>
-              <th class="px-2 py-1.5 font-medium">{{ t('purchasing.supplierLedger.table.date') }}</th>
-              <th class="px-2 py-1.5 font-medium text-right">
+            <tr class="border-ligne text-texte-2 border-b">
+              <th class="px-3 py-2.5 font-medium">
+                {{ t('purchasing.supplierLedger.table.reference') }}
+              </th>
+              <th class="px-3 py-2.5 font-medium">
+                {{ t('purchasing.supplierLedger.table.product') }}
+              </th>
+              <th class="px-3 py-2.5 font-medium">
+                {{ t('purchasing.supplierLedger.table.date') }}
+              </th>
+              <th class="px-3 py-2.5 text-end font-medium">
                 {{ t('purchasing.supplierLedger.table.purchased') }}
               </th>
-              <th class="px-2 py-1.5 font-medium text-right">
+              <th class="px-3 py-2.5 text-end font-medium">
                 {{ t('purchasing.supplierLedger.table.reliquat') }}
               </th>
-              <th class="px-2 py-1.5 font-medium">{{ t('purchasing.supplierLedger.table.status') }}</th>
+              <th class="px-3 py-2.5 font-medium">
+                {{ t('purchasing.supplierLedger.table.status') }}
+              </th>
             </tr>
           </thead>
           <tbody>
             <tr
               v-for="order in ledger.orders"
               :key="order.id"
-              class="cursor-pointer border-b last:border-0 hover:bg-slate-50"
+              class="border-ligne hover:bg-sable cursor-pointer border-b last:border-0"
               @click="router.push({ name: 'supplier-order-detail', params: { id: order.id } })"
             >
-              <td class="px-2 py-1.5 font-medium text-slate-800">{{ order.reference }}</td>
-              <td class="px-2 py-1.5">{{ order.product_detail?.name }}</td>
-              <td class="px-2 py-1.5">{{ order.purchase_date }}</td>
-              <td class="px-2 py-1.5 text-right">
-                {{ Number(order.quantity_litres).toLocaleString() }}
+              <td class="px-3 py-2.5"><MonoValue :value="order.reference" align="left" /></td>
+              <td class="px-3 py-2.5">{{ order.product_detail?.name }}</td>
+              <td class="px-3 py-2.5">{{ order.purchase_date }}</td>
+              <td class="px-3 py-2.5 text-end">
+                <MonoValue :value="Number(order.quantity_litres).toLocaleString()" />
               </td>
-              <td
-                class="px-2 py-1.5 text-right font-medium"
-                :class="Number(order.reliquat) <= 0 ? 'text-red-600' : 'text-slate-800'"
-              >
-                {{ Number(order.reliquat).toLocaleString() }}
+              <td class="px-3 py-2.5 text-end">
+                <MonoValue
+                  :class="Number(order.reliquat) <= 0 ? 'text-critique' : 'text-texte'"
+                  :value="Number(order.reliquat).toLocaleString()"
+                />
               </td>
-              <td class="px-2 py-1.5">
-                <span
-                  class="rounded-full px-2 py-0.5 text-xs font-medium"
-                  :class="STATUS_BADGE[order.status]"
-                >
-                  {{ t(`supplierOrderStatus.${order.status}`) }}
-                </span>
+              <td class="px-3 py-2.5">
+                <Badge :variant="badgeVariant(order.status)">{{
+                  t(`supplierOrderStatus.${order.status}`)
+                }}</Badge>
               </td>
             </tr>
             <tr v-if="ledger.orders.length === 0">
-              <td colspan="6" class="px-2 py-4 text-center text-slate-400">
+              <td colspan="6" class="text-texte-3 px-3 py-8 text-center">
                 {{ t('purchasing.supplierLedger.noPurchaseHistory') }}
               </td>
             </tr>
           </tbody>
         </table>
-      </section>
+      </Card>
 
-      <section class="rounded border bg-white p-4">
-        <h3 class="mb-3 text-base font-semibold text-slate-800">
-          {{ t('purchasing.supplierLedger.paymentsAndAdvances') }}
-        </h3>
-        <table class="w-full text-left text-sm">
+      <Card :title="t('purchasing.supplierLedger.paymentsAndAdvances')">
+        <table class="w-full text-start text-sm">
           <thead>
-            <tr class="border-b text-slate-500">
-              <th class="px-2 py-1.5 font-medium">{{ t('purchasing.supplierLedger.paymentsTable.date') }}</th>
-              <th class="px-2 py-1.5 font-medium">
+            <tr class="border-ligne text-texte-2 border-b">
+              <th class="px-3 py-2.5 font-medium">
+                {{ t('purchasing.supplierLedger.paymentsTable.date') }}
+              </th>
+              <th class="px-3 py-2.5 font-medium">
                 {{ t('purchasing.supplierLedger.paymentsTable.method') }}
               </th>
-              <th class="px-2 py-1.5 font-medium">
+              <th class="px-3 py-2.5 font-medium">
                 {{ t('purchasing.supplierLedger.paymentsTable.reference') }}
               </th>
-              <th class="px-2 py-1.5 font-medium">
+              <th class="px-3 py-2.5 font-medium">
                 {{ t('purchasing.supplierLedger.paymentsTable.advance') }}
               </th>
-              <th class="px-2 py-1.5 font-medium text-right">
+              <th class="px-3 py-2.5 text-end font-medium">
                 {{ t('purchasing.supplierLedger.paymentsTable.amount') }}
               </th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="payment in ledger.payments" :key="payment.id" class="border-b last:border-0">
-              <td class="px-2 py-1.5">{{ payment.payment_date }}</td>
-              <td class="px-2 py-1.5">{{ t(`paymentMethod.${payment.method}`) }}</td>
-              <td class="px-2 py-1.5">{{ payment.reference || '—' }}</td>
-              <td class="px-2 py-1.5">{{ payment.is_advance ? t('common.yes') : t('common.no') }}</td>
-              <td class="px-2 py-1.5 text-right font-medium text-slate-800">
-                {{ Number(payment.amount).toLocaleString() }}
+            <tr
+              v-for="payment in ledger.payments"
+              :key="payment.id"
+              class="border-ligne border-b last:border-0"
+            >
+              <td class="px-3 py-2.5">{{ payment.payment_date }}</td>
+              <td class="px-3 py-2.5">{{ t(`paymentMethod.${payment.method}`) }}</td>
+              <td class="px-3 py-2.5">{{ payment.reference || '—' }}</td>
+              <td class="px-3 py-2.5">
+                {{ payment.is_advance ? t('common.yes') : t('common.no') }}
+              </td>
+              <td class="px-3 py-2.5 text-end">
+                <MonoValue :value="Number(payment.amount).toLocaleString()" />
               </td>
             </tr>
             <tr v-if="ledger.payments.length === 0">
-              <td colspan="5" class="px-2 py-4 text-center text-slate-400">
+              <td colspan="5" class="text-texte-3 px-3 py-8 text-center">
                 {{ t('purchasing.supplierLedger.noPayments') }}
               </td>
             </tr>
           </tbody>
         </table>
-      </section>
+      </Card>
     </template>
   </div>
 </template>
