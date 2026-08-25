@@ -1,7 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { mount, flushPromises } from '@vue/test-utils'
+import { mount, flushPromises, DOMWrapper } from '@vue/test-utils'
 import PaymentAllocationForm from '../PaymentAllocationForm.vue'
 import type { CustomerLedgerInvoice } from '../types'
+
+function findAllTyped<T extends Element>(
+  wrapper: ReturnType<typeof mount>,
+  selector: string,
+): DOMWrapper<T>[] {
+  return wrapper.findAll(selector) as unknown as DOMWrapper<T>[]
+}
 
 function paginated<T>(results: T[]) {
   return { count: results.length, next: null, previous: null, results }
@@ -32,7 +39,7 @@ function makeInvoice(overrides: Partial<CustomerLedgerInvoice> = {}): CustomerLe
 }
 
 let ledgerInvoices: CustomerLedgerInvoice[] = []
-const fetchCustomerLedger = vi.fn(async () => ({
+const fetchCustomerLedger = vi.fn(async (_id: number) => ({
   customer: { id: 1, name: 'Client X', company_name: '' },
   outstanding_balance: '0.00',
   invoices: ledgerInvoices,
@@ -78,8 +85,8 @@ describe('PaymentAllocationForm FIFO auto-allocation', () => {
     await wrapper.find('#amount').setValue('600')
     await flushPromises()
 
-    const lineInvoiceSelects = wrapper.findAll('[data-test="line-invoice"]')
-    const amountInputs = wrapper.findAll('[data-test="line-amount"]')
+    const lineInvoiceSelects = findAllTyped<HTMLSelectElement>(wrapper, '[data-test="line-invoice"]')
+    const amountInputs = findAllTyped<HTMLInputElement>(wrapper, '[data-test="line-amount"]')
     // first allocation line should target the oldest invoice (id 1), fully covering it (500)
     expect(lineInvoiceSelects[0].element.value).toBe('1')
     expect(amountInputs[0].element.value).toBe('500.00')
@@ -96,8 +103,8 @@ describe('PaymentAllocationForm FIFO auto-allocation', () => {
     await wrapper.find('#amount').setValue('2000')
     await flushPromises()
 
-    const invoiceSelects = wrapper.findAll('[data-test="line-invoice"]')
-    const amountInputs = wrapper.findAll('[data-test="line-amount"]')
+    const invoiceSelects = findAllTyped<HTMLSelectElement>(wrapper, '[data-test="line-invoice"]')
+    const amountInputs = findAllTyped<HTMLInputElement>(wrapper, '[data-test="line-amount"]')
     expect(invoiceSelects).toHaveLength(3)
     expect(invoiceSelects[2].element.value).toBe('')
     expect(amountInputs[2].element.value).toBe('500.00')
@@ -111,7 +118,7 @@ describe('PaymentAllocationForm FIFO auto-allocation', () => {
     await wrapper.find('#amount').setValue('600')
     await flushPromises()
 
-    const amountInputs = () => wrapper.findAll('[data-test="line-amount"]')
+    const amountInputs = () => findAllTyped<HTMLInputElement>(wrapper, '[data-test="line-amount"]')
     await amountInputs()[0].setValue('123.45')
     await flushPromises()
 
@@ -130,7 +137,7 @@ describe('PaymentAllocationForm FIFO auto-allocation', () => {
     await wrapper.find('#amount').setValue('600')
     await flushPromises()
 
-    const amountInputs = () => wrapper.findAll('[data-test="line-amount"]')
+    const amountInputs = () => findAllTyped<HTMLInputElement>(wrapper, '[data-test="line-amount"]')
     await amountInputs()[0].setValue('123.45')
     await flushPromises()
 

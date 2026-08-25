@@ -8,5 +8,13 @@ export default [
   },
   ...pluginVue.configs['flat/recommended'],
   ...vueTsEslintConfig(),
+  {
+    rules: {
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
+    },
+  },
   prettierConfig,
 ]

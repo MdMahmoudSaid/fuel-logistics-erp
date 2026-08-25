@@ -14,7 +14,7 @@ const emptyResults: SearchResults = {
   cessions: [],
 }
 
-const searchGlobal = vi.fn(async (): Promise<SearchResults> => emptyResults)
+const searchGlobal = vi.fn(async (_query: string): Promise<SearchResults> => emptyResults)
 
 vi.mock('@/modules/search/api', () => ({
   searchGlobal: (query: string) => searchGlobal(query),

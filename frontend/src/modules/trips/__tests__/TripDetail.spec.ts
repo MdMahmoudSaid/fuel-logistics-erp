@@ -49,10 +49,10 @@ function makeTrip(overrides: Partial<Trip> = {}): Trip {
 }
 
 const tripToReturn = makeTrip()
-const tripResourceGet = vi.fn(async () => tripToReturn)
-const fetchTripHistory = vi.fn(async () => [])
+const tripResourceGet = vi.fn(async (_id: number) => tripToReturn)
+const fetchTripHistory = vi.fn(async (_id: number) => [])
 let marginToReturn: TripMargin = { available: false }
-const fetchTripMargin = vi.fn(async () => marginToReturn)
+const fetchTripMargin = vi.fn(async (_id: number) => marginToReturn)
 vi.mock('../api', () => ({
   tripResource: { get: (id: number) => tripResourceGet(id) },
   fetchTripHistory: (id: number) => fetchTripHistory(id),
@@ -61,7 +61,7 @@ vi.mock('../api', () => ({
 }))
 
 let expensesToReturn: Expense[] = []
-const expenseList = vi.fn(async () => ({
+const expenseList = vi.fn(async (_params: Record<string, unknown>) => ({
   count: expensesToReturn.length,
   next: null,
   previous: null,
