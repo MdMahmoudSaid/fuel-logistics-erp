@@ -991,6 +991,59 @@ def test_delivery_service_requires_selling_price_configured():
 
 
 @pytest.mark.django_db
+def test_delivery_service_unit_selling_price_override_creates_history_entry():
+    # No price on file yet - the override supplied at confirmation time is
+    # used for the Sale and appended as the new customer-specific latest
+    # price, so the next delivery for this product/customer suggests it.
+    fx = _fixtures_with_customer("DS-OVERRIDE")
+    trip = _deliverable_trip(fx, "TRIP-DS-OVERRIDE-001")
+
+    control = DeliveryService.record_delivery(
+        trip_id=trip.id,
+        received_qty=Decimal("44850.00"),
+        control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE,
+        controller=fx["admin_user"],
+        unit_selling_price=Decimal("700.0000"),
+    )
+
+    assert control.trip_id == trip.id
+    assert trip.sale.unit_selling_price == Decimal("700.0000")
+    assert ProductSellingPriceHistory.objects.filter(
+        product=fx["product"], customer=fx["customer"], price=Decimal("700.0000")
+    ).exists()
+    assert DeliveryService.get_latest_selling_price(
+        fx["product"].id, fx["customer"].id
+    ) == Decimal("700.0000")
+
+
+@pytest.mark.django_db
+def test_delivery_service_unit_selling_price_override_matching_existing_skips_duplicate():
+    # The form pre-fills the override field from the existing suggestion;
+    # submitting it unchanged must not append a redundant history row.
+    fx = _fixtures_with_customer("DS-OVERRIDE-NODUP")
+    trip = _deliverable_trip(fx, "TRIP-DS-OVERRIDE-NODUP-001")
+    ProductSellingPriceHistory.objects.create(
+        product=fx["product"], customer=fx["customer"],
+        price=Decimal("650.0000"), changed_by=fx["admin_user"],
+    )
+
+    DeliveryService.record_delivery(
+        trip_id=trip.id,
+        received_qty=Decimal("44850.00"),
+        control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE,
+        controller=fx["admin_user"],
+        unit_selling_price=Decimal("650.0000"),
+    )
+
+    assert ProductSellingPriceHistory.objects.filter(
+        product=fx["product"], customer=fx["customer"]
+    ).count() == 1
+    assert trip.sale.unit_selling_price == Decimal("650.0000")
+
+
+@pytest.mark.django_db
 def test_delivery_service_happy_path_creates_deduction_sale_and_invoice():
     # Mandatory recette scenario (plan Section 4 / Etape 7): 45,000 L loaded,
     # 44,850 L received, 100 L tolerance -> 150 L loss, 50 L chargeable.
@@ -1258,6 +1311,54 @@ def test_api_delivery_control_anomaly_rejected_422_then_confirmed_succeeds():
 
     trip.refresh_from_db()
     assert trip.status == Trip.Status.DELIVERED
+
+
+@pytest.mark.django_db
+def test_api_suggested_selling_price_returns_latest_or_null():
+    fx = _fixtures_with_customer("API-SUGGEST-PRICE")
+    trip = _deliverable_trip(fx, "TRIP-API-SUGGEST-PRICE-01")
+
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+
+    empty = client.get(f"/api/trips/{trip.id}/suggested-selling-price/")
+    assert empty.status_code == 200
+    assert empty.data["price"] is None
+
+    ProductSellingPriceHistory.objects.create(
+        product=fx["product"], customer=fx["customer"],
+        price=Decimal("650.0000"), changed_by=fx["admin_user"],
+    )
+
+    filled = client.get(f"/api/trips/{trip.id}/suggested-selling-price/")
+    assert filled.status_code == 200
+    assert filled.data["price"] == "650.0000"
+
+
+@pytest.mark.django_db
+def test_api_delivery_control_unit_selling_price_override_used_for_sale():
+    fx = _fixtures_with_customer("API-DC-OVERRIDE")
+    trip = _deliverable_trip(fx, "TRIP-API-DC-OVERRIDE-01")
+
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+    response = client.post(
+        f"/api/trips/{trip.id}/delivery-control/",
+        {
+            "received_quantity": "44850.00",
+            "control_date": "2026-08-18",
+            "method": "MANUAL_GAUGE",
+            "unit_selling_price": "700.0000",
+        },
+    )
+
+    assert response.status_code == 201, response.data
+    trip.refresh_from_db()
+    assert trip.status == Trip.Status.DELIVERED
+    assert trip.sale.unit_selling_price == Decimal("700.0000")
+    assert ProductSellingPriceHistory.objects.filter(
+        product=fx["product"], customer=fx["customer"], price=Decimal("700.0000")
+    ).exists()
 
 
 @pytest.mark.django_db

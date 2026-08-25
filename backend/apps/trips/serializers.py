@@ -256,3 +256,10 @@ class DeliveryControlRequestSerializer(serializers.Serializer):
         queryset=Document.objects.all(), required=False, allow_null=True
     )
     notes = serializers.CharField(required=False, allow_blank=True, default="")
+    unit_selling_price = serializers.DecimalField(
+        max_digits=14,
+        decimal_places=4,
+        min_value=Decimal("0"),
+        required=False,
+        allow_null=True,
+    )

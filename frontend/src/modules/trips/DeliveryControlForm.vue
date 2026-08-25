@@ -12,7 +12,11 @@
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
-import { postDeliveryControl, type DeliveryControlPayload } from './api'
+import {
+  fetchSuggestedSellingPrice,
+  postDeliveryControl,
+  type DeliveryControlPayload,
+} from './api'
 import { translateApiError } from '@/i18n/apiErrors'
 import { fetchLossTolerance } from '@/modules/settings/api'
 import Button from '@/components/ui/Button.vue'
@@ -47,9 +51,22 @@ const form = ref({
   received_quantity: '',
   control_date: new Date().toISOString().slice(0, 10),
   method: 'MANUAL_GAUGE' as DeliveryMethod,
+  unit_selling_price: '',
   notes: '',
 })
 const anomalyConfirmed = ref(false)
+
+// Pre-fills from ProductSellingPriceHistory (backend/apps/sales/models.py)
+// when one exists for this trip's product/customer, but is left editable -
+// this is what unblocks confirmation when none does (Sale creation used to
+// hard-fail with SellingPriceNotConfigured, see DeliveryService.record_delivery()).
+onMounted(async () => {
+  try {
+    form.value.unit_selling_price = (await fetchSuggestedSellingPrice(props.tripId)) ?? ''
+  } catch {
+    // No suggestion available - the field just starts empty for manual entry.
+  }
+})
 
 const loadedQty = computed(() => Number(props.quantityLoaded))
 const receivedQty = computed(() => Number(form.value.received_quantity) || 0)
@@ -64,7 +81,8 @@ const isAnomaly = computed(() => hasReceivedInput.value && receivedQty.value > l
 const canConfirmAnomaly = computed(() => auth.can('operations', 'validate'))
 
 const canSubmit = computed(() => {
-  if (!hasReceivedInput.value || !form.value.control_date) return false
+  if (!hasReceivedInput.value || !form.value.control_date || !form.value.unit_selling_price)
+    return false
   if (isAnomaly.value) return canConfirmAnomaly.value && anomalyConfirmed.value
   return true
 })
@@ -80,6 +98,7 @@ async function onSubmit() {
     received_quantity: form.value.received_quantity,
     control_date: form.value.control_date,
     method: form.value.method,
+    unit_selling_price: form.value.unit_selling_price,
     notes: form.value.notes,
   }
   if (isAnomaly.value && anomalyConfirmed.value && auth.user) {
@@ -152,6 +171,21 @@ async function onSubmit() {
           <option value="MANUAL_GAUGE">{{ t('trips.delivery.manualGauge') }}</option>
           <option value="METER">{{ t('trips.delivery.meter') }}</option>
         </select>
+      </div>
+
+      <div class="space-y-1.5">
+        <label class="text-texte-2 text-sm font-medium" for="unit_selling_price">{{
+          t('trips.delivery.unitSellingPrice')
+        }}</label>
+        <input
+          id="unit_selling_price"
+          v-model="form.unit_selling_price"
+          type="number"
+          step="0.0001"
+          min="0"
+          required
+          class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+        />
       </div>
     </div>
 

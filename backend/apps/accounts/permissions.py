@@ -9,6 +9,9 @@ ACTION_MAP = {
     "trips": "view",
     "history": "view",
     "margin": "view",
+    # Delivery form's price pre-fill lookup (see "delivery_control" below) -
+    # same "view" tier as margin, no write happens here.
+    "suggested_selling_price": "view",
     # Dashboard's single custom read action (docs/PHASE_6_PLAN.md Etape 5).
     "summary": "view",
     "create": "create",

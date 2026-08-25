@@ -289,6 +289,7 @@
       "method": "Method",
       "manualGauge": "Manual gauge",
       "meter": "Meter",
+      "unitSellingPrice": "Unit selling price (MRU/L)",
       "lossEstimate": "Loss (est.)",
       "chargeableLossEstimate": "Chargeable loss (est.)",
       "anomalyWarning": "Received quantity exceeds loaded quantity — this is an anomaly and requires authorized confirmation before it can be recorded.",

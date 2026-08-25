@@ -212,10 +212,13 @@ class DeliveryService:
     """
 
     @staticmethod
-    def _suggest_selling_price(product_id, customer_id) -> Decimal:
+    def get_latest_selling_price(product_id, customer_id) -> Decimal | None:
         """Latest applicable price for (product, customer), falling back to
         the latest global (customer=None) price for the product (guide
-        Section 7.8: "suggest latest applicable price")."""
+        Section 7.8: "suggest latest applicable price"), or None if neither
+        exists yet. Used both to pre-fill the delivery form's price field
+        and, wrapped by `_suggest_selling_price`, to resolve the Sale's
+        price when the caller doesn't supply an override."""
         customer_specific = (
             ProductSellingPriceHistory.objects.filter(
                 product_id=product_id, customer_id=customer_id
@@ -233,8 +236,13 @@ class DeliveryService:
             .order_by("-effective_at", "-id")
             .first()
         )
-        if global_price:
-            return global_price.price
+        return global_price.price if global_price else None
+
+    @staticmethod
+    def _suggest_selling_price(product_id, customer_id) -> Decimal:
+        price = DeliveryService.get_latest_selling_price(product_id, customer_id)
+        if price is not None:
+            return price
 
         raise SellingPriceNotConfigured(
             "Aucun prix de vente configure pour ce produit/client - "
@@ -252,11 +260,20 @@ class DeliveryService:
         anomaly_confirmed_by=None,
         document=None,
         notes="",
+        unit_selling_price: Decimal | None = None,
     ) -> DeliveryControl:
         """Confirm discharge for `trip_id`, under a row lock on the Trip
         (guide Section 15). Creates DeliveryControl, an optional
         TransportDeduction (chargeable loss > 0 only) and the resulting
         Sale + DRAFT Invoice - all or nothing.
+
+        `unit_selling_price`, when given, comes from the delivery form's
+        "Prix de vente unitaire" field: it's used directly for the Sale,
+        and appended as a new customer-specific ProductSellingPriceHistory
+        entry (unless it matches the current latest price already) so the
+        next delivery for this product/customer picks it up as the
+        suggestion. Left None, the existing latest-price lookup applies and
+        still raises SellingPriceNotConfigured if nothing is on file.
         """
         trip = Trip.objects.select_for_update().get(pk=trip_id)
 
@@ -279,9 +296,21 @@ class DeliveryService:
 
         # Resolve the selling price before mutating anything, so a missing
         # price configuration never leaves a half-confirmed delivery behind.
-        unit_selling_price = DeliveryService._suggest_selling_price(
-            trip.product_id, customer.id
-        )
+        if unit_selling_price is not None:
+            current_price = DeliveryService.get_latest_selling_price(
+                trip.product_id, customer.id
+            )
+            if current_price != unit_selling_price:
+                ProductSellingPriceHistory.objects.create(
+                    product=trip.product,
+                    customer=customer,
+                    price=unit_selling_price,
+                    changed_by=controller,
+                )
+        else:
+            unit_selling_price = DeliveryService._suggest_selling_price(
+                trip.product_id, customer.id
+            )
 
         tolerance = LossToleranceConfig.get_current_tolerance()
 

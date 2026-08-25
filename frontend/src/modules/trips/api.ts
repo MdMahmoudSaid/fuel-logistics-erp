@@ -38,6 +38,7 @@ export interface DeliveryControlPayload {
   received_quantity: string
   control_date: string
   method: DeliveryMethod
+  unit_selling_price: string
   anomaly_confirmed_by?: number
   notes?: string
 }
@@ -53,4 +54,13 @@ export function postDeliveryControl(
   return apiClient
     .post<DeliveryControl>(`/trips/${tripId}/delivery-control/`, payload)
     .then((r) => r.data)
+}
+
+// DeliveryService.get_latest_selling_price() (backend/apps/trips/services.py)
+// via TripViewSet.suggested_selling_price() - pre-fills the delivery form's
+// price field; `null` when nothing is on file yet for this product/customer.
+export function fetchSuggestedSellingPrice(tripId: number): Promise<string | null> {
+  return apiClient
+    .get<{ price: string | null }>(`/trips/${tripId}/suggested-selling-price/`)
+    .then((r) => r.data.price)
 }

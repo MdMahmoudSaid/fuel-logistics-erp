@@ -168,6 +168,27 @@ class TripViewSet(viewsets.ModelViewSet):
         breakdown = TripProfitService.get_cost_breakdown(trip)
         return Response({"available": True, **decimals_to_str(breakdown)})
 
+    @action(detail=True, methods=["get"], url_path="suggested-selling-price")
+    def suggested_selling_price(self, request, pk=None):
+        """Latest applicable ProductSellingPriceHistory price for this
+        trip's product/customer (DeliveryService.get_latest_selling_price),
+        used to pre-fill the delivery form's "Prix de vente unitaire"
+        field. `null` when no customer is resolvable yet or nothing is on
+        file - the field is then left for the user to fill in by hand.
+
+        GET /api/trips/{id}/suggested-selling-price/
+        """
+        trip = self.get_object()
+        customer = trip.client or (
+            trip.customer_order.customer if trip.customer_order_id else None
+        )
+        price = (
+            DeliveryService.get_latest_selling_price(trip.product_id, customer.id)
+            if customer is not None
+            else None
+        )
+        return Response({"price": str(price) if price is not None else None})
+
     @action(detail=True, methods=["post"], url_path="delivery-control")
     def delivery_control(self, request, pk=None):
         """Confirm discharge/quantity control for this trip and finalize
@@ -193,6 +214,7 @@ class TripViewSet(viewsets.ModelViewSet):
                 anomaly_confirmed_by=data.get("anomaly_confirmed_by"),
                 document=data.get("document"),
                 notes=data.get("notes", ""),
+                unit_selling_price=data.get("unit_selling_price"),
             )
         except DeliveryAnomalyConfirmationRequired as exc:
             # Plan Section 1.D: reçu > chargé without an authorized

@@ -3,7 +3,7 @@
 // lines, and an "Paid directly by customer" switch that routes the
 // submission through IndirectSettlementService instead of a plain Expense
 // create (guide Section 1.6/8.9: never creates a TreasuryTransaction).
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { createResourceApi } from '@/api/resource'
 import { translateApiError } from '@/i18n/apiErrors'
@@ -54,7 +54,22 @@ const lines = ref<AllocationDraft[]>(
 )
 const lockedFirstLine = Boolean(props.presetAllocation)
 
+// Single-allocation mode: the top "Montant" field is the only amount the
+// user needs to type, so it mirrors straight into the one pre-seeded line.
+// The moment a second line is added, the split has to be entered by hand
+// per line, so auto-sync switches off for good.
+const autoSyncAmount = ref(lockedFirstLine)
+watch(
+  () => form.value.amount,
+  (amount) => {
+    if (autoSyncAmount.value && lines.value.length === 1) {
+      lines.value[0] = { ...lines.value[0], allocatedAmount: amount }
+    }
+  },
+)
+
 function addLine() {
+  autoSyncAmount.value = false
   lines.value.push(emptyDraft())
 }
 function removeLine(index: number) {

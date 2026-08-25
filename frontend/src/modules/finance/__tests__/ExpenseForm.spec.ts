@@ -68,6 +68,41 @@ describe('ExpenseForm', () => {
     )
   })
 
+  it('auto-syncs the top amount into the single preset line without touching it directly', async () => {
+    const wrapper = mount(ExpenseForm, {
+      props: { presetAllocation: { kind: 'trip', objectId: 42, label: 'TRIP-042' } },
+    })
+    await flushPromises()
+
+    const numberInputs = wrapper.findAll('input[type=number]')
+    await numberInputs[0].setValue('12000')
+
+    expect((wrapper.findAll('input[type=number]')[1].element as HTMLInputElement).value).toBe(
+      '12000',
+    )
+
+    await numberInputs[0].setValue('18000')
+    expect((wrapper.findAll('input[type=number]')[1].element as HTMLInputElement).value).toBe(
+      '18000',
+    )
+  })
+
+  it('stops auto-syncing once a second allocation line is added', async () => {
+    const wrapper = mount(ExpenseForm, {
+      props: { presetAllocation: { kind: 'trip', objectId: 42, label: 'TRIP-042' } },
+    })
+    await flushPromises()
+
+    await wrapper.find('input[type=number]').setValue('12000')
+    await wrapper.find('button:not([type=submit])').trigger('click') // "+ Ajouter une ligne"
+
+    await wrapper.find('input[type=number]').setValue('18000')
+
+    expect((wrapper.findAll('input[type=number]')[1].element as HTMLInputElement).value).toBe(
+      '12000',
+    )
+  })
+
   it('lets a manually added line be removed', async () => {
     const wrapper = mount(ExpenseForm)
     await flushPromises()

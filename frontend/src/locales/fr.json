@@ -291,6 +291,7 @@
       "method": "Méthode",
       "manualGauge": "Jauge manuelle",
       "meter": "Compteur",
+      "unitSellingPrice": "Prix de vente unitaire (MRU/L)",
       "lossEstimate": "Perte (est.)",
       "chargeableLossEstimate": "Perte facturable (est.)",
       "anomalyWarning": "La quantité reçue dépasse la quantité chargée — ceci est une anomalie et nécessite une confirmation par un utilisateur autorisé avant de pouvoir être enregistrée.",

@@ -24,9 +24,11 @@ const postDeliveryControl = vi.fn(async (_tripId: number, payload: Record<string
   created_at: '',
   updated_at: '',
 }))
+const fetchSuggestedSellingPrice = vi.fn(async () => '650.0000')
 vi.mock('../api', () => ({
   postDeliveryControl: (tripId: number, payload: Record<string, unknown>) =>
     postDeliveryControl(tripId, payload),
+  fetchSuggestedSellingPrice: () => fetchSuggestedSellingPrice(),
 }))
 
 const fetchLossTolerance = vi.fn(async () => ({
@@ -146,6 +148,38 @@ describe('DeliveryControlForm', () => {
     expect(wrapper.emitted('confirmed')).toBeTruthy()
     const [emittedControl] = wrapper.emitted('confirmed')![0] as [Record<string, unknown>]
     expect(emittedControl.chargeable_loss_quantity).toBe('50.00')
+  })
+
+  it('pre-fills the selling price from the suggestion and sends it with the payload', async () => {
+    setOpsUser()
+    const wrapper = mount(DeliveryControlForm, { props: { tripId: 9, quantityLoaded: '45000.00' } })
+    await flushPromises()
+
+    expect((wrapper.find('#unit_selling_price').element as HTMLInputElement).value).toBe(
+      '650.0000',
+    )
+
+    await wrapper.find('#received_quantity').setValue('44850.00')
+    await wrapper.find('#control_date').setValue('2026-08-18')
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    const [, payload] = postDeliveryControl.mock.calls[0]!
+    expect(payload.unit_selling_price).toBe('650.0000')
+  })
+
+  it('blocks submission when no price is suggested and none is entered', async () => {
+    setOpsUser()
+    fetchSuggestedSellingPrice.mockResolvedValueOnce(null as unknown as string)
+    const wrapper = mount(DeliveryControlForm, { props: { tripId: 9, quantityLoaded: '45000.00' } })
+    await flushPromises()
+
+    await wrapper.find('#received_quantity').setValue('44850.00')
+    await wrapper.find('#control_date').setValue('2026-08-18')
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(postDeliveryControl).not.toHaveBeenCalled()
   })
 
   it('surfaces the server error message on a rejected request', async () => {
