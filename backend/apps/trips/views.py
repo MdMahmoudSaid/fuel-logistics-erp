@@ -23,6 +23,7 @@ from .services import (
     DeliveryAnomalyConfirmationRequired,
     DeliveryService,
     InvalidTripTransition,
+    SaleBelowCostConfirmationRequired,
     TripCostService,
     TripWorkflowService,
 )
@@ -255,6 +256,7 @@ class TripViewSet(viewsets.ModelViewSet):
                 document=data.get("document"),
                 notes=data.get("notes", ""),
                 unit_selling_price=data.get("unit_selling_price"),
+                confirm_loss=data.get("confirm_loss", False),
             )
         except DeliveryAnomalyConfirmationRequired as exc:
             # Plan Section 1.D: reçu > chargé without an authorized
@@ -263,10 +265,18 @@ class TripViewSet(viewsets.ModelViewSet):
                 {"detail": str(exc)},
                 status=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
             )
+        except SaleBelowCostConfirmationRequired as exc:
+            # Same "confirmation required, not a plain validation error"
+            # class as the anomaly gate above - 422 lets the frontend show
+            # the loss warning + checkbox instead of a generic form error.
+            return Response(
+                {"detail": str(exc)},
+                status=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
         except ValueError as exc:
             # Covers SellingPriceNotConfigured and InvalidTripTransition too
             # (both are ValueError subclasses) - anything else that stops
-            # confirmation before the anomaly gate is a plain 400.
+            # confirmation before the anomaly/below-cost gates is a plain 400.
             return Response({"detail": str(exc)}, status=http_status.HTTP_400_BAD_REQUEST)
 
         return Response(

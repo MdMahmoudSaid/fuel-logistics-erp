@@ -248,6 +248,8 @@
       "fuelPurchaseCost": "Fuel purchase",
       "transportCost": "Transporter cost",
       "totalExpenses": "Other expenses",
+      "unitCost": "Unit cost",
+      "unitProfit": "Unit profit",
       "netMargin": "Net margin"
     },
     "newForm": {
@@ -293,9 +295,13 @@
       "unitSellingPrice": "Unit selling price (MRU/L)",
       "lossEstimate": "Loss (est.)",
       "chargeableLossEstimate": "Chargeable loss (est.)",
+      "costBasis": "Cost price (est.)",
+      "benefit": "Benefit (est.)",
       "anomalyWarning": "Received quantity exceeds loaded quantity — this is an anomaly and requires authorized confirmation before it can be recorded.",
       "anomalyConfirm": "I confirm this anomaly as an authorized user ({email})",
       "anomalyAskAuthorized": "Ask an authorized user to confirm this anomaly before it can be recorded.",
+      "lossWarning": "The selling price is below the cost price — this sale will show a loss and requires confirmation before it can be recorded.",
+      "lossConfirm": "I confirm this loss-making sale",
       "recording": "Recording…",
       "confirmDelivery": "Confirm delivery",
       "recordError": "Could not record delivery."

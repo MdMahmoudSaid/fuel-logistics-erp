@@ -14,13 +14,14 @@ import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import {
   fetchSuggestedSellingPrice,
+  fetchTripCostBasis,
   postDeliveryControl,
   type DeliveryControlPayload,
 } from './api'
 import { translateApiError } from '@/i18n/apiErrors'
 import { fetchLossTolerance } from '@/modules/settings/api'
 import Button from '@/components/ui/Button.vue'
-import type { DeliveryControl, DeliveryMethod } from './types'
+import type { DeliveryControl, DeliveryMethod, TripCostBasis } from './types'
 
 const props = defineProps<{
   tripId: number
@@ -68,12 +69,37 @@ onMounted(async () => {
   }
 })
 
+// Client modifications Task 3: "prix de revient" (TripCostService.
+// calculate_trip_cost_basis, available from the moment a trip is loaded)
+// used to show the live per-litre benefit as the operator edits the
+// selling price above, and to gate the loss-confirmation checkbox below.
+const costBasis = ref<TripCostBasis | null>(null)
+onMounted(async () => {
+  try {
+    costBasis.value = await fetchTripCostBasis(props.tripId)
+  } catch {
+    // Cost basis unavailable - the price-de-revient/benefit hints just
+    // stay hidden; the backend still enforces the below-cost guard.
+  }
+})
+
+const lossConfirmed = ref(false)
+
 const loadedQty = computed(() => Number(props.quantityLoaded))
 const receivedQty = computed(() => Number(form.value.received_quantity) || 0)
 const hasReceivedInput = computed(() => form.value.received_quantity !== '')
 const lossQty = computed(() => loadedQty.value - receivedQty.value)
 const chargeableLossQty = computed(() => Math.max(lossQty.value - toleranceLitres.value, 0))
 const isAnomaly = computed(() => hasReceivedInput.value && receivedQty.value > loadedQty.value)
+
+const unitCost = computed(() => (costBasis.value ? Number(costBasis.value.unit_cost) : null))
+const hasSellingPriceInput = computed(() => form.value.unit_selling_price !== '')
+const benefit = computed(() =>
+  unitCost.value !== null && hasSellingPriceInput.value
+    ? Number(form.value.unit_selling_price) - unitCost.value
+    : null,
+)
+const isLoss = computed(() => benefit.value !== null && benefit.value < 0)
 
 // Anomaly confirmation is gated on the same "validate" tier the backend
 // Role permission matrix already uses for other frozen/high-stakes actions
@@ -83,7 +109,8 @@ const canConfirmAnomaly = computed(() => auth.can('operations', 'validate'))
 const canSubmit = computed(() => {
   if (!hasReceivedInput.value || !form.value.control_date || !form.value.unit_selling_price)
     return false
-  if (isAnomaly.value) return canConfirmAnomaly.value && anomalyConfirmed.value
+  if (isAnomaly.value && !(canConfirmAnomaly.value && anomalyConfirmed.value)) return false
+  if (isLoss.value && !lossConfirmed.value) return false
   return true
 })
 
@@ -103,6 +130,9 @@ async function onSubmit() {
   }
   if (isAnomaly.value && anomalyConfirmed.value && auth.user) {
     payload.anomaly_confirmed_by = auth.user.id
+  }
+  if (isLoss.value && lossConfirmed.value) {
+    payload.confirm_loss = true
   }
   try {
     const control = await postDeliveryControl(props.tripId, payload)
@@ -125,7 +155,9 @@ async function onSubmit() {
 
     <div class="grid grid-cols-2 gap-4">
       <div class="space-y-1.5">
-        <span class="text-texte-2 text-sm font-medium">{{ t('trips.delivery.loadedQuantity') }}</span>
+        <span class="text-texte-2 text-sm font-medium">{{
+          t('trips.delivery.loadedQuantity')
+        }}</span>
         <p id="loaded_quantity_display" class="text-texte text-sm font-medium">
           {{ loadedQty.toLocaleString() }} L
         </p>
@@ -203,6 +235,22 @@ async function onSubmit() {
       </div>
     </div>
 
+    <div
+      v-if="unitCost !== null"
+      class="border-ligne grid grid-cols-2 gap-4 rounded-lg border bg-sable p-3 text-sm"
+    >
+      <div>
+        <span class="text-texte-2">{{ t('trips.delivery.costBasis') }}</span>
+        <p class="text-texte font-medium">{{ unitCost.toLocaleString() }} MRU/L</p>
+      </div>
+      <div v-if="benefit !== null">
+        <span class="text-texte-2">{{ t('trips.delivery.benefit') }}</span>
+        <p class="font-medium" :class="isLoss ? 'text-critique' : 'text-livre'">
+          {{ benefit.toLocaleString() }} MRU/L
+        </p>
+      </div>
+    </div>
+
     <div v-if="isAnomaly" class="border-ecart bg-ecart-tint space-y-2 rounded-lg border p-3">
       <p class="text-ecart-texte text-sm font-medium">
         {{ t('trips.delivery.anomalyWarning') }}
@@ -219,6 +267,21 @@ async function onSubmit() {
       <p v-else class="text-ecart-texte text-sm">
         {{ t('trips.delivery.anomalyAskAuthorized') }}
       </p>
+    </div>
+
+    <div v-if="isLoss" class="border-critique bg-critique-tint space-y-2 rounded-lg border p-3">
+      <p class="text-critique-texte text-sm font-medium">
+        {{ t('trips.delivery.lossWarning') }}
+      </p>
+      <label class="text-critique-texte flex items-center gap-2 text-sm">
+        <input
+          id="loss_confirmed"
+          v-model="lossConfirmed"
+          type="checkbox"
+          class="border-ligne-forte accent-orange h-5 w-5 rounded"
+        />
+        {{ t('trips.delivery.lossConfirm') }}
+      </label>
     </div>
 
     <div class="space-y-1.5">

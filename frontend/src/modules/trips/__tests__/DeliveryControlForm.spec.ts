@@ -25,10 +25,20 @@ const postDeliveryControl = vi.fn(async (_tripId: number, payload: Record<string
   updated_at: '',
 }))
 const fetchSuggestedSellingPrice = vi.fn(async () => '650.0000')
+const fetchTripCostBasis = vi.fn(async () => ({
+  fuel_purchase_cost: '27000000.000000',
+  transport_cost: '0.00',
+  expenses_by_category: {},
+  total_expenses: '0.00',
+  total_cost: '27000000.000000',
+  quantity: '45000.00',
+  unit_cost: '600.0000',
+}))
 vi.mock('../api', () => ({
   postDeliveryControl: (tripId: number, payload: Record<string, unknown>) =>
     postDeliveryControl(tripId, payload),
   fetchSuggestedSellingPrice: () => fetchSuggestedSellingPrice(),
+  fetchTripCostBasis: () => fetchTripCostBasis(),
 }))
 
 const fetchLossTolerance = vi.fn(async () => ({
@@ -155,9 +165,7 @@ describe('DeliveryControlForm', () => {
     const wrapper = mount(DeliveryControlForm, { props: { tripId: 9, quantityLoaded: '45000.00' } })
     await flushPromises()
 
-    expect((wrapper.find('#unit_selling_price').element as HTMLInputElement).value).toBe(
-      '650.0000',
-    )
+    expect((wrapper.find('#unit_selling_price').element as HTMLInputElement).value).toBe('650.0000')
 
     await wrapper.find('#received_quantity').setValue('44850.00')
     await wrapper.find('#control_date').setValue('2026-08-18')
@@ -196,5 +204,42 @@ describe('DeliveryControlForm', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('No selling price configured.')
+  })
+
+  it('shows the cost price and live benefit once cost basis and selling price are known', async () => {
+    setOpsUser()
+    const wrapper = mount(DeliveryControlForm, { props: { tripId: 9, quantityLoaded: '45000.00' } })
+    await flushPromises()
+
+    // Suggested price 650.0000 vs unit cost 600.0000 -> benefit +50.
+    expect(wrapper.text()).toContain('600')
+    expect(wrapper.text()).toContain('50')
+    expect(wrapper.find('#loss_confirmed').exists()).toBe(false)
+  })
+
+  it('warns and requires a confirmation checkbox when the selling price is below cost', async () => {
+    setOpsUser()
+    const wrapper = mount(DeliveryControlForm, { props: { tripId: 9, quantityLoaded: '45000.00' } })
+    await flushPromises()
+
+    await wrapper.find('#received_quantity').setValue('44850.00')
+    await wrapper.find('#control_date').setValue('2026-08-18')
+    await wrapper.find('#unit_selling_price').setValue('500.0000')
+    await flushPromises()
+
+    expect(wrapper.find('#loss_confirmed').exists()).toBe(true)
+
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+    expect(postDeliveryControl).not.toHaveBeenCalled()
+
+    await wrapper.find('#loss_confirmed').setValue(true)
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(postDeliveryControl).toHaveBeenCalledWith(
+      9,
+      expect.objectContaining({ confirm_loss: true }),
+    )
   })
 })

@@ -56,6 +56,14 @@ class SellingPriceNotConfigured(ValueError):
     for the Sale it must create."""
 
 
+class SaleBelowCostConfirmationRequired(ValueError):
+    """Raised when the delivery's unit selling price is below the trip's
+    unit cost (TripCostService.calculate_trip_cost_basis) and no confirm_loss
+    flag was supplied - a loss-making sale can still be recorded, but only
+    once an operator has explicitly acknowledged it (same confirm-then-
+    proceed pattern as DeliveryAnomalyConfirmationRequired above)."""
+
+
 class TruckAvailabilityService:
     @staticmethod
     def is_truck_available(truck_id) -> bool:
@@ -374,6 +382,7 @@ class DeliveryService:
         document=None,
         notes="",
         unit_selling_price: Decimal | None = None,
+        confirm_loss: bool = False,
     ) -> DeliveryControl:
         """Confirm discharge for `trip_id`, under a row lock on the Trip
         (guide Section 15). Creates DeliveryControl, an optional
@@ -387,6 +396,13 @@ class DeliveryService:
         next delivery for this product/customer picks it up as the
         suggestion. Left None, the existing latest-price lookup applies and
         still raises SellingPriceNotConfigured if nothing is on file.
+
+        `confirm_loss` (client modifications plan Task 3): when the
+        resolved `unit_selling_price` is below the trip's unit cost
+        (TripCostService.calculate_trip_cost_basis), the Sale is only
+        created once this is explicitly set - otherwise
+        SaleBelowCostConfirmationRequired is raised so the caller can warn
+        and ask for confirmation before retrying.
         """
         trip = Trip.objects.select_for_update().get(pk=trip_id)
 
@@ -449,6 +465,14 @@ class DeliveryService:
                 transporter=trip.transporter,
                 chargeable_quantity=control.chargeable_loss_quantity,
                 unit_price=trip.supplier_order.unit_price,
+            )
+
+        unit_cost = TripCostService.calculate_trip_cost_basis(trip)["unit_cost"]
+        if unit_selling_price < unit_cost and not confirm_loss:
+            raise SaleBelowCostConfirmationRequired(
+                f"Le prix de vente unitaire ({unit_selling_price}) est inferieur au prix de "
+                f"revient ({unit_cost}) pour le trajet {trip.reference} ; renvoyez "
+                "confirm_loss=true pour confirmer une vente a perte."
             )
 
         sale = Sale.objects.create(

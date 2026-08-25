@@ -19,7 +19,7 @@ from apps.finance.models import (
     TransportPayment,
 )
 from apps.purchasing.models import CessionLetter, SupplierOrder
-from apps.sales.models import CustomerOrder, ProductSellingPriceHistory
+from apps.sales.models import CustomerOrder, ProductSellingPriceHistory, Sale
 from apps.sales.services import CustomerOrderService
 from apps.suppliers.models import Supplier
 from apps.transport.models import Transporter, Truck
@@ -30,6 +30,7 @@ from apps.trips.services import (
     DeliveryAnomalyConfirmationRequired,
     DeliveryService,
     InvalidTripTransition,
+    SaleBelowCostConfirmationRequired,
     SellingPriceNotConfigured,
     TransporterAvailabilityService,
     TripCostService,
@@ -1238,6 +1239,58 @@ def test_delivery_service_freezes_tolerance_used_at_confirmation_time():
 
 
 # ---------------------------------------------------------------------------
+# Client modifications Task 3: sale-below-cost guard (fuel-only cost basis
+# here, 45,000 L @ 600.0000 -> 600.0000 unit cost, no transport/expenses).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_delivery_service_blocks_sale_below_cost_without_confirmation():
+    fx = _fixtures_with_customer("DS-BELOWCOST")
+    trip = _deliverable_trip(fx, "TRIP-DS-BELOWCOST-001")
+
+    with pytest.raises(SaleBelowCostConfirmationRequired):
+        DeliveryService.record_delivery(
+            trip_id=trip.id,
+            received_qty=Decimal("44850.00"),
+            control_date="2026-08-18",
+            method=DeliveryControl.Method.MANUAL_GAUGE,
+            controller=fx["admin_user"],
+            unit_selling_price=Decimal("500.0000"),  # below the 600.0000 unit cost
+        )
+
+    trip.refresh_from_db()
+    assert trip.status == Trip.Status.QUANTITY_CONTROL
+    assert not DeliveryControl.objects.filter(trip=trip).exists()
+    assert not Sale.objects.filter(trip=trip).exists()
+
+
+@pytest.mark.django_db
+def test_delivery_service_allows_sale_below_cost_with_confirmation_and_margin_is_negative():
+    fx = _fixtures_with_customer("DS-BELOWCOST-OK")
+    trip = _deliverable_trip(fx, "TRIP-DS-BELOWCOST-OK-001")
+
+    control = DeliveryService.record_delivery(
+        trip_id=trip.id,
+        received_qty=Decimal("44850.00"),
+        control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE,
+        controller=fx["admin_user"],
+        unit_selling_price=Decimal("500.0000"),
+        confirm_loss=True,
+    )
+
+    trip.refresh_from_db()
+    assert trip.status == Trip.Status.DELIVERED
+    assert control.trip_id == trip.id
+    assert trip.sale.unit_selling_price == Decimal("500.0000")
+
+    from apps.reports.services.profit import TripProfitService
+
+    assert TripProfitService.calculate_current_margin(trip) < 0
+
+
+# ---------------------------------------------------------------------------
 # Phase 4 Etape 6/7: POST /api/trips/{id}/delivery-control/ (docs/PHASE_4_PLAN.md;
 # guide Section 7.2-7.7, Section 15).
 # ---------------------------------------------------------------------------
@@ -1319,6 +1372,46 @@ def test_api_delivery_control_anomaly_rejected_422_then_confirmed_succeeds():
 
     trip.refresh_from_db()
     assert trip.status == Trip.Status.DELIVERED
+
+
+@pytest.mark.django_db
+def test_api_delivery_control_below_cost_rejected_422_then_confirmed_succeeds():
+    fx = _fixtures_with_customer("API-DC-BELOWCOST")
+    trip = _deliverable_trip(fx, "TRIP-API-DC-BELOWCOST-001")
+
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+
+    rejected = client.post(
+        f"/api/trips/{trip.id}/delivery-control/",
+        {
+            "received_quantity": "44850.00",
+            "control_date": "2026-08-18",
+            "method": "MANUAL_GAUGE",
+            "unit_selling_price": "500.0000",  # below the 600.0000 fuel-only unit cost
+        },
+    )
+    assert rejected.status_code == 422, rejected.data
+
+    trip.refresh_from_db()
+    assert trip.status == Trip.Status.QUANTITY_CONTROL
+    assert not Sale.objects.filter(trip=trip).exists()
+
+    confirmed = client.post(
+        f"/api/trips/{trip.id}/delivery-control/",
+        {
+            "received_quantity": "44850.00",
+            "control_date": "2026-08-18",
+            "method": "MANUAL_GAUGE",
+            "unit_selling_price": "500.0000",
+            "confirm_loss": True,
+        },
+    )
+    assert confirmed.status_code == 201, confirmed.data
+
+    trip.refresh_from_db()
+    assert trip.status == Trip.Status.DELIVERED
+    assert trip.sale.unit_selling_price == Decimal("500.0000")
 
 
 @pytest.mark.django_db

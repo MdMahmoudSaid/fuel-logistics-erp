@@ -228,6 +228,8 @@ describe('TripDetail expenses section', () => {
       expenses_by_category: { customs: '90000.00' },
       total_expenses: '90000.00',
       margin: '1562500.00',
+      unit_cost: '611.11',
+      unit_profit: '38.89',
     }
 
     const wrapper = await mountAt()
@@ -250,11 +252,34 @@ describe('TripDetail expenses section', () => {
       expenses_by_category: {},
       total_expenses: '0.00',
       margin: '-1000.00',
+      unit_cost: '2000.00',
+      unit_profit: '-1500.00',
     }
 
     const wrapper = await mountAt()
 
     const marginValue = wrapper.findAll('dd').find((dd) => dd.text().includes('-1,000'))
     expect(marginValue?.find('span').classes()).toContain('text-critique')
+  })
+
+  it('shows the unit cost and unit profit lines from the margin breakdown', async () => {
+    setUser({ operations: ['view'], finance: ['view'] })
+    marginToReturn = {
+      available: true,
+      revenue: '29152500.00',
+      fuel_purchase_cost: '27000000.00',
+      transport_cost: '500000.00',
+      expenses_by_category: {},
+      total_expenses: '0.00',
+      margin: '1652500.00',
+      unit_cost: '611.11',
+      unit_profit: '38.89',
+    }
+
+    const wrapper = await mountAt()
+
+    const text = wrapper.text()
+    expect(text).toContain('611.11')
+    expect(text).toContain('38.89')
   })
 })

@@ -4,6 +4,7 @@ import type {
   DeliveryControl,
   DeliveryMethod,
   Trip,
+  TripCostBasis,
   TripMargin,
   TripStatusHistoryEntry,
 } from './types'
@@ -18,6 +19,15 @@ export function fetchTripHistory(tripId: number): Promise<TripStatusHistoryEntry
 // once the trip has a Sale - see TripMarginBreakdown/TripMarginUnavailable.
 export function fetchTripMargin(tripId: number): Promise<TripMargin> {
   return apiClient.get<TripMargin>(`/trips/${tripId}/margin/`).then((r) => r.data)
+}
+
+// TripCostService.calculate_trip_cost_basis (backend/apps/trips/services.py)
+// via TripViewSet.cost_basis - available from the moment a trip is loaded,
+// unlike fetchTripMargin above which needs a Sale. Used by
+// DeliveryControlForm to show "prix de revient"/live benefit while the
+// operator fills in the selling price (client modifications plan Task 3).
+export function fetchTripCostBasis(tripId: number): Promise<TripCostBasis> {
+  return apiClient.get<TripCostBasis>(`/trips/${tripId}/cost-basis/`).then((r) => r.data)
 }
 
 // Backend/apps/trips/services.py TripWorkflowService is the sole authority
@@ -40,6 +50,10 @@ export interface DeliveryControlPayload {
   method: DeliveryMethod
   unit_selling_price: string
   anomaly_confirmed_by?: number
+  // Client modifications Task 3: only sent once the operator has checked
+  // the loss-confirmation box - see DeliveryService.record_delivery()'s
+  // SaleBelowCostConfirmationRequired.
+  confirm_loss?: boolean
   notes?: string
 }
 

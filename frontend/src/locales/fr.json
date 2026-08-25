@@ -249,6 +249,8 @@
       "fuelPurchaseCost": "Achat carburant",
       "transportCost": "Coût transporteur",
       "totalExpenses": "Frais annexes",
+      "unitCost": "Coût unitaire",
+      "unitProfit": "Bénéfice unitaire",
       "netMargin": "Marge nette"
     },
     "newForm": {
@@ -295,9 +297,13 @@
       "unitSellingPrice": "Prix de vente unitaire (MRU/L)",
       "lossEstimate": "Perte (est.)",
       "chargeableLossEstimate": "Perte facturable (est.)",
+      "costBasis": "Prix de revient (est.)",
+      "benefit": "Bénéfice (est.)",
       "anomalyWarning": "La quantité reçue dépasse la quantité chargée — ceci est une anomalie et nécessite une confirmation par un utilisateur autorisé avant de pouvoir être enregistrée.",
       "anomalyConfirm": "Je confirme cette anomalie en tant qu'utilisateur autorisé ({email})",
       "anomalyAskAuthorized": "Demandez à un utilisateur autorisé de confirmer cette anomalie avant de pouvoir l'enregistrer.",
+      "lossWarning": "Le prix de vente est inférieur au prix de revient — cette vente sera à perte et nécessite une confirmation avant de pouvoir être enregistrée.",
+      "lossConfirm": "Je confirme cette vente à perte",
       "recording": "Enregistrement…",
       "confirmDelivery": "Confirmer la livraison",
       "recordError": "Impossible d'enregistrer la livraison."

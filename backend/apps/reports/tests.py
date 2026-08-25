@@ -182,6 +182,35 @@ def test_get_cost_breakdown_matches_current_margin_and_splits_expenses_by_catego
 
 
 @pytest.mark.django_db
+def test_get_cost_breakdown_returns_unit_cost_and_unit_profit_with_fuel_transport_and_expense():
+    """Client modifications Task 3: a trip with supplier cost (fuel), a
+    transport fee and a customs expense must return a correct unit_cost/
+    unit_profit, sourced from TripCostService.calculate_trip_cost_basis
+    rather than a duplicated formula (guide Section 5.5)."""
+    trip, admin_user = _make_delivered_trip_with_sale("UNITCOST")
+    expense = Expense.objects.create(
+        category=Expense.Category.CUSTOMS,
+        amount=Decimal("50000.00"),
+        calculation_method=Expense.CalculationMethod.MANUAL,
+        date="2026-08-18",
+    )
+    ExpenseAllocation.objects.create(
+        expense=expense,
+        content_type=ContentType.objects.get_for_model(Trip),
+        object_id=trip.id,
+        allocated_amount=Decimal("50000.00"),
+    )
+
+    breakdown = TripProfitService.get_cost_breakdown(trip)
+
+    # fuel 45,000 x 600 = 27,000,000 + transport 1,500,000 + customs 50,000
+    # = 28,550,000 total cost, over 45,000 L loaded.
+    expected_unit_cost = Decimal("28550000.000000") / Decimal("45000.00")
+    assert breakdown["unit_cost"] == expected_unit_cost
+    assert breakdown["unit_profit"] == Decimal("650.0000") - expected_unit_cost
+
+
+@pytest.mark.django_db
 def test_estimated_margin_uses_customer_order_expected_price_before_sale():
     customer = Customer.objects.create(name="Client EST")
     product = Product.objects.get(code="gasoil")

@@ -162,11 +162,30 @@ export interface TripMarginBreakdown {
   expenses_by_category: Record<string, string>
   total_expenses: string
   margin: string
+  // Client modifications Task 3.
+  unit_cost: string
+  unit_profit: string
 }
 export interface TripMarginUnavailable {
   available: false
 }
 export type TripMargin = TripMarginBreakdown | TripMarginUnavailable
+
+// Mirrors GET /api/trips/{id}/cost-basis/ (backend/apps/trips/views.py
+// TripViewSet.cost_basis, delegating to
+// TripCostService.calculate_trip_cost_basis) - available from the moment a
+// trip is loaded, unlike TripMargin which needs a Sale. Used by
+// DeliveryControlForm to show "prix de revient" / live benefit while the
+// operator fills in the selling price (client modifications plan Task 3).
+export interface TripCostBasis {
+  fuel_purchase_cost: string
+  transport_cost: string
+  expenses_by_category: Record<string, string>
+  total_expenses: string
+  total_cost: string
+  quantity: string
+  unit_cost: string
+}
 
 // Mirrors backend/apps/trips/models.py DeliveryControl.Method.
 export type DeliveryMethod = 'MANUAL_GAUGE' | 'METER'

@@ -309,6 +309,13 @@ class DeliveryControlRequestSerializer(serializers.Serializer):
         required=False,
         allow_null=True,
     )
+    # Client modifications Task 3: explicit acknowledgement that this Sale's
+    # unit_selling_price is below the trip's unit cost
+    # (TripCostService.calculate_trip_cost_basis) - the below-cost check
+    # itself lives solely in DeliveryService.record_delivery
+    # (SaleBelowCostConfirmationRequired), same "don't duplicate a rule
+    # across serializer and service" convention as the anomaly gate above.
+    confirm_loss = serializers.BooleanField(required=False, default=False)
 
 
 class AssignCustomerRequestSerializer(serializers.Serializer):

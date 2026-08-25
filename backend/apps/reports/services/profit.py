@@ -14,6 +14,7 @@ from django.db.models import Sum
 from apps.finance.models import Expense, ExpenseAllocation, TransportPayment
 from apps.sales.models import ProductSellingPriceHistory
 from apps.trips.models import Trip
+from apps.trips.services import TripCostService
 
 ZERO = Decimal("0.00")
 
@@ -119,31 +120,32 @@ class TripProfitService:
     @classmethod
     def get_cost_breakdown(cls, trip: Trip) -> dict:
         """Detailed revenue/cost decomposition for a trip's current margin
-        (guide Section 9.1's recommended component list)."""
+        (guide Section 9.1's recommended component list).
+
+        The cost side (fuel/transport/expenses/total_cost/unit_cost) is
+        sourced from TripCostService.calculate_trip_cost_basis rather than
+        re-derived here (client modifications plan Task 3 / guide Section
+        5.5: never duplicate a formula across services) - this method adds
+        only what TripCostService doesn't know about: revenue and margin,
+        which need the trip's Sale."""
         sale = getattr(trip, "sale", None)
         if sale is None:
             raise ValueError(
                 f"Le trajet {trip.reference} n'a pas encore de vente ; impossible de "
                 "decomposer ses couts."
             )
-        expenses_by_category: dict[str, Decimal] = {}
-        for allocation in cls._expense_allocations(trip).select_related("expense"):
-            category = allocation.expense.category
-            expenses_by_category[category] = (
-                expenses_by_category.get(category, ZERO) + allocation.allocated_amount
-            )
+        cost_basis = TripCostService.calculate_trip_cost_basis(trip)
         revenue = sale.delivered_quantity * sale.unit_selling_price
-        fuel_purchase_cost = cls._fuel_purchase_cost(trip)
-        transport_cost = cls._transport_cost(trip)
-        total_expenses = sum(expenses_by_category.values(), ZERO)
-        margin = (revenue - fuel_purchase_cost - transport_cost - total_expenses).quantize(
-            Decimal("0.01")
-        )
+        margin = (revenue - cost_basis["total_cost"]).quantize(Decimal("0.01"))
+        unit_cost = cost_basis["unit_cost"]
+        unit_profit = sale.unit_selling_price - unit_cost
         return {
             "revenue": revenue,
-            "fuel_purchase_cost": fuel_purchase_cost,
-            "transport_cost": transport_cost,
-            "expenses_by_category": expenses_by_category,
-            "total_expenses": total_expenses,
+            "fuel_purchase_cost": cost_basis["fuel_purchase_cost"],
+            "transport_cost": cost_basis["transport_cost"],
+            "expenses_by_category": cost_basis["expenses_by_category"],
+            "total_expenses": cost_basis["total_expenses"],
             "margin": margin,
+            "unit_cost": unit_cost,
+            "unit_profit": unit_profit,
         }

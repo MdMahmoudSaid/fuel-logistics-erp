@@ -459,6 +459,20 @@ function formatDateTime(value: string) {
             <dt class="text-texte-2">{{ t(`expenseCategory.${category}`) }}</dt>
             <dd><MonoValue :value="`-${Number(amount).toLocaleString()}`" align="left" /></dd>
           </div>
+          <div class="flex items-center justify-between py-2">
+            <dt class="text-texte-2">{{ t('trips.detail.unitCost') }}</dt>
+            <dd><MonoValue :value="Number(margin.unit_cost).toLocaleString()" align="left" /></dd>
+          </div>
+          <div class="flex items-center justify-between py-2">
+            <dt class="text-texte-2">{{ t('trips.detail.unitProfit') }}</dt>
+            <dd>
+              <MonoValue
+                :class="Number(margin.unit_profit) < 0 ? 'text-critique' : 'text-livre'"
+                :value="Number(margin.unit_profit).toLocaleString()"
+                align="left"
+              />
+            </dd>
+          </div>
           <div class="flex items-center justify-between py-3">
             <dt class="text-texte font-semibold uppercase">{{ t('trips.detail.netMargin') }}</dt>
             <dd>
