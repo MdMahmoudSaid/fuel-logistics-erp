@@ -130,6 +130,7 @@
     "deactivate": "Deactivate",
     "toggleError": "Could not change status — check your permissions.",
     "showInactive": "Show inactive",
+    "viewLedger": "Ledger",
     "titles": {
       "products": "Products",
       "suppliers": "Suppliers",
@@ -234,7 +235,19 @@
       "gap": "Loss",
       "deliveredOverLoaded": "Delivered / Loaded",
       "history": "History",
-      "noHistory": "No status changes yet."
+      "noHistory": "No status changes yet.",
+      "expenses": "Trip expenses",
+      "addExpense": "+ Add expense",
+      "noExpenses": "No expenses recorded for this trip.",
+      "expensesLoadError": "Could not load this trip's expenses.",
+      "margin": "Trip profitability",
+      "marginUnavailable": "Available once delivery is confirmed.",
+      "marginLoadError": "Could not load this trip's profitability.",
+      "revenue": "Revenue",
+      "fuelPurchaseCost": "Fuel purchase",
+      "transportCost": "Transporter cost",
+      "totalExpenses": "Other expenses",
+      "netMargin": "Net margin"
     },
     "newForm": {
       "title": "New Trip (Loading)",
@@ -349,14 +362,22 @@
       "unallocatedCredit": "Unallocated credit",
       "allocationOptional": "Allocation (optional)",
       "addLine": "+ Add line",
-      "allocationHint": "Split this expense across trips/trucks/customers via content type id + object id.",
-      "contentTypeId": "Content type id",
-      "objectId": "Object id",
+      "allocationHint": "Split this expense across trips, trucks, customers, suppliers or transporters.",
+      "pickKind": "Entity type",
+      "searchEntity": "Search…",
+      "changeSelection": "Change",
       "amountPlaceholder": "Amount",
       "remove": "Remove",
       "saving": "Saving…",
       "save": "Save expense",
       "saveError": "Could not save this expense — check the fields."
+    },
+    "allocationKind": {
+      "trip": "Trip",
+      "truck": "Truck",
+      "customer": "Customer",
+      "supplier": "Supplier",
+      "transporter": "Transporter"
     },
     "payment": {
       "title": "New Customer Payment",

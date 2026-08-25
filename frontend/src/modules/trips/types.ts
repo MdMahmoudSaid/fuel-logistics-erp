@@ -151,6 +151,23 @@ export interface TripStatusHistoryEntry {
   notes: string
 }
 
+// Mirrors GET /api/trips/{id}/margin/ (backend/apps/trips/views.py
+// TripViewSet.margin, delegating to TripProfitService.get_cost_breakdown) -
+// only available once the trip has a Sale (delivery confirmed).
+export interface TripMarginBreakdown {
+  available: true
+  revenue: string
+  fuel_purchase_cost: string
+  transport_cost: string
+  expenses_by_category: Record<string, string>
+  total_expenses: string
+  margin: string
+}
+export interface TripMarginUnavailable {
+  available: false
+}
+export type TripMargin = TripMarginBreakdown | TripMarginUnavailable
+
 // Mirrors backend/apps/trips/models.py DeliveryControl.Method.
 export type DeliveryMethod = 'MANUAL_GAUGE' | 'METER'
 

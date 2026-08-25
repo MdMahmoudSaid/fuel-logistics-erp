@@ -130,6 +130,7 @@
     "deactivate": "Désactiver",
     "toggleError": "Impossible de changer le statut — vérifiez vos droits.",
     "showInactive": "Afficher les inactifs",
+    "viewLedger": "Grand livre",
     "titles": {
       "products": "Produits",
       "suppliers": "Fournisseurs",
@@ -235,7 +236,19 @@
       "gap": "Écart",
       "deliveredOverLoaded": "Livré / Chargé",
       "history": "Historique",
-      "noHistory": "Aucun changement de statut."
+      "noHistory": "Aucun changement de statut.",
+      "expenses": "Frais du trajet",
+      "addExpense": "+ Ajouter un frais",
+      "noExpenses": "Aucun frais enregistré pour ce trajet.",
+      "expensesLoadError": "Impossible de charger les frais de ce trajet.",
+      "margin": "Rentabilité du trajet",
+      "marginUnavailable": "Disponible une fois la livraison confirmée.",
+      "marginLoadError": "Impossible de charger la rentabilité de ce trajet.",
+      "revenue": "Chiffre d'affaires",
+      "fuelPurchaseCost": "Achat carburant",
+      "transportCost": "Coût transporteur",
+      "totalExpenses": "Frais annexes",
+      "netMargin": "Marge nette"
     },
     "newForm": {
       "title": "Nouveau trajet (chargement)",
@@ -351,14 +364,22 @@
       "unallocatedCredit": "Crédit non alloué",
       "allocationOptional": "Répartition (optionnel)",
       "addLine": "+ Ajouter une ligne",
-      "allocationHint": "Répartissez cette dépense entre trajets/camions/clients via l'id de type de contenu + l'id d'objet.",
-      "contentTypeId": "ID type de contenu",
-      "objectId": "ID objet",
+      "allocationHint": "Répartissez cette dépense entre trajets, camions, clients, fournisseurs ou transporteurs.",
+      "pickKind": "Type d'entité",
+      "searchEntity": "Rechercher…",
+      "changeSelection": "Changer",
       "amountPlaceholder": "Montant",
       "remove": "Retirer",
       "saving": "Enregistrement…",
       "save": "Enregistrer la dépense",
       "saveError": "Impossible d'enregistrer cette dépense — vérifiez les champs."
+    },
+    "allocationKind": {
+      "trip": "Trajet",
+      "truck": "Camion",
+      "customer": "Client",
+      "supplier": "Fournisseur",
+      "transporter": "Transporteur"
     },
     "payment": {
       "title": "Nouveau paiement client",

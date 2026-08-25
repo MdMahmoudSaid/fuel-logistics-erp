@@ -13,6 +13,7 @@ const props = defineProps<{
   title: string
   resource: ResourceApi<Record<string, unknown>>
   fields: FieldSchema[]
+  ledgerRouteName?: string
 }>()
 
 const rows = ref<Record<string, unknown>[]>([])
@@ -115,6 +116,7 @@ onMounted(load)
         :columns="columns"
         :rows="visibleRows"
         :active-toggle="hasActiveField"
+        :ledger-route-name="ledgerRouteName"
         @edit="openEdit"
         @delete="onDelete"
         @toggle-active="onToggleActive"

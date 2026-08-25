@@ -1,11 +1,23 @@
 import { apiClient } from '@/api/client'
 import { createResourceApi } from '@/api/resource'
-import type { DeliveryControl, DeliveryMethod, Trip, TripStatusHistoryEntry } from './types'
+import type {
+  DeliveryControl,
+  DeliveryMethod,
+  Trip,
+  TripMargin,
+  TripStatusHistoryEntry,
+} from './types'
 
 export const tripResource = createResourceApi<Trip>('/trips/')
 
 export function fetchTripHistory(tripId: number): Promise<TripStatusHistoryEntry[]> {
   return apiClient.get<TripStatusHistoryEntry[]>(`/trips/${tripId}/history/`).then((r) => r.data)
+}
+
+// TripProfitService.get_cost_breakdown (guide Section 9.1), only available
+// once the trip has a Sale - see TripMarginBreakdown/TripMarginUnavailable.
+export function fetchTripMargin(tripId: number): Promise<TripMargin> {
+  return apiClient.get<TripMargin>(`/trips/${tripId}/margin/`).then((r) => r.data)
 }
 
 // Backend/apps/trips/services.py TripWorkflowService is the sole authority

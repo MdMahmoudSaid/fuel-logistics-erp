@@ -7,6 +7,7 @@ defineProps<{
   columns: { key: string; label: string; type?: FieldType; options?: FieldOption[] }[]
   rows: Record<string, unknown>[]
   activeToggle?: boolean
+  ledgerRouteName?: string
 }>()
 
 defineEmits<{
@@ -48,6 +49,13 @@ const { t } = useI18n()
         </td>
         <td class="px-3 py-2.5 text-end whitespace-nowrap">
           <span class="inline-flex items-center gap-3">
+            <RouterLink
+              v-if="ledgerRouteName"
+              class="text-texte-2 hover:text-texte"
+              :to="{ name: ledgerRouteName, params: { id: String(row.id) } }"
+            >
+              {{ t('masterData.viewLedger') }}
+            </RouterLink>
             <button class="text-texte-2 hover:text-texte" @click="$emit('edit', row)">
               {{ t('masterData.edit') }}
             </button>

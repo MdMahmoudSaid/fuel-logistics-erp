@@ -8,6 +8,7 @@ ACTION_MAP = {
     "next_reference": "view",
     "trips": "view",
     "history": "view",
+    "margin": "view",
     # Dashboard's single custom read action (docs/PHASE_6_PLAN.md Etape 5).
     "summary": "view",
     "create": "create",

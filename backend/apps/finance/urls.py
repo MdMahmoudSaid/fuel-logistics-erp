@@ -1,6 +1,7 @@
 from rest_framework.routers import DefaultRouter
 
 from .views import (
+    AllocatableTypesViewSet,
     BankAccountViewSet,
     CashAccountViewSet,
     CustomerPaymentViewSet,
@@ -20,5 +21,6 @@ router.register("transporter-advances", TransporterAdvanceViewSet, basename="tra
 router.register("transport-payments", TransportPaymentViewSet, basename="transportpayment")
 router.register("expenses", ExpenseViewSet, basename="expense")
 router.register("treasury-transactions", TreasuryTransactionViewSet, basename="treasurytransaction")
+router.register("allocatable-types", AllocatableTypesViewSet, basename="allocatabletype")
 
 urlpatterns = router.urls

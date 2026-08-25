@@ -1,8 +1,20 @@
 import { describe, it, expect, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
+import { createRouter, createWebHistory } from 'vue-router'
 import MasterDataView from '@/components/master-data/MasterDataView.vue'
 import type { FieldSchema } from '@/components/master-data/types'
 import { i18n } from '@/i18n'
+
+function makeRouter() {
+  const stub = { template: '<div />' }
+  return createRouter({
+    history: createWebHistory(),
+    routes: [
+      { path: '/', name: 'home', component: stub },
+      { path: '/customers/:id/ledger', name: 'customer-ledger', component: stub },
+    ],
+  })
+}
 
 const fields: FieldSchema[] = [
   { key: 'name', label: 'Name', type: 'text', required: true },
@@ -60,11 +72,14 @@ describe('MasterDataView', () => {
     expect(wrapper.text()).toContain('Shell Mali')
   })
 
-  it('deletes a record through the Delete flow', async () => {
+  it('deletes a record through the Delete flow when there is no is_active field', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
-    const resource = makeResource([{ id: 1, name: 'Total Senegal', is_active: true }])
+    const noActiveFields: FieldSchema[] = [
+      { key: 'name', label: 'Name', type: 'text', required: true },
+    ]
+    const resource = makeResource([{ id: 1, name: 'Total Senegal' }])
     const wrapper = mount(MasterDataView, {
-      props: { title: 'Suppliers', resource, fields },
+      props: { title: 'Suppliers', resource, fields: noActiveFields },
       global: { plugins: [i18n] },
     })
     await flushPromises()
@@ -77,5 +92,59 @@ describe('MasterDataView', () => {
 
     expect(resource.remove).toHaveBeenCalledWith(1)
     expect(wrapper.text()).not.toContain('Total Senegal')
+  })
+
+  it('toggles active status instead of deleting when an is_active field exists', async () => {
+    const resource = makeResource([{ id: 1, name: 'Total Senegal', is_active: true }])
+    const wrapper = mount(MasterDataView, {
+      props: { title: 'Suppliers', resource, fields },
+      global: { plugins: [i18n] },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Total Senegal')
+    expect(wrapper.findAll('button').find((b) => b.text() === 'Supprimer')).toBeUndefined()
+
+    const toggleButton = wrapper.findAll('button').find((b) => b.text() === 'Désactiver')
+    await toggleButton!.trigger('click')
+    await flushPromises()
+
+    expect(resource.update).toHaveBeenCalledWith(1, { is_active: false })
+    // Inactive records are hidden by default once toggled off.
+    expect(wrapper.text()).not.toContain('Total Senegal')
+  })
+
+  it('reveals inactive records when "Afficher les inactifs" is checked', async () => {
+    const resource = makeResource([{ id: 1, name: 'Total Senegal', is_active: false }])
+    const wrapper = mount(MasterDataView, {
+      props: { title: 'Suppliers', resource, fields },
+      global: { plugins: [i18n] },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('Total Senegal')
+
+    await wrapper.find('input[type=checkbox]').setValue(true)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Total Senegal')
+
+    const toggleButton = wrapper.findAll('button').find((b) => b.text() === 'Activer')
+    await toggleButton!.trigger('click')
+    await flushPromises()
+
+    expect(resource.update).toHaveBeenCalledWith(1, { is_active: true })
+  })
+
+  it('renders a ledger link per row when ledgerRouteName is passed through', async () => {
+    const resource = makeResource([{ id: 7, name: 'Total Senegal', is_active: true }])
+    const wrapper = mount(MasterDataView, {
+      props: { title: 'Suppliers', resource, fields, ledgerRouteName: 'customer-ledger' },
+      global: { plugins: [i18n, makeRouter()] },
+    })
+    await flushPromises()
+
+    const link = wrapper.find('a[href="/customers/7/ledger"]')
+    expect(link.exists()).toBe(true)
   })
 })

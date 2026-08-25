@@ -1,3 +1,4 @@
+from django.contrib.contenttypes.models import ContentType
 from rest_framework import status as http_status
 from rest_framework import viewsets
 from rest_framework.decorators import action
@@ -5,6 +6,7 @@ from rest_framework.exceptions import MethodNotAllowed
 from rest_framework.response import Response
 
 from apps.accounts.permissions import HasModulePermission
+from apps.trips.models import Trip
 
 from .models import (
     BankAccount,
@@ -134,6 +136,20 @@ class ExpenseViewSet(viewsets.ModelViewSet):
     permission_classes = [HasModulePermission]
     module = "finance"
 
+    def get_queryset(self):
+        # ?trip=<id>: expenses allocated to one trip (TripDetail's "Frais du
+        # trajet" tab) - Expense has no direct FK to Trip, only the generic
+        # ExpenseAllocation link, so this can't be a plain filterset field
+        # (same generic-FK lookup TripProfitService._expense_allocations uses).
+        queryset = super().get_queryset()
+        trip_id = self.request.query_params.get("trip")
+        if trip_id:
+            trip_content_type = ContentType.objects.get_for_model(Trip)
+            queryset = queryset.filter(
+                allocations__content_type=trip_content_type, allocations__object_id=trip_id
+            ).distinct()
+        return queryset
+
     def destroy(self, request, *args, **kwargs):
         raise MethodNotAllowed("DELETE", detail=_NO_HARD_DELETE_DETAIL)
 
@@ -224,3 +240,39 @@ class TreasuryTransactionViewSet(viewsets.ModelViewSet):
             },
             status=http_status.HTTP_201_CREATED,
         )
+
+
+# Entity kinds ExpenseAllocation.content_object can point at (guide Section
+# 8.7: "split across several trips, trucks, customers, suppliers or
+# transporters"). (app_label, model) matches each model's Django default
+# app_label/model_name - see ContentType.objects.get_for_model().
+_ALLOCATABLE_KINDS = [
+    ("trip", "trips", "trip"),
+    ("truck", "transport", "truck"),
+    ("customer", "customers", "customer"),
+    ("supplier", "suppliers", "supplier"),
+    ("transporter", "transport", "transporter"),
+]
+
+
+class AllocatableTypesViewSet(viewsets.ViewSet):
+    """Read-only lookup from entity kind to its ContentType PK, so the
+    frontend expense-allocation picker can resolve a human choice (e.g.
+    "Trip") to the numeric content_type ExpenseAllocationInputSerializer
+    expects - nothing else exposes that mapping.
+
+    GET /api/allocatable-types/
+    """
+
+    permission_classes = [HasModulePermission]
+    module = "finance"
+
+    def list(self, request):
+        data = [
+            {
+                "kind": kind,
+                "content_type": ContentType.objects.get(app_label=app_label, model=model).id,
+            }
+            for kind, app_label, model in _ALLOCATABLE_KINDS
+        ]
+        return Response(data)

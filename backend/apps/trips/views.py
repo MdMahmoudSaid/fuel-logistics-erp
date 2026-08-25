@@ -7,6 +7,8 @@ from rest_framework.response import Response
 
 from apps.accounts.permissions import HasModulePermission
 from apps.core.reference import generate_monthly_reference
+from apps.reports.serialization import decimals_to_str
+from apps.reports.services.profit import TripProfitService
 
 from .models import Trip
 from .serializers import (
@@ -149,6 +151,22 @@ class TripViewSet(viewsets.ModelViewSet):
         trip = self.get_object()
         history = trip.status_history.all()
         return Response(TripStatusHistorySerializer(history, many=True).data)
+
+    @action(detail=True, methods=["get"])
+    def margin(self, request, pk=None):
+        """Revenue/cost breakdown behind this trip's current margin
+        (TripProfitService.get_cost_breakdown, guide Section 9.1) -
+        available once the trip has a Sale (delivery confirmed), not
+        before, so this reports {"available": false} rather than an error
+        for a trip still in progress.
+
+        GET /api/trips/{id}/margin/
+        """
+        trip = self.get_object()
+        if not hasattr(trip, "sale"):
+            return Response({"available": False})
+        breakdown = TripProfitService.get_cost_breakdown(trip)
+        return Response({"available": True, **decimals_to_str(breakdown)})
 
     @action(detail=True, methods=["post"], url_path="delivery-control")
     def delivery_control(self, request, pk=None):

@@ -22,5 +22,6 @@ const fields = computed<FieldSchema[]>(() => [
     :title="t('masterData.titles.transporters')"
     :resource="resource"
     :fields="fields"
+    ledger-route-name="transporter-ledger"
   />
 </template>

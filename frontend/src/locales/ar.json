@@ -130,6 +130,7 @@
     "deactivate": "تعطيل",
     "toggleError": "تعذر تغيير الحالة — تحقق من صلاحياتك.",
     "showInactive": "إظهار غير النشطين",
+    "viewLedger": "دفتر الأستاذ",
     "titles": {
       "products": "المنتجات",
       "suppliers": "الموردون",
@@ -234,7 +235,19 @@
       "gap": "الفارق",
       "deliveredOverLoaded": "المسلَّم / المحمَّل",
       "history": "السجل",
-      "noHistory": "لا يوجد تغيير في الحالة."
+      "noHistory": "لا يوجد تغيير في الحالة.",
+      "expenses": "مصاريف الرحلة",
+      "addExpense": "+ إضافة مصروف",
+      "noExpenses": "لا توجد مصاريف مسجَّلة لهذه الرحلة.",
+      "expensesLoadError": "تعذر تحميل مصاريف هذه الرحلة.",
+      "margin": "ربحية الرحلة",
+      "marginUnavailable": "متاحة بعد تأكيد التسليم.",
+      "marginLoadError": "تعذر تحميل ربحية هذه الرحلة.",
+      "revenue": "رقم الأعمال",
+      "fuelPurchaseCost": "شراء الوقود",
+      "transportCost": "تكلفة الناقل",
+      "totalExpenses": "مصاريف إضافية",
+      "netMargin": "الهامش الصافي"
     },
     "newForm": {
       "title": "رحلة جديدة (تحميل)",
@@ -349,14 +362,22 @@
       "unallocatedCredit": "رصيد غير مخصَّص",
       "allocationOptional": "التوزيع (اختياري)",
       "addLine": "+ إضافة سطر",
-      "allocationHint": "وزّع هذا المصروف بين الرحلات/الشاحنات/العملاء عبر معرّف نوع المحتوى + معرّف الكائن.",
-      "contentTypeId": "معرّف نوع المحتوى",
-      "objectId": "معرّف الكائن",
+      "allocationHint": "وزّع هذا المصروف بين الرحلات أو الشاحنات أو العملاء أو الموردين أو الناقلين.",
+      "pickKind": "نوع الكيان",
+      "searchEntity": "بحث…",
+      "changeSelection": "تغيير",
       "amountPlaceholder": "المبلغ",
       "remove": "إزالة",
       "saving": "جارٍ الحفظ…",
       "save": "حفظ المصروف",
       "saveError": "تعذر حفظ هذا المصروف — تحقق من الحقول."
+    },
+    "allocationKind": {
+      "trip": "رحلة",
+      "truck": "شاحنة",
+      "customer": "عميل",
+      "supplier": "مورد",
+      "transporter": "ناقل"
     },
     "payment": {
       "title": "دفعة عميل جديدة",

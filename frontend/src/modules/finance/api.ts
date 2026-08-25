@@ -1,6 +1,8 @@
 import { apiClient } from '@/api/client'
 import { createResourceApi } from '@/api/resource'
 import type {
+  AllocatableKind,
+  AllocatableTypeMap,
   CustomerLedger,
   CustomerPayment,
   Expense,
@@ -17,6 +19,16 @@ export const transporterAdvanceResource =
   createResourceApi<TransporterAdvance>('/transporter-advances/')
 export const transportPaymentResource = createResourceApi<TransportPayment>('/transport-payments/')
 export const expenseResource = createResourceApi<Expense>('/expenses/')
+
+// GET /api/allocatable-types/ (backend/apps/finance/views.py
+// AllocatableTypesViewSet) - kind -> ContentType PK lookup the allocation
+// picker needs to turn a human choice into the numeric content_type
+// ExpenseAllocationInputSerializer expects.
+export function fetchAllocatableTypes(): Promise<AllocatableTypeMap> {
+  return apiClient
+    .get<{ kind: AllocatableKind; content_type: number }[]>('/allocatable-types/')
+    .then((r) => Object.fromEntries(r.data.map((row) => [row.kind, row.content_type])))
+}
 export const treasuryTransactionResource =
   createResourceApi<TreasuryTransaction>('/treasury-transactions/')
 

@@ -1357,3 +1357,53 @@ def test_api_invoice_amount_based_on_received_quantity_not_loaded():
     assert invoices_response.data["count"] == 1
     invoice_data = invoices_response.data["results"][0]
     assert invoice_data["total_amount"] == "29152500.00"  # 44,850 x 650, not 45,000 x 650
+
+
+@pytest.mark.django_db
+def test_api_trip_margin_unavailable_before_sale():
+    """TripDetail.vue's profit block: a trip with no Sale yet (i.e. not
+    delivered) reports {"available": false} instead of an error."""
+    fx = _setup_fixtures("API-MARGIN-NOSALE")
+    truck = _make_truck("TRK-MARGIN-NOSALE")
+    trip = _make_trip(fx, truck, "TRIP-MARGIN-NOSALE-001")
+
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+    response = client.get(f"/api/trips/{trip.id}/margin/")
+
+    assert response.status_code == 200
+    assert response.data == {"available": False}
+
+
+@pytest.mark.django_db
+def test_api_trip_margin_breakdown_after_delivery():
+    """Guide Section 9.1's cost breakdown, end-to-end through the API:
+    45,000 L @ 600 fuel cost, no transport payment or expenses recorded,
+    44,850 L delivered @ 650 -> margin = revenue - fuel cost."""
+    fx = _fixtures_with_customer("API-MARGIN-OK")
+    trip = _deliverable_trip(fx, "TRIP-API-MARGIN-OK-001")
+    ProductSellingPriceHistory.objects.create(
+        product=fx["product"], customer=fx["customer"],
+        price=Decimal("650.0000"), changed_by=fx["admin_user"],
+    )
+    DeliveryService.record_delivery(
+        trip_id=trip.id,
+        received_qty=Decimal("44850.00"),
+        control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE,
+        controller=fx["admin_user"],
+    )
+
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+    response = client.get(f"/api/trips/{trip.id}/margin/")
+
+    assert response.status_code == 200
+    assert response.data["available"] is True
+    # revenue/fuel_purchase_cost aren't quantized in TripProfitService (they
+    # multiply a 2dp quantity by a 4dp unit price) - only margin is.
+    assert response.data["revenue"] == "29152500.000000"
+    assert response.data["fuel_purchase_cost"] == "27000000.000000"
+    assert response.data["transport_cost"] == "0.00"
+    assert response.data["total_expenses"] == "0.00"
+    assert response.data["margin"] == "2152500.00"

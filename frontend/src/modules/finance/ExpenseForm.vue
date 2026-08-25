@@ -7,10 +7,18 @@ import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { createResourceApi } from '@/api/resource'
 import { translateApiError } from '@/i18n/apiErrors'
-import { expenseResource, fetchCustomerLedger, recordIndirectExpense } from './api'
+import {
+  expenseResource,
+  fetchAllocatableTypes,
+  fetchCustomerLedger,
+  recordIndirectExpense,
+} from './api'
 import { EXPENSE_CATEGORIES } from './types'
 import Button from '@/components/ui/Button.vue'
+import EntityAllocationPicker, { type AllocationDraft } from './EntityAllocationPicker.vue'
 import type {
+  AllocatableKind,
+  AllocatableTypeMap,
   CustomerBrief,
   CustomerLedgerInvoice,
   ExpenseAllocationInput,
@@ -18,6 +26,14 @@ import type {
   ExpenseCategory,
 } from './types'
 
+// When opened from a trip's "Frais du trajet" tab (TripDetail.vue), this
+// pre-seeds the first allocation line locked onto that trip - the amount is
+// still editable, and further lines can still be added (that's how a
+// monthly customs fee gets split across several trips: open the form once
+// from any one of them, then add one line per additional trip).
+const props = defineProps<{
+  presetAllocation?: { kind: AllocatableKind; objectId: number; label: string }
+}>()
 const emit = defineEmits<{ success: [customerId: number | null]; cancel: [] }>()
 const { t } = useI18n()
 
@@ -29,19 +45,26 @@ const form = ref({
   notes: '',
 })
 
-interface AllocationLine {
-  content_type: string
-  object_id: string
-  allocated_amount: string
+function emptyDraft(): AllocationDraft {
+  return { kind: '', objectId: null, label: '', allocatedAmount: '' }
 }
-const lines = ref<AllocationLine[]>([])
+
+const lines = ref<AllocationDraft[]>(
+  props.presetAllocation ? [{ ...props.presetAllocation, allocatedAmount: '' }] : [],
+)
+const lockedFirstLine = Boolean(props.presetAllocation)
 
 function addLine() {
-  lines.value.push({ content_type: '', object_id: '', allocated_amount: '' })
+  lines.value.push(emptyDraft())
 }
 function removeLine(index: number) {
   lines.value.splice(index, 1)
 }
+
+const allocatableTypes = ref<AllocatableTypeMap>({})
+onMounted(async () => {
+  allocatableTypes.value = await fetchAllocatableTypes()
+})
 
 // --- "Paid directly by customer" (indirect settlement) ---
 const paidByCustomerDirectly = ref(false)
@@ -85,11 +108,11 @@ async function onSubmit() {
     }
 
     const allocations: ExpenseAllocationInput[] = lines.value
-      .filter((line) => line.allocated_amount)
+      .filter((line) => line.kind && line.objectId !== null && line.allocatedAmount)
       .map((line) => ({
-        content_type: line.content_type ? Number(line.content_type) : null,
-        object_id: line.object_id ? Number(line.object_id) : null,
-        allocated_amount: line.allocated_amount,
+        content_type: allocatableTypes.value[line.kind as AllocatableKind] ?? null,
+        object_id: line.objectId,
+        allocated_amount: line.allocatedAmount,
       }))
 
     await expenseResource.create({
@@ -256,29 +279,17 @@ async function onSubmit() {
         <p class="text-texte-3 text-xs">
           {{ t('finance.expense.allocationHint') }}
         </p>
-        <div v-for="(line, index) in lines" :key="index" class="flex items-center gap-2">
-          <input
-            v-model="line.content_type"
-            type="number"
-            :placeholder="t('finance.expense.contentTypeId')"
-            class="border-ligne-forte h-12 w-36 rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-          />
-          <input
-            v-model="line.object_id"
-            type="number"
-            :placeholder="t('finance.expense.objectId')"
-            class="border-ligne-forte h-12 w-28 rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-          />
-          <input
-            v-model="line.allocated_amount"
-            type="number"
-            step="0.01"
-            :placeholder="t('finance.expense.amountPlaceholder')"
-            class="border-ligne-forte h-12 w-32 rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+        <div v-for="(line, index) in lines" :key="index" class="flex items-start gap-2">
+          <EntityAllocationPicker
+            :model-value="line"
+            :locked="lockedFirstLine && index === 0"
+            class="flex-1"
+            @update:model-value="lines[index] = $event"
           />
           <button
+            v-if="!(lockedFirstLine && index === 0)"
             type="button"
-            class="text-critique text-sm hover:brightness-90"
+            class="text-critique mt-3 text-sm hover:brightness-90"
             @click="removeLine(index)"
           >
             {{ t('finance.expense.remove') }}

@@ -648,6 +648,58 @@ def test_expense_allocation_requires_positive_amount():
             )
 
 
+@pytest.mark.django_db
+def test_allocatable_types_returns_content_type_id_per_kind(finance_client):
+    """The frontend allocation picker has no other way to resolve a human
+    choice ("Trip") to the ContentType PK ExpenseAllocationInputSerializer
+    expects - this is that lookup."""
+    response = finance_client.get("/api/allocatable-types/")
+
+    assert response.status_code == 200
+    kinds = {row["kind"]: row["content_type"] for row in response.data}
+    assert set(kinds) == {"trip", "truck", "customer", "supplier", "transporter"}
+    assert kinds["trip"] == ContentType.objects.get_for_model(Trip).id
+    assert kinds["truck"] == ContentType.objects.get_for_model(Truck).id
+
+
+@pytest.mark.django_db
+def test_expense_list_filters_by_trip(finance_client):
+    trip_a, _ = _make_trip_for_deduction("FLT-A")
+    trip_b, _ = _make_trip_for_deduction("FLT-B")
+    trip_content_type = ContentType.objects.get_for_model(Trip)
+
+    expense_a = Expense.objects.create(
+        category=Expense.Category.CUSTOMS,
+        amount=Decimal("100000.00"),
+        calculation_method=Expense.CalculationMethod.FIXED,
+        date="2026-08-18",
+    )
+    ExpenseAllocation.objects.create(
+        expense=expense_a,
+        content_type=trip_content_type,
+        object_id=trip_a.id,
+        allocated_amount=Decimal("100000.00"),
+    )
+    expense_b = Expense.objects.create(
+        category=Expense.Category.CUSTOMS,
+        amount=Decimal("50000.00"),
+        calculation_method=Expense.CalculationMethod.FIXED,
+        date="2026-08-18",
+    )
+    ExpenseAllocation.objects.create(
+        expense=expense_b,
+        content_type=trip_content_type,
+        object_id=trip_b.id,
+        allocated_amount=Decimal("50000.00"),
+    )
+
+    response = finance_client.get(f"/api/expenses/?trip={trip_a.id}")
+
+    assert response.status_code == 200
+    returned_ids = {row["id"] for row in response.data["results"]}
+    assert returned_ids == {expense_a.id}
+
+
 # ---------------------------------------------------------------------------
 # Phase 5 Etape 5: TreasuryTransaction (docs/PHASE_5_PLAN.md;
 # guide Section 8.10/D)

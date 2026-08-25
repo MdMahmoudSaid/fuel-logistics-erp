@@ -20,5 +20,10 @@ const fields = computed<FieldSchema[]>(() => [
 </script>
 
 <template>
-  <MasterDataView :title="t('masterData.titles.suppliers')" :resource="resource" :fields="fields" />
+  <MasterDataView
+    :title="t('masterData.titles.suppliers')"
+    :resource="resource"
+    :fields="fields"
+    ledger-route-name="supplier-ledger"
+  />
 </template>

@@ -166,6 +166,26 @@ export interface ExpenseAllocationInput {
   allocated_amount: string
 }
 
+// Mirrors backend/apps/finance/views.py's _ALLOCATABLE_KINDS - the entity
+// kinds an ExpenseAllocation can point at (guide Section 8.7: "split across
+// several trips, trucks, customers, suppliers or transporters"). Matches
+// the array keys GET /search/ returns them under, so a picked kind can
+// index straight into a SearchResults response.
+export type AllocatableKind = 'trip' | 'truck' | 'customer' | 'supplier' | 'transporter'
+
+export const ALLOCATABLE_KINDS: AllocatableKind[] = [
+  'trip',
+  'truck',
+  'customer',
+  'supplier',
+  'transporter',
+]
+
+// GET /api/allocatable-types/ - kind -> ContentType PK, the only way the
+// frontend can resolve a human choice ("Trip") to the numeric content_type
+// ExpenseAllocationInputSerializer expects.
+export type AllocatableTypeMap = Partial<Record<AllocatableKind, number>>
+
 export interface Expense {
   id: number
   category: ExpenseCategory
