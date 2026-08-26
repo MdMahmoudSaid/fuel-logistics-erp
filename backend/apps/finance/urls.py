@@ -6,6 +6,10 @@ from .views import (
     CashAccountViewSet,
     CustomerPaymentViewSet,
     ExpenseViewSet,
+    ShareholderLoanViewSet,
+    ShareholderProfitDistributionViewSet,
+    ShareholderViewSet,
+    ShareholderWithdrawalViewSet,
     SupplierPaymentViewSet,
     TransporterAdvanceViewSet,
     TransportPaymentViewSet,
@@ -22,5 +26,11 @@ router.register("transport-payments", TransportPaymentViewSet, basename="transpo
 router.register("expenses", ExpenseViewSet, basename="expense")
 router.register("treasury-transactions", TreasuryTransactionViewSet, basename="treasurytransaction")
 router.register("allocatable-types", AllocatableTypesViewSet, basename="allocatabletype")
+router.register("shareholders", ShareholderViewSet, basename="shareholder")
+router.register(
+    "shareholder-distributions", ShareholderProfitDistributionViewSet, basename="shareholderdistribution"
+)
+router.register("shareholder-loans", ShareholderLoanViewSet, basename="shareholderloan")
+router.register("shareholder-withdrawals", ShareholderWithdrawalViewSet, basename="shareholderwithdrawal")
 
 urlpatterns = router.urls

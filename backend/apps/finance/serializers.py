@@ -16,12 +16,25 @@ from .models import (
     Expense,
     ExpenseAllocation,
     PaymentAllocation,
+    Shareholder,
+    ShareholderLoan,
+    ShareholderProfitDistribution,
+    ShareholderProfitShare,
+    ShareholderWithdrawal,
     SupplierPayment,
     TransporterAdvance,
     TransportPayment,
     TreasuryTransaction,
 )
-from .services import FinancePostingService, PaymentAllocationService
+from .services import (
+    FinancePostingService,
+    PaymentAllocationService,
+    ShareholderDistributionService,
+    ShareholderParticipationError,
+    ShareholderService,
+    ShareholderWithdrawalError,
+    ShareholderWithdrawalService,
+)
 
 
 class BankAccountSerializer(serializers.ModelSerializer):
@@ -454,3 +467,204 @@ class TreasuryTransferRequestSerializer(serializers.Serializer):
                 "Impossible de transferer un compte vers lui-meme."
             )
         return data
+
+
+# ---------------------------------------------------------------------------
+# Task 7 (client modifications plan): Shareholders / Associates domain
+# ---------------------------------------------------------------------------
+
+
+class ShareholderBriefSerializer(serializers.ModelSerializer):
+    """Compact nested representation for borrower/lender/shareholder
+    references, same role as CustomerBrief/SupplierBrief elsewhere in this
+    module."""
+
+    class Meta:
+        model = Shareholder
+        fields = ["id", "name", "participation_percent"]
+
+
+class ShareholderSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Shareholder
+        fields = [
+            "id", "name", "participation_percent", "phone", "notes", "is_active",
+            "created_at", "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+    def validate(self, data):
+        """Active shareholder percentages cannot exceed 100 total (Task 7
+        design guidance) - a cross-row rule PostgreSQL can't enforce as a
+        single-row CheckConstraint, so it lives in
+        ShareholderService.validate_total_participation(), called here
+        before create/update of an active shareholder."""
+        is_active = data.get("is_active", getattr(self.instance, "is_active", True))
+        percent = data.get(
+            "participation_percent", getattr(self.instance, "participation_percent", None)
+        )
+        if is_active and percent is not None:
+            exclude_id = self.instance.id if self.instance is not None else None
+            try:
+                ShareholderService.validate_total_participation(percent, exclude_id=exclude_id)
+            except ShareholderParticipationError as exc:
+                raise serializers.ValidationError({"participation_percent": str(exc)})
+        return data
+
+
+class ShareholderProfitShareSerializer(serializers.ModelSerializer):
+    """Read-only - rows are only ever created by
+    ShareholderDistributionService.create_distribution()."""
+
+    shareholder_detail = ShareholderBriefSerializer(source="shareholder", read_only=True)
+    remaining_due = serializers.DecimalField(max_digits=16, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = ShareholderProfitShare
+        fields = [
+            "id", "distribution", "shareholder", "shareholder_detail",
+            "percent_snapshot", "amount_due", "amount_withdrawn", "remaining_due",
+            "created_at", "updated_at",
+        ]
+        read_only_fields = fields
+
+
+class ShareholderProfitDistributionSerializer(serializers.ModelSerializer):
+    """docs/Task 7 (client modifications plan).
+
+    Creation is delegated entirely to
+    ShareholderDistributionService.create_distribution(): the client only
+    ever sends period_start/period_end/total_profit, and the DRAFT
+    distribution plus its snapshotted ShareholderProfitShare rows come back
+    read-only in `shares`. Like SupplierPaymentSerializer, update() is
+    blocked - once created, a distribution moves forward only via the
+    dedicated `validate` action, never a plain PATCH.
+    """
+
+    created_by_detail = UserSerializer(source="created_by", read_only=True)
+    validated_by_detail = UserSerializer(source="validated_by", read_only=True)
+    shares = ShareholderProfitShareSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = ShareholderProfitDistribution
+        fields = [
+            "id", "period_start", "period_end", "total_profit", "status",
+            "created_by", "created_by_detail", "validated_by", "validated_by_detail",
+            "validated_at", "shares", "created_at", "updated_at",
+        ]
+        read_only_fields = [
+            "id", "status", "created_by", "validated_by", "validated_at",
+            "created_at", "updated_at",
+        ]
+
+    def create(self, validated_data):
+        actor = self.context["request"].user
+        return ShareholderDistributionService.create_distribution(
+            period_start=validated_data["period_start"],
+            period_end=validated_data["period_end"],
+            total_profit=validated_data["total_profit"],
+            actor=actor,
+        )
+
+    def update(self, instance, validated_data):
+        raise serializers.ValidationError(
+            "Une distribution ne peut pas etre modifiee ; utilisez l'action 'valider'."
+        )
+
+
+class ShareholderLoanSerializer(serializers.ModelSerializer):
+    borrower_detail = ShareholderBriefSerializer(source="borrower", read_only=True)
+    lender_detail = ShareholderBriefSerializer(source="lender", read_only=True)
+    remaining_amount = serializers.DecimalField(max_digits=16, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = ShareholderLoan
+        fields = [
+            "id", "borrower", "borrower_detail", "lender", "lender_detail",
+            "amount", "date", "status", "amount_repaid", "remaining_amount", "notes",
+            "created_at", "updated_at",
+        ]
+        # status is derived in ShareholderLoan.save() from amount_repaid vs
+        # amount - never a direct client write (same convention as
+        # TransporterAdvance.settled).
+        read_only_fields = ["id", "status", "created_at", "updated_at"]
+
+    def validate(self, data):
+        borrower = data.get("borrower", getattr(self.instance, "borrower", None))
+        lender = data.get("lender", getattr(self.instance, "lender", None))
+        amount = data.get("amount", getattr(self.instance, "amount", None))
+        amount_repaid = data.get("amount_repaid", getattr(self.instance, "amount_repaid", Decimal("0")))
+
+        if borrower and lender and borrower.id == lender.id:
+            raise serializers.ValidationError(
+                "L'emprunteur et le preteur ne peuvent pas etre le meme actionnaire."
+            )
+        if amount is not None and amount_repaid is not None and amount_repaid > amount:
+            raise serializers.ValidationError(
+                {"amount_repaid": "Le montant rembourse ne peut pas depasser le principal."}
+            )
+        return data
+
+
+class ShareholderWithdrawalSerializer(serializers.ModelSerializer):
+    """Creation is delegated to ShareholderWithdrawalService.record_withdrawal()
+    (Task 7, client modifications plan) - it, not this serializer, owns the
+    remaining-due check against profit_share, the amount_withdrawn
+    reconciliation, and the TreasuryTransaction(MONEY_OUT) posting, all
+    under one row lock."""
+
+    shareholder_detail = ShareholderBriefSerializer(source="shareholder", read_only=True)
+    recorded_by_detail = UserSerializer(source="recorded_by", read_only=True)
+
+    class Meta:
+        model = ShareholderWithdrawal
+        fields = [
+            "id", "shareholder", "shareholder_detail", "profit_share", "amount", "date",
+            "bank_account", "cash_account", "notes",
+            "recorded_by", "recorded_by_detail", "created_at", "updated_at",
+        ]
+        read_only_fields = ["id", "recorded_by", "created_at", "updated_at"]
+
+    def validate(self, data):
+        bank_account = data.get("bank_account", getattr(self.instance, "bank_account", None))
+        cash_account = data.get("cash_account", getattr(self.instance, "cash_account", None))
+        if bank_account and cash_account:
+            raise serializers.ValidationError(
+                "Un seul compte (banque OU caisse) peut etre renseigne."
+            )
+        if not bank_account and not cash_account:
+            raise serializers.ValidationError(
+                "Un compte de tresorerie (banque ou caisse) est requis."
+            )
+
+        profit_share = data.get("profit_share", getattr(self.instance, "profit_share", None))
+        shareholder = data.get("shareholder", getattr(self.instance, "shareholder", None))
+        if profit_share and shareholder and profit_share.shareholder_id != shareholder.id:
+            raise serializers.ValidationError(
+                {"profit_share": "Cette part de benefice n'appartient pas a cet actionnaire."}
+            )
+        return data
+
+    def create(self, validated_data):
+        actor = self.context["request"].user
+        profit_share = validated_data.get("profit_share")
+        bank_account = validated_data.get("bank_account")
+        cash_account = validated_data.get("cash_account")
+        try:
+            return ShareholderWithdrawalService.record_withdrawal(
+                shareholder_id=validated_data["shareholder"].id,
+                amount=validated_data["amount"],
+                date=validated_data["date"],
+                actor=actor,
+                profit_share_id=profit_share.id if profit_share else None,
+                bank_account_id=bank_account.id if bank_account else None,
+                cash_account_id=cash_account.id if cash_account else None,
+                notes=validated_data.get("notes", ""),
+            )
+        except ShareholderWithdrawalError as exc:
+            raise serializers.ValidationError(str(exc))
+
+    def update(self, instance, validated_data):
+        raise serializers.ValidationError(
+            "Un retrait enregistre ne peut pas etre modifie."
+        )

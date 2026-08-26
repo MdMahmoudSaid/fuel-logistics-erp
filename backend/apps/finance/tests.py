@@ -18,6 +18,11 @@ from apps.finance.models import (
     Expense,
     ExpenseAllocation,
     PaymentAllocation,
+    Shareholder,
+    ShareholderLoan,
+    ShareholderProfitDistribution,
+    ShareholderProfitShare,
+    ShareholderWithdrawal,
     SupplierPayment,
     TransportDeduction,
     TransporterAdvance,
@@ -29,6 +34,12 @@ from apps.finance.services import (
     IndirectSettlementService,
     PaymentAllocationError,
     PaymentAllocationService,
+    ShareholderDistributionService,
+    ShareholderLedgerService,
+    ShareholderParticipationError,
+    ShareholderService,
+    ShareholderWithdrawalError,
+    ShareholderWithdrawalService,
     TreasuryService,
     TreasuryTransferError,
 )
@@ -1826,3 +1837,439 @@ def test_documents_endpoint_list_excludes_modules_role_cannot_view(finance_only_
     assert listed.status_code == 200, listed.data
     listed_ids = {row["id"] for row in listed.data["results"]}
     assert purchasing_document.id not in listed_ids
+
+
+# ---------------------------------------------------------------------------
+# Task 7 (client modifications plan): Shareholders / Associates domain
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def admin_client():
+    role = Role.objects.get(name=Role.NAME_ADMIN)
+    user = User.objects.create_user(phone="+2220000200", pin="1234", role=role)
+    client = APIClient()
+    client.force_authenticate(user)
+    return client
+
+
+def _make_admin_user(suffix):
+    admin_role = Role.objects.get(name=Role.NAME_ADMIN)
+    return User.objects.create_user(phone=(f"+222900{suffix}")[:20], pin="1234", role=admin_role)
+
+
+def _make_shareholders(percents, prefix="SH"):
+    return [
+        Shareholder.objects.create(name=f"{prefix}-{i}", participation_percent=Decimal(str(p)))
+        for i, p in enumerate(percents)
+    ]
+
+
+@pytest.mark.django_db
+def test_shareholder_percent_must_be_between_0_and_100():
+    with pytest.raises(IntegrityError):
+        with transaction.atomic():
+            Shareholder.objects.create(name="Over", participation_percent=Decimal("100.01"))
+
+    with pytest.raises(IntegrityError):
+        with transaction.atomic():
+            Shareholder.objects.create(name="Under", participation_percent=Decimal("-0.01"))
+
+
+@pytest.mark.django_db
+def test_active_shareholder_percentages_cannot_exceed_100_total():
+    _make_shareholders([Decimal("60"), Decimal("30")])
+
+    with pytest.raises(ShareholderParticipationError):
+        ShareholderService.validate_total_participation(Decimal("20"))
+
+    # Exactly reaching 100 total is allowed.
+    ShareholderService.validate_total_participation(Decimal("10"))
+
+
+@pytest.mark.django_db
+def test_active_shareholder_percentages_check_excludes_inactive():
+    _make_shareholders([Decimal("60")])
+    Shareholder.objects.create(
+        name="Inactive", participation_percent=Decimal("50"), is_active=False
+    )
+
+    # The inactive 50% doesn't count towards the 100 cap.
+    ShareholderService.validate_total_participation(Decimal("40"))
+
+
+@pytest.mark.django_db
+def test_active_shareholder_percentages_check_excludes_self_on_update():
+    a, b = _make_shareholders([Decimal("60"), Decimal("30")])
+
+    # Raising `a` from 60 to 70 keeps the same total shareholder (a) out of
+    # its own comparison, so it must be evaluated against b's 30 only.
+    ShareholderService.validate_total_participation(Decimal("70"), exclude_id=a.id)
+
+    with pytest.raises(ShareholderParticipationError):
+        ShareholderService.validate_total_participation(Decimal("71"), exclude_id=a.id)
+
+
+@pytest.mark.django_db
+def test_shareholder_crud_via_admin_api(admin_client):
+    created = admin_client.post(
+        "/api/shareholders/",
+        {"name": "Amadou Diallo", "participation_percent": "50.00", "phone": "+22212345678"},
+    )
+    assert created.status_code == 201, created.data
+
+    updated = admin_client.patch(
+        f"/api/shareholders/{created.data['id']}/", {"participation_percent": "55.00"}
+    )
+    assert updated.status_code == 200, updated.data
+    assert updated.data["participation_percent"] == "55.00"
+
+
+@pytest.mark.django_db
+def test_shareholder_creation_rejected_via_api_when_total_exceeds_100(admin_client):
+    Shareholder.objects.create(name="Existing", participation_percent=Decimal("90"))
+
+    response = admin_client.post(
+        "/api/shareholders/",
+        {"name": "New", "participation_percent": "20.00", "is_active": True},
+    )
+
+    assert response.status_code == 400, response.data
+
+
+@pytest.mark.django_db
+def test_finance_role_can_create_but_not_edit_shareholder(finance_client):
+    created = finance_client.post(
+        "/api/shareholders/", {"name": "Fatou Sow", "participation_percent": "10.00"}
+    )
+    assert created.status_code == 201, created.data
+
+    updated = finance_client.patch(
+        f"/api/shareholders/{created.data['id']}/", {"participation_percent": "15.00"}
+    )
+    assert updated.status_code == 403
+
+
+@pytest.mark.django_db
+def test_create_distribution_calculates_shares_80_10_10():
+    a, b, c = _make_shareholders([Decimal("80"), Decimal("10"), Decimal("10")])
+    actor = _make_admin_user("1")
+
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("1000000.00"),
+        actor=actor,
+    )
+
+    assert distribution.status == ShareholderProfitDistribution.Status.DRAFT
+    assert distribution.created_by == actor
+
+    shares = {
+        share.shareholder_id: share.amount_due
+        for share in ShareholderProfitShare.objects.filter(distribution=distribution)
+    }
+    assert shares[a.id] == Decimal("800000.00")
+    assert shares[b.id] == Decimal("100000.00")
+    assert shares[c.id] == Decimal("100000.00")
+
+
+@pytest.mark.django_db
+def test_create_distribution_only_snapshots_active_shareholders():
+    active = Shareholder.objects.create(name="Active", participation_percent=Decimal("70"))
+    Shareholder.objects.create(name="Inactive", participation_percent=Decimal("20"), is_active=False)
+    actor = _make_admin_user("2")
+
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("500000.00"),
+        actor=actor,
+    )
+
+    shares = ShareholderProfitShare.objects.filter(distribution=distribution)
+    assert shares.count() == 1
+    assert shares.first().shareholder_id == active.id
+
+
+@pytest.mark.django_db
+def test_distribution_percent_snapshot_unaffected_by_later_shareholder_change():
+    """Changing a shareholder's ongoing participation_percent after a
+    distribution exists must not retroactively alter that distribution's
+    already-calculated shares (Task 7 design guidance)."""
+    shareholder = Shareholder.objects.create(name="Solo", participation_percent=Decimal("50"))
+    actor = _make_admin_user("3")
+
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("200000.00"),
+        actor=actor,
+    )
+    share = ShareholderProfitShare.objects.get(distribution=distribution)
+    assert share.percent_snapshot == Decimal("50.00")
+    assert share.amount_due == Decimal("100000.00")
+
+    shareholder.participation_percent = Decimal("90.00")
+    shareholder.save(update_fields=["participation_percent"])
+
+    share.refresh_from_db()
+    assert share.percent_snapshot == Decimal("50.00")
+    assert share.amount_due == Decimal("100000.00")
+
+
+@pytest.mark.django_db
+def test_distribution_validate_action_via_admin_api(admin_client):
+    _make_shareholders([Decimal("100")])
+
+    created = admin_client.post(
+        "/api/shareholder-distributions/",
+        {"period_start": "2026-07-01", "period_end": "2026-07-31", "total_profit": "300000.00"},
+    )
+    assert created.status_code == 201, created.data
+    assert created.data["status"] == "DRAFT"
+
+    validated = admin_client.post(f"/api/shareholder-distributions/{created.data['id']}/validate/")
+    assert validated.status_code == 200, validated.data
+    assert validated.data["status"] == "VALIDATED"
+    assert validated.data["validated_by"] is not None
+    assert validated.data["validated_at"] is not None
+
+
+@pytest.mark.django_db
+def test_shareholder_withdrawal_creates_treasury_transaction_and_reduces_remaining_due():
+    shareholder = _make_shareholders([Decimal("100")])[0]
+    actor = _make_admin_user("4")
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("1000000.00"),
+        actor=actor,
+    )
+    share = ShareholderProfitShare.objects.get(distribution=distribution)
+    cash_account = CashAccount.objects.create(name="Main Cash")
+
+    withdrawal = ShareholderWithdrawalService.record_withdrawal(
+        shareholder_id=shareholder.id,
+        profit_share_id=share.id,
+        amount=Decimal("400000.00"),
+        date="2026-08-01",
+        cash_account_id=cash_account.id,
+        actor=actor,
+    )
+
+    txn = TreasuryTransaction.objects.get(
+        source_content_type=ContentType.objects.get_for_model(ShareholderWithdrawal),
+        source_object_id=withdrawal.id,
+    )
+    assert txn.type == TreasuryTransaction.Type.MONEY_OUT
+    assert txn.cash_account_id == cash_account.id
+    assert txn.amount == Decimal("400000.00")
+
+    share.refresh_from_db()
+    assert share.amount_withdrawn == Decimal("400000.00")
+    assert share.remaining_due == Decimal("600000.00")
+
+
+@pytest.mark.django_db
+def test_shareholder_withdrawal_rejects_amount_exceeding_remaining_due():
+    shareholder = _make_shareholders([Decimal("100")])[0]
+    actor = _make_admin_user("5")
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=actor,
+    )
+    share = ShareholderProfitShare.objects.get(distribution=distribution)
+    cash_account = CashAccount.objects.create(name="Main Cash")
+
+    with pytest.raises(ShareholderWithdrawalError):
+        ShareholderWithdrawalService.record_withdrawal(
+            shareholder_id=shareholder.id,
+            profit_share_id=share.id,
+            amount=Decimal("150000.00"),
+            date="2026-08-01",
+            cash_account_id=cash_account.id,
+            actor=actor,
+        )
+
+
+@pytest.mark.django_db
+def test_shareholder_withdrawal_general_without_profit_share():
+    shareholder = _make_shareholders([Decimal("100")])[0]
+    actor = _make_admin_user("6")
+    bank_account = BankAccount.objects.create(name="Main BOA")
+
+    withdrawal = ShareholderWithdrawalService.record_withdrawal(
+        shareholder_id=shareholder.id,
+        profit_share_id=None,
+        amount=Decimal("50000.00"),
+        date="2026-08-01",
+        bank_account_id=bank_account.id,
+        actor=actor,
+    )
+
+    assert withdrawal.profit_share is None
+    assert TreasuryTransaction.objects.filter(
+        source_content_type=ContentType.objects.get_for_model(ShareholderWithdrawal),
+        source_object_id=withdrawal.id,
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_shareholder_withdrawal_requires_exactly_one_account():
+    shareholder = _make_shareholders([Decimal("100")])[0]
+    actor = _make_admin_user("7")
+
+    with pytest.raises(IntegrityError):
+        with transaction.atomic():
+            ShareholderWithdrawal.objects.create(
+                shareholder=shareholder,
+                amount=Decimal("1000.00"),
+                date="2026-08-01",
+                recorded_by=actor,
+            )
+
+
+@pytest.mark.django_db
+def test_shareholder_withdrawal_via_api_posts_treasury(admin_client):
+    shareholder = _make_shareholders([Decimal("100")])[0]
+    cash_account = CashAccount.objects.create(name="Main Cash")
+
+    response = admin_client.post(
+        "/api/shareholder-withdrawals/",
+        {
+            "shareholder": shareholder.id,
+            "amount": "25000.00",
+            "date": "2026-08-01",
+            "cash_account": cash_account.id,
+        },
+    )
+
+    assert response.status_code == 201, response.data
+    assert TreasuryTransaction.objects.filter(
+        source_content_type=ContentType.objects.get_for_model(ShareholderWithdrawal),
+        source_object_id=response.data["id"],
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_shareholder_loan_tracks_borrower_lender_and_balances():
+    borrower, lender = _make_shareholders([Decimal("50"), Decimal("50")])
+
+    loan = ShareholderLoan.objects.create(
+        borrower=borrower, lender=lender, amount=Decimal("100000.00"), date="2026-08-01"
+    )
+
+    assert loan.status == ShareholderLoan.Status.OPEN
+    assert loan.remaining_amount == Decimal("100000.00")
+
+    loan.amount_repaid = Decimal("40000.00")
+    loan.save()
+    loan.refresh_from_db()
+    assert loan.status == ShareholderLoan.Status.PARTIALLY_REPAID
+    assert loan.remaining_amount == Decimal("60000.00")
+
+    loan.amount_repaid = Decimal("100000.00")
+    loan.save()
+    loan.refresh_from_db()
+    assert loan.status == ShareholderLoan.Status.REPAID
+    assert loan.remaining_amount == Decimal("0.00")
+
+
+@pytest.mark.django_db
+def test_shareholder_loan_repaid_amount_cannot_exceed_principal():
+    borrower, lender = _make_shareholders([Decimal("50"), Decimal("50")])
+
+    with pytest.raises(IntegrityError):
+        with transaction.atomic():
+            ShareholderLoan.objects.create(
+                borrower=borrower,
+                lender=lender,
+                amount=Decimal("100000.00"),
+                amount_repaid=Decimal("100000.01"),
+                date="2026-08-01",
+            )
+
+
+@pytest.mark.django_db
+def test_shareholder_loan_borrower_cannot_equal_lender():
+    solo = _make_shareholders([Decimal("100")])[0]
+
+    with pytest.raises(IntegrityError):
+        with transaction.atomic():
+            ShareholderLoan.objects.create(
+                borrower=solo, lender=solo, amount=Decimal("10000.00"), date="2026-08-01"
+            )
+
+
+@pytest.mark.django_db
+def test_shareholder_loan_crud_via_api(admin_client):
+    borrower, lender = _make_shareholders([Decimal("50"), Decimal("50")])
+
+    created = admin_client.post(
+        "/api/shareholder-loans/",
+        {
+            "borrower": borrower.id,
+            "lender": lender.id,
+            "amount": "20000.00",
+            "date": "2026-08-01",
+        },
+    )
+    assert created.status_code == 201, created.data
+    assert created.data["status"] == "OPEN"
+
+    updated = admin_client.patch(
+        f"/api/shareholder-loans/{created.data['id']}/", {"amount_repaid": "20000.00"}
+    )
+    assert updated.status_code == 200, updated.data
+    assert updated.data["status"] == "REPAID"
+    assert updated.data["remaining_amount"] == "0.00"
+
+
+@pytest.mark.django_db
+def test_shareholder_ledger_service_get_shareholder_summary():
+    shareholder = _make_shareholders([Decimal("100")])[0]
+    actor = _make_admin_user("8")
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=actor,
+    )
+    share = ShareholderProfitShare.objects.get(distribution=distribution)
+    cash_account = CashAccount.objects.create(name="Main Cash")
+    ShareholderWithdrawalService.record_withdrawal(
+        shareholder_id=shareholder.id,
+        profit_share_id=share.id,
+        amount=Decimal("30000.00"),
+        date="2026-08-01",
+        cash_account_id=cash_account.id,
+        actor=actor,
+    )
+    other = _make_shareholders([Decimal("0")], prefix="LOAN")[0]
+    ShareholderLoan.objects.create(
+        borrower=other, lender=shareholder, amount=Decimal("15000.00"), date="2026-08-01"
+    )
+
+    summary = ShareholderLedgerService.get_shareholder_summary(shareholder.id)
+
+    assert summary["total_amount_due"] == Decimal("100000.00")
+    assert summary["total_withdrawn"] == Decimal("30000.00")
+    assert summary["remaining_due"] == Decimal("70000.00")
+    assert len(summary["loans_lent"]) == 1
+    assert summary["loans_lent"][0]["remaining_amount"] == Decimal("15000.00")
+
+
+@pytest.mark.django_db
+def test_shareholder_ledger_endpoint_via_api(admin_client):
+    shareholder = _make_shareholders([Decimal("100")])[0]
+
+    response = admin_client.get(f"/api/shareholders/{shareholder.id}/ledger/")
+
+    assert response.status_code == 200, response.data
+    assert response.data["shareholder"]["id"] == shareholder.id
+    assert "remaining_due" in response.data
+    assert "loans_borrowed" in response.data
+    assert "loans_lent" in response.data

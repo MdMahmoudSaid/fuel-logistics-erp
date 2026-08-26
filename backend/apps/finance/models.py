@@ -561,3 +561,290 @@ class TreasuryTransaction(AuditableModel, TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.type}: {self.amount} ({self.date})"
+
+
+class Shareholder(TimeStampedModel):
+    """A company associate/shareholder (Task 7, client modifications plan).
+
+    Plain master data (like BankAccount/CashAccount) rather than
+    AuditableModel: it is a party record, not itself a money movement -
+    ShareholderWithdrawal (AuditableModel) is where the auditable financial
+    event lives. `participation_percent` is this shareholder's ongoing
+    share of company profit; ShareholderProfitShare.percent_snapshot
+    freezes it at each distribution so a later edit here never rewrites
+    history (see that model's docstring).
+    """
+
+    name = models.CharField(max_length=150)
+    participation_percent = models.DecimalField(max_digits=5, decimal_places=2)
+    phone = models.CharField(max_length=20, blank=True)
+    notes = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["name"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(participation_percent__gte=0)
+                & models.Q(participation_percent__lte=100),
+                name="finance_shareholder_percent_range",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["is_active"], name="finance_shareholder_active_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class ShareholderProfitDistribution(TimeStampedModel):
+    """One profit-sharing period: a total company profit figure split
+    across active shareholders as of the moment it is created (Task 7,
+    client modifications plan).
+
+    Created DRAFT with its ShareholderProfitShare rows already calculated
+    (ShareholderDistributionService.create_distribution) so managers can
+    review the split before committing to it; `validate` (mirroring
+    Invoice's DRAFT -> VALIDATED flow) freezes it by stamping
+    validated_by/validated_at. There is no CANCELLED state here - the
+    "shareholders" module permission tier deliberately omits "cancel"
+    (Task 7 ruling 2), so a mistaken distribution is corrected by editing
+    it back to DRAFT territory is out of scope for this task, not by a
+    cancel workflow.
+    """
+
+    class Status(models.TextChoices):
+        DRAFT = "DRAFT", "Draft"
+        VALIDATED = "VALIDATED", "Validated"
+
+    period_start = models.DateField()
+    period_end = models.DateField()
+    total_profit = models.DecimalField(max_digits=16, decimal_places=2)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
+    created_by = models.ForeignKey(
+        "accounts.User", on_delete=models.PROTECT, related_name="shareholder_distributions_created"
+    )
+    validated_by = models.ForeignKey(
+        "accounts.User",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="shareholder_distributions_validated",
+    )
+    validated_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-period_start", "-id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(total_profit__gt=0),
+                name="finance_shareholderprofitdistribution_total_profit_positive",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["status"], name="finance_shrdist_status_idx"),
+            models.Index(fields=["period_start", "period_end"], name="finance_shrdist_period_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"Distribution {self.period_start} - {self.period_end}: {self.total_profit}"
+
+
+class ShareholderProfitShare(TimeStampedModel):
+    """One shareholder's calculated slice of a ShareholderProfitDistribution
+    (Task 7, client modifications plan).
+
+    `percent_snapshot` is copied from Shareholder.participation_percent at
+    distribution-creation time, never read live from Shareholder afterward -
+    a later change to a shareholder's ongoing percentage must not
+    retroactively alter a historical distribution's amounts.
+    `amount_withdrawn` is a stored cache, but the only writer is
+    `sync_amount_withdrawn()`, which always recomputes it as
+    Sum(withdrawals.amount) - it can never silently drift from the actual
+    ShareholderWithdrawal rows because it is never incremented ad hoc.
+    """
+
+    distribution = models.ForeignKey(
+        ShareholderProfitDistribution, on_delete=models.CASCADE, related_name="shares"
+    )
+    shareholder = models.ForeignKey(
+        Shareholder, on_delete=models.PROTECT, related_name="profit_shares"
+    )
+    percent_snapshot = models.DecimalField(max_digits=5, decimal_places=2)
+    amount_due = models.DecimalField(max_digits=16, decimal_places=2, editable=False)
+    amount_withdrawn = models.DecimalField(
+        max_digits=16, decimal_places=2, default=0, editable=False
+    )
+
+    class Meta:
+        ordering = ["-distribution_id", "shareholder_id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(percent_snapshot__gte=0) & models.Q(percent_snapshot__lte=100),
+                name="finance_shareholderprofitshare_percent_range",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(amount_due__gte=0),
+                name="finance_shareholderprofitshare_amount_due_non_negative",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(amount_withdrawn__gte=0),
+                name="finance_shareholderprofitshare_amount_withdrawn_non_negative",
+            ),
+            models.UniqueConstraint(
+                fields=["distribution", "shareholder"],
+                name="finance_shareholderprofitshare_one_per_shareholder",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["shareholder"], name="finance_shrshare_shr_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.shareholder}: {self.amount_due} ({self.distribution_id})"
+
+    @property
+    def remaining_due(self) -> Decimal:
+        return self.amount_due - self.amount_withdrawn
+
+    def sync_amount_withdrawn(self) -> Decimal:
+        """Recompute amount_withdrawn from the actual ShareholderWithdrawal
+        rows against this share - the only way this field is ever written,
+        so it can never drift from withdrawal history (Task 7, client
+        modifications plan: "avoid a field that can silently drift")."""
+        total = self.withdrawals.aggregate(total=models.Sum("amount"))["total"] or Decimal("0.00")
+        self.amount_withdrawn = total
+        self.save(update_fields=["amount_withdrawn", "updated_at"])
+        return total
+
+
+class ShareholderLoan(TimeStampedModel):
+    """An advance/debt between two associates, tracked separately from
+    company treasury - money that moves shareholder-to-shareholder never
+    creates a TreasuryTransaction (Task 7, client modifications plan: only
+    money entering/leaving company bank/cash does).
+
+    `status` is derived in save() from amount_repaid vs amount (same
+    "computed on save" convention as TransportPayment.net_amount) rather
+    than set directly by the client, so it can never disagree with the two
+    numbers it summarizes.
+    """
+
+    class Status(models.TextChoices):
+        OPEN = "OPEN", "Open"
+        PARTIALLY_REPAID = "PARTIALLY_REPAID", "Partially repaid"
+        REPAID = "REPAID", "Repaid"
+
+    borrower = models.ForeignKey(
+        Shareholder, on_delete=models.PROTECT, related_name="loans_borrowed"
+    )
+    lender = models.ForeignKey(
+        Shareholder, on_delete=models.PROTECT, related_name="loans_lent"
+    )
+    amount = models.DecimalField(max_digits=16, decimal_places=2)
+    date = models.DateField()
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.OPEN)
+    amount_repaid = models.DecimalField(max_digits=16, decimal_places=2, default=0)
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-date", "-id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0),
+                name="finance_shareholderloan_amount_positive",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(amount_repaid__gte=0),
+                name="finance_shareholderloan_amount_repaid_non_negative",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(amount_repaid__lte=models.F("amount")),
+                name="finance_shareholderloan_repaid_not_exceeding_amount",
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(borrower=models.F("lender")),
+                name="finance_shareholderloan_borrower_not_lender",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["status"], name="finance_shrloan_status_idx"),
+            models.Index(fields=["date"], name="finance_shrloan_date_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.lender} -> {self.borrower}: {self.amount}"
+
+    @property
+    def remaining_amount(self) -> Decimal:
+        return self.amount - self.amount_repaid
+
+    def save(self, *args, **kwargs):
+        if self.amount_repaid <= 0:
+            self.status = self.Status.OPEN
+        elif self.amount_repaid < self.amount:
+            self.status = self.Status.PARTIALLY_REPAID
+        else:
+            self.status = self.Status.REPAID
+        super().save(*args, **kwargs)
+
+
+class ShareholderWithdrawal(AuditableModel, TimeStampedModel):
+    """Money paid out from company treasury to a shareholder (Task 7,
+    client modifications plan) - either against a specific
+    ShareholderProfitShare (profit_share set) or a general withdrawal not
+    tied to any distribution (profit_share null).
+
+    AuditableModel + the same bank_account/cash_account exclusivity
+    constraint as SupplierPayment, since this is a real money-out event
+    that must post to treasury exactly like a supplier payment does
+    (ShareholderWithdrawalService.record_withdrawal /
+    FinancePostingService.record_shareholder_withdrawal_treasury).
+    """
+
+    shareholder = models.ForeignKey(
+        Shareholder, on_delete=models.PROTECT, related_name="withdrawals"
+    )
+    profit_share = models.ForeignKey(
+        ShareholderProfitShare,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="withdrawals",
+    )
+    amount = models.DecimalField(max_digits=16, decimal_places=2)
+    date = models.DateField()
+    bank_account = models.ForeignKey(
+        BankAccount, on_delete=models.PROTECT, null=True, blank=True, related_name="shareholder_withdrawals"
+    )
+    cash_account = models.ForeignKey(
+        CashAccount, on_delete=models.PROTECT, null=True, blank=True, related_name="shareholder_withdrawals"
+    )
+    notes = models.TextField(blank=True)
+    recorded_by = models.ForeignKey(
+        "accounts.User", on_delete=models.PROTECT, related_name="shareholder_withdrawals_recorded"
+    )
+
+    class Meta:
+        ordering = ["-date", "-id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0),
+                name="finance_shareholderwithdrawal_amount_positive",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(bank_account__isnull=True) | models.Q(cash_account__isnull=True),
+                name="finance_shareholderwithdrawal_single_account",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(bank_account__isnull=False) | models.Q(cash_account__isnull=False),
+                name="finance_shareholderwithdrawal_requires_account",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["shareholder", "date"], name="finance_shrwd_shr_date_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.shareholder}: {self.amount} ({self.date})"

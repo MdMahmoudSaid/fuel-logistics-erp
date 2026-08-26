@@ -13,6 +13,10 @@ from .models import (
     CashAccount,
     CustomerPayment,
     Expense,
+    Shareholder,
+    ShareholderLoan,
+    ShareholderProfitDistribution,
+    ShareholderWithdrawal,
     SupplierPayment,
     TransporterAdvance,
     TransportPayment,
@@ -24,6 +28,10 @@ from .serializers import (
     CustomerPaymentSerializer,
     ExpenseSerializer,
     IndirectSettlementRequestSerializer,
+    ShareholderLoanSerializer,
+    ShareholderProfitDistributionSerializer,
+    ShareholderSerializer,
+    ShareholderWithdrawalSerializer,
     SupplierPaymentSerializer,
     TransporterAdvanceSerializer,
     TransportPaymentSerializer,
@@ -33,6 +41,8 @@ from .serializers import (
 from .services import (
     IndirectSettlementService,
     PaymentAllocationError,
+    ShareholderDistributionService,
+    ShareholderLedgerService,
     TreasuryService,
     TreasuryTransferError,
 )
@@ -240,6 +250,79 @@ class TreasuryTransactionViewSet(viewsets.ModelViewSet):
             },
             status=http_status.HTTP_201_CREATED,
         )
+
+
+# ---------------------------------------------------------------------------
+# Task 7 (client modifications plan): Shareholders / Associates domain
+# ---------------------------------------------------------------------------
+
+
+class ShareholderViewSet(viewsets.ModelViewSet):
+    queryset = Shareholder.objects.all()
+    serializer_class = ShareholderSerializer
+    filterset_fields = ["is_active"]
+    permission_classes = [HasModulePermission]
+    module = "shareholders"
+
+    @action(detail=True, methods=["get"])
+    def ledger(self, request, pk=None):
+        """Per-shareholder summary: profit shares/remaining due, loans in
+        both directions, withdrawal history (Task 7, client modifications
+        plan; precedent: SupplierViewSet.ledger).
+
+        GET /api/shareholders/{id}/ledger/
+        """
+        shareholder = self.get_object()
+        summary = ShareholderLedgerService.get_shareholder_summary(shareholder.id)
+        return Response(summary)
+
+
+class ShareholderProfitDistributionViewSet(viewsets.ModelViewSet):
+    queryset = ShareholderProfitDistribution.objects.select_related(
+        "created_by", "validated_by"
+    ).prefetch_related("shares__shareholder").all()
+    serializer_class = ShareholderProfitDistributionSerializer
+    filterset_fields = ["status"]
+    permission_classes = [HasModulePermission]
+    module = "shareholders"
+
+    def destroy(self, request, *args, **kwargs):
+        raise MethodNotAllowed("DELETE", detail=_NO_HARD_DELETE_DETAIL)
+
+    @action(detail=True, methods=["post"])
+    def validate(self, request, pk=None):
+        """Freeze a DRAFT distribution's shares.
+
+        POST /api/shareholder-distributions/{id}/validate/
+        """
+        distribution = self.get_object()
+        distribution = ShareholderDistributionService.validate_distribution(
+            distribution.id, request.user
+        )
+        return Response(
+            ShareholderProfitDistributionSerializer(distribution, context={"request": request}).data
+        )
+
+
+class ShareholderLoanViewSet(viewsets.ModelViewSet):
+    queryset = ShareholderLoan.objects.select_related("borrower", "lender").all()
+    serializer_class = ShareholderLoanSerializer
+    filterset_fields = ["borrower", "lender", "status"]
+    permission_classes = [HasModulePermission]
+    module = "shareholders"
+
+
+class ShareholderWithdrawalViewSet(viewsets.ModelViewSet):
+    queryset = ShareholderWithdrawal.objects.select_related(
+        "shareholder", "profit_share", "bank_account", "cash_account", "recorded_by"
+    ).all()
+    serializer_class = ShareholderWithdrawalSerializer
+    filterset_fields = ["shareholder", "profit_share"]
+    permission_classes = [HasModulePermission]
+    module = "shareholders"
+
+    def destroy(self, request, *args, **kwargs):
+        raise MethodNotAllowed("DELETE", detail=_NO_HARD_DELETE_DETAIL)
 
 
 # Entity kinds ExpenseAllocation.content_object can point at (guide Section
