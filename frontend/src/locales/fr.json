@@ -119,9 +119,9 @@
       "expenses": "Dépenses",
       "treasuryBalance": "Solde trésorerie",
       "totalMargin": "Marge totale",
-      "debtSuppliers": "Fournisseurs",
-      "debtTransporters": "Transporteurs",
-      "debtCustoms": "Douanes",
+      "debtSuppliers": "Dettes Fournisseurs",
+      "debtTransporters": "Dettes Transporteurs",
+      "debtCustoms": "Dettes Douanes",
       "debtOther": "Autres"
     }
   },
@@ -323,6 +323,7 @@
       "anomalyWarning": "La quantité reçue dépasse la quantité chargée — ceci est une anomalie et nécessite une confirmation par un utilisateur autorisé avant de pouvoir être enregistrée.",
       "anomalyConfirm": "Je confirme cette anomalie en tant qu'utilisateur autorisé ({email})",
       "anomalyAskAuthorized": "Demandez à un utilisateur autorisé de confirmer cette anomalie avant de pouvoir l'enregistrer.",
+      "lossTitle": "Vente à perte",
       "lossWarning": "Le prix de vente est inférieur au prix de revient — cette vente sera à perte et nécessite une confirmation avant de pouvoir être enregistrée.",
       "lossConfirm": "Je confirme cette vente à perte",
       "recording": "Enregistrement…",

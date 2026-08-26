@@ -119,9 +119,9 @@
       "expenses": "Expenses",
       "treasuryBalance": "Treasury balance",
       "totalMargin": "Total margin",
-      "debtSuppliers": "Suppliers",
-      "debtTransporters": "Transporters",
-      "debtCustoms": "Customs",
+      "debtSuppliers": "Supplier debts",
+      "debtTransporters": "Transporter debts",
+      "debtCustoms": "Customs debts",
       "debtOther": "Other"
     }
   },
@@ -321,6 +321,7 @@
       "anomalyWarning": "Received quantity exceeds loaded quantity — this is an anomaly and requires authorized confirmation before it can be recorded.",
       "anomalyConfirm": "I confirm this anomaly as an authorized user ({email})",
       "anomalyAskAuthorized": "Ask an authorized user to confirm this anomaly before it can be recorded.",
+      "lossTitle": "Loss-making sale",
       "lossWarning": "The selling price is below the cost price — this sale will show a loss and requires confirmation before it can be recorded.",
       "lossConfirm": "I confirm this loss-making sale",
       "recording": "Recording…",

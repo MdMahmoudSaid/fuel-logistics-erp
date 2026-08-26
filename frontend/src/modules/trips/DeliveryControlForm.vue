@@ -270,6 +270,9 @@ async function onSubmit() {
     </div>
 
     <div v-if="isLoss" class="border-critique bg-critique-tint space-y-2 rounded-lg border p-3">
+      <p class="text-critique-texte text-xs font-semibold uppercase">
+        {{ t('trips.delivery.lossTitle') }}
+      </p>
       <p class="text-critique-texte text-sm font-medium">
         {{ t('trips.delivery.lossWarning') }}
       </p>
