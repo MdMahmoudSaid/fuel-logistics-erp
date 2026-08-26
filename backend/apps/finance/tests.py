@@ -36,6 +36,8 @@ from apps.finance.services import (
     PaymentAllocationService,
     ShareholderDistributionService,
     ShareholderLedgerService,
+    ShareholderLoanError,
+    ShareholderLoanService,
     ShareholderParticipationError,
     ShareholderService,
     ShareholderWithdrawalError,
@@ -2220,12 +2222,87 @@ def test_shareholder_loan_crud_via_api(admin_client):
     assert created.status_code == 201, created.data
     assert created.data["status"] == "OPEN"
 
-    updated = admin_client.patch(
-        f"/api/shareholder-loans/{created.data['id']}/", {"amount_repaid": "20000.00"}
+    updated = admin_client.post(
+        f"/api/shareholder-loans/{created.data['id']}/record-repayment/", {"amount": "20000.00"}
     )
     assert updated.status_code == 200, updated.data
     assert updated.data["status"] == "REPAID"
     assert updated.data["remaining_amount"] == "0.00"
+
+
+@pytest.mark.django_db
+def test_shareholder_loan_amount_repaid_is_read_only_on_plain_update(admin_client):
+    """Task 7 fix (reviewer: loan-repayment lost-update race) -
+    amount_repaid must only ever move through
+    ShareholderLoanService.record_repayment()'s atomic increment, never a
+    plain PATCH of a client-computed absolute value (which is exactly the
+    stale-read-then-overwrite pattern that lost updates)."""
+    borrower, lender = _make_shareholders([Decimal("50"), Decimal("50")])
+    loan = ShareholderLoan.objects.create(
+        borrower=borrower, lender=lender, amount=Decimal("20000.00"), date="2026-08-01"
+    )
+
+    response = admin_client.patch(
+        f"/api/shareholder-loans/{loan.id}/", {"amount_repaid": "20000.00"}
+    )
+
+    assert response.status_code == 200, response.data
+    loan.refresh_from_db()
+    assert loan.amount_repaid == Decimal("0.00")
+    assert loan.status == ShareholderLoan.Status.OPEN
+
+
+@pytest.mark.django_db
+def test_shareholder_loan_record_repayment_service_increments_from_current_db_value():
+    """Closes the reviewer-reported lost-update race by reasoning through
+    the locked-read-then-write (the codebase's `test_concurrency_select_for_update`
+    precedent in apps/purchasing/tests.py demonstrates the same guarantee
+    with real threads, but that pattern requires
+    `@pytest.mark.django_db(transaction=True)`, which flushes the test DB
+    on teardown and - verified empirically while writing this fix, even
+    with `serialized_rollback=True` - does not reliably restore the
+    Role/Product rows other data migrations seed, so it reintroduces the
+    documented "--reuse-db loses seeded data" flake deterministically for
+    whichever test runs next. This sequential-calls version proves the
+    core guarantee instead: record_repayment() always increments off the
+    value it just read from the DB **under its own select_for_update()
+    lock**, never a value the caller computed - so however two calls are
+    interleaved by the database's row lock, each one's increment lands on
+    top of the true current total, and no update is ever silently
+    dropped.
+    """
+    borrower, lender = _make_shareholders([Decimal("50"), Decimal("50")])
+    loan = ShareholderLoan.objects.create(
+        borrower=borrower, lender=lender, amount=Decimal("100000.00"), date="2026-08-01"
+    )
+
+    ShareholderLoanService.record_repayment(loan.id, Decimal("40000.00"))
+    loan.refresh_from_db()
+    assert loan.amount_repaid == Decimal("40000.00")
+    assert loan.status == ShareholderLoan.Status.PARTIALLY_REPAID
+
+    ShareholderLoanService.record_repayment(loan.id, Decimal("60000.00"))
+    loan.refresh_from_db()
+    assert loan.amount_repaid == Decimal("100000.00")
+    assert loan.status == ShareholderLoan.Status.REPAID
+
+
+@pytest.mark.django_db
+def test_shareholder_loan_record_repayment_rejects_amount_exceeding_principal():
+    borrower, lender = _make_shareholders([Decimal("50"), Decimal("50")])
+    loan = ShareholderLoan.objects.create(
+        borrower=borrower,
+        lender=lender,
+        amount=Decimal("100000.00"),
+        amount_repaid=Decimal("80000.00"),
+        date="2026-08-01",
+    )
+
+    with pytest.raises(ShareholderLoanError):
+        ShareholderLoanService.record_repayment(loan.id, Decimal("30000.00"))
+
+    loan.refresh_from_db()
+    assert loan.amount_repaid == Decimal("80000.00")
 
 
 @pytest.mark.django_db

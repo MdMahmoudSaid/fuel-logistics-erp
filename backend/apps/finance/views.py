@@ -43,6 +43,8 @@ from .services import (
     PaymentAllocationError,
     ShareholderDistributionService,
     ShareholderLedgerService,
+    ShareholderLoanError,
+    ShareholderLoanService,
     TreasuryService,
     TreasuryTransferError,
 )
@@ -310,6 +312,28 @@ class ShareholderLoanViewSet(viewsets.ModelViewSet):
     filterset_fields = ["borrower", "lender", "status"]
     permission_classes = [HasModulePermission]
     module = "shareholders"
+
+    @action(detail=True, methods=["post"], url_path="record-repayment")
+    def record_repayment(self, request, pk=None):
+        """Increment amount_repaid under a row lock (Task 7 fix:
+        loan-repayment lost-update race) - amount_repaid is read-only on
+        the plain update endpoint precisely so every repayment must go
+        through this atomic increment instead of a client-computed
+        absolute total that could silently overwrite a concurrent one.
+
+        POST /api/shareholder-loans/{id}/record-repayment/  body: {amount}
+        """
+        loan = self.get_object()
+        amount = request.data.get("amount")
+        if amount in (None, ""):
+            return Response(
+                {"detail": "amount est requis."}, status=http_status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            loan = ShareholderLoanService.record_repayment(loan.id, amount)
+        except ShareholderLoanError as exc:
+            return Response({"detail": str(exc)}, status=http_status.HTTP_400_BAD_REQUEST)
+        return Response(ShareholderLoanSerializer(loan, context={"request": request}).data)
 
 
 class ShareholderWithdrawalViewSet(viewsets.ModelViewSet):

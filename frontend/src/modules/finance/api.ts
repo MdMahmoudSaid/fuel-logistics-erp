@@ -130,3 +130,18 @@ export function validateShareholderDistribution(
     .post<ShareholderProfitDistribution>(`/shareholder-distributions/${distributionId}/validate/`)
     .then((r) => r.data)
 }
+
+// backend/apps/finance/services.py ShareholderLoanService.record_repayment()
+// is the sole authority on this write (Task 7 fix: loan-repayment
+// lost-update race) - it increments amount_repaid under select_for_update()
+// server-side, so this takes the INCREMENT amount, never a client-computed
+// absolute total (amount_repaid is read-only on the plain update endpoint
+// precisely to force every repayment through this atomic path).
+export function recordShareholderLoanRepayment(
+  loanId: number,
+  amount: string,
+): Promise<ShareholderLoan> {
+  return apiClient
+    .post<ShareholderLoan>(`/shareholder-loans/${loanId}/record-repayment/`, { amount })
+    .then((r) => r.data)
+}

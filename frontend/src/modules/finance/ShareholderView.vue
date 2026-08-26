@@ -12,6 +12,7 @@ import { useI18n } from 'vue-i18n'
 import { createResourceApi } from '@/api/resource'
 import {
   fetchShareholderLedger,
+  recordShareholderLoanRepayment,
   shareholderDistributionResource,
   shareholderLoanResource,
   shareholderResource,
@@ -202,9 +203,12 @@ async function onRecordRepayment(loan: ShareholderLoan) {
   const extra = Number(repaymentInput.value[loan.id] || '0')
   if (!extra || extra <= 0) return
   try {
-    await shareholderLoanResource.update(loan.id, {
-      amount_repaid: (Number(loan.amount_repaid) + extra).toFixed(2),
-    })
+    // Send the increment, never a client-computed absolute total (Task 7
+    // fix: loan-repayment lost-update race) - the backend applies it
+    // under select_for_update() so two repayments entered close together
+    // (two tabs, two people) can never silently overwrite each other the
+    // way PATCHing `current + extra` from a stale read could.
+    await recordShareholderLoanRepayment(loan.id, extra.toFixed(2))
     repaymentInput.value[loan.id] = ''
     await loadLoans()
   } catch (e) {

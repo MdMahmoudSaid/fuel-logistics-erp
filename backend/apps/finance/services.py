@@ -593,6 +593,47 @@ class ShareholderWithdrawalService:
         return withdrawal
 
 
+class ShareholderLoanError(ValueError):
+    """Raised when a repayment increment is invalid or would push
+    amount_repaid past the loan's principal."""
+
+
+class ShareholderLoanService:
+    """Owns ShareholderLoan repayment recording (Task 7, client
+    modifications plan - fix for the loan-repayment lost-update race).
+
+    A client PATCHing an absolute `amount_repaid` it computed from its own
+    stale read (current + entered increment) can silently overwrite a
+    concurrent repayment from another tab/user - the second write just
+    replaces the first with no error. record_repayment() instead takes
+    only the INCREMENT and applies it under select_for_update(), the same
+    row-lock pattern ShareholderWithdrawalService.record_withdrawal() and
+    PaymentAllocationService.allocate_payment() already use for the same
+    reason: two concurrent requests must not be able to jointly clobber
+    each other's effect on the same row.
+    """
+
+    @staticmethod
+    @transaction.atomic
+    def record_repayment(loan_id, increment_amount) -> ShareholderLoan:
+        loan = ShareholderLoan.objects.select_for_update().get(pk=loan_id)
+
+        increment = Decimal(str(increment_amount))
+        if increment <= 0:
+            raise ShareholderLoanError("Le montant du remboursement doit etre positif.")
+
+        new_total = loan.amount_repaid + increment
+        if new_total > loan.amount:
+            raise ShareholderLoanError(
+                f"Ce remboursement porterait le total rembourse ({new_total}) "
+                f"au-dela du principal ({loan.amount})."
+            )
+
+        loan.amount_repaid = new_total
+        loan.save(update_fields=["amount_repaid", "status", "updated_at"])
+        return loan
+
+
 class ShareholderLedgerService:
     """Owns the per-shareholder summary view (Task 7, client modifications
     plan) - profit shares/remaining due, loans in both directions, and

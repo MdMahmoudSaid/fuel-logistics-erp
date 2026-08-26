@@ -43,6 +43,12 @@ ACTION_MAP = {
     # standpoint (docs/PHASE_5_PLAN.md Etape 6/8).
     "transfer": "create",
     "record_indirect": "create",
+    # Recording a ShareholderLoan repayment (Task 7, client modifications
+    # plan, lost-update race fix) mutates an existing loan row exactly like
+    # a plain PATCH would have - same "edit" tier as `update`/
+    # `partial_update`, just routed through a dedicated atomic action
+    # instead of a raw field write.
+    "record_repayment": "edit",
 }
 
 

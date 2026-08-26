@@ -586,22 +586,23 @@ class ShareholderLoanSerializer(serializers.ModelSerializer):
         ]
         # status is derived in ShareholderLoan.save() from amount_repaid vs
         # amount - never a direct client write (same convention as
-        # TransporterAdvance.settled).
-        read_only_fields = ["id", "status", "created_at", "updated_at"]
+        # TransporterAdvance.settled). amount_repaid itself is also
+        # read-only here (Task 7 fix: loan-repayment lost-update race) -
+        # a client PATCHing an absolute amount_repaid computed from a
+        # stale read can silently overwrite a concurrent repayment.
+        # The only way to change it is
+        # ShareholderLoanService.record_repayment() via the dedicated
+        # record-repayment action, which increments it under
+        # select_for_update().
+        read_only_fields = ["id", "status", "amount_repaid", "created_at", "updated_at"]
 
     def validate(self, data):
         borrower = data.get("borrower", getattr(self.instance, "borrower", None))
         lender = data.get("lender", getattr(self.instance, "lender", None))
-        amount = data.get("amount", getattr(self.instance, "amount", None))
-        amount_repaid = data.get("amount_repaid", getattr(self.instance, "amount_repaid", Decimal("0")))
 
         if borrower and lender and borrower.id == lender.id:
             raise serializers.ValidationError(
                 "L'emprunteur et le preteur ne peuvent pas etre le meme actionnaire."
-            )
-        if amount is not None and amount_repaid is not None and amount_repaid > amount:
-            raise serializers.ValidationError(
-                {"amount_repaid": "Le montant rembourse ne peut pas depasser le principal."}
             )
         return data
 
