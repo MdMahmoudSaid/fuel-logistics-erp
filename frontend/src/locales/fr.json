@@ -393,6 +393,20 @@
       "save": "Enregistrer les frais de transport",
       "saveError": "Impossible d'enregistrer ces frais de transport — vérifiez les champs."
     },
+    "supplierPayment": {
+      "recordPayment": "Enregistrer un paiement",
+      "title": "Paiement fournisseur",
+      "supplier": "Fournisseur",
+      "outstandingBalance": "Solde impayé",
+      "amount": "Montant",
+      "paymentDate": "Date de paiement",
+      "method": "Méthode",
+      "bankAccount": "Compte bancaire",
+      "selectBankAccount": "Sélectionner un compte bancaire",
+      "saving": "Enregistrement…",
+      "save": "Enregistrer le paiement",
+      "saveError": "Impossible d'enregistrer ce paiement — vérifiez les champs."
+    },
     "allocationKind": {
       "trip": "Trajet",
       "truck": "Camion",

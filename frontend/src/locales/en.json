@@ -391,6 +391,20 @@
       "save": "Save transport fee",
       "saveError": "Could not save this transport fee — check the fields."
     },
+    "supplierPayment": {
+      "recordPayment": "Record a payment",
+      "title": "Supplier payment",
+      "supplier": "Supplier",
+      "outstandingBalance": "Outstanding balance",
+      "amount": "Amount",
+      "paymentDate": "Payment date",
+      "method": "Method",
+      "bankAccount": "Bank account",
+      "selectBankAccount": "Select a bank account",
+      "saving": "Saving…",
+      "save": "Save payment",
+      "saveError": "Could not save this payment — check the fields."
+    },
     "allocationKind": {
       "trip": "Trip",
       "truck": "Truck",

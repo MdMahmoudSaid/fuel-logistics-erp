@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { fetchSupplierLedger } from '@/modules/purchasing/api'
 import type { SupplierLedger } from '@/modules/purchasing/types'
+import SupplierPaymentForm from '@/modules/finance/SupplierPaymentForm.vue'
 import Badge from '@/components/ui/Badge.vue'
 import Button from '@/components/ui/Button.vue'
 import Card from '@/components/ui/Card.vue'
@@ -16,6 +17,7 @@ const { t } = useI18n()
 const ledger = ref<SupplierLedger | null>(null)
 const loading = ref(true)
 const error = ref('')
+const showPaymentForm = ref(false)
 
 const supplierId = computed(() => Number(route.params.id))
 
@@ -29,6 +31,11 @@ async function load() {
   } finally {
     loading.value = false
   }
+}
+
+async function onPaymentSaved() {
+  showPaymentForm.value = false
+  await load()
 }
 
 onMounted(load)
@@ -46,9 +53,14 @@ function badgeVariant(status: string) {
       <h1 class="font-display text-2xl leading-none font-semibold uppercase">
         {{ t('purchasing.supplierLedger.title', { name: ledger?.supplier.name ?? '…' }) }}
       </h1>
-      <Button variant="ghost" @click="router.push({ name: 'suppliers' })">
-        {{ t('purchasing.supplierLedger.back') }}
-      </Button>
+      <div class="flex gap-2">
+        <Button v-if="ledger" variant="primary" @click="showPaymentForm = true">
+          {{ t('finance.supplierPayment.recordPayment') }}
+        </Button>
+        <Button variant="ghost" @click="router.push({ name: 'suppliers' })">
+          {{ t('purchasing.supplierLedger.back') }}
+        </Button>
+      </div>
     </div>
 
     <p v-if="error" class="text-critique text-sm">{{ error }}</p>
@@ -222,5 +234,20 @@ function badgeVariant(status: string) {
         </table>
       </Card>
     </template>
+
+    <div
+      v-if="showPaymentForm && ledger"
+      class="fixed inset-0 z-30 flex items-center justify-center bg-black/40"
+    >
+      <div class="w-full max-w-lg">
+        <SupplierPaymentForm
+          :supplier-id="ledger.supplier.id"
+          :supplier-name="ledger.supplier.name"
+          :outstanding-balance="ledger.outstanding_balance"
+          @success="onPaymentSaved"
+          @cancel="showPaymentForm = false"
+        />
+      </div>
+    </div>
   </div>
 </template>

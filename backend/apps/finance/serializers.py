@@ -181,6 +181,9 @@ class SupplierPaymentSerializer(serializers.ModelSerializer):
     def validate(self, data):
         bank_account = data.get("bank_account", getattr(self.instance, "bank_account", None))
         cash_account = data.get("cash_account", getattr(self.instance, "cash_account", None))
+        is_advance = data.get("is_advance", getattr(self.instance, "is_advance", False))
+        method = data.get("method", getattr(self.instance, "method", None))
+
         if bank_account and cash_account:
             raise serializers.ValidationError(
                 "Un seul compte (banque OU caisse) peut etre renseigne."
@@ -189,7 +192,61 @@ class SupplierPaymentSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Un compte de tresorerie (banque ou caisse) est requis."
             )
+
+        if not is_advance:
+            # Task 5 (client modifications plan): a supplier debt repayment
+            # (is_advance=False) must move through a bank account by bank
+            # transfer - no cash settlement for that flow. Advances
+            # (is_advance=True) are exempt from this restriction (ruling 1
+            # of the task dispatch) - they may still use cash or another
+            # account, per the base exclusivity rule above.
+            if method != SupplierPayment.Method.BANK_TRANSFER:
+                raise serializers.ValidationError(
+                    {
+                        "method": (
+                            "Le remboursement d'une dette fournisseur doit "
+                            "utiliser un virement bancaire."
+                        )
+                    }
+                )
+            if not bank_account:
+                raise serializers.ValidationError(
+                    {
+                        "bank_account": (
+                            "Un compte bancaire est requis pour le remboursement "
+                            "d'une dette fournisseur."
+                        )
+                    }
+                )
+            if cash_account:
+                raise serializers.ValidationError(
+                    {
+                        "cash_account": (
+                            "Un compte de caisse n'est pas autorise pour le "
+                            "remboursement d'une dette fournisseur."
+                        )
+                    }
+                )
+
         return data
+
+    def create(self, validated_data):
+        with transaction.atomic():
+            payment = SupplierPayment.objects.create(**validated_data)
+            FinancePostingService.record_supplier_payment_treasury(payment)
+        payment.refresh_from_db()
+        return payment
+
+    def update(self, instance, validated_data):
+        # Ruling 3 (Task 5, client modifications plan): every SupplierPayment
+        # is already posted to treasury synchronously inside create()'s
+        # atomic block above, so there is no meaningful "unposted" state to
+        # distinguish - every existing row is already posted. Block the edit
+        # entirely until a reversal/correction flow is designed, rather than
+        # silently mutating finalized financial history.
+        raise serializers.ValidationError(
+            "Un paiement fournisseur enregistre ne peut pas etre modifie."
+        )
 
 
 class TransporterAdvanceSerializer(serializers.ModelSerializer):

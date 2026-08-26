@@ -391,6 +391,20 @@
       "save": "حفظ رسوم النقل",
       "saveError": "تعذر حفظ رسوم النقل هذه — تحقق من الحقول."
     },
+    "supplierPayment": {
+      "recordPayment": "تسجيل دفعة",
+      "title": "دفعة مورد",
+      "supplier": "المورد",
+      "outstandingBalance": "الرصيد المستحق",
+      "amount": "المبلغ",
+      "paymentDate": "تاريخ الدفع",
+      "method": "الطريقة",
+      "bankAccount": "الحساب البنكي",
+      "selectBankAccount": "اختر حسابًا بنكيًا",
+      "saving": "جارٍ الحفظ…",
+      "save": "حفظ الدفعة",
+      "saveError": "تعذر حفظ هذه الدفعة — تحقق من الحقول."
+    },
     "allocationKind": {
       "trip": "رحلة",
       "truck": "شاحنة",

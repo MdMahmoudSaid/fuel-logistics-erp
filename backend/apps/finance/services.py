@@ -19,6 +19,7 @@ from apps.finance.models import (
     CustomerPayment,
     Expense,
     PaymentAllocation,
+    SupplierPayment,
     TreasuryTransaction,
 )
 from apps.sales.models import Invoice
@@ -249,6 +250,52 @@ class FinancePostingService:
             bank_account=bank_account,
             cash_account=cash_account,
             type=TreasuryTransaction.Type.MONEY_IN,
+            amount=payment.amount,
+            date=payment.payment_date,
+            reference=payment.reference,
+            source_content_type=payment_content_type,
+            source_object_id=payment.id,
+            recorded_by=payment.recorded_by,
+        )
+
+    @staticmethod
+    @transaction.atomic
+    def record_supplier_payment_treasury(payment: SupplierPayment) -> TreasuryTransaction | None:
+        """Create the one TreasuryTransaction(MONEY_OUT) every SupplierPayment
+        must produce (Task 5, client modifications plan). Unlike
+        CustomerPayment there is no indirect case for SupplierPayment, and
+        unlike the bank-only restriction on debt repayment (enforced by
+        SupplierPaymentSerializer.validate()), an advance (is_advance=True)
+        is exempt from that restriction but not from this posting: it is
+        still real money leaving the company (ruling 2), so every created
+        SupplierPayment - advance or not - posts through this one path.
+        Returns None (no-op) for a payment that was already posted -
+        callers don't need to check that themselves.
+        """
+        payment_content_type = ContentType.objects.get_for_model(SupplierPayment)
+        already_posted = TreasuryTransaction.objects.filter(
+            source_content_type=payment_content_type, source_object_id=payment.id
+        ).exists()
+        if already_posted:
+            return None
+
+        if payment.bank_account_id:
+            bank_account = BankAccount.objects.select_for_update().get(pk=payment.bank_account_id)
+            cash_account = None
+        elif payment.cash_account_id:
+            bank_account = None
+            cash_account = CashAccount.objects.select_for_update().get(pk=payment.cash_account_id)
+        else:
+            # Neither account set shouldn't happen given the DB-level
+            # finance_supplierpayment_requires_account constraint, but
+            # there's nothing sane to post here - stay defensive rather
+            # than raise.
+            return None
+
+        return TreasuryTransaction.objects.create(
+            bank_account=bank_account,
+            cash_account=cash_account,
+            type=TreasuryTransaction.Type.MONEY_OUT,
             amount=payment.amount,
             date=payment.payment_date,
             reference=payment.reference,

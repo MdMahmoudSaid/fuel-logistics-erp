@@ -628,6 +628,198 @@ def test_supplier_payment_as_general_advance_without_order():
 
 
 # ---------------------------------------------------------------------------
+# Task 5 (client modifications plan): supplier debt repayment must use
+# BANK_TRANSFER + a BankAccount and post one TreasuryTransaction(MONEY_OUT);
+# advances are exempt from the bank-only restriction but still post treasury
+# (ruling 2); SupplierPayment becomes create-only via the API (ruling 3).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_supplier_debt_payment_rejects_cash_method_via_api(finance_client):
+    _admin_user, supplier, _order = _make_supplier_order("DEBT-CASH")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+
+    response = finance_client.post(
+        "/api/supplier-payments/",
+        {
+            "supplier": supplier.id,
+            "amount": "1000000.00",
+            "payment_date": "2026-08-18",
+            "method": SupplierPayment.Method.CASH,
+            "cash_account": cash_account.id,
+            "is_advance": False,
+        },
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert TreasuryTransaction.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_supplier_debt_payment_rejects_missing_bank_account_via_api(finance_client):
+    _admin_user, supplier, _order = _make_supplier_order("DEBT-NOACC")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+
+    response = finance_client.post(
+        "/api/supplier-payments/",
+        {
+            "supplier": supplier.id,
+            "amount": "1000000.00",
+            "payment_date": "2026-08-18",
+            "method": SupplierPayment.Method.BANK_TRANSFER,
+            # Deliberately sending a cash_account and no bank_account: the
+            # base "exactly one account" rule alone would accept this, only
+            # the new debt-repayment rule rejects it (ruling 1).
+            "cash_account": cash_account.id,
+            "is_advance": False,
+        },
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert TreasuryTransaction.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_supplier_debt_payment_bank_transfer_creates_linked_treasury_transaction(finance_client):
+    _admin_user, supplier, _order = _make_supplier_order("DEBT-BANK")
+    bank_account = BankAccount.objects.create(name="Main BOA Account", opening_balance="5000000.00")
+    treasury_count_before = TreasuryTransaction.objects.count()
+
+    response = finance_client.post(
+        "/api/supplier-payments/",
+        {
+            "supplier": supplier.id,
+            "amount": "1000000.00",
+            "payment_date": "2026-08-18",
+            "method": SupplierPayment.Method.BANK_TRANSFER,
+            "bank_account": bank_account.id,
+            "is_advance": False,
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201, response.data
+    assert TreasuryTransaction.objects.count() == treasury_count_before + 1
+
+    txn = TreasuryTransaction.objects.get(
+        source_content_type=ContentType.objects.get_for_model(SupplierPayment),
+        source_object_id=response.data["id"],
+    )
+    assert txn.type == TreasuryTransaction.Type.MONEY_OUT
+    assert txn.bank_account_id == bank_account.id
+    assert txn.amount == Decimal("1000000.00")
+
+    bank_account.refresh_from_db()
+    assert bank_account.current_balance == Decimal("4000000.00")
+
+
+@pytest.mark.django_db
+def test_supplier_advance_via_cash_is_still_allowed_and_posts_treasury(finance_client):
+    """Ruling 1: the bank-only restriction applies only to non-advance debt
+    repayment. An advance (is_advance=True) may still use cash - but ruling
+    2 says it's still real money leaving the company, so it must still post
+    a TreasuryTransaction(MONEY_OUT)."""
+    _admin_user, supplier, _order = _make_supplier_order("ADV-CASH-API")
+    cash_account = CashAccount.objects.create(name="Main Cash", opening_balance="2000000.00")
+    treasury_count_before = TreasuryTransaction.objects.count()
+
+    response = finance_client.post(
+        "/api/supplier-payments/",
+        {
+            "supplier": supplier.id,
+            "amount": "500000.00",
+            "payment_date": "2026-08-18",
+            "method": SupplierPayment.Method.CASH,
+            "cash_account": cash_account.id,
+            "is_advance": True,
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201, response.data
+    assert TreasuryTransaction.objects.count() == treasury_count_before + 1
+
+    txn = TreasuryTransaction.objects.get(
+        source_content_type=ContentType.objects.get_for_model(SupplierPayment),
+        source_object_id=response.data["id"],
+    )
+    assert txn.type == TreasuryTransaction.Type.MONEY_OUT
+    assert txn.cash_account_id == cash_account.id
+
+
+@pytest.mark.django_db
+def test_supplier_payment_update_via_api_is_rejected(finance_client):
+    """Ruling 3: every SupplierPayment is already posted to treasury inside
+    create()'s atomic block, so there's no meaningful unposted state to
+    allow editing - SupplierPayment is create-only via the API."""
+    _admin_user, supplier, _order = _make_supplier_order("NOEDIT")
+    bank_account = BankAccount.objects.create(name="Main BOA Account")
+    created = finance_client.post(
+        "/api/supplier-payments/",
+        {
+            "supplier": supplier.id,
+            "amount": "1000000.00",
+            "payment_date": "2026-08-18",
+            "method": SupplierPayment.Method.BANK_TRANSFER,
+            "bank_account": bank_account.id,
+            "is_advance": False,
+        },
+        format="json",
+    )
+    assert created.status_code == 201, created.data
+
+    response = finance_client.patch(
+        f"/api/supplier-payments/{created.data['id']}/",
+        {"amount": "2000000.00"},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    payment = SupplierPayment.objects.get(pk=created.data["id"])
+    assert payment.amount == Decimal("1000000.00")
+
+
+@pytest.mark.django_db
+def test_supplier_outstanding_and_bank_balance_decrease_after_debt_payment(finance_client):
+    """Brief verification: supplier outstanding decreases by the payment
+    amount and the bank account's current balance decreases by the payment
+    amount, using the same GET /api/suppliers/{id}/ledger/ endpoint the new
+    SupplierPaymentForm.vue reuses for its "outstanding before submit" display."""
+    _admin_user, supplier, order = _make_supplier_order("OUTSTANDING")
+    bank_account = BankAccount.objects.create(name="Main BOA Account", opening_balance="10000000.00")
+
+    before = finance_client.get(f"/api/suppliers/{supplier.id}/ledger/")
+    assert before.status_code == 200
+    outstanding_before = Decimal(before.data["outstanding_balance"])
+    assert outstanding_before == order.total_amount
+
+    response = finance_client.post(
+        "/api/supplier-payments/",
+        {
+            "supplier": supplier.id,
+            "amount": "1500000.00",
+            "payment_date": "2026-08-18",
+            "method": SupplierPayment.Method.BANK_TRANSFER,
+            "bank_account": bank_account.id,
+            "is_advance": False,
+        },
+        format="json",
+    )
+    assert response.status_code == 201, response.data
+
+    after = finance_client.get(f"/api/suppliers/{supplier.id}/ledger/")
+    assert after.status_code == 200
+    outstanding_after = Decimal(after.data["outstanding_balance"])
+    assert outstanding_after == outstanding_before - Decimal("1500000.00")
+
+    bank_account.refresh_from_db()
+    assert bank_account.current_balance == Decimal("8500000.00")
+
+
+# ---------------------------------------------------------------------------
 # Phase 5 Etape 3: TransporterAdvance / TransportPayment
 # (docs/PHASE_5_PLAN.md; guide Section 1.5/8.6)
 # ---------------------------------------------------------------------------
