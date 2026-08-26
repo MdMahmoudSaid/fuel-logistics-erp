@@ -18,6 +18,24 @@ const summary: DashboardSummary = {
   transport: { settlements_count: 3, transport_cost: '4500000.00' },
   finance: { expenses_total: '600000.00', treasury_balance: '12000000.00' },
   profit: { total_margin: '1957500.00' },
+  debts: {
+    total: '3500000.00',
+    suppliers: { total: '2000000.00', rows: [{ supplier: 'Supplier 1', outstanding: '2000000.00' }] },
+    transporters: {
+      total: '1000000.00',
+      rows: [{ transporter: 'Transporteur 1', outstanding: '1000000.00' }],
+    },
+    customs: '400000.00',
+    other: '100000.00',
+  },
+  customer_amounts: {
+    total: '750000.00',
+    rows: [{ customer: 'Client 1', outstanding: '750000.00' }],
+  },
+  bank_amounts: {
+    total: '5000000.00',
+    rows: [{ bank: 'Bank 1', balance: '5000000.00' }],
+  },
 }
 
 const fetchDashboardSummary = vi.fn(async (params: Record<string, string | undefined>) => {
@@ -217,6 +235,15 @@ describe('DashboardView', () => {
     expect(wrapper.text()).toContain('Profit')
     expect(wrapper.text()).toContain('225,000')
     expect(wrapper.text()).toContain('1,957,500')
+
+    // debts / customer_amounts / bank_amounts sections (point-in-time
+    // snapshots, always present alongside the period-filtered sections).
+    expect(wrapper.text()).toContain('Total des dettes')
+    expect(wrapper.text()).toContain('3,500,000')
+    expect(wrapper.text()).toContain('Montant total des clients')
+    expect(wrapper.text()).toContain('Client 1')
+    expect(wrapper.text()).toContain('Montant total des banques')
+    expect(wrapper.text()).toContain('Bank 1')
   })
 
   it('shows an error message when the summary fails to load', async () => {

@@ -93,13 +93,17 @@
     "urgentBlockedTrips": "حالات عاجلة (رحلات محظورة)",
     "noUrgentTrips": "لا توجد حالات عاجلة.",
     "periodDetail": "تفاصيل الفترة",
+    "noAmounts": "لا توجد مبالغ.",
     "sections": {
       "operations": "العمليات",
       "fuel": "الوقود",
       "sales": "المبيعات",
       "transport": "النقل",
       "finance": "المالية",
-      "profit": "الربح"
+      "profit": "الربح",
+      "debts": "إجمالي الديون",
+      "customerAmounts": "إجمالي مبالغ العملاء",
+      "bankAmounts": "إجمالي مبالغ البنوك"
     },
     "fields": {
       "trips": "الرحلات",
@@ -113,7 +117,11 @@
       "transportCost": "تكلفة النقل",
       "expenses": "المصروفات",
       "treasuryBalance": "رصيد الخزينة",
-      "totalMargin": "الهامش الإجمالي"
+      "totalMargin": "الهامش الإجمالي",
+      "debtSuppliers": "الموردون",
+      "debtTransporters": "الناقلون",
+      "debtCustoms": "الجمارك",
+      "debtOther": "أخرى"
     }
   },
   "masterData": {

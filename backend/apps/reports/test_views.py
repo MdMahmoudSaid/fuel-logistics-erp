@@ -12,6 +12,7 @@ from rest_framework.test import APIClient
 from apps.accounts.models import Role, User
 from apps.core.models import Product
 from apps.customers.models import Customer
+from apps.finance.models import BankAccount, Expense
 from apps.purchasing.models import CessionLetter, SupplierOrder
 from apps.sales.models import Sale
 from apps.suppliers.models import Supplier
@@ -128,6 +129,141 @@ def test_dashboard_summary_requires_reports_permission():
     response = client.get("/api/dashboard/summary/")
 
     assert response.status_code == 403
+
+
+@pytest.mark.django_db
+def test_dashboard_summary_includes_debts_customer_and_bank_sections():
+    admin_user = _make_admin("DASHDEBT")
+    _make_full_trip("DASHDEBT", admin_user)
+
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    response = client.get("/api/dashboard/summary/")
+
+    assert response.status_code == 200, response.data
+    assert set(response.data["debts"]) >= {
+        "total",
+        "suppliers",
+        "transporters",
+        "customs",
+        "other",
+    }
+    assert "total" in response.data["customer_amounts"]
+    assert "rows" in response.data["customer_amounts"]
+    assert "total" in response.data["bank_amounts"]
+    assert "rows" in response.data["bank_amounts"]
+
+
+@pytest.mark.django_db
+def test_dashboard_summary_aggregates_customs_and_other_debts_correctly():
+    admin_user = _make_admin("DASHEXP")
+
+    Expense.objects.create(
+        category=Expense.Category.CUSTOMS,
+        amount=Decimal("1000.00"),
+        calculation_method=Expense.CalculationMethod.FIXED,
+        date="2020-01-01",
+        status=Expense.Status.UNPAID,
+    )
+    Expense.objects.create(
+        category=Expense.Category.CUSTOMS,
+        amount=Decimal("500.00"),
+        calculation_method=Expense.CalculationMethod.FIXED,
+        date="2020-01-01",
+        status=Expense.Status.PARTIALLY_PAID,
+    )
+    Expense.objects.create(
+        category=Expense.Category.CUSTOMS,
+        amount=Decimal("999.00"),
+        calculation_method=Expense.CalculationMethod.FIXED,
+        date="2020-01-01",
+        status=Expense.Status.PAID,
+    )
+    Expense.objects.create(
+        category=Expense.Category.RENT,
+        amount=Decimal("300.00"),
+        calculation_method=Expense.CalculationMethod.FIXED,
+        date="2020-01-01",
+        status=Expense.Status.UNPAID,
+    )
+    # Transport-category expenses must be excluded from "other" - they are
+    # already captured via TransporterOutstandingReportQuery/debts.transporters.
+    Expense.objects.create(
+        category=Expense.Category.TRANSPORT,
+        amount=Decimal("777.00"),
+        calculation_method=Expense.CalculationMethod.FIXED,
+        date="2020-01-01",
+        status=Expense.Status.UNPAID,
+    )
+    Expense.objects.create(
+        category=Expense.Category.RENT,
+        amount=Decimal("50.00"),
+        calculation_method=Expense.CalculationMethod.FIXED,
+        date="2020-01-01",
+        status=Expense.Status.CANCELLED,
+    )
+
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    response = client.get("/api/dashboard/summary/")
+
+    assert response.status_code == 200, response.data
+    assert response.data["debts"]["customs"] == "1500.00"
+    assert response.data["debts"]["other"] == "300.00"
+
+
+@pytest.mark.django_db
+def test_dashboard_summary_bank_amounts_only_include_active_banks():
+    admin_user = _make_admin("DASHBANK")
+    BankAccount.objects.create(
+        name="Active Bank", opening_balance=Decimal("100.00"), is_active=True
+    )
+    BankAccount.objects.create(
+        name="Closed Bank", opening_balance=Decimal("50.00"), is_active=False
+    )
+
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    response = client.get("/api/dashboard/summary/")
+
+    assert response.status_code == 200, response.data
+    bank_names = {row["bank"] for row in response.data["bank_amounts"]["rows"]}
+    assert bank_names == {"Active Bank"}
+    assert response.data["bank_amounts"]["total"] == "100.00"
+
+
+@pytest.mark.django_db
+def test_dashboard_summary_debts_customer_and_bank_sections_ignore_date_range():
+    admin_user = _make_admin("DASHNODATE")
+    Expense.objects.create(
+        category=Expense.Category.CUSTOMS,
+        amount=Decimal("1000.00"),
+        calculation_method=Expense.CalculationMethod.FIXED,
+        date="2020-01-01",
+        status=Expense.Status.UNPAID,
+    )
+    BankAccount.objects.create(
+        name="Old Bank", opening_balance=Decimal("250.00"), is_active=True
+    )
+
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    unfiltered = client.get("/api/dashboard/summary/")
+    filtered = client.get(
+        "/api/dashboard/summary/", {"from": "2099-01-01", "to": "2099-01-02"}
+    )
+
+    assert unfiltered.status_code == 200, unfiltered.data
+    assert filtered.status_code == 200, filtered.data
+    # Unlike operations/fuel/sales/transport/finance, these three sections
+    # are point-in-time "currently outstanding" snapshots and must not be
+    # affected by the requested date_from/date_to range.
+    assert filtered.data["operations"]["trips_count"] == 0
+    assert filtered.data["debts"] == unfiltered.data["debts"]
+    assert filtered.data["customer_amounts"] == unfiltered.data["customer_amounts"]
+    assert filtered.data["bank_amounts"] == unfiltered.data["bank_amounts"]
+    assert filtered.data["debts"]["customs"] == "1000.00"
+    assert filtered.data["bank_amounts"]["total"] == "250.00"
 
 
 # ---------------------------------------------------------------------------

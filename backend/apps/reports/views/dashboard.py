@@ -12,12 +12,25 @@ from rest_framework.response import Response
 from apps.accounts.permissions import HasModulePermission
 from apps.finance.models import BankAccount, CashAccount, Expense, TransportPayment
 from apps.reports.date_range import resolve_date_range
+from apps.reports.queries.customer_outstanding_report import CustomerOutstandingReportQuery
+from apps.reports.queries.supplier_outstanding_report import SupplierOutstandingReportQuery
+from apps.reports.queries.transporter_outstanding_report import (
+    TransporterOutstandingReportQuery,
+)
 from apps.reports.serialization import decimals_to_str
 from apps.reports.services.profit import TripProfitService
 from apps.reports.services.stock import TheoreticalStockService
 from apps.trips.models import Trip
 
 ZERO = Decimal("0.00")
+
+# Expense categories already captured elsewhere in the debts breakdown -
+# TRANSPORT is excluded from "other debts" because debts.transporters
+# (TransporterOutstandingReportQuery, based on TransportPayment) already
+# fully represents transporter liability; counting Expense(category=
+# TRANSPORT) too would double-count the same debt.
+_OTHER_DEBT_EXCLUDED_CATEGORIES = [Expense.Category.CUSTOMS, Expense.Category.TRANSPORT]
+_OUTSTANDING_EXPENSE_STATUSES = [Expense.Status.UNPAID, Expense.Status.PARTIALLY_PAID]
 
 
 class DashboardViewSet(viewsets.ViewSet):
@@ -84,6 +97,56 @@ class DashboardViewSet(viewsets.ViewSet):
             )
         }
 
+        # debts / customer_amounts / bank_amounts are point-in-time
+        # "currently outstanding" snapshots (total minus paid, as of now),
+        # not period aggregates - deliberately NOT scoped by date_from/
+        # date_to like the sections above. A debt from 3 months ago is
+        # still owed today regardless of the dashboard's selected range.
+        supplier_rows = SupplierOutstandingReportQuery.run()
+        supplier_total = sum((row["outstanding"] for row in supplier_rows), ZERO)
+
+        transporter_rows = TransporterOutstandingReportQuery.run()
+        transporter_total = sum((row["outstanding"] for row in transporter_rows), ZERO)
+
+        outstanding_expenses = Expense.objects.filter(
+            status__in=_OUTSTANDING_EXPENSE_STATUSES
+        )
+        customs_total = (
+            outstanding_expenses.filter(category=Expense.Category.CUSTOMS).aggregate(
+                total=Sum("amount")
+            )["total"]
+            or ZERO
+        )
+        other_total = (
+            outstanding_expenses.exclude(
+                category__in=_OTHER_DEBT_EXCLUDED_CATEGORIES
+            ).aggregate(total=Sum("amount"))["total"]
+            or ZERO
+        )
+
+        debts = {
+            "total": supplier_total + transporter_total + customs_total + other_total,
+            "suppliers": {"total": supplier_total, "rows": supplier_rows},
+            "transporters": {"total": transporter_total, "rows": transporter_rows},
+            "customs": customs_total,
+            "other": other_total,
+        }
+
+        customer_rows = CustomerOutstandingReportQuery.run()
+        customer_amounts = {
+            "total": sum((row["outstanding"] for row in customer_rows), ZERO),
+            "rows": customer_rows,
+        }
+
+        bank_rows = [
+            {"bank": account.name, "balance": account.current_balance}
+            for account in BankAccount.objects.filter(is_active=True)
+        ]
+        bank_amounts = {
+            "total": sum((row["balance"] for row in bank_rows), ZERO),
+            "rows": bank_rows,
+        }
+
         return Response(
             decimals_to_str(
                 {
@@ -95,6 +158,9 @@ class DashboardViewSet(viewsets.ViewSet):
                     "transport": transport,
                     "finance": finance,
                     "profit": profit,
+                    "debts": debts,
+                    "customer_amounts": customer_amounts,
+                    "bank_amounts": bank_amounts,
                 }
             )
         )

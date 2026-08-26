@@ -29,4 +29,22 @@ export interface DashboardSummary {
   profit: {
     total_margin: string
   }
+  // Point-in-time "currently outstanding" snapshots (total minus paid, as
+  // of now) - unlike the sections above, these are NOT scoped by the
+  // date_from/date_to range (backend/apps/reports/views/dashboard.py).
+  debts: {
+    total: string
+    suppliers: { total: string; rows: { supplier: string; outstanding: string }[] }
+    transporters: { total: string; rows: { transporter: string; outstanding: string }[] }
+    customs: string
+    other: string
+  }
+  customer_amounts: {
+    total: string
+    rows: { customer: string; outstanding: string }[]
+  }
+  bank_amounts: {
+    total: string
+    rows: { bank: string; balance: string }[]
+  }
 }

@@ -93,13 +93,17 @@
     "urgentBlockedTrips": "Urgences (trajets bloqués)",
     "noUrgentTrips": "Aucune urgence.",
     "periodDetail": "Détail de la période",
+    "noAmounts": "Aucun montant.",
     "sections": {
       "operations": "Opérations",
       "fuel": "Carburant",
       "sales": "Ventes",
       "transport": "Transport",
       "finance": "Finance",
-      "profit": "Profit"
+      "profit": "Profit",
+      "debts": "Total des dettes",
+      "customerAmounts": "Montant total des clients",
+      "bankAmounts": "Montant total des banques"
     },
     "fields": {
       "trips": "Trajets",
@@ -113,7 +117,11 @@
       "transportCost": "Coût transport",
       "expenses": "Dépenses",
       "treasuryBalance": "Solde trésorerie",
-      "totalMargin": "Marge totale"
+      "totalMargin": "Marge totale",
+      "debtSuppliers": "Fournisseurs",
+      "debtTransporters": "Transporteurs",
+      "debtCustoms": "Douanes",
+      "debtOther": "Autres"
     }
   },
   "masterData": {

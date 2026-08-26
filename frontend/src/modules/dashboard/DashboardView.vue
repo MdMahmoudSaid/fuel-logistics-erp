@@ -416,6 +416,93 @@ const lossGaugeTone = computed(() => lossSeverityTone(avgLossPct.value))
           </div>
         </dl>
       </section>
+
+      <!-- Point-in-time "currently outstanding" snapshots - not affected
+           by the DateRangeFilter above (see types.ts). -->
+      <section class="border-ligne rounded-xl border bg-white p-4">
+        <h3 class="text-texte-2 mb-1 text-sm font-semibold uppercase">
+          {{ t('dashboard.sections.debts') }}
+        </h3>
+        <p class="text-texte font-mono text-lg font-semibold tabular-nums">
+          {{ formatNumber(summary.debts.total) }}
+        </p>
+        <dl class="mt-2 space-y-1 text-sm">
+          <div class="flex justify-between">
+            <dt class="text-texte-2">{{ t('dashboard.fields.debtSuppliers') }}</dt>
+            <dd class="text-texte font-mono font-medium tabular-nums">
+              {{ formatNumber(summary.debts.suppliers.total) }}
+            </dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-texte-2">{{ t('dashboard.fields.debtTransporters') }}</dt>
+            <dd class="text-texte font-mono font-medium tabular-nums">
+              {{ formatNumber(summary.debts.transporters.total) }}
+            </dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-texte-2">{{ t('dashboard.fields.debtCustoms') }}</dt>
+            <dd class="text-texte font-mono font-medium tabular-nums">
+              {{ formatNumber(summary.debts.customs) }}
+            </dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-texte-2">{{ t('dashboard.fields.debtOther') }}</dt>
+            <dd class="text-texte font-mono font-medium tabular-nums">
+              {{ formatNumber(summary.debts.other) }}
+            </dd>
+          </div>
+        </dl>
+      </section>
+
+      <section class="border-ligne rounded-xl border bg-white p-4">
+        <h3 class="text-texte-2 mb-1 text-sm font-semibold uppercase">
+          {{ t('dashboard.sections.customerAmounts') }}
+        </h3>
+        <p class="text-texte font-mono text-lg font-semibold tabular-nums">
+          {{ formatNumber(summary.customer_amounts.total) }}
+        </p>
+        <ul
+          v-if="summary.customer_amounts.rows.length"
+          class="mt-2 max-h-40 space-y-1 overflow-y-auto text-sm"
+        >
+          <li
+            v-for="row in summary.customer_amounts.rows"
+            :key="row.customer"
+            class="flex justify-between"
+          >
+            <span class="text-texte-2">{{ row.customer }}</span>
+            <span class="text-texte font-mono font-medium tabular-nums">
+              {{ formatNumber(row.outstanding) }}
+            </span>
+          </li>
+        </ul>
+        <p v-else class="text-texte-3 mt-2 text-sm">{{ t('dashboard.noAmounts') }}</p>
+      </section>
+
+      <section class="border-ligne rounded-xl border bg-white p-4">
+        <h3 class="text-texte-2 mb-1 text-sm font-semibold uppercase">
+          {{ t('dashboard.sections.bankAmounts') }}
+        </h3>
+        <p class="text-texte font-mono text-lg font-semibold tabular-nums">
+          {{ formatNumber(summary.bank_amounts.total) }}
+        </p>
+        <ul
+          v-if="summary.bank_amounts.rows.length"
+          class="mt-2 max-h-40 space-y-1 overflow-y-auto text-sm"
+        >
+          <li
+            v-for="row in summary.bank_amounts.rows"
+            :key="row.bank"
+            class="flex justify-between"
+          >
+            <span class="text-texte-2">{{ row.bank }}</span>
+            <span class="text-texte font-mono font-medium tabular-nums">
+              {{ formatNumber(row.balance) }}
+            </span>
+          </li>
+        </ul>
+        <p v-else class="text-texte-3 mt-2 text-sm">{{ t('dashboard.noAmounts') }}</p>
+      </section>
     </div>
   </div>
 </template>
