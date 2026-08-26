@@ -171,6 +171,7 @@ class IndirectSettlementService:
             cash_account=None,
             reference=expense_data.get("reference", ""),
             is_indirect=True,
+            destination=CustomerPayment.Destination.INDIRECT,
             recorded_by=actor,
         )
 

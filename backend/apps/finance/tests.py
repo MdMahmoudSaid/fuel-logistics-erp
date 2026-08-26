@@ -1306,6 +1306,10 @@ def test_indirect_settlement_via_api(finance_client):
     assert response.status_code == 201, response.data
     assert response.data["expense"]["paid_by_customer_directly"] is True
     assert response.data["payment"]["is_indirect"] is True
+    # Ruling 1 invariant: destination=INDIRECT must always agree with
+    # is_indirect=True, even for payments created directly by
+    # IndirectSettlementService (bypassing CustomerPaymentSerializer.validate()).
+    assert response.data["payment"]["destination"] == CustomerPayment.Destination.INDIRECT
     assert TreasuryTransaction.objects.count() == 0
 
 
@@ -1530,3 +1534,103 @@ def test_documents_endpoint_accepts_customer_payment_proof_upload(finance_client
     assert document.content_type == ContentType.objects.get_for_model(CustomerPayment)
     assert document.object_id == payment.id
     assert document.document_type == "customer_payment_proof"
+
+
+@pytest.fixture
+def finance_only_client():
+    """A role with ONLY finance permissions - no "purchasing" key at all
+    (unlike the seeded Finance role, which happens to also grant
+    purchasing:view - apps/accounts/migrations/0002_seed_roles.py). This is
+    the role DocumentViewSet must work for without relying on that
+    coincidence: retrieve/list/destroy of a customerpayment document must
+    not require any purchasing permission."""
+    role, _created = Role.objects.get_or_create(
+        name="Finance Only (test)",
+        defaults={
+            "permissions": {"finance": ["view", "create", "edit", "validate", "cancel", "export"]}
+        },
+    )
+    user = User.objects.create_user(phone="+2220000099", pin="1234", role=role)
+    client = APIClient()
+    client.force_authenticate(user)
+    return client
+
+
+@pytest.mark.django_db
+def test_documents_endpoint_retrieve_customer_payment_proof_for_finance_only_role(
+    finance_only_client, settings, tmp_path
+):
+    """Ruling 2 fix, part 2: DocumentViewSet.module used to fall back to a
+    hardcoded "purchasing" for retrieve/destroy (no content_type_name in a
+    GET/DELETE body), so a role with finance permissions but zero
+    purchasing access could upload a customer-payment proof and then 403
+    trying to read it back. module must resolve from the existing
+    Document's own content_type for these actions too."""
+    settings.MEDIA_ROOT = str(tmp_path)
+    admin_role = Role.objects.get(name=Role.NAME_ADMIN)
+    admin_user = User.objects.create_user(phone="+2220000098", pin="1234", role=admin_role)
+    _admin_user, customer, _invoice = _make_invoice_for_payment("API-DOC-RETRIEVE")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+    payment = CustomerPayment.objects.create(
+        customer=customer,
+        amount=Decimal("150000.00"),
+        payment_date="2026-08-18",
+        method=CustomerPayment.Method.CASH,
+        cash_account=cash_account,
+        destination=CustomerPayment.Destination.CASH,
+        recorded_by=admin_user,
+    )
+    document = Document.objects.create(
+        file=SimpleUploadedFile("proof.jpg", b"fake-bytes", content_type="image/jpeg"),
+        document_type="customer_payment_proof",
+        uploaded_by=admin_user,
+        content_type=ContentType.objects.get_for_model(CustomerPayment),
+        object_id=payment.id,
+    )
+
+    retrieved = finance_only_client.get(f"/api/documents/{document.id}/")
+    assert retrieved.status_code == 200, retrieved.data
+
+    listed = finance_only_client.get("/api/documents/")
+    assert listed.status_code == 200, listed.data
+    listed_ids = {row["id"] for row in listed.data["results"]}
+    assert document.id in listed_ids
+
+    deleted = finance_only_client.delete(f"/api/documents/{document.id}/")
+    assert deleted.status_code == 204, getattr(deleted, "data", None)
+    assert not Document.objects.filter(pk=document.id).exists()
+
+
+@pytest.mark.django_db
+def test_documents_endpoint_list_excludes_modules_role_cannot_view(finance_only_client, settings, tmp_path):
+    """get_queryset() must still filter by what the caller's role can
+    actually view, even though _AnyAttachableModulePermission lets the
+    request through as soon as they can view ANY attachable module - a
+    finance-only role must not see a purchasing (supplierorder) document."""
+    settings.MEDIA_ROOT = str(tmp_path)
+    admin_role = Role.objects.get(name=Role.NAME_ADMIN)
+    admin_user = User.objects.create_user(phone="+2220000097", pin="1234", role=admin_role)
+    product = Product.objects.get(code="gasoil")
+    supplier = Supplier.objects.create(name="Supplier Doc", country="Senegal")
+    supplier_order = SupplierOrder.objects.create(
+        reference="SO-DOC-1",
+        supplier=supplier,
+        product=product,
+        purchase_date="2026-08-18",
+        quantity_litres=Decimal("10000.00"),
+        unit_price=Decimal("500.0000"),
+        created_by=admin_user,
+    )
+    purchasing_document = Document.objects.create(
+        file=SimpleUploadedFile("contract.pdf", b"fake-bytes", content_type="application/pdf"),
+        document_type="purchase_contract",
+        uploaded_by=admin_user,
+        content_type=ContentType.objects.get_for_model(SupplierOrder),
+        object_id=supplier_order.id,
+    )
+
+    listed = finance_only_client.get("/api/documents/")
+
+    assert listed.status_code == 200, listed.data
+    listed_ids = {row["id"] for row in listed.data["results"]}
+    assert purchasing_document.id not in listed_ids
