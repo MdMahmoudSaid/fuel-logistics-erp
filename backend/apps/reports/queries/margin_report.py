@@ -1,15 +1,46 @@
 # MarginReportQuery (docs/PHASE_6_PLAN.md Etape 4;
 # ERP_Implementation_Experience_Guide.md Section 9.1/9.7).
 #
-# One row per trip that has produced a Sale, delegating the actual number
-# to TripProfitService so this never duplicates the margin formula (guide
-# Section 9.1: "do not scatter profitability formulas throughout
-# serializers and dashboard queries").
+# One row per trip that has produced a Sale, delegating every cost/profit
+# number to TripProfitService.get_cost_breakdown() so this never duplicates
+# a cost or margin formula (guide Section 9.1: "do not scatter
+# profitability formulas throughout serializers and dashboard queries";
+# client modifications plan Task 3: cost breakdown itself delegates to
+# TripCostService.calculate_trip_cost_basis).
 
+from decimal import Decimal
+
+from apps.finance.models import Expense
 from apps.reports.services.profit import TripProfitService
 from apps.trips.models import Trip
 
-FIELDS = ["trip_reference", "client", "product", "current_margin"]
+ZERO = Decimal("0.00")
+
+FIELDS = [
+    "trip_reference",
+    "client",
+    "product",
+    "quantity",
+    "supplier_unit_price",
+    "transport_cost",
+    "customs_cost",
+    "transit_cost",
+    "additional_costs",
+    "unit_cost",
+    "unit_selling_price",
+    "unit_profit",
+    "current_margin",
+]
+
+# Categories counted separately (customs_cost, transit_cost) or already
+# represented by a non-Expense field (transport_cost comes from
+# TripCostService/TransportPayment, not from Expense) - excluded here so
+# additional_costs never double-counts them.
+_EXCLUDED_FROM_ADDITIONAL_COSTS = {
+    Expense.Category.CUSTOMS,
+    Expense.Category.IMPORT_INTENTION,
+    Expense.Category.TRANSPORT,
+}
 
 
 class MarginReportQuery:
@@ -17,20 +48,45 @@ class MarginReportQuery:
 
     @classmethod
     def run(cls, *, date_from=None, date_to=None) -> list[dict]:
-        trips = Trip.objects.filter(sale__isnull=False).select_related(
-            "sale", "sale__customer", "product"
-        ).order_by("-loading_date", "-id")
+        trips = (
+            Trip.objects.filter(sale__isnull=False)
+            .select_related("sale", "sale__customer", "product", "supplier_order")
+            .order_by("-loading_date", "-id")
+        )
         if date_from:
             trips = trips.filter(loading_date__gte=date_from)
         if date_to:
             trips = trips.filter(loading_date__lte=date_to)
 
-        return [
-            {
-                "trip_reference": trip.reference,
-                "client": trip.sale.customer.name,
-                "product": trip.product.name,
-                "current_margin": TripProfitService.calculate_current_margin(trip),
-            }
-            for trip in trips
-        ]
+        rows = []
+        for trip in trips:
+            breakdown = TripProfitService.get_cost_breakdown(trip)
+            expenses_by_category = breakdown["expenses_by_category"]
+            additional_costs = sum(
+                (
+                    amount
+                    for category, amount in expenses_by_category.items()
+                    if category not in _EXCLUDED_FROM_ADDITIONAL_COSTS
+                ),
+                ZERO,
+            )
+            rows.append(
+                {
+                    "trip_reference": trip.reference,
+                    "client": trip.sale.customer.name,
+                    "product": trip.product.name,
+                    "quantity": trip.quantity_loaded,
+                    "supplier_unit_price": trip.supplier_order.unit_price,
+                    "transport_cost": breakdown["transport_cost"],
+                    "customs_cost": expenses_by_category.get(Expense.Category.CUSTOMS, ZERO),
+                    "transit_cost": expenses_by_category.get(
+                        Expense.Category.IMPORT_INTENTION, ZERO
+                    ),
+                    "additional_costs": additional_costs,
+                    "unit_cost": breakdown["unit_cost"],
+                    "unit_selling_price": trip.sale.unit_selling_price,
+                    "unit_profit": breakdown["unit_profit"],
+                    "current_margin": breakdown["margin"],
+                }
+            )
+        return rows

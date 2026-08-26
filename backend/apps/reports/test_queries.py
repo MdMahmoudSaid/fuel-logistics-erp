@@ -4,6 +4,7 @@
 from decimal import Decimal
 
 import pytest
+from django.contrib.contenttypes.models import ContentType
 
 from apps.accounts.models import Role, User
 from apps.core.models import Product
@@ -11,6 +12,8 @@ from apps.customers.models import Customer
 from apps.finance.models import (
     CashAccount,
     CustomerPayment,
+    Expense,
+    ExpenseAllocation,
     SupplierPayment,
     TransportDeduction,
     TransportPayment,
@@ -296,6 +299,103 @@ def test_margin_report_lists_current_margin_per_sold_trip():
     assert rows[0]["trip_reference"] == fx["trip"].reference
     assert rows[0]["client"] == fx["customer"].name
     assert rows[0]["current_margin"] is not None
+
+
+def _allocate_expense(trip, category, amount, suffix, status=Expense.Status.UNPAID):
+    expense = Expense.objects.create(
+        category=category,
+        amount=amount,
+        calculation_method=Expense.CalculationMethod.MANUAL,
+        date="2026-08-18",
+        status=status,
+    )
+    ExpenseAllocation.objects.create(
+        expense=expense,
+        content_type=ContentType.objects.get_for_model(Trip),
+        object_id=trip.id,
+        allocated_amount=amount,
+    )
+    return expense
+
+
+@pytest.mark.django_db
+def test_margin_report_row_includes_expanded_cost_breakdown_fields():
+    admin_user = _make_admin("MARGINBREAKDOWN")
+    fx = _make_full_trip("MARGINBREAKDOWN", admin_user)
+    trip = fx["trip"]
+
+    TransportPayment.objects.create(
+        trip=trip,
+        transporter=fx["transporter"],
+        calculation_method=TransportPayment.CalculationMethod.FIXED,
+        base_amount=Decimal("800000.00"),
+    )
+    _allocate_expense(trip, Expense.Category.CUSTOMS, Decimal("1200000.00"), "CUST")
+    _allocate_expense(trip, Expense.Category.IMPORT_INTENTION, Decimal("300000.00"), "TRANSIT")
+    _allocate_expense(trip, Expense.Category.ROAD, Decimal("50000.00"), "ROAD")
+    _allocate_expense(trip, Expense.Category.OTHER, Decimal("20000.00"), "OTHER")
+    # A TRANSPORT-category Expense must never be double-counted against
+    # transport_cost (which already comes from TransportPayment above).
+    _allocate_expense(trip, Expense.Category.TRANSPORT, Decimal("15000.00"), "TRANSPORTEXP")
+    # Cancelled expenses must never be counted.
+    _allocate_expense(
+        trip,
+        Expense.Category.OTHER,
+        Decimal("999999.00"),
+        "CANCELLED",
+        status=Expense.Status.CANCELLED,
+    )
+
+    rows = MarginReportQuery.run()
+    row = next(r for r in rows if r["trip_reference"] == trip.reference)
+
+    for field in MarginReportQuery.FIELDS:
+        assert field in row
+
+    assert row["quantity"] == trip.quantity_loaded
+    assert row["supplier_unit_price"] == trip.supplier_order.unit_price
+    assert row["transport_cost"] == Decimal("800000.00")
+    assert row["customs_cost"] == Decimal("1200000.00")
+    assert row["transit_cost"] == Decimal("300000.00")
+    # additional_costs = road + other, excluding customs/import_intention/transport
+    assert row["additional_costs"] == Decimal("70000.00")
+    assert row["unit_selling_price"] == trip.sale.unit_selling_price
+
+    from apps.reports.services.profit import TripProfitService
+
+    breakdown = TripProfitService.get_cost_breakdown(trip)
+    assert row["unit_cost"] == breakdown["unit_cost"]
+    assert row["unit_profit"] == breakdown["unit_profit"]
+    assert row["current_margin"] == breakdown["margin"]
+
+
+@pytest.mark.django_db
+def test_margin_report_period_total_equals_sum_of_row_margins():
+    admin_user = _make_admin("MARGINPERIOD")
+    fx_in_1 = _make_full_trip("MARGINPERIODA", admin_user)
+    fx_in_1["trip"].loading_date = "2026-08-05"
+    fx_in_1["trip"].save(update_fields=["loading_date"])
+    fx_in_2 = _make_full_trip("MARGINPERIODB", admin_user)
+    fx_in_2["trip"].loading_date = "2026-08-20"
+    fx_in_2["trip"].save(update_fields=["loading_date"])
+    fx_out = _make_full_trip("MARGINPERIODC", admin_user)
+    fx_out["trip"].loading_date = "2026-07-01"
+    fx_out["trip"].save(update_fields=["loading_date"])
+
+    from apps.reports.services.profit import TripProfitService
+
+    expected_total = TripProfitService.get_cost_breakdown(fx_in_1["trip"])["margin"] + (
+        TripProfitService.get_cost_breakdown(fx_in_2["trip"])["margin"]
+    )
+
+    rows = MarginReportQuery.run(date_from="2026-08-01", date_to="2026-08-31")
+
+    assert {r["trip_reference"] for r in rows} == {
+        fx_in_1["trip"].reference,
+        fx_in_2["trip"].reference,
+    }
+    period_total = sum((r["current_margin"] for r in rows), Decimal("0.00"))
+    assert period_total == expected_total
 
 
 # ---------------------------------------------------------------------------
