@@ -131,6 +131,8 @@ const payments: CustomerPayment[] = [
     cash_account: null,
     reference: 'PAY-1',
     is_indirect: false,
+    destination: 'CASH',
+    note: '',
     recorded_by: null,
     recorded_by_detail: null,
     allocations_detail: [],

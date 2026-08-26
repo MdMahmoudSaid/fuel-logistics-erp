@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 import pytest
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import IntegrityError, transaction
 from rest_framework.test import APIClient
 
@@ -9,6 +10,7 @@ from django.contrib.contenttypes.models import ContentType
 from apps.accounts.models import Role, User
 from apps.core.models import Product
 from apps.customers.models import Customer
+from apps.documents.models import Document
 from apps.finance.models import (
     BankAccount,
     CashAccount,
@@ -23,6 +25,7 @@ from apps.finance.models import (
     TreasuryTransaction,
 )
 from apps.finance.services import (
+    FinancePostingService,
     IndirectSettlementService,
     PaymentAllocationError,
     PaymentAllocationService,
@@ -357,6 +360,113 @@ def test_indirect_customer_payment_requires_no_treasury_account():
     assert payment.bank_account is None
     assert payment.cash_account is None
     assert payment.is_indirect is True
+
+
+# ---------------------------------------------------------------------------
+# Task 4 (client modifications plan): destination/note, treasury posting for
+# direct customer payments, and the customerpayment document-proof upload.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_finance_posting_service_returns_none_for_indirect_payment():
+    admin_user, customer, _invoice = _make_invoice_for_payment("FPS-IND")
+    payment = CustomerPayment.objects.create(
+        customer=customer,
+        amount=Decimal("1000000.00"),
+        payment_date="2026-08-18",
+        method=CustomerPayment.Method.OTHER,
+        is_indirect=True,
+        destination=CustomerPayment.Destination.INDIRECT,
+        recorded_by=admin_user,
+    )
+
+    result = FinancePostingService.record_customer_payment_treasury(payment)
+
+    assert result is None
+    assert TreasuryTransaction.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_finance_posting_service_posts_money_in_on_cash_account():
+    admin_user, customer, _invoice = _make_invoice_for_payment("FPS-CASH")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+    payment = CustomerPayment.objects.create(
+        customer=customer,
+        amount=Decimal("750000.00"),
+        payment_date="2026-08-18",
+        method=CustomerPayment.Method.CASH,
+        cash_account=cash_account,
+        destination=CustomerPayment.Destination.CASH,
+        recorded_by=admin_user,
+    )
+
+    txn = FinancePostingService.record_customer_payment_treasury(payment)
+
+    assert txn is not None
+    assert txn.type == TreasuryTransaction.Type.MONEY_IN
+    assert txn.cash_account_id == cash_account.id
+    assert txn.bank_account is None
+    assert txn.amount == Decimal("750000.00")
+    assert txn.source_object == payment
+    assert txn.source_content_type == ContentType.objects.get_for_model(CustomerPayment)
+
+
+@pytest.mark.django_db
+def test_finance_posting_service_prevents_duplicate_posting():
+    """Calling the service twice for the same payment (e.g. a retried
+    request) must only ever create one TreasuryTransaction (task 4 brief:
+    "Prevent duplicate posting if a linked transaction already exists")."""
+    admin_user, customer, _invoice = _make_invoice_for_payment("FPS-DUP")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+    payment = CustomerPayment.objects.create(
+        customer=customer,
+        amount=Decimal("300000.00"),
+        payment_date="2026-08-18",
+        method=CustomerPayment.Method.CASH,
+        cash_account=cash_account,
+        destination=CustomerPayment.Destination.CASH,
+        recorded_by=admin_user,
+    )
+
+    first = FinancePostingService.record_customer_payment_treasury(payment)
+    second = FinancePostingService.record_customer_payment_treasury(payment)
+
+    assert first is not None
+    assert second is None
+    assert TreasuryTransaction.objects.filter(
+        source_content_type=ContentType.objects.get_for_model(CustomerPayment),
+        source_object_id=payment.id,
+    ).count() == 1
+
+
+@pytest.mark.django_db
+def test_finance_posting_service_vers_moi_maps_to_dedicated_cash_account():
+    admin_user, customer, _invoice = _make_invoice_for_payment("FPS-VM")
+    vers_moi = FinancePostingService.get_or_create_vers_moi_account()
+    payment = CustomerPayment.objects.create(
+        customer=customer,
+        amount=Decimal("200000.00"),
+        payment_date="2026-08-18",
+        method=CustomerPayment.Method.CASH,
+        cash_account=vers_moi,
+        destination=CustomerPayment.Destination.VERS_MOI,
+        recorded_by=admin_user,
+    )
+
+    txn = FinancePostingService.record_customer_payment_treasury(payment)
+
+    assert txn is not None
+    assert txn.cash_account_id == vers_moi.id
+
+
+@pytest.mark.django_db
+def test_get_or_create_vers_moi_account_does_not_duplicate():
+    account_a = FinancePostingService.get_or_create_vers_moi_account()
+    account_b = FinancePostingService.get_or_create_vers_moi_account()
+
+    assert account_a.id == account_b.id
+    assert CashAccount.objects.filter(name="Vers moi").count() == 1
 
 
 @pytest.mark.django_db
@@ -1238,3 +1348,185 @@ def test_transporter_ledger_endpoint_reports_net_outstanding(finance_client):
 
     assert response.status_code == 200
     assert response.data["net_outstanding"] == "557500.00"
+
+
+# ---------------------------------------------------------------------------
+# Task 4 (client modifications plan): destination/note over the API, treasury
+# posting on direct customer payments, and the customerpayment proof upload.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_customer_payment_serializer_exposes_note_and_destination(finance_client):
+    _admin_user, customer, _invoice = _make_invoice_for_payment("API-NOTE-DEST")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+
+    response = finance_client.post(
+        "/api/customer-payments/",
+        {
+            "customer": customer.id,
+            "amount": "150000.00",
+            "payment_date": "2026-08-18",
+            "method": CustomerPayment.Method.CASH,
+            "destination": CustomerPayment.Destination.CASH,
+            "cash_account": cash_account.id,
+            "note": "Paiement remis par le chauffeur",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201, response.data
+    assert response.data["destination"] == CustomerPayment.Destination.CASH
+    assert response.data["note"] == "Paiement remis par le chauffeur"
+    assert response.data["is_indirect"] is False
+
+
+@pytest.mark.django_db
+def test_customer_payment_destination_vers_moi_accepted_via_api(finance_client):
+    _admin_user, customer, _invoice = _make_invoice_for_payment("API-VERSMOI")
+
+    response = finance_client.post(
+        "/api/customer-payments/",
+        {
+            "customer": customer.id,
+            "amount": "80000.00",
+            "payment_date": "2026-08-18",
+            "method": CustomerPayment.Method.CASH,
+            "destination": CustomerPayment.Destination.VERS_MOI,
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201, response.data
+    assert response.data["destination"] == CustomerPayment.Destination.VERS_MOI
+    assert response.data["is_indirect"] is False
+    assert response.data["cash_account"] is not None
+
+    vers_moi = CashAccount.objects.get(name="Vers moi")
+    assert response.data["cash_account"] == vers_moi.id
+    # One dedicated account, no duplicate created on this call.
+    assert CashAccount.objects.filter(name="Vers moi").count() == 1
+
+
+@pytest.mark.django_db
+def test_direct_bank_customer_payment_creates_linked_treasury_transaction(finance_client):
+    _admin_user, customer, _invoice = _make_invoice_for_payment("API-TREAS-BANK")
+    bank_account = BankAccount.objects.create(name="Main BOA Account")
+    treasury_count_before = TreasuryTransaction.objects.count()
+
+    response = finance_client.post(
+        "/api/customer-payments/",
+        {
+            "customer": customer.id,
+            "amount": "2500000.00",
+            "payment_date": "2026-08-18",
+            "method": CustomerPayment.Method.BANK_TRANSFER,
+            "destination": CustomerPayment.Destination.BANK,
+            "bank_account": bank_account.id,
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201, response.data
+    assert TreasuryTransaction.objects.count() == treasury_count_before + 1
+
+    txn = TreasuryTransaction.objects.get(
+        source_content_type=ContentType.objects.get_for_model(CustomerPayment),
+        source_object_id=response.data["id"],
+    )
+    assert txn.type == TreasuryTransaction.Type.MONEY_IN
+    assert txn.bank_account_id == bank_account.id
+    assert txn.amount == Decimal("2500000.00")
+
+
+@pytest.mark.django_db
+def test_direct_cash_customer_payment_creates_linked_treasury_transaction(finance_client):
+    _admin_user, customer, _invoice = _make_invoice_for_payment("API-TREAS-CASH")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+    treasury_count_before = TreasuryTransaction.objects.count()
+
+    response = finance_client.post(
+        "/api/customer-payments/",
+        {
+            "customer": customer.id,
+            "amount": "600000.00",
+            "payment_date": "2026-08-18",
+            "method": CustomerPayment.Method.CASH,
+            "destination": CustomerPayment.Destination.CASH,
+            "cash_account": cash_account.id,
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201, response.data
+    assert TreasuryTransaction.objects.count() == treasury_count_before + 1
+
+    txn = TreasuryTransaction.objects.get(
+        source_content_type=ContentType.objects.get_for_model(CustomerPayment),
+        source_object_id=response.data["id"],
+    )
+    assert txn.type == TreasuryTransaction.Type.MONEY_IN
+    assert txn.cash_account_id == cash_account.id
+    assert txn.amount == Decimal("600000.00")
+
+
+@pytest.mark.django_db
+def test_indirect_customer_payment_via_api_still_creates_no_treasury_transaction(finance_client):
+    _admin_user, customer, _invoice = _make_invoice_for_payment("API-TREAS-INDIRECT")
+    treasury_count_before = TreasuryTransaction.objects.count()
+
+    response = finance_client.post(
+        "/api/customer-payments/",
+        {
+            "customer": customer.id,
+            "amount": "900000.00",
+            "payment_date": "2026-08-18",
+            "method": CustomerPayment.Method.OTHER,
+            "destination": CustomerPayment.Destination.INDIRECT,
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201, response.data
+    assert response.data["is_indirect"] is True
+    assert TreasuryTransaction.objects.count() == treasury_count_before
+
+
+@pytest.mark.django_db
+def test_documents_endpoint_accepts_customer_payment_proof_upload(finance_client, settings, tmp_path):
+    """The seeded Finance role only has purchasing:view (never
+    purchasing:create, see apps/accounts/migrations/0002_seed_roles.py) -
+    before DocumentViewSet.module resolved dynamically per content type,
+    this exact request 403'd because the viewset hardcoded module=
+    "purchasing". This is the bug ruling 2 (Task 4) fixes, not just an
+    ALLOWED_ATTACHMENT_MODELS entry."""
+    settings.MEDIA_ROOT = str(tmp_path)
+    admin_user, customer, _invoice = _make_invoice_for_payment("API-DOC-PROOF")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+    payment = CustomerPayment.objects.create(
+        customer=customer,
+        amount=Decimal("400000.00"),
+        payment_date="2026-08-18",
+        method=CustomerPayment.Method.CASH,
+        cash_account=cash_account,
+        destination=CustomerPayment.Destination.CASH,
+        recorded_by=admin_user,
+    )
+    proof = SimpleUploadedFile("proof.jpg", b"fake-image-bytes", content_type="image/jpeg")
+
+    response = finance_client.post(
+        "/api/documents/",
+        {
+            "file": proof,
+            "document_type": "customer_payment_proof",
+            "content_type_name": "customerpayment",
+            "object_id": str(payment.id),
+        },
+        format="multipart",
+    )
+
+    assert response.status_code == 201, response.data
+    document = Document.objects.get(pk=response.data["id"])
+    assert document.content_type == ContentType.objects.get_for_model(CustomerPayment)
+    assert document.object_id == payment.id
+    assert document.document_type == "customer_payment_proof"

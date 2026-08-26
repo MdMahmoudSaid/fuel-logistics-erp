@@ -8,14 +8,22 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { createResourceApi } from '@/api/resource'
 import { translateApiError } from '@/i18n/apiErrors'
-import { customerPaymentResource, fetchCustomerLedger } from './api'
+import { customerPaymentResource, fetchCustomerLedger, uploadCustomerPaymentProof } from './api'
 import type {
   CustomerBrief,
   CustomerLedgerInvoice,
+  CustomerPaymentDestination,
   InvoiceAllocationInput,
   PaymentMethod,
 } from './types'
 import Button from '@/components/ui/Button.vue'
+
+// Dedicated cash account name FinancePostingService owns server-side
+// (backend/apps/finance/services.py FinancePostingService.VERS_MOI_ACCOUNT_NAME)
+// - kept out of the plain cash-account picker below so a user can't pick it
+// as an ordinary CASH destination (the backend would reject that: it's
+// reserved for destination=VERS_MOI, which the server resolves on its own).
+const VERS_MOI_ACCOUNT_NAME = 'Vers moi'
 
 const props = defineProps<{ initialCustomerId?: number | null }>()
 const emit = defineEmits<{ success: [customerId: number]; cancel: [] }>()
@@ -24,6 +32,7 @@ const { t } = useI18n()
 const customerResource = createResourceApi<CustomerBrief>('/customers/')
 const customers = ref<CustomerBrief[]>([])
 const unpaidInvoices = ref<CustomerLedgerInvoice[]>([])
+const outstandingBalance = ref<string | null>(null)
 const loadingInvoices = ref(false)
 
 const form = ref({
@@ -31,17 +40,31 @@ const form = ref({
   amount: '',
   payment_date: new Date().toISOString().slice(0, 10),
   method: 'CASH' as PaymentMethod,
-  account_type: 'cash' as 'bank' | 'cash',
+  destination: 'CASH' as CustomerPaymentDestination,
   bank_account: '',
   cash_account: '',
   reference: '',
-  is_indirect: false,
+  note: '',
 })
+
+const proofFile = ref<File | null>(null)
+const proofUploadError = ref('')
+
+function onProofFileChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  proofFile.value = input.files?.[0] ?? null
+}
 
 const bankAccountResource = createResourceApi<{ id: number; name: string }>('/bank-accounts/')
 const cashAccountResource = createResourceApi<{ id: number; name: string }>('/cash-accounts/')
 const bankAccounts = ref<{ id: number; name: string }[]>([])
 const cashAccounts = ref<{ id: number; name: string }[]>([])
+// The "Vers moi" placeholder is never a valid choice for a plain CASH
+// destination - it only ever gets attached server-side when destination is
+// VERS_MOI (see the module-level comment above).
+const selectableCashAccounts = computed(() =>
+  cashAccounts.value.filter((a) => a.name !== VERS_MOI_ACCOUNT_NAME),
+)
 
 interface AllocationLine {
   invoice: string
@@ -58,6 +81,7 @@ const error = ref('')
 
 async function loadInvoices() {
   unpaidInvoices.value = []
+  outstandingBalance.value = null
   if (!form.value.customer) return
   loadingInvoices.value = true
   try {
@@ -65,6 +89,7 @@ async function loadInvoices() {
     unpaidInvoices.value = ledger.invoices.filter(
       (inv) => Number(inv.outstanding) > 0 && inv.status !== 'CANCELLED' && inv.status !== 'DRAFT',
     )
+    outstandingBalance.value = ledger.outstanding_balance
   } finally {
     loadingInvoices.value = false
   }
@@ -155,6 +180,7 @@ const unallocatedRemainder = computed(() => (Number(form.value.amount) || 0) - a
 async function onSubmit() {
   saving.value = true
   error.value = ''
+  proofUploadError.value = ''
   try {
     const allocations: InvoiceAllocationInput[] = lines.value
       .filter((line) => line.amount)
@@ -169,18 +195,31 @@ async function onSubmit() {
       payment_date: form.value.payment_date,
       method: form.value.method,
       reference: form.value.reference,
-      is_indirect: form.value.is_indirect,
+      note: form.value.note,
+      destination: form.value.destination,
       allocations,
     }
-    if (!form.value.is_indirect) {
-      if (form.value.account_type === 'bank') {
-        payload.bank_account = Number(form.value.bank_account)
-      } else {
-        payload.cash_account = Number(form.value.cash_account)
-      }
+    // BANK/CASH need their matching account; VERS_MOI/INDIRECT are fully
+    // resolved server-side (CustomerPaymentSerializer.validate() derives
+    // is_indirect and the account to use from `destination` alone).
+    if (form.value.destination === 'BANK') {
+      payload.bank_account = Number(form.value.bank_account)
+    } else if (form.value.destination === 'CASH') {
+      payload.cash_account = Number(form.value.cash_account)
     }
 
     const created = await customerPaymentResource.create(payload)
+
+    if (proofFile.value) {
+      try {
+        await uploadCustomerPaymentProof({ file: proofFile.value, objectId: created.id })
+      } catch {
+        // The payment itself is already saved - a failed proof upload is a
+        // soft warning, not a reason to make the user redo the payment.
+        proofUploadError.value = t('finance.payment.proofUploadError')
+      }
+    }
+
     emit('success', Number(created.customer))
   } catch (e) {
     const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
@@ -270,34 +309,28 @@ async function onSubmit() {
           />
         </div>
 
-        <div class="flex items-center gap-2 pt-6">
-          <input
-            id="is_indirect"
-            v-model="form.is_indirect"
-            type="checkbox"
-            class="border-ligne-forte accent-orange h-5 w-5 rounded"
-          />
-          <label class="text-texte-2 text-sm font-medium" for="is_indirect">
-            {{ t('finance.payment.indirectPayment') }}
-          </label>
+        <div class="space-y-1.5">
+          <label class="text-texte-2 text-sm font-medium" for="destination">{{
+            t('finance.payment.destination')
+          }}</label>
+          <select
+            id="destination"
+            v-model="form.destination"
+            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+          >
+            <option value="CASH">{{ t('finance.payment.cash') }}</option>
+            <option value="BANK">{{ t('finance.payment.bank') }}</option>
+            <option value="VERS_MOI">{{ t('finance.payment.destinationVersMoi') }}</option>
+            <option value="INDIRECT">{{ t('finance.payment.destinationIndirect') }}</option>
+          </select>
         </div>
       </div>
 
-      <div v-if="!form.is_indirect" class="border-ligne grid grid-cols-2 gap-4 border-t pt-4">
-        <div class="space-y-1.5">
-          <label class="text-texte-2 text-sm font-medium" for="account_type">{{
-            t('finance.payment.accountType')
-          }}</label>
-          <select
-            id="account_type"
-            v-model="form.account_type"
-            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-          >
-            <option value="cash">{{ t('finance.payment.cash') }}</option>
-            <option value="bank">{{ t('finance.payment.bank') }}</option>
-          </select>
-        </div>
-        <div v-if="form.account_type === 'bank'" class="space-y-1.5">
+      <div
+        v-if="form.destination === 'BANK' || form.destination === 'CASH'"
+        class="border-ligne grid grid-cols-2 gap-4 border-t pt-4"
+      >
+        <div v-if="form.destination === 'BANK'" class="space-y-1.5">
           <label class="text-texte-2 text-sm font-medium" for="bank_account">{{
             t('finance.payment.bankAccount')
           }}</label>
@@ -322,9 +355,46 @@ async function onSubmit() {
             class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           >
             <option value="" disabled>{{ t('finance.payment.selectCashAccount') }}</option>
-            <option v-for="a in cashAccounts" :key="a.id" :value="a.id">{{ a.name }}</option>
+            <option v-for="a in selectableCashAccounts" :key="a.id" :value="a.id">
+              {{ a.name }}
+            </option>
           </select>
         </div>
+      </div>
+
+      <div class="border-ligne space-y-1.5 border-t pt-4">
+        <label class="text-texte-2 text-sm font-medium" for="note">{{
+          t('finance.payment.note')
+        }}</label>
+        <textarea
+          id="note"
+          v-model="form.note"
+          rows="2"
+          class="border-ligne-forte w-full rounded-lg border bg-white px-3.5 py-2.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+        />
+      </div>
+
+      <div class="border-ligne space-y-1.5 border-t pt-4">
+        <label class="text-texte-2 text-sm font-medium" for="proof_file">{{
+          t('finance.payment.proofImage')
+        }}</label>
+        <input
+          id="proof_file"
+          type="file"
+          accept="image/*,application/pdf"
+          class="text-texte-2 text-sm"
+          @change="onProofFileChange"
+        />
+        <p v-if="proofUploadError" class="text-critique text-xs">{{ proofUploadError }}</p>
+      </div>
+
+      <div v-if="outstandingBalance !== null" class="border-ligne border-t pt-4">
+        <p class="text-texte-2 text-sm font-medium" data-test="outstanding-balance">
+          {{ t('finance.payment.outstandingBalance') }}:
+          <span class="text-texte font-semibold">{{
+            Number(outstandingBalance).toLocaleString()
+          }}</span>
+        </p>
       </div>
 
       <div class="border-ligne space-y-2 border-t pt-4">

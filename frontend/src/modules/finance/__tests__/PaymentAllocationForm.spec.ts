@@ -50,6 +50,7 @@ vi.mock('../api', () => ({
     create: vi.fn(async (p: Record<string, unknown>) => ({ id: 1, ...p })),
   },
   fetchCustomerLedger: (id: number) => fetchCustomerLedger(id),
+  uploadCustomerPaymentProof: vi.fn(async () => undefined),
 }))
 
 async function selectCustomer(wrapper: ReturnType<typeof mount>) {

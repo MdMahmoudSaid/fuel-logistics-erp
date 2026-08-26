@@ -149,6 +149,24 @@ class CustomerPayment(AuditableModel, TimeStampedModel):
         CHEQUE = "CHEQUE", "Cheque"
         OTHER = "OTHER", "Other"
 
+    class Destination(models.TextChoices):
+        """Where a direct payment lands, or that it's not direct at all
+        (Task 4, client modifications plan). Deliberately kept alongside
+        `is_indirect`/`bank_account`/`cash_account` rather than replacing
+        them: those fields already have real consumers (serializer
+        exclusivity validation, filterset_fields, IndirectSettlementService).
+        `destination` only exists to disambiguate a real cash account from
+        the dedicated "Vers moi" placeholder for treasury-posting purposes -
+        CustomerPaymentSerializer.validate() derives is_indirect/bank_account/
+        cash_account FROM this field, so the two stay consistent by
+        construction rather than by client discipline.
+        """
+
+        BANK = "BANK", "Banque"
+        CASH = "CASH", "Caisse"
+        VERS_MOI = "VERS_MOI", "Vers moi"
+        INDIRECT = "INDIRECT", "Indirect"
+
     customer = models.ForeignKey(
         "customers.Customer", on_delete=models.PROTECT, related_name="payments"
     )
@@ -163,6 +181,8 @@ class CustomerPayment(AuditableModel, TimeStampedModel):
     )
     reference = models.CharField(max_length=100, blank=True)
     is_indirect = models.BooleanField(default=False)
+    destination = models.CharField(max_length=20, choices=Destination.choices, default=Destination.CASH)
+    note = models.TextField(blank=True)
     recorded_by = models.ForeignKey(
         "accounts.User", on_delete=models.PROTECT, related_name="customer_payments_recorded"
     )

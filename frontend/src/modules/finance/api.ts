@@ -36,6 +36,27 @@ export function fetchCustomerLedger(customerId: number): Promise<CustomerLedger>
   return apiClient.get<CustomerLedger>(`/customers/${customerId}/ledger/`).then((r) => r.data)
 }
 
+// Generic attachment upload (backend/apps/documents), scoped to the one
+// document_type/content_type this module needs: a proof image attached to
+// an already-created CustomerPayment (backend/apps/documents/views.py
+// DocumentViewSet resolves its module permission from content_type_name,
+// so a Finance-only role can post here without needing "purchasing" too).
+export function uploadCustomerPaymentProof(params: {
+  file: File
+  objectId: number
+}): Promise<void> {
+  const form = new FormData()
+  form.append('file', params.file)
+  form.append('document_type', 'customer_payment_proof')
+  form.append('content_type_name', 'customerpayment')
+  form.append('object_id', String(params.objectId))
+  return apiClient
+    .post('/documents/', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    .then(() => undefined)
+}
+
 export function fetchTransporterLedger(transporterId: number): Promise<TransporterLedger> {
   return apiClient
     .get<TransporterLedger>(`/transporters/${transporterId}/ledger/`)

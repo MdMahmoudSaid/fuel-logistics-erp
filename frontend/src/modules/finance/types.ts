@@ -29,6 +29,14 @@ export interface UserBrief {
 
 export type PaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'CHEQUE' | 'OTHER'
 
+// Mirrors CustomerPayment.Destination (backend/apps/finance/models.py).
+// `destination` is the single source of truth CustomerPaymentSerializer.
+// validate() derives is_indirect/bank_account/cash_account from - the
+// client only ever needs to send this (plus the matching account for
+// BANK/CASH) rather than getting is_indirect/account fields consistent
+// itself.
+export type CustomerPaymentDestination = 'BANK' | 'CASH' | 'VERS_MOI' | 'INDIRECT'
+
 export interface PaymentAllocation {
   id: number
   payment: number
@@ -56,6 +64,8 @@ export interface CustomerPayment {
   cash_account: number | null
   reference: string
   is_indirect: boolean
+  destination: CustomerPaymentDestination
+  note: string
   recorded_by: number | null
   recorded_by_detail: UserBrief | null
   allocations?: InvoiceAllocationInput[]

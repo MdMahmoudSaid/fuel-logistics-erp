@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from django.contrib.contenttypes.models import ContentType
+from django.db import transaction
 from rest_framework import serializers
 
 from apps.accounts.serializers import UserSerializer
@@ -20,7 +21,7 @@ from .models import (
     TransportPayment,
     TreasuryTransaction,
 )
-from .services import PaymentAllocationService
+from .services import FinancePostingService, PaymentAllocationService
 
 
 class BankAccountSerializer(serializers.ModelSerializer):
@@ -89,7 +90,7 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
         model = CustomerPayment
         fields = [
             "id", "customer", "customer_detail", "amount", "payment_date", "method",
-            "bank_account", "cash_account", "reference", "is_indirect",
+            "bank_account", "cash_account", "reference", "is_indirect", "destination", "note",
             "recorded_by", "recorded_by_detail",
             "allocations", "allocations_detail",
             "created_at", "updated_at",
@@ -97,31 +98,61 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "recorded_by", "created_at", "updated_at"]
 
     def validate(self, data):
-        is_indirect = data.get("is_indirect", getattr(self.instance, "is_indirect", False))
-        bank_account = data.get("bank_account", getattr(self.instance, "bank_account", None))
-        cash_account = data.get("cash_account", getattr(self.instance, "cash_account", None))
+        """`destination` is the single source of truth for is_indirect/
+        bank_account/cash_account (Task 4, client modifications plan,
+        ruling 1): the client only ever needs to send `destination` plus,
+        for BANK/CASH, the matching account - is_indirect and the "other"
+        account are always derived here, so the two concepts can never
+        disagree with each other regardless of what the client actually
+        sent.
+        """
+        destination = data.get(
+            "destination", getattr(self.instance, "destination", CustomerPayment.Destination.CASH)
+        )
 
-        if is_indirect:
-            if bank_account or cash_account:
+        if destination == CustomerPayment.Destination.INDIRECT:
+            data["is_indirect"] = True
+            data["bank_account"] = None
+            data["cash_account"] = None
+        elif destination == CustomerPayment.Destination.BANK:
+            data["is_indirect"] = False
+            data["cash_account"] = None
+            bank_account = data.get("bank_account", getattr(self.instance, "bank_account", None))
+            if not bank_account:
                 raise serializers.ValidationError(
-                    "Un paiement indirect ne doit reference aucun compte de tresorerie."
+                    {"bank_account": "Un compte bancaire est requis pour la destination Banque."}
                 )
+            data["bank_account"] = bank_account
+        elif destination == CustomerPayment.Destination.CASH:
+            data["is_indirect"] = False
+            data["bank_account"] = None
+            cash_account = data.get("cash_account", getattr(self.instance, "cash_account", None))
+            if not cash_account:
+                raise serializers.ValidationError(
+                    {"cash_account": "Un compte de caisse est requis pour la destination Caisse."}
+                )
+            if cash_account.name == FinancePostingService.VERS_MOI_ACCOUNT_NAME:
+                raise serializers.ValidationError(
+                    {"cash_account": "Utilisez la destination 'Vers moi' pour ce compte."}
+                )
+            data["cash_account"] = cash_account
+        elif destination == CustomerPayment.Destination.VERS_MOI:
+            data["is_indirect"] = False
+            data["bank_account"] = None
+            data["cash_account"] = FinancePostingService.get_or_create_vers_moi_account()
         else:
-            if bank_account and cash_account:
-                raise serializers.ValidationError(
-                    "Un seul compte (banque OU caisse) peut etre renseigne."
-                )
-            if not bank_account and not cash_account:
-                raise serializers.ValidationError(
-                    "Un compte de tresorerie (banque ou caisse) est requis, sauf pour un paiement indirect."
-                )
+            raise serializers.ValidationError({"destination": "Destination inconnue."})
+
+        data["destination"] = destination
         return data
 
     def create(self, validated_data):
         allocations = validated_data.pop("allocations", [])
-        payment = CustomerPayment.objects.create(**validated_data)
-        if allocations:
-            PaymentAllocationService.allocate_payment(payment.id, allocations)
+        with transaction.atomic():
+            payment = CustomerPayment.objects.create(**validated_data)
+            if allocations:
+                PaymentAllocationService.allocate_payment(payment.id, allocations)
+            FinancePostingService.record_customer_payment_treasury(payment)
         payment.refresh_from_db()
         return payment
 

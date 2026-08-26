@@ -9,6 +9,7 @@
 
 from decimal import Decimal
 
+from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
 from django.db.models import Sum
 
@@ -180,6 +181,80 @@ class IndirectSettlementService:
             PaymentAllocationService._sync_invoice_status(invoice)
 
         return expense, payment, allocation
+
+
+class FinancePostingService:
+    """Posts a direct CustomerPayment to company treasury (Task 4, client
+    modifications plan; docs/PHASE_5_PLAN.md conventions Etape 6: separate
+    service, @staticmethod, transaction.atomic, select_for_update() on the
+    account being credited).
+
+    Indirect payments never reach treasury at all (guide Section 1.6,
+    IndirectSettlementService docstring) - this service is the other half
+    of that split: the ONLY place that turns a direct CustomerPayment into
+    a TreasuryTransaction(MONEY_IN), so every direct payment posts through
+    one code path regardless of whether it came from the plain create API
+    or some future bulk-import flow.
+    """
+
+    # Placeholder cash account for the VERS_MOI destination (money handed
+    # personally to someone rather than deposited to a named bank/cash
+    # account) - dashboard treasury must still account for it, so it still
+    # needs a real CashAccount row to post against (Task 4, client
+    # modifications plan).
+    VERS_MOI_ACCOUNT_NAME = "Vers moi"
+
+    @staticmethod
+    def get_or_create_vers_moi_account() -> CashAccount:
+        # CashAccount.name has no unique DB constraint, so get_or_create is
+        # the only thing standing between this and duplicate "Vers moi" rows.
+        account, _created = CashAccount.objects.get_or_create(
+            name=FinancePostingService.VERS_MOI_ACCOUNT_NAME
+        )
+        return account
+
+    @staticmethod
+    @transaction.atomic
+    def record_customer_payment_treasury(payment: CustomerPayment) -> TreasuryTransaction | None:
+        """Create the one TreasuryTransaction(MONEY_IN) a direct customer
+        payment must produce, linked back via source_content_type/
+        source_object_id. Returns None (no-op) for an indirect payment or
+        for a payment that was already posted - callers don't need to
+        check either case themselves.
+        """
+        if payment.is_indirect:
+            return None
+
+        payment_content_type = ContentType.objects.get_for_model(CustomerPayment)
+        already_posted = TreasuryTransaction.objects.filter(
+            source_content_type=payment_content_type, source_object_id=payment.id
+        ).exists()
+        if already_posted:
+            return None
+
+        if payment.bank_account_id:
+            bank_account = BankAccount.objects.select_for_update().get(pk=payment.bank_account_id)
+            cash_account = None
+        elif payment.cash_account_id:
+            bank_account = None
+            cash_account = CashAccount.objects.select_for_update().get(pk=payment.cash_account_id)
+        else:
+            # Neither account set on a non-indirect payment shouldn't happen
+            # given CustomerPaymentSerializer.validate(), but there's
+            # nothing sane to post here - stay defensive rather than raise.
+            return None
+
+        return TreasuryTransaction.objects.create(
+            bank_account=bank_account,
+            cash_account=cash_account,
+            type=TreasuryTransaction.Type.MONEY_IN,
+            amount=payment.amount,
+            date=payment.payment_date,
+            reference=payment.reference,
+            source_content_type=payment_content_type,
+            source_object_id=payment.id,
+            recorded_by=payment.recorded_by,
+        )
 
 
 class TreasuryTransferError(ValueError):

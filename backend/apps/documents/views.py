@@ -17,14 +17,30 @@ from .serializers import DocumentSerializer
 ALLOWED_ATTACHMENT_MODELS = {
     ("purchasing", "supplierorder"),
     ("purchasing", "cessionletter"),
+    ("finance", "customerpayment"),
 }
+
+# model name -> owning module, derived from ALLOWED_ATTACHMENT_MODELS above.
+# HasModulePermission.has_permission() reads `view.module` per-request
+# (apps/accounts/permissions.py), so a single hardcoded class attribute here
+# used to gate EVERY attachable model behind "purchasing" permission alone -
+# a Finance-only role (view-only on purchasing, full rights on finance per
+# the seeded Role grid) would get 403 uploading a customer-payment proof
+# even once its content type was allowlisted. `module` below resolves per
+# request instead, from the target model being attached.
+_MODEL_MODULES = {model: app_label for app_label, model in ALLOWED_ATTACHMENT_MODELS}
+_DEFAULT_MODULE = "purchasing"
 
 
 class DocumentViewSet(viewsets.ModelViewSet):
     serializer_class = DocumentSerializer
     parser_classes = (MultiPartParser, FormParser)
     permission_classes = [HasModulePermission]
-    module = "purchasing"
+
+    @property
+    def module(self):
+        content_type_name = str(self.request.data.get("content_type_name") or "").lower()
+        return _MODEL_MODULES.get(content_type_name, _DEFAULT_MODULE)
 
     def get_queryset(self):
         # Defense in depth alongside the allowlist below: never surface
