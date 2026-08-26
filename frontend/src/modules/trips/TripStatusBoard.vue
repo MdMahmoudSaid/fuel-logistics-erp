@@ -14,6 +14,7 @@ import MonoValue from '@/components/ui/MonoValue.vue'
 import Button from '@/components/ui/Button.vue'
 import TripCard from './TripCard.vue'
 import { useTripStatusLabel } from './tripStatusLabels'
+import { formatQuantity } from '@/utils/currency'
 
 const router = useRouter()
 const { t } = useI18n()
@@ -27,7 +28,7 @@ const error = ref('')
 // les trajets livrés/annulés ont leur propre historique (TripDetail, listes
 // camion/commande) plutôt que de s'accumuler ici indéfiniment.
 const FILTER_STATUSES: TripStatus[] = TRIP_STATUSES.filter(
-  (s) => s !== 'COMPLETED' && s !== 'CANCELLED',
+  (s) => s !== 'COMPLETED' && s !== 'CANCELLED' && s !== 'STOCKED',
 )
 
 const selectedStatus = ref<TripStatus | ''>('')
@@ -126,7 +127,7 @@ function goToNew() {
                 }}
               </td>
               <td class="px-3 py-2.5 text-right">
-                <MonoValue :value="Number(trip.quantity_loaded).toLocaleString()" unit="L" />
+                <MonoValue :value="formatQuantity(trip.quantity_loaded)" />
               </td>
               <td class="px-3 py-2.5">
                 <Badge :variant="badgeVariant(trip.status)">{{ statusLabel(trip.status) }}</Badge>

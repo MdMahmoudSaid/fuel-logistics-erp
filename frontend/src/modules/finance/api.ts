@@ -5,17 +5,21 @@ import type {
   AllocatableTypeMap,
   CustomerLedger,
   CustomerPayment,
+  DebtPaymentResult,
+  DebtPaymentType,
   Expense,
   Shareholder,
   ShareholderLedger,
   ShareholderLoan,
   ShareholderProfitDistribution,
+  ShareholderProfitPreview,
   ShareholderWithdrawal,
   SupplierPayment,
   TransporterAdvance,
   TransporterLedger,
   TransportPayment,
   TreasuryTransaction,
+  PayableDebt,
 } from './types'
 
 export const customerPaymentResource = createResourceApi<CustomerPayment>('/customer-payments/')
@@ -103,6 +107,42 @@ export function recordTransfer(payload: {
     .then((r) => r.data as { money_out: TreasuryTransaction; money_in: TreasuryTransaction })
 }
 
+export function fetchPayableDebts(debtType: DebtPaymentType): Promise<PayableDebt[]> {
+  return apiClient
+    .get<PayableDebt[]>('/treasury-transactions/payable-debts/', {
+      params: { debt_type: debtType },
+    })
+    .then((r) => r.data)
+}
+
+export function recordDebtPayment(payload: {
+  debt_type: DebtPaymentType
+  debt_id: number
+  bank_account: number
+  amount: string
+  date: string
+  reference?: string
+  note?: string
+  attachment?: File | null
+}): Promise<DebtPaymentResult> {
+  const { attachment, ...fields } = payload
+  if (!attachment) {
+    return apiClient
+      .post<DebtPaymentResult>('/treasury-transactions/record-debt-payment/', fields)
+      .then((r) => r.data)
+  }
+  const form = new FormData()
+  for (const [key, value] of Object.entries(fields)) {
+    if (value !== undefined) form.append(key, String(value))
+  }
+  form.append('attachment', attachment)
+  return apiClient
+    .post<DebtPaymentResult>('/treasury-transactions/record-debt-payment/', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    .then((r) => r.data)
+}
+
 // --- Task 7 (client modifications plan): Shareholders / Associates -------
 
 export const shareholderResource = createResourceApi<Shareholder>('/shareholders/')
@@ -117,6 +157,19 @@ export const shareholderDistributionResource = createResourceApi<ShareholderProf
 export function fetchShareholderLedger(shareholderId: number): Promise<ShareholderLedger> {
   return apiClient
     .get<ShareholderLedger>(`/shareholders/${shareholderId}/ledger/`)
+    .then((r) => r.data)
+}
+
+// backend/apps/finance/services.py ShareholderProfitPreviewService.get_preview()
+// Read-only, indicative current-profit split - never stored, never gates
+// a withdrawal. `from`/`to` are optional; omitted, the backend defaults to
+// the period since the last VALIDATED distribution (or all-time if none).
+export function fetchShareholderProfitPreview(params?: {
+  from?: string
+  to?: string
+}): Promise<ShareholderProfitPreview> {
+  return apiClient
+    .get<ShareholderProfitPreview>('/shareholders/profit-preview/', { params })
     .then((r) => r.data)
 }
 

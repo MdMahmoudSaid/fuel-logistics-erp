@@ -40,7 +40,7 @@ describe('TransportPaymentForm', () => {
 
     await wrapper.find('#unit_price_per_litre').setValue('60')
 
-    expect(wrapper.text()).toContain((45000 * 60).toLocaleString())
+    expect(wrapper.text()).toContain('2 700 000 XOF')
   })
 
   it('submits calculation_method=PER_LITRE with the trip, transporter and unit price, never a client-computed base_amount', async () => {

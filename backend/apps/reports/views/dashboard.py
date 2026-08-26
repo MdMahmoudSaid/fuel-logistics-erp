@@ -4,13 +4,22 @@
 
 from decimal import Decimal
 
-from django.db.models import Sum
+from django.db.models import F, Sum
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.accounts.permissions import HasModulePermission
-from apps.finance.models import BankAccount, CashAccount, Expense, TransportPayment
+from apps.finance.models import (
+    BankAccount,
+    CashAccount,
+    Expense,
+    ShareholderLoan,
+    ShareholderProfitShare,
+    ShareholderWithdrawal,
+    TransportPayment,
+)
+from apps.finance.services import ShareholderProfitPreviewService
 from apps.reports.date_range import resolve_date_range
 from apps.reports.queries.customer_outstanding_report import CustomerOutstandingReportQuery
 from apps.reports.queries.supplier_outstanding_report import SupplierOutstandingReportQuery
@@ -146,6 +155,41 @@ class DashboardViewSet(viewsets.ViewSet):
             "total": sum((row["balance"] for row in bank_rows), ZERO),
             "rows": bank_rows,
         }
+        cash_rows = [
+            {"cash_account": account.name, "balance": account.current_balance}
+            for account in CashAccount.objects.filter(is_active=True)
+        ]
+        cash_amounts = {
+            "total": sum((row["balance"] for row in cash_rows), ZERO),
+            "rows": cash_rows,
+        }
+
+        # Summary only (design doc
+        # 2026-08-26-benefices-associes-refinement-design.md) - point-in-time
+        # "currently outstanding" snapshots like debts/customer_amounts
+        # above, not scoped by date_from/date_to. The Benefices page
+        # (Actionnaires/Associes) stays the single detailed source; the
+        # dashboard never breaks this down per trip or per shareholder.
+        shareholders_summary = {
+            "current_profit": ShareholderProfitPreviewService.get_preview()["current_profit"],
+            "total_withdrawn": ShareholderWithdrawal.objects.aggregate(total=Sum("amount"))[
+                "total"
+            ]
+            or ZERO,
+            "remaining_undistributed": ShareholderProfitShare.objects.aggregate(
+                total=Sum(F("amount_due") - F("amount_withdrawn"))
+            )["total"]
+            or ZERO,
+            "open_loans_total": sum(
+                (
+                    loan.remaining_amount
+                    for loan in ShareholderLoan.objects.exclude(
+                        status=ShareholderLoan.Status.REPAID
+                    )
+                ),
+                ZERO,
+            ),
+        }
 
         return Response(
             decimals_to_str(
@@ -161,6 +205,8 @@ class DashboardViewSet(viewsets.ViewSet):
                     "debts": debts,
                     "customer_amounts": customer_amounts,
                     "bank_amounts": bank_amounts,
+                    "cash_amounts": cash_amounts,
+                    "shareholders_summary": shareholders_summary,
                 }
             )
         )

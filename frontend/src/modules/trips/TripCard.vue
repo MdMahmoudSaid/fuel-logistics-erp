@@ -9,6 +9,7 @@ import MonoValue from '@/components/ui/MonoValue.vue'
 import { TRIP_PIPELINE_STATUSES } from './types'
 import type { Trip } from './types'
 import { useTripStatusLabel } from './tripStatusLabels'
+import { formatQuantity } from '@/utils/currency'
 
 const props = defineProps<{ trip: Trip }>()
 
@@ -56,7 +57,7 @@ const badgeVariant = computed(() => {
 
     <div class="flex items-end justify-between gap-2">
       <GaugeBar :value="progress" :tone="progressTone" class="max-w-[65%]" />
-      <MonoValue :value="Number(trip.quantity_loaded).toLocaleString()" unit="L" />
+      <MonoValue :value="formatQuantity(trip.quantity_loaded)" />
     </div>
   </RouterLink>
 </template>

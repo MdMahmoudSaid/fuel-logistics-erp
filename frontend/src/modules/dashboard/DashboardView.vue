@@ -26,6 +26,7 @@ import { customerPaymentResource } from '@/modules/finance/api'
 import type { CustomerPayment } from '@/modules/finance/types'
 import KpiTile from './KpiTile.vue'
 import VolumeTrendChart from './VolumeTrendChart.vue'
+import { formatMoney, formatQuantity } from '@/utils/currency'
 import {
   sumField,
   averageLossPercent,
@@ -42,10 +43,6 @@ const { t, locale } = useI18n()
 const summary = ref<DashboardSummary | null>(null)
 const loading = ref(true)
 const error = ref('')
-
-function formatNumber(value: string | number): string {
-  return Number(value).toLocaleString()
-}
 
 async function load(filter: DateRangeValue) {
   loading.value = true
@@ -176,8 +173,7 @@ const lossGaugeTone = computed(() => lossSeverityTone(avgLossPct.value))
       <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <KpiTile
           :label="t('dashboard.kpi.deliveredToday')"
-          :value="Math.round(todayDelivered).toLocaleString()"
-          unit="L"
+          :value="formatQuantity(Math.round(todayDelivered))"
           :gauge-value="deliveredGauge"
           gauge-tone="livre"
         />
@@ -196,7 +192,7 @@ const lossGaugeTone = computed(() => lossSeverityTone(avgLossPct.value))
         />
         <KpiTile
           :label="t('dashboard.kpi.paymentsToday')"
-          :value="Math.round(todayEncaissements).toLocaleString()"
+          :value="formatMoney(Math.round(todayEncaissements))"
           :gauge-value="encaissementsGauge"
           gauge-tone="livre"
         />
@@ -252,8 +248,8 @@ const lossGaugeTone = computed(() => lossSeverityTone(avgLossPct.value))
                   {{ row.trip_reference }}
                 </RouterLink>
                 <span v-else class="text-critique-texte font-mono">{{ row.trip_reference }}</span>
-                <span class="text-critique-texte font-mono tabular-nums">
-                  −{{ Number(row.chargeable_loss_quantity).toLocaleString() }} L
+                <span dir="ltr" class="text-critique-texte font-mono tabular-nums">
+                  −{{ formatQuantity(row.chargeable_loss_quantity) }}
                 </span>
               </li>
             </ul>
@@ -331,13 +327,13 @@ const lossGaugeTone = computed(() => lossSeverityTone(avgLossPct.value))
           <div class="flex justify-between">
             <dt class="text-texte-2">{{ t('dashboard.fields.quantityLoaded') }}</dt>
             <dd class="text-texte font-mono font-medium tabular-nums">
-              {{ formatNumber(summary.fuel.quantity_loaded) }} L
+              {{ formatQuantity(summary.fuel.quantity_loaded) }}
             </dd>
           </div>
           <div class="flex justify-between">
             <dt class="text-texte-2">{{ t('dashboard.fields.theoreticalStock') }}</dt>
             <dd class="text-texte font-mono font-medium tabular-nums">
-              {{ formatNumber(summary.fuel.theoretical_stock) }} L
+              {{ formatQuantity(summary.fuel.theoretical_stock) }}
             </dd>
           </div>
         </dl>
@@ -357,7 +353,7 @@ const lossGaugeTone = computed(() => lossSeverityTone(avgLossPct.value))
           <div class="flex justify-between">
             <dt class="text-texte-2">{{ t('dashboard.fields.revenue') }}</dt>
             <dd class="text-texte font-mono font-medium tabular-nums">
-              {{ formatNumber(summary.sales.revenue) }}
+              {{ formatMoney(summary.sales.revenue) }}
             </dd>
           </div>
         </dl>
@@ -377,7 +373,7 @@ const lossGaugeTone = computed(() => lossSeverityTone(avgLossPct.value))
           <div class="flex justify-between">
             <dt class="text-texte-2">{{ t('dashboard.fields.transportCost') }}</dt>
             <dd class="text-texte font-mono font-medium tabular-nums">
-              {{ formatNumber(summary.transport.transport_cost) }}
+              {{ formatMoney(summary.transport.transport_cost) }}
             </dd>
           </div>
         </dl>
@@ -391,13 +387,13 @@ const lossGaugeTone = computed(() => lossSeverityTone(avgLossPct.value))
           <div class="flex justify-between">
             <dt class="text-texte-2">{{ t('dashboard.fields.expenses') }}</dt>
             <dd class="text-texte font-mono font-medium tabular-nums">
-              {{ formatNumber(summary.finance.expenses_total) }}
+              {{ formatMoney(summary.finance.expenses_total) }}
             </dd>
           </div>
           <div class="flex justify-between">
             <dt class="text-texte-2">{{ t('dashboard.fields.treasuryBalance') }}</dt>
             <dd class="text-texte font-mono font-medium tabular-nums">
-              {{ formatNumber(summary.finance.treasury_balance) }}
+              {{ formatMoney(summary.finance.treasury_balance) }}
             </dd>
           </div>
         </dl>
@@ -411,7 +407,7 @@ const lossGaugeTone = computed(() => lossSeverityTone(avgLossPct.value))
           <div class="flex justify-between">
             <dt class="text-texte-2">{{ t('dashboard.fields.totalMargin') }}</dt>
             <dd class="text-texte font-mono font-medium tabular-nums">
-              {{ formatNumber(summary.profit.total_margin) }}
+              {{ formatMoney(summary.profit.total_margin) }}
             </dd>
           </div>
         </dl>
@@ -424,31 +420,31 @@ const lossGaugeTone = computed(() => lossSeverityTone(avgLossPct.value))
           {{ t('dashboard.sections.debts') }}
         </h3>
         <p class="text-texte font-mono text-lg font-semibold tabular-nums">
-          {{ formatNumber(summary.debts.total) }}
+          {{ formatMoney(summary.debts.total) }}
         </p>
         <dl class="mt-2 space-y-1 text-sm">
           <div class="flex justify-between">
             <dt class="text-texte-2">{{ t('dashboard.fields.debtSuppliers') }}</dt>
             <dd class="text-texte font-mono font-medium tabular-nums">
-              {{ formatNumber(summary.debts.suppliers.total) }}
+              {{ formatMoney(summary.debts.suppliers.total) }}
             </dd>
           </div>
           <div class="flex justify-between">
             <dt class="text-texte-2">{{ t('dashboard.fields.debtTransporters') }}</dt>
             <dd class="text-texte font-mono font-medium tabular-nums">
-              {{ formatNumber(summary.debts.transporters.total) }}
+              {{ formatMoney(summary.debts.transporters.total) }}
             </dd>
           </div>
           <div class="flex justify-between">
             <dt class="text-texte-2">{{ t('dashboard.fields.debtCustoms') }}</dt>
             <dd class="text-texte font-mono font-medium tabular-nums">
-              {{ formatNumber(summary.debts.customs) }}
+              {{ formatMoney(summary.debts.customs) }}
             </dd>
           </div>
           <div class="flex justify-between">
             <dt class="text-texte-2">{{ t('dashboard.fields.debtOther') }}</dt>
             <dd class="text-texte font-mono font-medium tabular-nums">
-              {{ formatNumber(summary.debts.other) }}
+              {{ formatMoney(summary.debts.other) }}
             </dd>
           </div>
         </dl>
@@ -459,7 +455,7 @@ const lossGaugeTone = computed(() => lossSeverityTone(avgLossPct.value))
           {{ t('dashboard.sections.customerAmounts') }}
         </h3>
         <p class="text-texte font-mono text-lg font-semibold tabular-nums">
-          {{ formatNumber(summary.customer_amounts.total) }}
+          {{ formatMoney(summary.customer_amounts.total) }}
         </p>
         <ul
           v-if="summary.customer_amounts.rows.length"
@@ -472,7 +468,7 @@ const lossGaugeTone = computed(() => lossSeverityTone(avgLossPct.value))
           >
             <span class="text-texte-2">{{ row.customer }}</span>
             <span class="text-texte font-mono font-medium tabular-nums">
-              {{ formatNumber(row.outstanding) }}
+              {{ formatMoney(row.outstanding) }}
             </span>
           </li>
         </ul>
@@ -484,24 +480,83 @@ const lossGaugeTone = computed(() => lossSeverityTone(avgLossPct.value))
           {{ t('dashboard.sections.bankAmounts') }}
         </h3>
         <p class="text-texte font-mono text-lg font-semibold tabular-nums">
-          {{ formatNumber(summary.bank_amounts.total) }}
+          {{ formatMoney(summary.bank_amounts.total) }}
         </p>
         <ul
           v-if="summary.bank_amounts.rows.length"
           class="mt-2 max-h-40 space-y-1 overflow-y-auto text-sm"
         >
-          <li
-            v-for="row in summary.bank_amounts.rows"
-            :key="row.bank"
-            class="flex justify-between"
-          >
+          <li v-for="row in summary.bank_amounts.rows" :key="row.bank" class="flex justify-between">
             <span class="text-texte-2">{{ row.bank }}</span>
             <span class="text-texte font-mono font-medium tabular-nums">
-              {{ formatNumber(row.balance) }}
+              {{ formatMoney(row.balance) }}
             </span>
           </li>
         </ul>
         <p v-else class="text-texte-3 mt-2 text-sm">{{ t('dashboard.noAmounts') }}</p>
+      </section>
+
+      <section class="border-ligne rounded-xl border bg-white p-4">
+        <h3 class="text-texte-2 mb-1 text-sm font-semibold uppercase">
+          {{ t('dashboard.sections.cashAmounts') }}
+        </h3>
+        <p class="text-texte font-mono text-lg font-semibold tabular-nums">
+          {{ formatMoney(summary.cash_amounts.total) }}
+        </p>
+        <ul
+          v-if="summary.cash_amounts.rows.length"
+          class="mt-2 max-h-40 space-y-1 overflow-y-auto text-sm"
+        >
+          <li
+            v-for="row in summary.cash_amounts.rows"
+            :key="row.cash_account"
+            class="flex justify-between"
+          >
+            <span class="text-texte-2">{{ row.cash_account }}</span>
+            <span class="text-texte font-mono font-medium tabular-nums">
+              {{ formatMoney(row.balance) }}
+            </span>
+          </li>
+        </ul>
+        <p v-else class="text-texte-3 mt-2 text-sm">{{ t('dashboard.noAmounts') }}</p>
+      </section>
+
+      <!-- Summary only (design doc 2026-08-26-benefices-associes-
+           refinement-design.md) - the Benefices page (/profit) stays the
+           single detailed source, this never breaks it down per trip or
+           per shareholder. Point-in-time, not scoped by the date range. -->
+      <section class="border-ligne rounded-xl border bg-white p-4">
+        <div class="mb-1 flex items-center justify-between">
+          <h3 class="text-texte-2 text-sm font-semibold uppercase">
+            {{ t('dashboard.sections.shareholders') }}
+          </h3>
+          <RouterLink :to="{ name: 'profit' }" class="text-bitume text-xs underline">
+            {{ t('dashboard.viewDetails') }}
+          </RouterLink>
+        </div>
+        <p class="text-texte font-mono text-lg font-semibold tabular-nums">
+          {{ formatMoney(summary.shareholders_summary.current_profit) }}
+        </p>
+        <dl class="mt-2 space-y-1 text-sm">
+          <div class="flex justify-between">
+            <dt class="text-texte-2">{{ t('dashboard.fields.shareholdersWithdrawn') }}</dt>
+            <dd class="text-texte font-mono font-medium tabular-nums">
+              {{ formatMoney(summary.shareholders_summary.total_withdrawn) }}
+            </dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-texte-2">{{ t('dashboard.fields.shareholdersRemaining') }}</dt>
+            <dd class="text-texte font-mono font-medium tabular-nums">
+              {{ formatMoney(summary.shareholders_summary.remaining_undistributed) }}
+            </dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-texte-2">{{ t('dashboard.fields.shareholdersOpenLoans') }}</dt>
+            <dd class="text-texte font-mono font-medium tabular-nums">
+              {{ formatMoney(summary.shareholders_summary.open_loans_total) }}
+            </dd>
+          </div>
+        </dl>
       </section>
     </div>
   </div>

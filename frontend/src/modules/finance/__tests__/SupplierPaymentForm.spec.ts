@@ -41,7 +41,7 @@ describe('SupplierPaymentForm', () => {
     const wrapper = mount(SupplierPaymentForm, { props: defaultProps })
     await flushPromises()
 
-    expect(wrapper.text()).toContain((15000000).toLocaleString())
+    expect(wrapper.text()).toContain('15 000 000 XOF')
   })
 
   it('only offers bank accounts to pick from - no cash account option at all', async () => {

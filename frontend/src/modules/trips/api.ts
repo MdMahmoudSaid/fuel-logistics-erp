@@ -15,6 +15,12 @@ export function fetchTripHistory(tripId: number): Promise<TripStatusHistoryEntry
   return apiClient.get<TripStatusHistoryEntry[]>(`/trips/${tripId}/history/`).then((r) => r.data)
 }
 
+export function fetchAllowedTripStatuses(tripId: number): Promise<string[]> {
+  return apiClient
+    .get<{ statuses: string[] }>(`/trips/${tripId}/allowed-statuses/`)
+    .then((r) => r.data.statuses)
+}
+
 // TripProfitService.get_cost_breakdown (guide Section 9.1), only available
 // once the trip has a Sale - see TripMarginBreakdown/TripMarginUnavailable.
 export function fetchTripMargin(tripId: number): Promise<TripMargin> {

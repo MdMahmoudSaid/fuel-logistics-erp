@@ -15,6 +15,9 @@ export type TripStatus =
   | 'IN_TRANSIT'
   | 'BORDER'
   | 'CUSTOMS'
+  | 'GOING_TO_COMPANY_STOCK'
+  | 'ARRIVED_AT_COMPANY_STOCK'
+  | 'STOCKED'
   | 'GOING_TO_CLIENT'
   | 'ARRIVED_AT_CLIENT'
   | 'QUANTITY_CONTROL'
@@ -31,6 +34,9 @@ export const TRIP_STATUSES: TripStatus[] = [
   'IN_TRANSIT',
   'BORDER',
   'CUSTOMS',
+  'GOING_TO_COMPANY_STOCK',
+  'ARRIVED_AT_COMPANY_STOCK',
+  'STOCKED',
   'GOING_TO_CLIENT',
   'ARRIVED_AT_CLIENT',
   'QUANTITY_CONTROL',
@@ -51,6 +57,9 @@ export const TRIP_PIPELINE_STATUSES: TripStatus[] = [
   'IN_TRANSIT',
   'BORDER',
   'CUSTOMS',
+  'GOING_TO_COMPANY_STOCK',
+  'ARRIVED_AT_COMPANY_STOCK',
+  'STOCKED',
   'GOING_TO_CLIENT',
   'ARRIVED_AT_CLIENT',
   'QUANTITY_CONTROL',
@@ -193,6 +202,15 @@ export interface TripCostBasis {
   total_cost: string
   quantity: string
   unit_cost: string
+  unit_components_per_litre: {
+    supplier: string
+    commission_transporter: string
+    transit: string
+    border: string
+    customs: string
+    loading: string
+    other: string
+  }
 }
 
 // Mirrors backend/apps/trips/models.py DeliveryControl.Method.

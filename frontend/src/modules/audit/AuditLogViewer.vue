@@ -7,6 +7,7 @@ import { auditLogResource } from './api'
 import type { AuditLog } from './types'
 import Badge from '@/components/ui/Badge.vue'
 import MonoValue from '@/components/ui/MonoValue.vue'
+import { formatMoney } from '@/utils/currency'
 
 const { t, te } = useI18n()
 
@@ -53,6 +54,29 @@ function actionLabel(action: string): string {
   return te(key) ? t(key) : action
 }
 
+function moduleLabel(moduleKey: string): string {
+  const key = `auditLog.modules.${moduleKey}`
+  return te(key) ? t(key) : moduleKey
+}
+
+// Business-readable "what was touched" line, e.g. "Facture FAC-202608-0015",
+// "Paiement fournisseur - Ahmed", "Transaction trésorerie 22 500 000 XOF" -
+// never the raw content-type/object-id pair (docs/edit.md UI pass
+// 2026-08-26, Journal d'audit).
+function objectLabel(log: AuditLog): string {
+  const label = moduleLabel(log.summary.module_key)
+  const { reference, related_party: relatedParty, amount } = log.summary
+  if (reference && relatedParty) return `${label} ${reference} (${relatedParty})`
+  if (relatedParty) return `${label} - ${relatedParty}`
+  if (reference) {
+    return log.summary.module_key === 'expense' && te(`expenseCategory.${reference}`)
+      ? `${label} ${t(`expenseCategory.${reference}`)}`
+      : `${label} ${reference}`
+  }
+  if (amount) return `${label} ${formatMoney(amount)}`
+  return `${label} #${log.object_id}`
+}
+
 function badgeVariant(action: string) {
   if (action === 'CREATE') return 'livre' as const
   if (action === 'UPDATE') return 'transit' as const
@@ -80,10 +104,10 @@ function badgeVariant(action: string) {
               {{ t('auditLog.action') }}
             </th>
             <th class="font-display px-3 py-2.5 text-xs font-medium tracking-wide uppercase">
-              {{ t('auditLog.entity') }}
+              {{ t('auditLog.module') }}
             </th>
             <th class="font-display px-3 py-2.5 text-xs font-medium tracking-wide uppercase">
-              {{ t('auditLog.objectId') }}
+              {{ t('auditLog.object') }}
             </th>
             <th class="font-display px-3 py-2.5 text-xs font-medium tracking-wide uppercase">
               {{ t('auditLog.user') }}
@@ -103,13 +127,30 @@ function badgeVariant(action: string) {
               <td class="px-3 py-2.5">
                 <Badge :variant="badgeVariant(log.action)">{{ actionLabel(log.action) }}</Badge>
               </td>
-              <td class="px-3 py-2.5">{{ log.content_type_label }}</td>
-              <td class="px-3 py-2.5"><MonoValue :value="log.object_id" align="left" /></td>
+              <td class="px-3 py-2.5">{{ moduleLabel(log.summary.module_key) }}</td>
+              <td class="px-3 py-2.5">{{ objectLabel(log) }}</td>
               <td class="px-3 py-2.5">{{ log.user_email || '—' }}</td>
               <td class="text-texte-3 px-3 py-2.5">{{ expandedId === log.id ? '▲' : '▼' }}</td>
             </tr>
             <tr v-if="expandedId === log.id" class="border-ligne bg-sable border-b last:border-0">
               <td colspan="6" class="px-4 py-3">
+                <dl
+                  v-if="log.summary.amount || log.summary.account_label || log.summary.related_party"
+                  class="mb-3 grid grid-cols-3 gap-3 text-xs"
+                >
+                  <div v-if="log.summary.amount">
+                    <dt class="text-texte-3">{{ t('auditLog.amount') }}</dt>
+                    <dd class="text-texte font-medium">{{ formatMoney(log.summary.amount) }}</dd>
+                  </div>
+                  <div v-if="log.summary.account_label">
+                    <dt class="text-texte-3">{{ t('auditLog.account') }}</dt>
+                    <dd class="text-texte font-medium">{{ log.summary.account_label }}</dd>
+                  </div>
+                  <div v-if="log.summary.related_party">
+                    <dt class="text-texte-3">{{ t('auditLog.relatedParty') }}</dt>
+                    <dd class="text-texte font-medium">{{ log.summary.related_party }}</dd>
+                  </div>
+                </dl>
                 <p v-if="diffKeys(log).length === 0" class="text-texte-3 text-xs">
                   {{ t('auditLog.noChanges') }}
                 </p>

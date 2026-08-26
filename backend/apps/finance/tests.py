@@ -30,6 +30,8 @@ from apps.finance.models import (
     TreasuryTransaction,
 )
 from apps.finance.services import (
+    ControlledDebtPaymentError,
+    ControlledDebtPaymentService,
     FinancePostingService,
     IndirectSettlementService,
     PaymentAllocationError,
@@ -1194,6 +1196,465 @@ def test_treasury_transaction_source_object_traces_origin(treasury_user):
 
 
 # ---------------------------------------------------------------------------
+# Controlled debt payment from Treasury ledger
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_controlled_supplier_payment_rejects_amount_above_remaining(treasury_user):
+    _admin_user, supplier, order = _make_supplier_order("CTRL-SUP-OVER")
+    bank_account = BankAccount.objects.create(
+        name="Main BOA Account", opening_balance=Decimal("999999999.00")
+    )
+
+    with pytest.raises(ControlledDebtPaymentError):
+        ControlledDebtPaymentService.record_payment(
+            debt_type="supplier",
+            debt_id=supplier.id,
+            bank_account_id=bank_account.id,
+            amount=order.total_amount + Decimal("0.01"),
+            date="2026-08-18",
+            reference="PAY-OVER",
+            actor=treasury_user,
+        )
+
+    assert SupplierPayment.objects.count() == 0
+    assert TreasuryTransaction.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_controlled_supplier_payment_rejects_insufficient_bank_balance(treasury_user):
+    _admin_user, supplier, _order = _make_supplier_order("CTRL-SUP-BANK")
+    bank_account = BankAccount.objects.create(
+        name="Main BOA Account", opening_balance=Decimal("1000.00")
+    )
+
+    with pytest.raises(ControlledDebtPaymentError) as exc_info:
+        ControlledDebtPaymentService.record_payment(
+            debt_type="supplier",
+            debt_id=supplier.id,
+            bank_account_id=bank_account.id,
+            amount=Decimal("1001.00"),
+            date="2026-08-18",
+            reference="PAY-NOBAL",
+            actor=treasury_user,
+        )
+
+    assert "Solde bancaire insuffisant" in str(exc_info.value)
+    assert SupplierPayment.objects.count() == 0
+    assert TreasuryTransaction.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_controlled_supplier_payment_creates_supplier_payment_and_money_out(treasury_user):
+    _admin_user, supplier, order = _make_supplier_order("CTRL-SUP-OK")
+    bank_account = BankAccount.objects.create(
+        name="Main BOA Account", opening_balance=Decimal("1000000.00")
+    )
+
+    result = ControlledDebtPaymentService.record_payment(
+        debt_type="supplier",
+        debt_id=supplier.id,
+        bank_account_id=bank_account.id,
+        amount=Decimal("250000.00"),
+        date="2026-08-18",
+        reference="PAY-SUP",
+        actor=treasury_user,
+    )
+
+    payment = SupplierPayment.objects.get()
+    assert payment.supplier == supplier
+    assert payment.supplier_order == order
+    assert payment.method == SupplierPayment.Method.BANK_TRANSFER
+    assert payment.bank_account == bank_account
+    assert payment.amount == Decimal("250000.00")
+    assert result["transaction"].type == TreasuryTransaction.Type.MONEY_OUT
+    assert result["transaction"].source_object == payment
+    assert result["remaining_after"] == order.total_amount - Decimal("250000.00")
+
+
+@pytest.mark.django_db
+def test_payable_supplier_debts_are_grouped_by_supplier(treasury_user):
+    admin_user, supplier, old_order = _make_supplier_order("CTRL-SUP-GROUP-A")
+    product = Product.objects.get(code="gasoil")
+    new_order = SupplierOrder.objects.create(
+        reference="SO-SUPPAY-CTRL-SUP-GROUP-B",
+        supplier=supplier,
+        product=product,
+        purchase_date="2026-08-19",
+        quantity_litres=Decimal("10.00"),
+        unit_price=Decimal("100.0000"),
+        created_by=admin_user,
+    )
+    other_supplier = Supplier.objects.create(name="Other Supplier", country="Senegal")
+    SupplierOrder.objects.create(
+        reference="SO-SUPPAY-CTRL-SUP-GROUP-C",
+        supplier=other_supplier,
+        product=product,
+        purchase_date="2026-08-20",
+        quantity_litres=Decimal("5.00"),
+        unit_price=Decimal("100.0000"),
+        created_by=admin_user,
+    )
+
+    rows = ControlledDebtPaymentService.get_payable_debts("supplier")
+    supplier_row = next(row for row in rows if row["id"] == supplier.id)
+
+    assert supplier_row["label"] == supplier.name
+    assert supplier_row["total_amount"] == old_order.total_amount + new_order.total_amount
+    assert supplier_row["paid_amount"] == Decimal("0.00")
+    assert supplier_row["remaining_amount"] == old_order.total_amount + new_order.total_amount
+    assert [line["id"] for line in supplier_row["lines"]] == [old_order.id, new_order.id]
+
+
+@pytest.mark.django_db
+def test_controlled_supplier_payment_allocates_to_oldest_orders_first(treasury_user):
+    admin_user, supplier, old_order = _make_supplier_order("CTRL-SUP-FIFO-A")
+    product = Product.objects.get(code="gasoil")
+    new_order = SupplierOrder.objects.create(
+        reference="SO-SUPPAY-CTRL-SUP-FIFO-B",
+        supplier=supplier,
+        product=product,
+        purchase_date="2026-08-19",
+        quantity_litres=Decimal("1000.00"),
+        unit_price=Decimal("600.0000"),
+        created_by=admin_user,
+    )
+    bank_account = BankAccount.objects.create(
+        name="Main BOA Account", opening_balance=Decimal("999999999.00")
+    )
+
+    ControlledDebtPaymentService.record_payment(
+        debt_type="supplier",
+        debt_id=supplier.id,
+        bank_account_id=bank_account.id,
+        amount=old_order.total_amount + Decimal("100000.00"),
+        date="2026-08-18",
+        reference="PAY-SUP-FIFO",
+        actor=treasury_user,
+    )
+
+    old_payment = SupplierPayment.objects.get(supplier_order=old_order)
+    new_payment = SupplierPayment.objects.get(supplier_order=new_order)
+    assert old_payment.amount == old_order.total_amount
+    assert new_payment.amount == Decimal("100000.00")
+    assert TreasuryTransaction.objects.filter(
+        source_content_type=ContentType.objects.get_for_model(SupplierPayment),
+        type=TreasuryTransaction.Type.MONEY_OUT,
+    ).count() == 2
+
+
+@pytest.mark.django_db
+def test_controlled_transport_payment_updates_remaining_and_paid_status(treasury_user):
+    trip, transporter = _make_trip_for_deduction("CTRL-TRP")
+    debt = TransportPayment.objects.create(
+        trip=trip,
+        transporter=transporter,
+        calculation_method=TransportPayment.CalculationMethod.FIXED,
+        base_amount=Decimal("700000.00"),
+        status=TransportPayment.Status.PAYABLE,
+    )
+    bank_account = BankAccount.objects.create(
+        name="Main BOA Account", opening_balance=Decimal("1000000.00")
+    )
+
+    first = ControlledDebtPaymentService.record_payment(
+        debt_type="transporter",
+        debt_id=transporter.id,
+        bank_account_id=bank_account.id,
+        amount=Decimal("300000.00"),
+        date="2026-08-18",
+        reference="PAY-TRP-1",
+        actor=treasury_user,
+    )
+    debt.refresh_from_db()
+
+    assert first["remaining_after"] == Decimal("400000.00")
+    assert debt.status == TransportPayment.Status.PARTIALLY_PAID
+
+    second = ControlledDebtPaymentService.record_payment(
+        debt_type="transporter",
+        debt_id=transporter.id,
+        bank_account_id=bank_account.id,
+        amount=Decimal("400000.00"),
+        date="2026-08-19",
+        reference="PAY-TRP-2",
+        actor=treasury_user,
+    )
+    debt.refresh_from_db()
+
+    assert second["remaining_after"] == Decimal("0.00")
+    assert debt.status == TransportPayment.Status.PAID
+    assert TreasuryTransaction.objects.filter(
+        source_content_type=ContentType.objects.get_for_model(TransportPayment),
+        source_object_id=debt.id,
+        type=TreasuryTransaction.Type.MONEY_OUT,
+    ).count() == 2
+
+
+@pytest.mark.django_db
+def test_controlled_transport_payment_allocates_by_transporter_fifo(treasury_user):
+    trip_a, transporter = _make_trip_for_deduction("CTRL-TRP-FIFO-A")
+    trip_b, _same = _make_trip_for_deduction("CTRL-TRP-FIFO-B")
+    trip_b.transporter = transporter
+    trip_b.save(update_fields=["transporter", "updated_at"])
+    first_debt = TransportPayment.objects.create(
+        trip=trip_a,
+        transporter=transporter,
+        calculation_method=TransportPayment.CalculationMethod.FIXED,
+        base_amount=Decimal("700000.00"),
+        status=TransportPayment.Status.PAYABLE,
+    )
+    second_debt = TransportPayment.objects.create(
+        trip=trip_b,
+        transporter=transporter,
+        calculation_method=TransportPayment.CalculationMethod.FIXED,
+        base_amount=Decimal("500000.00"),
+        status=TransportPayment.Status.PAYABLE,
+    )
+    bank_account = BankAccount.objects.create(
+        name="Main BOA Account", opening_balance=Decimal("2000000.00")
+    )
+
+    result = ControlledDebtPaymentService.record_payment(
+        debt_type="transporter",
+        debt_id=transporter.id,
+        bank_account_id=bank_account.id,
+        amount=Decimal("900000.00"),
+        date="2026-08-18",
+        reference="PAY-TRP-FIFO",
+        actor=treasury_user,
+    )
+    first_debt.refresh_from_db()
+    second_debt.refresh_from_db()
+
+    assert first_debt.status == TransportPayment.Status.PAID
+    assert second_debt.status == TransportPayment.Status.PARTIALLY_PAID
+    assert result["remaining_after"] == Decimal("300000.00")
+    assert [txn.amount for txn in result["transactions"]] == [
+        Decimal("700000.00"),
+        Decimal("200000.00"),
+    ]
+
+
+@pytest.mark.django_db
+def test_controlled_expense_payment_creates_bank_out_and_keeps_cost_basis(treasury_user):
+    trip, _transporter = _make_trip_for_deduction("CTRL-EXP")
+    expense = Expense.objects.create(
+        category=Expense.Category.CUSTOMS,
+        amount=Decimal("100000.00"),
+        calculation_method=Expense.CalculationMethod.FIXED,
+        date="2026-08-18",
+    )
+    ExpenseAllocation.objects.create(
+        expense=expense,
+        content_type=ContentType.objects.get_for_model(Trip),
+        object_id=trip.id,
+        allocated_amount=Decimal("100000.00"),
+    )
+    bank_account = BankAccount.objects.create(
+        name="Main BOA Account", opening_balance=Decimal("1000000.00")
+    )
+
+    result = ControlledDebtPaymentService.record_payment(
+        debt_type="customs",
+        debt_id=0,
+        bank_account_id=bank_account.id,
+        amount=Decimal("100000.00"),
+        date="2026-08-18",
+        reference="PAY-CUSTOMS",
+        actor=treasury_user,
+    )
+    expense.refresh_from_db()
+
+    assert expense.status == Expense.Status.PAID
+    assert result["transaction"].type == TreasuryTransaction.Type.MONEY_OUT
+    assert result["transaction"].source_object == expense
+    from apps.trips.services import TripCostService
+
+    cost_basis = TripCostService.calculate_trip_cost_basis(trip)
+    assert cost_basis["expenses_by_category"][Expense.Category.CUSTOMS] == Decimal("100000.00")
+
+
+@pytest.mark.django_db
+def test_controlled_expense_payment_allocates_category_fifo(treasury_user):
+    old_expense = Expense.objects.create(
+        category=Expense.Category.CUSTOMS,
+        amount=Decimal("100000.00"),
+        calculation_method=Expense.CalculationMethod.FIXED,
+        date="2026-08-17",
+    )
+    new_expense = Expense.objects.create(
+        category=Expense.Category.CUSTOMS,
+        amount=Decimal("80000.00"),
+        calculation_method=Expense.CalculationMethod.FIXED,
+        date="2026-08-18",
+    )
+    bank_account = BankAccount.objects.create(
+        name="Main BOA Account", opening_balance=Decimal("300000.00")
+    )
+
+    result = ControlledDebtPaymentService.record_payment(
+        debt_type="customs",
+        debt_id=0,
+        bank_account_id=bank_account.id,
+        amount=Decimal("120000.00"),
+        date="2026-08-18",
+        reference="PAY-CUSTOMS-FIFO",
+        actor=treasury_user,
+    )
+    old_expense.refresh_from_db()
+    new_expense.refresh_from_db()
+
+    assert old_expense.status == Expense.Status.PAID
+    assert new_expense.status == Expense.Status.PARTIALLY_PAID
+    assert result["remaining_after"] == Decimal("60000.00")
+    assert [txn.source_object for txn in result["transactions"]] == [old_expense, new_expense]
+
+
+@pytest.mark.django_db
+def test_controlled_debt_payment_api_returns_remaining_fields(finance_client):
+    _admin_user, supplier, order = _make_supplier_order("CTRL-API")
+    bank_account = BankAccount.objects.create(
+        name="Main BOA Account", opening_balance=Decimal("1000000.00")
+    )
+
+    response = finance_client.post(
+        "/api/treasury-transactions/record-debt-payment/",
+        {
+            "debt_type": "supplier",
+            "debt_id": supplier.id,
+            "bank_account": bank_account.id,
+            "amount": "100000.00",
+            "date": "2026-08-18",
+            "reference": "PAY-API",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201, response.data
+    assert response.data["transaction"]["type"] == TreasuryTransaction.Type.MONEY_OUT
+    assert response.data["debt"]["total_amount"] == str(order.total_amount)
+    assert response.data["debt"]["paid_amount"] == "100000.00"
+    assert response.data["debt"]["remaining_amount"] == str(order.total_amount - Decimal("100000.00"))
+
+
+# ---------------------------------------------------------------------------
+# docs/tresororie_edit.md "Nouveau paiement" - reference/note/attachment
+# (docs/edit.md UI pass 2026-08-26): a controlled debt payment can carry a
+# free-text note and a proof-of-payment file, both surfaced back on the
+# created TreasuryTransaction(s) for the journal to display.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_controlled_debt_payment_persists_note_on_the_treasury_transaction(treasury_user):
+    _admin_user, supplier, _order = _make_supplier_order("NOTE-SVC")
+    bank_account = BankAccount.objects.create(
+        name="Main BOA Account NOTE-SVC", opening_balance=Decimal("1000000.00")
+    )
+
+    result = ControlledDebtPaymentService.record_payment(
+        debt_type=ControlledDebtPaymentService.SUPPLIER,
+        debt_id=supplier.id,
+        bank_account_id=bank_account.id,
+        amount=Decimal("100000.00"),
+        date="2026-08-18",
+        reference="PAY-NOTE",
+        actor=treasury_user,
+        note="Virement confirme par le fournisseur au telephone.",
+    )
+
+    assert len(result["transactions"]) == 1
+    assert result["transactions"][0].note == "Virement confirme par le fournisseur au telephone."
+
+
+@pytest.mark.django_db
+def test_controlled_debt_payment_attaches_uploaded_proof_to_the_transaction(treasury_user):
+    _admin_user, supplier, _order = _make_supplier_order("ATTACH-SVC")
+    bank_account = BankAccount.objects.create(
+        name="Main BOA Account ATTACH-SVC", opening_balance=Decimal("1000000.00")
+    )
+    proof = SimpleUploadedFile("recu.pdf", b"%PDF-1.4 fake receipt", content_type="application/pdf")
+
+    result = ControlledDebtPaymentService.record_payment(
+        debt_type=ControlledDebtPaymentService.SUPPLIER,
+        debt_id=supplier.id,
+        bank_account_id=bank_account.id,
+        amount=Decimal("100000.00"),
+        date="2026-08-18",
+        reference="PAY-ATTACH",
+        actor=treasury_user,
+        attachment=proof,
+    )
+
+    txn = result["transactions"][0]
+    assert txn.document_id is not None
+    assert txn.document.uploaded_by_id == treasury_user.id
+    assert txn.document.content_type == ContentType.objects.get_for_model(TreasuryTransaction)
+    assert txn.document.object_id == txn.id
+
+
+@pytest.mark.django_db
+def test_controlled_debt_payment_api_accepts_multipart_note_and_attachment(finance_client):
+    _admin_user, supplier, _order = _make_supplier_order("NOTE-API")
+    bank_account = BankAccount.objects.create(
+        name="Main BOA Account NOTE-API", opening_balance=Decimal("1000000.00")
+    )
+    proof = SimpleUploadedFile("recu.pdf", b"%PDF-1.4 fake receipt", content_type="application/pdf")
+
+    response = finance_client.post(
+        "/api/treasury-transactions/record-debt-payment/",
+        {
+            "debt_type": "supplier",
+            "debt_id": supplier.id,
+            "bank_account": bank_account.id,
+            "amount": "100000.00",
+            "date": "2026-08-18",
+            "reference": "PAY-NOTE-API",
+            "note": "Paiement confirme par SMS.",
+            "attachment": proof,
+        },
+        format="multipart",
+    )
+
+    assert response.status_code == 201, response.data
+    assert response.data["transaction"]["note"] == "Paiement confirme par SMS."
+    assert response.data["transaction"]["document"] is not None
+    # Root-relative, never an absolute URL baking in the backend's internal
+    # Host header (unreachable from the browser behind the dev proxy - see
+    # docs/edit.md UI pass 2026-08-26, "Justificatif" fix).
+    assert response.data["transaction"]["document_url"].startswith("/media/")
+
+
+@pytest.mark.django_db
+def test_controlled_debt_payment_api_works_without_note_or_attachment(finance_client):
+    """note/attachment are optional - a plain JSON payment request (no
+    multipart body) must keep working exactly as before."""
+    _admin_user, supplier, _order = _make_supplier_order("NO-NOTE-API")
+    bank_account = BankAccount.objects.create(
+        name="Main BOA Account NO-NOTE-API", opening_balance=Decimal("1000000.00")
+    )
+
+    response = finance_client.post(
+        "/api/treasury-transactions/record-debt-payment/",
+        {
+            "debt_type": "supplier",
+            "debt_id": supplier.id,
+            "bank_account": bank_account.id,
+            "amount": "100000.00",
+            "date": "2026-08-18",
+            "reference": "PAY-NO-NOTE",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201, response.data
+    assert response.data["transaction"]["note"] == ""
+    assert response.data["transaction"]["document"] is None
+
+
+# ---------------------------------------------------------------------------
 # Phase 5 Etape 9: Acceptance scenarios (docs/PHASE_5_PLAN.md)
 # ---------------------------------------------------------------------------
 
@@ -2049,7 +2510,7 @@ def test_shareholder_withdrawal_creates_treasury_transaction_and_reduces_remaini
         actor=actor,
     )
     share = ShareholderProfitShare.objects.get(distribution=distribution)
-    cash_account = CashAccount.objects.create(name="Main Cash")
+    cash_account = CashAccount.objects.create(name="Main Cash", opening_balance=Decimal("1000000.00"))
 
     withdrawal = ShareholderWithdrawalService.record_withdrawal(
         shareholder_id=shareholder.id,
@@ -2101,7 +2562,17 @@ def test_shareholder_withdrawal_rejects_amount_exceeding_remaining_due():
 def test_shareholder_withdrawal_general_without_profit_share():
     shareholder = _make_shareholders([Decimal("100")])[0]
     actor = _make_admin_user("6")
-    bank_account = BankAccount.objects.create(name="Main BOA")
+    # A general withdrawal (no profit_share_id) is still checked against
+    # the shareholder's available_balance - needs a distribution first
+    # (design doc 2026-08-26-benefices-associes-refinement-design.md, Fix
+    # 1) so it has something to draw from.
+    ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=actor,
+    )
+    bank_account = BankAccount.objects.create(name="Main BOA", opening_balance=Decimal("100000.00"))
 
     withdrawal = ShareholderWithdrawalService.record_withdrawal(
         shareholder_id=shareholder.id,
@@ -2117,6 +2588,53 @@ def test_shareholder_withdrawal_general_without_profit_share():
         source_content_type=ContentType.objects.get_for_model(ShareholderWithdrawal),
         source_object_id=withdrawal.id,
     ).exists()
+
+
+@pytest.mark.django_db
+def test_shareholder_withdrawal_general_rejects_amount_exceeding_available_balance():
+    """Fix 1: before this, a general withdrawal (no profit_share_id) never
+    checked the shareholder's balance at all - only a withdrawal tied to a
+    specific profit_share was checked, so an unlinked withdrawal could
+    drain an arbitrary amount."""
+    shareholder = _make_shareholders([Decimal("100")])[0]
+    actor = _make_admin_user("6b")
+    bank_account = BankAccount.objects.create(name="Main BOA", opening_balance=Decimal("100000.00"))
+
+    with pytest.raises(ShareholderWithdrawalError):
+        ShareholderWithdrawalService.record_withdrawal(
+            shareholder_id=shareholder.id,
+            profit_share_id=None,
+            amount=Decimal("1.00"),
+            date="2026-08-01",
+            bank_account_id=bank_account.id,
+            actor=actor,
+        )
+
+
+@pytest.mark.django_db
+def test_shareholder_withdrawal_rejects_amount_exceeding_bank_balance():
+    """Fix 1: the destination account's balance was never checked either -
+    a withdrawal could exceed what the selected bank/cash account actually
+    held."""
+    shareholder = _make_shareholders([Decimal("100")])[0]
+    actor = _make_admin_user("6c")
+    ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("1000000.00"),
+        actor=actor,
+    )
+    bank_account = BankAccount.objects.create(name="Poor BOA", opening_balance=Decimal("1000.00"))
+
+    with pytest.raises(ShareholderWithdrawalError):
+        ShareholderWithdrawalService.record_withdrawal(
+            shareholder_id=shareholder.id,
+            profit_share_id=None,
+            amount=Decimal("50000.00"),
+            date="2026-08-01",
+            bank_account_id=bank_account.id,
+            actor=actor,
+        )
 
 
 @pytest.mark.django_db
@@ -2137,7 +2655,13 @@ def test_shareholder_withdrawal_requires_exactly_one_account():
 @pytest.mark.django_db
 def test_shareholder_withdrawal_via_api_posts_treasury(admin_client):
     shareholder = _make_shareholders([Decimal("100")])[0]
-    cash_account = CashAccount.objects.create(name="Main Cash")
+    ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=_make_admin_user("6d"),
+    )
+    cash_account = CashAccount.objects.create(name="Main Cash", opening_balance=Decimal("100000.00"))
 
     response = admin_client.post(
         "/api/shareholder-withdrawals/",
@@ -2207,8 +2731,124 @@ def test_shareholder_loan_borrower_cannot_equal_lender():
 
 
 @pytest.mark.django_db
+def test_shareholder_loan_service_rejects_amount_exceeding_lender_available_balance():
+    """Fix 2 (design doc 2026-08-26-benefices-associes-refinement-design.md):
+    before this, creating a ShareholderLoan never checked the lender had
+    anything to lend - a lender with no profit share and no prior loans
+    could still "lend" an arbitrary amount."""
+    borrower, lender = _make_shareholders([Decimal("50"), Decimal("50")], prefix="LOANBAL")
+
+    with pytest.raises(ShareholderLoanError):
+        ShareholderLoanService.create_loan(
+            borrower_id=borrower.id,
+            lender_id=lender.id,
+            amount=Decimal("1.00"),
+            date="2026-08-01",
+        )
+
+
+@pytest.mark.django_db
+def test_shareholder_loan_service_creates_loan_within_lender_available_balance():
+    borrower, lender = _make_shareholders([Decimal("50"), Decimal("50")], prefix="LOANOK")
+    ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=_make_admin_user("LOANOK"),
+    )
+
+    loan = ShareholderLoanService.create_loan(
+        borrower_id=borrower.id,
+        lender_id=lender.id,
+        amount=Decimal("20000.00"),
+        date="2026-08-01",
+    )
+
+    assert loan.borrower_id == borrower.id
+    assert loan.lender_id == lender.id
+    assert loan.amount == Decimal("20000.00")
+    assert loan.status == ShareholderLoan.Status.OPEN
+
+
+@pytest.mark.django_db
+def test_shareholder_loan_service_never_creates_treasury_transaction():
+    """Money moving between shareholders is a ledger-only entry, never a
+    company treasury movement (design doc, point 3: "une avance entre
+    associes ne doit pas creer de TreasuryTransaction si l'argent ne sort
+    pas d'un compte de l'entreprise")."""
+    borrower, lender = _make_shareholders([Decimal("50"), Decimal("50")], prefix="LOANTXN")
+    ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=_make_admin_user("LOANTXN"),
+    )
+    treasury_count_before = TreasuryTransaction.objects.count()
+
+    ShareholderLoanService.create_loan(
+        borrower_id=borrower.id, lender_id=lender.id, amount=Decimal("20000.00"), date="2026-08-01"
+    )
+
+    assert TreasuryTransaction.objects.count() == treasury_count_before
+
+
+@pytest.mark.django_db
+def test_shareholder_loan_creation_rejected_via_api_when_lender_balance_insufficient(admin_client):
+    borrower, lender = _make_shareholders([Decimal("50"), Decimal("50")], prefix="LOANAPIREJ")
+
+    response = admin_client.post(
+        "/api/shareholder-loans/",
+        {
+            "borrower": borrower.id,
+            "lender": lender.id,
+            "amount": "20000.00",
+            "date": "2026-08-01",
+        },
+    )
+
+    assert response.status_code == 400, response.data
+
+
+@pytest.mark.django_db
+def test_get_available_balance_loan_given_increases_loan_received_decreases():
+    """Pins the sign convention explicitly requested during design review:
+    lending money out is a receivable (increases available_balance),
+    receiving an advance is a liability (decreases it) - easy to get
+    backwards, so this regression test locks it in."""
+    a, b = _make_shareholders([Decimal("50"), Decimal("50")], prefix="SIGN")
+    actor = _make_admin_user("SIGN")
+    ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=actor,
+    )
+    # a's own profit share is 50000. a lends 10000 to b (a is lender) and
+    # separately receives a 5000 advance from b (a is borrower on this one).
+    ShareholderLoan.objects.create(
+        borrower=b, lender=a, amount=Decimal("10000.00"), date="2026-08-01"
+    )
+    ShareholderLoan.objects.create(
+        borrower=a, lender=b, amount=Decimal("5000.00"), date="2026-08-01"
+    )
+
+    available = ShareholderLedgerService.get_available_balance(a.id)
+
+    assert available == Decimal("55000.00")  # 50000 + 10000 (given) - 5000 (received)
+
+
+@pytest.mark.django_db
 def test_shareholder_loan_crud_via_api(admin_client):
     borrower, lender = _make_shareholders([Decimal("50"), Decimal("50")])
+    # Loan creation now checks the lender's available_balance (design doc
+    # 2026-08-26-benefices-associes-refinement-design.md, Fix 2) - give the
+    # lender a distribution to draw from.
+    ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=_make_admin_user("LOANAPI"),
+    )
 
     created = admin_client.post(
         "/api/shareholder-loans/",
@@ -2358,7 +2998,7 @@ def test_shareholder_ledger_service_get_shareholder_summary():
         actor=actor,
     )
     share = ShareholderProfitShare.objects.get(distribution=distribution)
-    cash_account = CashAccount.objects.create(name="Main Cash")
+    cash_account = CashAccount.objects.create(name="Main Cash", opening_balance=Decimal("100000.00"))
     ShareholderWithdrawalService.record_withdrawal(
         shareholder_id=shareholder.id,
         profit_share_id=share.id,
@@ -2379,6 +3019,9 @@ def test_shareholder_ledger_service_get_shareholder_summary():
     assert summary["remaining_due"] == Decimal("70000.00")
     assert len(summary["loans_lent"]) == 1
     assert summary["loans_lent"][0]["remaining_amount"] == Decimal("15000.00")
+    # available_balance = remaining_due (70000) + net_loan_balance (15000
+    # lent out, nothing borrowed) - a loan given increases it.
+    assert summary["available_balance"] == Decimal("85000.00")
 
 
 @pytest.mark.django_db
@@ -2413,7 +3056,9 @@ def test_shareholder_ledger_endpoint_money_fields_are_strings_not_floats(admin_c
         actor=actor,
     )
     share = ShareholderProfitShare.objects.get(distribution=distribution)
-    cash_account = CashAccount.objects.create(name="Ledger Test Cash")
+    cash_account = CashAccount.objects.create(
+        name="Ledger Test Cash", opening_balance=Decimal("100000.00")
+    )
     ShareholderWithdrawalService.record_withdrawal(
         shareholder_id=shareholder.id,
         profit_share_id=share.id,
@@ -2433,9 +3078,116 @@ def test_shareholder_ledger_endpoint_money_fields_are_strings_not_floats(admin_c
     assert isinstance(response.data["total_amount_due"], str)
     assert isinstance(response.data["total_withdrawn"], str)
     assert isinstance(response.data["remaining_due"], str)
+    assert isinstance(response.data["available_balance"], str)
     assert isinstance(response.data["net_loan_balance"], str)
     assert isinstance(response.data["shares"][0]["amount_due"], str)
     assert isinstance(response.data["shares"][0]["remaining_due"], str)
     assert isinstance(response.data["loans_lent"][0]["amount"], str)
     assert isinstance(response.data["loans_lent"][0]["remaining_amount"], str)
     assert isinstance(response.data["withdrawals"][0]["amount"], str)
+
+
+# ---------------------------------------------------------------------------
+# Journal de tresorerie readability (docs/edit.md UI pass 2026-08-26) -
+# describe_treasury_transaction() resolves a movement's counterparty
+# ("Fournisseur - Ahmed", "Douane", "Transfert Banque BOA -> Caisse
+# Recette", ...) so the frontend never has to show a bare account +
+# "Sortie"/"Entree" with no context.
+# ---------------------------------------------------------------------------
+
+from apps.finance.labels import describe_treasury_transaction  # noqa: E402
+
+
+@pytest.mark.django_db
+def test_describe_treasury_transaction_labels_a_supplier_payment():
+    _admin_user, supplier, _order = _make_supplier_order("DESCRIBE-TXN-SUP")
+    bank_account = BankAccount.objects.create(
+        name="Main BOA Account DESCRIBE-TXN-SUP", opening_balance="5000000.00"
+    )
+    payment = SupplierPayment.objects.create(
+        supplier=supplier,
+        amount=Decimal("1000000.00"),
+        payment_date="2026-08-18",
+        method=SupplierPayment.Method.BANK_TRANSFER,
+        bank_account=bank_account,
+        is_advance=False,
+        recorded_by=_admin_user,
+    )
+    txn = TreasuryTransaction.objects.create(
+        bank_account=bank_account,
+        type=TreasuryTransaction.Type.MONEY_OUT,
+        amount=Decimal("1000000.00"),
+        date="2026-08-18",
+        source_content_type=ContentType.objects.get_for_model(SupplierPayment),
+        source_object_id=payment.id,
+        recorded_by=_admin_user,
+    )
+
+    assert describe_treasury_transaction(txn) == {"counterparty": f"Fournisseur - {supplier.name}"}
+
+
+@pytest.mark.django_db
+def test_describe_treasury_transaction_labels_a_customs_expense():
+    admin_user = _make_admin_user("DESCRIBE-TXN-EXP")
+    bank_account = BankAccount.objects.create(
+        name="Main BOA Account DESCRIBE-TXN-EXP", opening_balance="5000000.00"
+    )
+    expense = Expense.objects.create(
+        category=Expense.Category.CUSTOMS,
+        amount=Decimal("90000.00"),
+        calculation_method=Expense.CalculationMethod.MANUAL,
+        date="2026-08-18",
+    )
+    txn = TreasuryTransaction.objects.create(
+        bank_account=bank_account,
+        type=TreasuryTransaction.Type.MONEY_OUT,
+        amount=Decimal("90000.00"),
+        date="2026-08-18",
+        source_content_type=ContentType.objects.get_for_model(Expense),
+        source_object_id=expense.id,
+        recorded_by=admin_user,
+    )
+
+    assert describe_treasury_transaction(txn) == {"counterparty": "Douane"}
+
+
+@pytest.mark.django_db
+def test_describe_treasury_transaction_labels_a_transfer_with_direction():
+    admin_user = _make_admin_user("DESCRIBE-TXN-TRF")
+    bank_account = BankAccount.objects.create(
+        name="Banque BOA DESCRIBE-TXN-TRF", opening_balance="20000000.00"
+    )
+    cash_account = CashAccount.objects.create(name="Caisse Recette DESCRIBE-TXN-TRF")
+
+    out_txn, in_txn = TreasuryService.record_transfer(
+        source_account_type="bank",
+        source_account_id=bank_account.id,
+        dest_account_type="cash",
+        dest_account_id=cash_account.id,
+        amount=Decimal("10000000.00"),
+        date="2026-08-18",
+        reference="TRF-DESCRIBE",
+        user=admin_user,
+    )
+
+    assert describe_treasury_transaction(out_txn) == {
+        "counterparty": "Transfert Banque BOA DESCRIBE-TXN-TRF -> Caisse Recette DESCRIBE-TXN-TRF"
+    }
+    assert describe_treasury_transaction(in_txn) == {
+        "counterparty": "Transfert Banque BOA DESCRIBE-TXN-TRF -> Caisse Recette DESCRIBE-TXN-TRF"
+    }
+
+
+@pytest.mark.django_db
+def test_describe_treasury_transaction_has_no_counterparty_for_a_manual_entry():
+    admin_user = _make_admin_user("DESCRIBE-TXN-MANUAL")
+    cash_account = CashAccount.objects.create(name="Main Cash DESCRIBE-TXN-MANUAL")
+    txn = TreasuryTransaction.objects.create(
+        cash_account=cash_account,
+        type=TreasuryTransaction.Type.MONEY_IN,
+        amount=Decimal("50000.00"),
+        date="2026-08-18",
+        recorded_by=admin_user,
+    )
+
+    assert describe_treasury_transaction(txn) == {"counterparty": None}

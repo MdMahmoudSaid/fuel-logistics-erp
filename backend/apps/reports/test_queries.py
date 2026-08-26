@@ -14,11 +14,14 @@ from apps.finance.models import (
     CustomerPayment,
     Expense,
     ExpenseAllocation,
+    Shareholder,
+    ShareholderProfitDistribution,
     SupplierPayment,
     TransportDeduction,
     TransportPayment,
     TreasuryTransaction,
 )
+from apps.finance.services import ShareholderDistributionService, ShareholderProfitPreviewService
 from apps.purchasing.models import CessionLetter, SupplierOrder
 from apps.reports.queries.customer_statement import CustomerStatementQuery
 from apps.reports.queries.fuel_stock_report import FuelStockReportQuery
@@ -333,6 +336,7 @@ def test_margin_report_row_includes_expanded_cost_breakdown_fields():
     _allocate_expense(trip, Expense.Category.CUSTOMS, Decimal("1200000.00"), "CUST")
     _allocate_expense(trip, Expense.Category.IMPORT_INTENTION, Decimal("300000.00"), "TRANSIT")
     _allocate_expense(trip, Expense.Category.ROAD, Decimal("50000.00"), "ROAD")
+    _allocate_expense(trip, Expense.Category.LOADING, Decimal("40000.00"), "LOADING")
     _allocate_expense(trip, Expense.Category.OTHER, Decimal("20000.00"), "OTHER")
     # A TRANSPORT-category Expense must never be double-counted against
     # transport_cost (which already comes from TransportPayment above).
@@ -357,8 +361,11 @@ def test_margin_report_row_includes_expanded_cost_breakdown_fields():
     assert row["transport_cost"] == Decimal("800000.00")
     assert row["customs_cost"] == Decimal("1200000.00")
     assert row["transit_cost"] == Decimal("300000.00")
-    # additional_costs = road + other, excluding customs/import_intention/transport
-    assert row["additional_costs"] == Decimal("70000.00")
+    assert row["border_cost"] == Decimal("50000.00")
+    assert row["loading_cost"] == Decimal("40000.00")
+    # additional_costs = other only, excluding
+    # customs/import_intention/transport/road/loading
+    assert row["additional_costs"] == Decimal("20000.00")
     assert row["unit_selling_price"] == trip.sale.unit_selling_price
 
     from apps.reports.services.profit import TripProfitService
@@ -396,6 +403,87 @@ def test_margin_report_period_total_equals_sum_of_row_margins():
     }
     period_total = sum((r["current_margin"] for r in rows), Decimal("0.00"))
     assert period_total == expected_total
+
+
+# ---------------------------------------------------------------------------
+# ShareholderProfitPreviewService (design doc
+# 2026-08-26-benefices-associes-refinement-design.md) - lives in
+# apps.finance.services but tested here to reuse _make_full_trip rather
+# than duplicate its fixture setup; the service itself delegates entirely
+# to MarginReportQuery, so these tests exercise that same integration.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_shareholder_profit_preview_matches_margin_report_current_margin_sum():
+    admin_user = _make_admin("PREVIEWSUM")
+    fx = _make_full_trip("PREVIEWSUM", admin_user)
+    a = Shareholder.objects.create(name="Preview A", participation_percent=Decimal("80"))
+    b = Shareholder.objects.create(name="Preview B", participation_percent=Decimal("20"))
+
+    preview = ShareholderProfitPreviewService.get_preview()
+
+    expected_total = sum(
+        (r["current_margin"] for r in MarginReportQuery.run()), Decimal("0.00")
+    )
+    assert preview["current_profit"] == expected_total
+
+    shares_by_id = {s["shareholder_id"]: s for s in preview["shareholders"]}
+    assert shares_by_id[a.id]["indicative_share"] == (
+        expected_total * Decimal("80") / Decimal("100")
+    ).quantize(Decimal("0.01"))
+    assert shares_by_id[b.id]["indicative_share"] == (
+        expected_total * Decimal("20") / Decimal("100")
+    ).quantize(Decimal("0.01"))
+
+    # Read-only: no distribution/share rows are created by a preview.
+    assert ShareholderProfitDistribution.objects.count() == 0
+    # Fixture sanity: the trip really has a sale to margin.
+    assert fx["sale"] is not None
+
+
+@pytest.mark.django_db
+def test_shareholder_profit_preview_excludes_inactive_shareholders():
+    admin_user = _make_admin("PREVIEWINACT")
+    _make_full_trip("PREVIEWINACT", admin_user)
+    Shareholder.objects.create(
+        name="Inactive Preview", participation_percent=Decimal("50"), is_active=False
+    )
+
+    preview = ShareholderProfitPreviewService.get_preview()
+
+    assert preview["shareholders"] == []
+
+
+@pytest.mark.django_db
+def test_shareholder_profit_preview_defaults_to_period_after_last_validated_distribution():
+    admin_user = _make_admin("PREVIEWPERIOD")
+    fx_old = _make_full_trip("PREVIEWPERIODOLD", admin_user)
+    fx_old["trip"].loading_date = "2026-07-10"
+    fx_old["trip"].save(update_fields=["loading_date"])
+    fx_new = _make_full_trip("PREVIEWPERIODNEW", admin_user)
+    fx_new["trip"].loading_date = "2026-08-15"
+    fx_new["trip"].save(update_fields=["loading_date"])
+    Shareholder.objects.create(name="Preview Period", participation_percent=Decimal("100"))
+
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("1.00"),
+        actor=admin_user,
+    )
+    ShareholderDistributionService.validate_distribution(distribution.id, admin_user)
+
+    preview = ShareholderProfitPreviewService.get_preview()
+
+    from apps.reports.services.profit import TripProfitService
+
+    expected_total = TripProfitService.get_cost_breakdown(fx_new["trip"])["margin"]
+    assert preview["current_profit"] == expected_total
+
+    from datetime import date
+
+    assert preview["period_start"] == date(2026, 8, 1)
 
 
 # ---------------------------------------------------------------------------

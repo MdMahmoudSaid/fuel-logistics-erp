@@ -3,10 +3,15 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { tripResource, fetchTripHistory, fetchTripMargin, postTripStatus } from './api'
+import {
+  tripResource,
+  fetchAllowedTripStatuses,
+  fetchTripHistory,
+  fetchTripMargin,
+  postTripStatus,
+} from './api'
 import { translateApiError } from '@/i18n/apiErrors'
 import DeliveryControlForm from './DeliveryControlForm.vue'
-import { TRIP_STATUSES } from './types'
 import type { Trip, TripMargin, TripStatus, TripStatusHistoryEntry } from './types'
 import { fetchReport } from '@/modules/reports/api'
 import { lossSeverityTone, type LossReportRow } from '@/modules/dashboard/aggregate'
@@ -17,10 +22,13 @@ import Button from '@/components/ui/Button.vue'
 import Card from '@/components/ui/Card.vue'
 import { useTripStatusLabel } from './tripStatusLabels'
 import { expenseResource } from '@/modules/finance/api'
+import { transportPaymentResource } from '@/modules/finance/api'
 import ExpenseForm from '@/modules/finance/ExpenseForm.vue'
 import TransportPaymentForm from '@/modules/finance/TransportPaymentForm.vue'
 import AssignCustomerForm from './AssignCustomerForm.vue'
 import type { Expense } from '@/modules/finance/types'
+import type { ExpenseCategory, TransportPayment } from '@/modules/finance/types'
+import { formatMoney, formatUnitMoney, formatQuantity } from '@/utils/currency'
 
 const route = useRoute()
 const router = useRouter()
@@ -56,13 +64,19 @@ onMounted(load)
 // ExpenseAllocation link - GET /api/expenses/?trip=<id> (backend/apps/
 // finance/views.py ExpenseViewSet.get_queryset()) does that lookup.
 const expenses = ref<Expense[]>([])
+const transportPayments = ref<TransportPayment[]>([])
 const expensesError = ref('')
 const showExpenseForm = ref(false)
+const automaticExpense = ref<{
+  title: string
+  category: ExpenseCategory
+} | null>(null)
 const canManageExpenses = computed(() => auth.can('finance', 'create'))
 
 // Client modification Task 2: transporter fees per litre create payable
 // debt - same "finance" module create permission gates both forms.
 const showTransportPaymentForm = ref(false)
+const automaticTransportTitle = ref<string | null>(null)
 
 // Client modifications plan Task 9 (gap-closure): assign-customer is
 // "edit" tier on the "operations" module (backend/apps/accounts/
@@ -78,16 +92,40 @@ const showAssignCustomerForm = ref(false)
 // The stricter `margin !== null` (vs. `!margin?.available`) hides the
 // action while margin is still loading rather than flashing it briefly.
 const noSaleYet = computed(() => margin.value !== null && !margin.value.available)
+const customsReachedStatuses: TripStatus[] = [
+  'CUSTOMS',
+  'GOING_TO_COMPANY_STOCK',
+  'ARRIVED_AT_COMPANY_STOCK',
+  'STOCKED',
+  'GOING_TO_CLIENT',
+  'ARRIVED_AT_CLIENT',
+  'QUANTITY_CONTROL',
+  'DELIVERED',
+  'COMPLETED',
+]
+const canShowAssignCustomer = computed(
+  () =>
+    trip.value?.destination_type === 'COMPANY_STOCK' &&
+    customsReachedStatuses.includes(trip.value.status) &&
+    canAssignCustomer.value &&
+    noSaleYet.value,
+)
 
 async function onCustomerAssigned() {
   showAssignCustomerForm.value = false
   await Promise.all([load(), loadMargin()])
+  await loadAllowedStatuses()
 }
 
 async function loadExpenses() {
   expensesError.value = ''
   try {
-    expenses.value = (await expenseResource.list({ trip: tripId.value })).results
+    const [expenseData, transportPaymentData] = await Promise.all([
+      expenseResource.list({ trip: tripId.value }),
+      transportPaymentResource.list({ trip: tripId.value }),
+    ])
+    expenses.value = expenseData.results
+    transportPayments.value = transportPaymentData.results
   } catch {
     expensesError.value = t('trips.detail.expensesLoadError')
   }
@@ -105,12 +143,14 @@ function tripAllocation(expense: Expense) {
 
 async function onExpenseSaved() {
   showExpenseForm.value = false
+  automaticExpense.value = null
   await Promise.all([loadExpenses(), loadMargin()])
 }
 
 async function onTransportPaymentSaved() {
   showTransportPaymentForm.value = false
-  await loadMargin()
+  automaticTransportTitle.value = null
+  await Promise.all([loadExpenses(), loadMargin()])
 }
 
 // TripProfitService.get_cost_breakdown (guide Section 9.1) - only
@@ -180,9 +220,50 @@ const nextStatus = ref('')
 const statusNotes = ref('')
 const changingStatus = ref(false)
 const statusError = ref('')
+const allowedStatuses = ref<string[]>([])
+
+async function loadAllowedStatuses() {
+  if (!trip.value) return
+  try {
+    allowedStatuses.value = await fetchAllowedTripStatuses(trip.value.id)
+  } catch {
+    allowedStatuses.value = []
+  }
+}
+
+watch(
+  () => trip.value?.id,
+  () => {
+    void loadAllowedStatuses()
+  },
+)
+
+const visibleNextStatuses = computed(() => allowedStatuses.value as TripStatus[])
+
+const automaticExpenseByStatus: Partial<Record<TripStatus, { title: string; category: ExpenseCategory }>> =
+  {
+    LOADING: { title: t('trips.detail.autoExpense.loading'), category: 'loading' },
+    IN_TRANSIT: { title: t('trips.detail.autoExpense.transit'), category: 'transport' },
+    BORDER: { title: t('trips.detail.autoExpense.border'), category: 'road' },
+    CUSTOMS: { title: t('trips.detail.autoExpense.customs'), category: 'customs' },
+  }
+
+function openAutomaticFeePopup(targetStatus: TripStatus) {
+  if (!canManageExpenses.value || !trip.value) return
+  if (targetStatus === 'SENT_FOR_LOADING') {
+    automaticTransportTitle.value = t('trips.detail.autoExpense.transporterCommission')
+    showTransportPaymentForm.value = true
+    return
+  }
+  const expense = automaticExpenseByStatus[targetStatus]
+  if (!expense) return
+  automaticExpense.value = expense
+  showExpenseForm.value = true
+}
 
 async function onChangeStatus() {
   if (!nextStatus.value) return
+  const targetStatus = nextStatus.value as TripStatus
   changingStatus.value = true
   statusError.value = ''
   try {
@@ -190,6 +271,8 @@ async function onChangeStatus() {
     nextStatus.value = ''
     statusNotes.value = ''
     await Promise.all([load(), loadMargin()])
+    await loadAllowedStatuses()
+    openAutomaticFeePopup(targetStatus)
   } catch (e) {
     const data = (e as { response?: { data?: { detail?: string } } })?.response?.data
     statusError.value = translateApiError(data?.detail) || t('trips.detail.statusChangeError')
@@ -207,6 +290,24 @@ function badgeVariant(status: string) {
 
 function formatDateTime(value: string) {
   return new Date(value).toLocaleString()
+}
+
+function expenseUnitPrice(expense: Expense) {
+  const allocated = Number(tripAllocation(expense)?.allocated_amount ?? expense.amount)
+  const quantity = Number(trip.value?.quantity_loaded ?? 0)
+  return quantity ? allocated / quantity : 0
+}
+
+function tripExpenseLabel(expense: Expense) {
+  if (expense.category === 'transport') return t('trips.detail.expenseLabels.transit')
+  if (expense.category === 'road') return t('trips.detail.expenseLabels.border')
+  return t(`expenseCategory.${expense.category}`)
+}
+
+function transportPaymentUnitPrice(payment: TransportPayment) {
+  if (payment.unit_price_per_litre) return Number(payment.unit_price_per_litre)
+  const quantity = Number(trip.value?.quantity_loaded ?? 0)
+  return quantity ? Number(payment.base_amount) / quantity : 0
 }
 </script>
 
@@ -265,8 +366,7 @@ function formatDateTime(value: string) {
             <MonoValue
               class="font-medium"
               align="left"
-              :value="Number(trip.quantity_loaded).toLocaleString()"
-              unit="L"
+              :value="formatQuantity(trip.quantity_loaded)"
             />
           </p>
         </div>
@@ -288,7 +388,7 @@ function formatDateTime(value: string) {
             }}
           </p>
           <Button
-            v-if="trip.destination_type === 'COMPANY_STOCK' && canAssignCustomer && noSaleYet"
+            v-if="canShowAssignCustomer"
             variant="ghost"
             class="mt-1"
             @click="showAssignCustomerForm = true"
@@ -328,7 +428,9 @@ function formatDateTime(value: string) {
                 class="border-ligne-forte h-11 rounded-lg border bg-white px-3 text-sm"
               >
                 <option value="" disabled>{{ t('trips.detail.selectStatus') }}</option>
-                <option v-for="s in TRIP_STATUSES" :key="s" :value="s">{{ statusLabel(s) }}</option>
+                <option v-for="s in visibleNextStatuses" :key="s" :value="s">
+                  {{ statusLabel(s) }}
+                </option>
               </select>
             </div>
             <div class="flex-1 space-y-1">
@@ -360,25 +462,16 @@ function formatDateTime(value: string) {
         <div class="grid grid-cols-3 gap-4">
           <div>
             <p class="text-texte-3 text-xs uppercase">{{ t('trips.detail.loaded') }}</p>
-            <MonoValue
-              :value="Number(deliveryData.loaded_quantity).toLocaleString()"
-              unit="L"
-              align="left"
-            />
+            <MonoValue :value="formatQuantity(deliveryData.loaded_quantity)" align="left" />
           </div>
           <div>
             <p class="text-texte-3 text-xs uppercase">{{ t('trips.detail.delivered') }}</p>
-            <MonoValue
-              :value="Number(deliveryData.received_quantity).toLocaleString()"
-              unit="L"
-              align="left"
-            />
+            <MonoValue :value="formatQuantity(deliveryData.received_quantity)" align="left" />
           </div>
           <div>
             <p class="text-texte-3 text-xs uppercase">{{ t('trips.detail.gap') }}</p>
             <MonoValue
-              :value="Number(deliveryData.loss_quantity).toLocaleString()"
-              unit="L"
+              :value="formatQuantity(deliveryData.loss_quantity)"
               align="left"
               :class="Number(deliveryData.chargeable_loss_quantity) > 0 ? 'text-critique' : ''"
             />
@@ -419,36 +512,59 @@ function formatDateTime(value: string) {
 
           <ul class="divide-ligne divide-y">
             <li
-              v-for="expense in expenses"
-              :key="expense.id"
-              class="flex items-center justify-between py-2 text-sm"
+              v-for="payment in transportPayments"
+              :key="`transport-${payment.id}`"
+              class="grid grid-cols-[1fr_auto] gap-3 py-2 text-sm"
             >
               <div>
-                <p class="text-texte font-medium">{{ t(`expenseCategory.${expense.category}`) }}</p>
-                <p class="text-texte-2 text-xs">{{ expense.date }}</p>
+                <p class="text-texte font-medium">
+                  {{ t('trips.detail.transporterCommission') }}
+                </p>
+                <p class="text-texte-2 text-xs">
+                  {{ formatUnitMoney(transportPaymentUnitPrice(payment)) }} ·
+                  {{ formatQuantity(trip.quantity_loaded) }}
+                </p>
+              </div>
+              <MonoValue :value="formatMoney(payment.base_amount)" align="left" />
+            </li>
+            <li
+              v-for="expense in expenses"
+              :key="expense.id"
+              class="grid grid-cols-[1fr_auto] gap-3 py-2 text-sm"
+            >
+              <div>
+                <p class="text-texte font-medium">{{ tripExpenseLabel(expense) }}</p>
+                <p class="text-texte-2 text-xs">
+                  {{ expense.date }} ·
+                  {{ formatUnitMoney(expenseUnitPrice(expense)) }} ·
+                  {{ formatQuantity(trip.quantity_loaded) }}
+                </p>
               </div>
               <MonoValue
-                :value="
-                  Number(
-                    tripAllocation(expense)?.allocated_amount ?? expense.amount,
-                  ).toLocaleString()
-                "
+                :value="formatMoney(tripAllocation(expense)?.allocated_amount ?? expense.amount)"
                 align="left"
               />
             </li>
-            <li v-if="!expenses.length" class="text-texte-3 py-2 text-sm">
+            <li
+              v-if="!expenses.length && !transportPayments.length"
+              class="text-texte-3 py-2 text-sm"
+            >
               {{ t('trips.detail.noExpenses') }}
             </li>
           </ul>
 
           <div class="flex gap-2">
-            <Button v-if="canManageExpenses" variant="ghost" @click="showExpenseForm = true">
+            <Button
+              v-if="canManageExpenses"
+              variant="ghost"
+              @click=";(automaticExpense = null), (showExpenseForm = true)"
+            >
               {{ t('trips.detail.addExpense') }}
             </Button>
             <Button
               v-if="canManageExpenses"
               variant="ghost"
-              @click="showTransportPaymentForm = true"
+              @click=";(automaticTransportTitle = null), (showTransportPaymentForm = true)"
             >
               {{ t('trips.detail.addTransportFee') }}
             </Button>
@@ -464,24 +580,18 @@ function formatDateTime(value: string) {
         <dl v-else class="divide-ligne divide-y text-sm">
           <div class="flex items-center justify-between py-2">
             <dt class="text-texte-2">{{ t('trips.detail.revenue') }}</dt>
-            <dd><MonoValue :value="Number(margin.revenue).toLocaleString()" align="left" /></dd>
+            <dd><MonoValue :value="formatMoney(margin.revenue)" align="left" /></dd>
           </div>
           <div class="flex items-center justify-between py-2">
             <dt class="text-texte-2">{{ t('trips.detail.fuelPurchaseCost') }}</dt>
             <dd>
-              <MonoValue
-                :value="`-${Number(margin.fuel_purchase_cost).toLocaleString()}`"
-                align="left"
-              />
+              <MonoValue :value="`-${formatMoney(margin.fuel_purchase_cost)}`" align="left" />
             </dd>
           </div>
           <div class="flex items-center justify-between py-2">
             <dt class="text-texte-2">{{ t('trips.detail.transportCost') }}</dt>
             <dd>
-              <MonoValue
-                :value="`-${Number(margin.transport_cost).toLocaleString()}`"
-                align="left"
-              />
+              <MonoValue :value="`-${formatMoney(margin.transport_cost)}`" align="left" />
             </dd>
           </div>
           <div
@@ -490,18 +600,18 @@ function formatDateTime(value: string) {
             class="flex items-center justify-between py-2"
           >
             <dt class="text-texte-2">{{ t(`expenseCategory.${category}`) }}</dt>
-            <dd><MonoValue :value="`-${Number(amount).toLocaleString()}`" align="left" /></dd>
+            <dd><MonoValue :value="`-${formatMoney(amount)}`" align="left" /></dd>
           </div>
           <div class="flex items-center justify-between py-2">
             <dt class="text-texte-2">{{ t('trips.detail.unitCost') }}</dt>
-            <dd><MonoValue :value="Number(margin.unit_cost).toLocaleString()" align="left" /></dd>
+            <dd><MonoValue :value="formatUnitMoney(margin.unit_cost)" align="left" /></dd>
           </div>
           <div class="flex items-center justify-between py-2">
             <dt class="text-texte-2">{{ t('trips.detail.unitProfit') }}</dt>
             <dd>
               <MonoValue
                 :class="Number(margin.unit_profit) < 0 ? 'text-critique' : 'text-livre'"
-                :value="Number(margin.unit_profit).toLocaleString()"
+                :value="formatUnitMoney(margin.unit_profit)"
                 align="left"
               />
             </dd>
@@ -512,7 +622,7 @@ function formatDateTime(value: string) {
               <MonoValue
                 class="text-base font-semibold"
                 :class="Number(margin.margin) < 0 ? 'text-critique' : 'text-livre'"
-                :value="Number(margin.margin).toLocaleString()"
+                :value="formatMoney(margin.margin)"
                 align="left"
               />
             </dd>
@@ -527,8 +637,12 @@ function formatDateTime(value: string) {
         <div class="w-full max-w-lg">
           <ExpenseForm
             :preset-allocation="{ kind: 'trip', objectId: trip.id, label: trip.reference }"
+            :title="automaticExpense?.title"
+            :initial-category="automaticExpense?.category"
+            :initial-calculation-method="automaticExpense ? 'PER_LITRE' : undefined"
+            :per-litre-quantity="automaticExpense ? trip.quantity_loaded : undefined"
             @success="onExpenseSaved"
-            @cancel="showExpenseForm = false"
+            @cancel=";(showExpenseForm = false), (automaticExpense = null)"
           />
         </div>
       </div>
@@ -539,13 +653,14 @@ function formatDateTime(value: string) {
       >
         <div class="w-full max-w-lg">
           <TransportPaymentForm
+            :title="automaticTransportTitle ?? undefined"
             :trip-id="trip.id"
             :trip-reference="trip.reference"
             :transporter-id="trip.transporter"
             :transporter-name="trip.transporter_detail?.name ?? ''"
             :quantity-loaded="trip.quantity_loaded"
             @success="onTransportPaymentSaved"
-            @cancel="showTransportPaymentForm = false"
+            @cancel=";(showTransportPaymentForm = false), (automaticTransportTitle = null)"
           />
         </div>
       </div>

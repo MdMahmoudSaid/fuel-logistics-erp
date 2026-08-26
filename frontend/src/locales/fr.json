@@ -48,7 +48,8 @@
       "treasury": "Trésorerie & Finance",
       "settings": "Paramètres & Configuration"
     },
-    "shareholders": "Actionnaires / Associés"
+    "shareholders": "Actionnaires / Associés",
+    "profit": "Bénéfices"
   },
   "header": {
     "logout": "Déconnexion",
@@ -104,7 +105,9 @@
       "profit": "Profit",
       "debts": "Total des dettes",
       "customerAmounts": "Montant total des clients",
-      "bankAmounts": "Montant total des banques"
+      "bankAmounts": "Montant total des banques",
+      "cashAmounts": "Montant total des caisses",
+      "shareholders": "Actionnaires / Bénéfices"
     },
     "fields": {
       "trips": "Trajets",
@@ -122,8 +125,12 @@
       "debtSuppliers": "Dettes Fournisseurs",
       "debtTransporters": "Dettes Transporteurs",
       "debtCustoms": "Dettes Douanes",
-      "debtOther": "Autres"
-    }
+      "debtOther": "Autres",
+      "shareholdersWithdrawn": "Total retiré",
+      "shareholdersRemaining": "Bénéfice restant non retiré",
+      "shareholdersOpenLoans": "Avances ouvertes"
+    },
+    "viewDetails": "Voir le détail"
   },
   "masterData": {
     "add": "Ajouter",
@@ -156,6 +163,7 @@
       "accountNumber": "Numéro de compte",
       "currency": "Devise",
       "openingBalance": "Solde d'ouverture",
+      "currentBalance": "Solde courant",
       "location": "Emplacement",
       "name": "Nom",
       "code": "Code",
@@ -210,6 +218,9 @@
       "IN_TRANSIT": "En transit",
       "BORDER": "Frontière",
       "CUSTOMS": "Douane",
+      "GOING_TO_COMPANY_STOCK": "En route vers stock entreprise",
+      "ARRIVED_AT_COMPANY_STOCK": "Arrivé au stock entreprise",
+      "STOCKED": "Stocké",
       "GOING_TO_CLIENT": "En route vers le client",
       "ARRIVED_AT_CLIENT": "Arrivé chez le client",
       "QUANTITY_CONTROL": "Contrôle de quantité",
@@ -242,6 +253,17 @@
       "updating": "Mise à jour…",
       "apply": "Appliquer",
       "statusChangeError": "Impossible de changer le statut.",
+      "autoExpense": {
+        "transporterCommission": "Commission du transporteur",
+        "loading": "Frais de chargement",
+        "transit": "Frais transit",
+        "border": "Frais frontière",
+        "customs": "Frais douane"
+      },
+      "expenseLabels": {
+        "transit": "Transit",
+        "border": "Frontière"
+      },
       "gauges": "Jauges",
       "loaded": "Chargé",
       "delivered": "Livré",
@@ -250,6 +272,7 @@
       "history": "Historique",
       "noHistory": "Aucun changement de statut.",
       "expenses": "Frais du trajet",
+      "transporterCommission": "Commission transporteur",
       "addExpense": "+ Ajouter un frais",
       "noExpenses": "Aucun frais enregistré pour ce trajet.",
       "expensesLoadError": "Impossible de charger les frais de ce trajet.",
@@ -282,7 +305,7 @@
       "remaining": "Restant :",
       "requested": "Demandé :",
       "exceedsRemaining": "Dépasse la quantité restante de la cession. Réduisez la quantité demandée avant d'enregistrer.",
-      "exceedsCapacity": "La quantité chargée ({quantity} L) ne peut pas dépasser la capacité maximale du camion ({capacity} L).",
+      "exceedsCapacity": "La quantité chargée ({quantity}) ne peut pas dépasser la capacité maximale du camion ({capacity}).",
       "showBusyTrucks": "Afficher les camions et transporteurs occupés (dérogation Admin — forcer l'affectation)",
       "truck": "Camion",
       "selectTruck": "Sélectionner un camion",
@@ -315,15 +338,27 @@
       "method": "Méthode",
       "manualGauge": "Jauge manuelle",
       "meter": "Compteur",
-      "unitSellingPrice": "Prix de vente unitaire (MRU/L)",
+      "unitSellingPrice": "Prix de vente unitaire (XOF/L)",
       "lossEstimate": "Perte (est.)",
       "chargeableLossEstimate": "Perte facturable (est.)",
-      "costBasis": "Prix de revient (est.)",
+      "costBasis": "Prix de revient",
+      "supplierPrice": "Prix fournisseur",
+      "transporterCommission": "Commission transporteur",
+      "transit": "Transit",
+      "border": "Frontière",
+      "customs": "Douane",
+      "loading": "Chargement",
+      "otherFees": "Autres frais",
+      "enteredSellingPrice": "Prix de vente saisi",
+      "result": "Résultat",
+      "profitResult": "Bénéfice de {amount}",
+      "breakEvenResult": "Zéro",
+      "lossResult": "Perte de {amount}",
       "benefit": "Bénéfice (est.)",
       "anomalyWarning": "La quantité reçue dépasse la quantité chargée — ceci est une anomalie et nécessite une confirmation par un utilisateur autorisé avant de pouvoir être enregistrée.",
       "anomalyConfirm": "Je confirme cette anomalie en tant qu'utilisateur autorisé ({email})",
       "anomalyAskAuthorized": "Demandez à un utilisateur autorisé de confirmer cette anomalie avant de pouvoir l'enregistrer.",
-      "lossTitle": "Vente à perte",
+      "lossTitle": "Attention : vente à perte",
       "lossWarning": "Le prix de vente est inférieur au prix de revient — cette vente sera à perte et nécessite une confirmation avant de pouvoir être enregistrée.",
       "lossConfirm": "Je confirme cette vente à perte",
       "recording": "Enregistrement…",
@@ -384,6 +419,8 @@
       "category": "Catégorie",
       "calculationMethod": "Méthode de calcul",
       "amount": "Montant",
+      "amountPerLitre": "Montant par litre (XOF/L)",
+      "perLitreCalculation": "Calcul",
       "date": "Date",
       "notes": "Notes",
       "paidByCustomer": "Payée directement par le client",
@@ -544,16 +581,57 @@
       "title": "Journal de trésorerie",
       "internalTransfer": "Transfert interne",
       "newExpense": "+ Nouvelle dépense",
+      "newPayment": "+ Nouveau paiement",
       "currentBalance": "Solde courant",
       "loadError": "Impossible de charger le journal de trésorerie.",
       "table": {
         "date": "Date",
         "type": "Type",
+        "source": "Source / bénéficiaire",
         "account": "Compte",
         "reference": "Référence",
-        "amount": "Montant"
+        "note": "Note",
+        "amount": "Montant",
+        "attachment": "Justificatif"
       },
       "noTransactions": "Aucune transaction."
+    },
+    "debtPayment": {
+      "title": "Nouveau paiement",
+      "type": "Type de dette",
+      "debt": "Dette",
+      "total": "Total",
+      "paid": "Déjà payé",
+      "remaining": "Reste à payer",
+      "bank": "Banque",
+      "selectedBank": "Banque sélectionnée",
+      "availableBalance": "Solde disponible",
+      "amount": "Montant à payer",
+      "afterPayment": "Reste après paiement",
+      "lineDetails": "Détail des lignes ouvertes",
+      "date": "Date",
+      "reference": "Référence",
+      "note": "Note",
+      "attachment": "Pièce jointe / justificatif",
+      "submit": "Enregistrer le paiement",
+      "loadError": "Impossible de charger les dettes à payer.",
+      "saveError": "Impossible d'enregistrer ce paiement.",
+      "types": {
+        "supplier": "Fournisseur",
+        "transporter": "Transporteur",
+        "customs": "Douane",
+        "transit": "Transit",
+        "border": "Frontière",
+        "loading": "Chargement",
+        "tripOther": "Autres frais du trajet"
+      },
+      "errors": {
+        "debtRequired": "Choisissez une dette à payer.",
+        "bankRequired": "Choisissez une banque.",
+        "positiveAmount": "Le montant doit être supérieur à zéro.",
+        "aboveRemaining": "Le montant dépasse le reste à payer.",
+        "insufficientBank": "Solde bancaire insuffisant pour effectuer ce paiement."
+      }
     },
     "shareholder": {
       "title": "Actionnaires / Associés",
@@ -618,7 +696,39 @@
         "remainingDue": "Reste à percevoir",
         "netLoanBalance": "Solde net des avances",
         "loansLent": "Avances prêtées",
-        "loansBorrowed": "Avances empruntées"
+        "loansBorrowed": "Avances empruntées",
+        "availableBalance": "Solde disponible"
+      },
+      "preview": {
+        "badge": "Indicatif",
+        "notice": "Bénéfice actuel indicatif — non distribué officiellement"
+      }
+    },
+    "profit": {
+      "title": "Bénéfices",
+      "loadError": "Impossible de charger le rapport de bénéfices.",
+      "currentProfit": "Bénéfice actuel indicatif (non distribué)",
+      "periodProfit": "Bénéfice de la période",
+      "tripsCount": "Trajets pris en compte",
+      "revenue": "Chiffre d'affaires",
+      "costDisclaimer": "Ces montants sont les coûts comptabilisés dans le prix de revient. Ils ne représentent pas forcément les paiements déjà effectués.",
+      "supplierCost": "Coût fournisseur comptabilisé",
+      "transportCost": "Coût transport comptabilisé",
+      "customsCost": "Frais douane comptabilisés",
+      "transitCost": "Frais transit comptabilisés",
+      "borderCost": "Frais frontière comptabilisés",
+      "loadingCost": "Frais chargement comptabilisés",
+      "otherCosts": "Autres frais comptabilisés",
+      "table": {
+        "tripReference": "Référence trajet",
+        "client": "Client",
+        "product": "Produit",
+        "quantity": "Quantité",
+        "supplierUnitPrice": "Prix fournisseur/L",
+        "unitCost": "Prix de revient/L",
+        "unitSellingPrice": "Prix de vente/L",
+        "unitProfit": "Bénéfice/L",
+        "totalProfit": "Bénéfice total"
       }
     }
   },
@@ -645,13 +755,13 @@
       "referenceGenerated": "Généré automatiquement",
       "supplierOrder": "Commande fournisseur",
       "selectSupplierOrder": "Sélectionner une commande fournisseur",
-      "remainingSuffix": "L restants",
+      "remainingSuffix": "restants",
       "againstOrder": "Contre la commande",
       "purchased": "Acheté :",
       "alreadyAllocated": "Déjà alloué :",
       "requested": "Demandé :",
-      "exceedsBy": "Dépasse le reliquat disponible de {amount} L. Réduisez la quantité demandée avant d'enregistrer.",
-      "wouldRemain": "{amount} L resteraient disponibles.",
+      "exceedsBy": "Dépasse le reliquat disponible de {amount}. Réduisez la quantité demandée avant d'enregistrer.",
+      "wouldRemain": "{amount} resteraient disponibles.",
       "authorizedQuantity": "Quantité autorisée (L)",
       "issueDate": "Date d'émission",
       "status": "Statut",
@@ -1011,6 +1121,8 @@
       "transport_cost": "Frais de transport",
       "customs_cost": "Frais de douane",
       "transit_cost": "Frais de transit/import",
+      "border_cost": "Frais frontière",
+      "loading_cost": "Frais de chargement",
       "additional_costs": "Charges additionnelles",
       "unit_cost": "Prix de revient unitaire",
       "unit_profit": "Bénéfice unitaire",
@@ -1035,16 +1147,21 @@
   "auditLog": {
     "title": "Journal d'audit",
     "loadError": "Impossible de charger le journal d'audit.",
-    "timestamp": "Horodatage",
+    "timestamp": "Date/heure",
     "action": "Action",
+    "module": "Module",
+    "object": "Objet concerné",
     "entity": "Entité",
     "objectId": "ID objet",
     "user": "Utilisateur",
+    "account": "Compte concerné",
+    "relatedParty": "Entité liée",
+    "amount": "Montant",
     "noChanges": "Aucune modification au niveau des champs enregistrée.",
     "field": "Champ",
     "previous": "Avant",
     "new": "Après",
-    "reason": "Motif :",
+    "reason": "Note :",
     "noEntries": "Aucune entrée d'audit.",
     "actions": {
       "CREATE": "Création",
@@ -1052,6 +1169,18 @@
       "DELETE": "Suppression",
       "CANCEL": "Annulation",
       "REVERSE": "Extourne"
+    },
+    "modules": {
+      "treasury": "Trésorerie",
+      "customer_payment": "Paiement client",
+      "supplier_payment": "Paiement fournisseur",
+      "transport_deduction": "Déduction transporteur",
+      "expense": "Frais",
+      "shareholder_withdrawal": "Retrait associé",
+      "supplier_order": "Commande fournisseur",
+      "delivery_control": "Contrôle de livraison",
+      "sale": "Vente",
+      "invoice": "Facture"
     }
   },
   "search": {

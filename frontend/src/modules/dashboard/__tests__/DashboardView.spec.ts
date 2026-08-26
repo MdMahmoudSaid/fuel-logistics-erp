@@ -20,7 +20,10 @@ const summary: DashboardSummary = {
   profit: { total_margin: '1957500.00' },
   debts: {
     total: '3500000.00',
-    suppliers: { total: '2000000.00', rows: [{ supplier: 'Supplier 1', outstanding: '2000000.00' }] },
+    suppliers: {
+      total: '2000000.00',
+      rows: [{ supplier: 'Supplier 1', outstanding: '2000000.00' }],
+    },
     transporters: {
       total: '1000000.00',
       rows: [{ transporter: 'Transporteur 1', outstanding: '1000000.00' }],
@@ -35,6 +38,16 @@ const summary: DashboardSummary = {
   bank_amounts: {
     total: '5000000.00',
     rows: [{ bank: 'Bank 1', balance: '5000000.00' }],
+  },
+  cash_amounts: {
+    total: '1200000.00',
+    rows: [{ cash_account: 'Caisse 1', balance: '1200000.00' }],
+  },
+  shareholders_summary: {
+    current_profit: '900000.00',
+    total_withdrawn: '300000.00',
+    remaining_undistributed: '600000.00',
+    open_loans_total: '50000.00',
   },
 }
 
@@ -178,6 +191,7 @@ function makeRouter() {
     routes: [
       { path: '/', component: { template: '<div />' } },
       { path: '/trips/:id', name: 'trip-detail', component: { template: '<div />' } },
+      { path: '/profit', name: 'profit', component: { template: '<div />' } },
     ],
   })
 }
@@ -235,17 +249,19 @@ describe('DashboardView', () => {
     expect(wrapper.text()).toContain('Transport')
     expect(wrapper.text()).toContain('Finance')
     expect(wrapper.text()).toContain('Profit')
-    expect(wrapper.text()).toContain('225,000')
-    expect(wrapper.text()).toContain('1,957,500')
+    expect(wrapper.text()).toContain('225 000 L')
+    expect(wrapper.text()).toContain('1 957 500 XOF')
 
     // debts / customer_amounts / bank_amounts sections (point-in-time
     // snapshots, always present alongside the period-filtered sections).
     expect(wrapper.text()).toContain('Total des dettes')
-    expect(wrapper.text()).toContain('3,500,000')
+    expect(wrapper.text()).toContain('3 500 000 XOF')
     expect(wrapper.text()).toContain('Montant total des clients')
     expect(wrapper.text()).toContain('Client 1')
     expect(wrapper.text()).toContain('Montant total des banques')
     expect(wrapper.text()).toContain('Bank 1')
+    expect(wrapper.text()).toContain('Montant total des caisses')
+    expect(wrapper.text()).toContain('Caisse 1')
   })
 
   it('shows an error message when the summary fails to load', async () => {
@@ -261,7 +277,7 @@ describe('DashboardView', () => {
     await flushPromises()
 
     // KPI: volume delivered today = 9950 + 7700 = 17650
-    expect(wrapper.text()).toContain('17,650')
+    expect(wrapper.text()).toContain('17 650 L')
     // "En route maintenant": only the IN_TRANSIT trip qualifies (BLOCKED goes to "Urgences")
     expect(wrapper.text()).toContain('En route maintenant (1)')
     expect(wrapper.text()).toContain('TRIP-000042')

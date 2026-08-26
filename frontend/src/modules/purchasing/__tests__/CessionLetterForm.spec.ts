@@ -114,8 +114,11 @@ describe('CessionLetterForm live allocation bar', () => {
     await wrapper.find('#authorized_quantity').setValue('30000')
     await flushPromises()
 
-    expect(wrapper.text()).toContain('10,000 L resteraient disponibles')
-    expect(wrapper.text()).not.toContain('Dépasse le reliquat disponible')
+    // Quantities are wrapped in bidi isolate marks (LRI/PDI) so they can't be
+    // reordered in RTL locales; strip them before matching adjacent text.
+    const text = wrapper.text().replace(/[⁦⁩]/g, '')
+    expect(text).toContain('10 000 L resteraient disponibles')
+    expect(text).not.toContain('Dépasse le reliquat disponible')
   })
 
   it('warns immediately when the requested quantity exceeds the reliquat', async () => {
@@ -128,6 +131,8 @@ describe('CessionLetterForm live allocation bar', () => {
     await wrapper.find('#authorized_quantity').setValue('45000')
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Dépasse le reliquat disponible de 5,000 L')
+    // Quantities are wrapped in bidi isolate marks (LRI/PDI) so they can't be
+    // reordered in RTL locales; strip them before matching adjacent text.
+    expect(wrapper.text().replace(/[⁦⁩]/g, '')).toContain('Dépasse le reliquat disponible de 5 000 L')
   })
 })

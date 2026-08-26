@@ -25,6 +25,8 @@ FIELDS = [
     "transport_cost",
     "customs_cost",
     "transit_cost",
+    "border_cost",
+    "loading_cost",
     "additional_costs",
     "unit_cost",
     "unit_selling_price",
@@ -32,14 +34,20 @@ FIELDS = [
     "current_margin",
 ]
 
-# Categories counted separately (customs_cost, transit_cost) or already
-# represented by a non-Expense field (transport_cost comes from
-# TripCostService/TransportPayment, not from Expense) - excluded here so
-# additional_costs never double-counts them.
+# Categories counted separately (customs_cost, transit_cost, border_cost,
+# loading_cost) or already represented by a non-Expense field
+# (transport_cost comes from TripCostService/TransportPayment, not from
+# Expense) - excluded here so additional_costs never double-counts them.
+# border_cost/loading_cost split out Expense.Category.ROAD/LOADING (design
+# doc 2026-08-26-benefices-associes-refinement-design.md: the Benefices
+# page needs "frais frontiere" and "frais chargement" as their own line
+# items, matching docs/finances_edit.md).
 _EXCLUDED_FROM_ADDITIONAL_COSTS = {
     Expense.Category.CUSTOMS,
     Expense.Category.IMPORT_INTENTION,
     Expense.Category.TRANSPORT,
+    Expense.Category.ROAD,
+    Expense.Category.LOADING,
 }
 
 
@@ -82,6 +90,8 @@ class MarginReportQuery:
                     "transit_cost": expenses_by_category.get(
                         Expense.Category.IMPORT_INTENTION, ZERO
                     ),
+                    "border_cost": expenses_by_category.get(Expense.Category.ROAD, ZERO),
+                    "loading_cost": expenses_by_category.get(Expense.Category.LOADING, ZERO),
                     "additional_costs": additional_costs,
                     "unit_cost": breakdown["unit_cost"],
                     "unit_selling_price": trip.sale.unit_selling_price,

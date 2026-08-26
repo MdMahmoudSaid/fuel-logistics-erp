@@ -14,6 +14,7 @@ ACTION_MAP = {
     "suggested_selling_price": "view",
     # Dashboard's single custom read action (docs/PHASE_6_PLAN.md Etape 5).
     "summary": "view",
+    "payable_debts": "view",
     "create": "create",
     "update": "edit",
     "partial_update": "edit",
@@ -43,6 +44,7 @@ ACTION_MAP = {
     # standpoint (docs/PHASE_5_PLAN.md Etape 6/8).
     "transfer": "create",
     "record_indirect": "create",
+    "record_debt_payment": "create",
     # Recording a ShareholderLoan repayment (Task 7, client modifications
     # plan, lost-update race fix) mutates an existing loan row exactly like
     # a plain PATCH would have - same "edit" tier as `update`/

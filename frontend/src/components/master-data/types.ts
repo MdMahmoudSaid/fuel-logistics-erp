@@ -18,5 +18,6 @@ export interface FieldSchema {
   label: string
   type: FieldType
   required?: boolean
+  readOnly?: boolean
   options?: FieldOption[]
 }

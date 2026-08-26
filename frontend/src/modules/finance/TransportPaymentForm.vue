@@ -12,6 +12,7 @@ import { useI18n } from 'vue-i18n'
 import { translateApiError } from '@/i18n/apiErrors'
 import { transportPaymentResource } from './api'
 import Button from '@/components/ui/Button.vue'
+import { formatMoney, formatQuantity, formatUnitMoney } from '@/utils/currency'
 
 const props = defineProps<{
   tripId: number
@@ -19,6 +20,7 @@ const props = defineProps<{
   transporterId: number
   transporterName: string
   quantityLoaded: string
+  title?: string
 }>()
 const emit = defineEmits<{ success: []; cancel: [] }>()
 const { t } = useI18n()
@@ -67,7 +69,7 @@ async function onSubmit() {
       @submit.prevent="onSubmit"
     >
       <h2 class="font-display text-sm font-semibold uppercase">
-        {{ t('finance.transportPayment.title') }}
+        {{ title ?? t('finance.transportPayment.title') }}
       </h2>
 
       <div class="grid grid-cols-2 gap-4">
@@ -90,7 +92,7 @@ async function onSubmit() {
             t('finance.transportPayment.quantityLoaded')
           }}</span>
           <p class="text-texte h-12 flex items-center">
-            {{ Number(quantityLoaded).toLocaleString() }} L
+            {{ formatQuantity(quantityLoaded) }}
           </p>
         </div>
 
@@ -115,8 +117,8 @@ async function onSubmit() {
           {{ t('finance.transportPayment.calculation') }}
         </span>
         <span class="text-texte font-medium">
-          {{ Number(quantityLoaded).toLocaleString() }} L × {{ unitPricePerLitre || 0 }} =
-          {{ total !== null ? total.toLocaleString() : '—' }}
+          {{ formatQuantity(quantityLoaded) }} × {{ formatUnitMoney(unitPricePerLitre || 0) }} =
+          {{ total !== null ? formatMoney(total) : '—' }}
         </span>
       </div>
 

@@ -61,6 +61,12 @@ FULL_SEQUENCE_AFTER_ASSIGNED = [
     Trip.Status.COMPLETED,
 ]
 
+COMPANY_STOCK_SEQUENCE_AFTER_CUSTOMS = [
+    Trip.Status.GOING_TO_COMPANY_STOCK,
+    Trip.Status.ARRIVED_AT_COMPANY_STOCK,
+    Trip.Status.STOCKED,
+]
+
 
 def _setup_fixtures(order_suffix="001"):
     admin_role = Role.objects.get(name=Role.NAME_ADMIN)
@@ -135,7 +141,16 @@ def _make_trip(
 
 def _advance_to_completed(trip, actor):
     for target in FULL_SEQUENCE_AFTER_ASSIGNED:
+        if (
+            target == Trip.Status.GOING_TO_CLIENT
+            and not trip.client_id
+            and not trip.customer_order_id
+        ):
+            trip.client = Customer.objects.create(name=f"Client {trip.reference}")
+            trip.destination_type = Trip.DestinationType.CUSTOMER
+            trip.save(update_fields=["client", "destination_type", "updated_at"])
         TripWorkflowService.transition_trip(trip.id, target, actor)
+        trip.refresh_from_db()
     trip.refresh_from_db()
     return trip
 
@@ -144,7 +159,16 @@ def _advance_to_quantity_control(trip, actor):
     # Stop right before DELIVERED - the status DeliveryService.record_delivery
     # itself must reach via TripWorkflowService.
     for target in FULL_SEQUENCE_AFTER_ASSIGNED[:-2]:
+        if (
+            target == Trip.Status.GOING_TO_CLIENT
+            and not trip.client_id
+            and not trip.customer_order_id
+        ):
+            trip.client = Customer.objects.create(name=f"Client {trip.reference}")
+            trip.destination_type = Trip.DestinationType.CUSTOMER
+            trip.save(update_fields=["client", "destination_type", "updated_at"])
         TripWorkflowService.transition_trip(trip.id, target, actor)
+        trip.refresh_from_db()
     trip.refresh_from_db()
     return trip
 
@@ -289,6 +313,9 @@ def test_truck_and_transporter_become_available_once_delivered_even_if_not_compl
     fx = _setup_fixtures("DELIVERED-FREE")
     truck = _make_truck("TRK-DELIVERED-FREE")
     trip = _make_trip(fx, truck, "TRIP-DELIVERED-FREE-001")
+    trip.client = Customer.objects.create(name="Delivered Free Client")
+    trip.destination_type = Trip.DestinationType.CUSTOMER
+    trip.save(update_fields=["client", "destination_type", "updated_at"])
 
     assert TruckAvailabilityService.is_truck_available(truck.id) is False
     assert fx["transporter"] not in TransporterAvailabilityService.get_available_transporters()
@@ -340,6 +367,70 @@ def test_workflow_rejects_skipping_a_status():
 
 
 @pytest.mark.django_db
+def test_workflow_blocks_client_statuses_without_customer_and_routes_to_company_stock():
+    fx = _setup_fixtures("STOCK-WFLOW")
+    truck = _make_truck("TRK-STOCK-WFLOW")
+    trip = _make_trip(fx, truck, "TRIP-STOCK-WFLOW-001")
+
+    for target in [
+        Trip.Status.SENT_FOR_LOADING,
+        Trip.Status.LOADING,
+        Trip.Status.LOADED,
+        Trip.Status.IN_TRANSIT,
+        Trip.Status.BORDER,
+        Trip.Status.CUSTOMS,
+    ]:
+        TripWorkflowService.transition_trip(trip.id, target, fx["admin_user"])
+    trip.refresh_from_db()
+
+    allowed = TripWorkflowService.get_allowed_targets(trip)
+    assert Trip.Status.GOING_TO_CLIENT not in allowed
+    assert Trip.Status.ARRIVED_AT_CLIENT not in allowed
+    assert Trip.Status.QUANTITY_CONTROL not in allowed
+    assert Trip.Status.GOING_TO_COMPANY_STOCK in allowed
+
+    with pytest.raises(InvalidTripTransition):
+        TripWorkflowService.transition_trip(
+            trip.id, Trip.Status.GOING_TO_CLIENT, fx["admin_user"]
+        )
+
+    for target in COMPANY_STOCK_SEQUENCE_AFTER_CUSTOMS:
+        TripWorkflowService.transition_trip(trip.id, target, fx["admin_user"])
+    trip.refresh_from_db()
+
+    assert trip.status == Trip.Status.STOCKED
+    assert trip.destination_type == Trip.DestinationType.COMPANY_STOCK
+    assert trip.client_id is None
+    assert not Sale.objects.filter(trip=trip).exists()
+    assert TruckAvailabilityService.is_truck_available(truck.id) is True
+
+
+@pytest.mark.django_db
+def test_workflow_allows_client_statuses_after_customer_assignment():
+    fx = _setup_fixtures("CLIENT-WFLOW")
+    truck = _make_truck("TRK-CLIENT-WFLOW")
+    trip = _make_trip(fx, truck, "TRIP-CLIENT-WFLOW-001")
+    customer = Customer.objects.create(name="Client workflow")
+
+    for target in [
+        Trip.Status.SENT_FOR_LOADING,
+        Trip.Status.LOADING,
+        Trip.Status.LOADED,
+        Trip.Status.IN_TRANSIT,
+        Trip.Status.BORDER,
+        Trip.Status.CUSTOMS,
+    ]:
+        TripWorkflowService.transition_trip(trip.id, target, fx["admin_user"])
+
+    TripCostService.assign_customer_for_sale(trip.id, customer.id, fx["admin_user"])
+    trip.refresh_from_db()
+
+    allowed = TripWorkflowService.get_allowed_targets(trip)
+    assert Trip.Status.GOING_TO_CLIENT in allowed
+    assert Trip.Status.GOING_TO_COMPANY_STOCK not in allowed
+
+
+@pytest.mark.django_db
 def test_workflow_rejects_transition_once_completed():
     fx = _setup_fixtures("DONE")
     truck = _make_truck("TRK-DONE")
@@ -368,6 +459,9 @@ def test_workflow_cancel_allowed_before_delivered_only():
     assert TruckAvailabilityService.is_truck_available(truck_a.id) is True
 
     late_trip = _make_trip(fx, truck_b, "TRIP-CANCEL-LATE")
+    late_trip.client = Customer.objects.create(name="Cancel Late Client")
+    late_trip.destination_type = Trip.DestinationType.CUSTOMER
+    late_trip.save(update_fields=["client", "destination_type", "updated_at"])
     for target in FULL_SEQUENCE_AFTER_ASSIGNED[:-1]:  # stop at DELIVERED
         TripWorkflowService.transition_trip(late_trip.id, target, fx["admin_user"])
     late_trip.refresh_from_db()
@@ -1263,6 +1357,76 @@ def test_delivery_service_blocks_sale_below_cost_without_confirmation():
     assert trip.status == Trip.Status.QUANTITY_CONTROL
     assert not DeliveryControl.objects.filter(trip=trip).exists()
     assert not Sale.objects.filter(trip=trip).exists()
+
+
+@pytest.mark.django_db
+def test_delivery_service_compares_selling_price_against_full_unit_cost_basis():
+    fx = _fixtures_with_customer("DS-FULLCOST")
+    fx["supplier_order"].unit_price = Decimal("500.0000")
+    fx["supplier_order"].save(update_fields=["unit_price"])
+
+    trip = _deliverable_trip(fx, "TRIP-DS-FULLCOST-001")
+    TransportPayment.objects.create(
+        trip=trip,
+        transporter=fx["transporter"],
+        calculation_method=TransportPayment.CalculationMethod.PER_LITRE,
+        unit_price_per_litre=Decimal("65.0000"),
+        base_amount=Decimal("2925000.00"),
+    )
+    for category, unit_amount in [
+        (Expense.Category.TRANSPORT, Decimal("10.0000")),
+        (Expense.Category.CUSTOMS, Decimal("225.0000")),
+    ]:
+        expense = Expense.objects.create(
+            category=category,
+            amount=(unit_amount * trip.quantity_loaded).quantize(Decimal("0.01")),
+            calculation_method=Expense.CalculationMethod.PER_LITRE,
+            date="2026-08-18",
+        )
+        ExpenseAllocation.objects.create(
+            expense=expense,
+            content_type=ContentType.objects.get_for_model(Trip),
+            object_id=trip.id,
+            allocated_amount=expense.amount,
+        )
+
+    basis = TripCostService.calculate_trip_cost_basis(trip)
+    assert basis["unit_cost"] == Decimal("800.0000")
+    assert basis["unit_components_per_litre"] == {
+        "supplier": Decimal("500.0000"),
+        "commission_transporter": Decimal("65.0000"),
+        "transit": Decimal("10.0000"),
+        "border": Decimal("0.0000"),
+        "customs": Decimal("225.0000"),
+        "loading": Decimal("0.0000"),
+        "other": Decimal("0.0000"),
+    }
+
+    assert TripCostService.compare_unit_selling_price(trip, Decimal("790.0000")) == {
+        "unit_cost": Decimal("800.0000"),
+        "unit_selling_price": Decimal("790.0000"),
+        "unit_result": Decimal("-10.0000"),
+        "result_type": "loss",
+    }
+    assert TripCostService.compare_unit_selling_price(trip, Decimal("800.0000"))[
+        "result_type"
+    ] == "break_even"
+    assert TripCostService.compare_unit_selling_price(trip, Decimal("850.0000")) == {
+        "unit_cost": Decimal("800.0000"),
+        "unit_selling_price": Decimal("850.0000"),
+        "unit_result": Decimal("50.0000"),
+        "result_type": "profit",
+    }
+
+    with pytest.raises(SaleBelowCostConfirmationRequired):
+        DeliveryService.record_delivery(
+            trip_id=trip.id,
+            received_qty=Decimal("44850.00"),
+            control_date="2026-08-18",
+            method=DeliveryControl.Method.MANUAL_GAUGE,
+            controller=fx["admin_user"],
+            unit_selling_price=Decimal("790.0000"),
+        )
 
 
 @pytest.mark.django_db

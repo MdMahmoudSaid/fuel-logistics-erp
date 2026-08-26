@@ -78,11 +78,14 @@ describe('CustomerOrderForm progress bar', () => {
     const wrapper = mount(CustomerOrderForm, { global: { plugins: [router] } })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('270,000 L')
-    expect(wrapper.text()).toContain('180,000 L')
-    expect(wrapper.text()).toContain('90,000 L')
-    expect(wrapper.text()).toContain('Commandé 450,000 L')
-    expect(wrapper.text()).toContain('Restant 360,000 L')
+    // Quantities are wrapped in bidi isolate marks (LRI/PDI) so they can't be
+    // reordered in RTL locales; strip them before matching adjacent text.
+    const text = wrapper.text().replace(/[⁦⁩]/g, '')
+    expect(text).toContain('270 000 L')
+    expect(text).toContain('180 000 L')
+    expect(text).toContain('90 000 L')
+    expect(text).toContain('Commandé 450 000 L')
+    expect(text).toContain('Restant 360 000 L')
   })
 })
 

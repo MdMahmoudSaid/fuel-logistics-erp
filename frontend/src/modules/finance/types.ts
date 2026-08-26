@@ -221,7 +221,9 @@ export type TreasuryTransactionType = 'MONEY_IN' | 'MONEY_OUT'
 export interface TreasuryTransaction {
   id: number
   bank_account: number | null
+  bank_account_name: string | null
   cash_account: number | null
+  cash_account_name: string | null
   type: TreasuryTransactionType
   // Set only by TreasuryService.record_transfer() - both legs of an
   // internal transfer carry this instead of a dedicated `type` value, so
@@ -230,14 +232,42 @@ export interface TreasuryTransaction {
   amount: string
   date: string
   reference: string
+  note: string
+  // Human "source ou beneficiaire" label resolved server-side (e.g.
+  // "Fournisseur - Ahmed", "Douane", "Transfert Banque BOA -> Caisse
+  // Recette") - see backend/apps/finance/labels.py.
+  counterparty: string | null
   source_content_type: number | null
   source_object_id: number | null
   source_object_repr: string
   document: number | null
+  document_url: string | null
   recorded_by: number | null
   recorded_by_detail: UserBrief | null
   created_at: string
   updated_at: string
+}
+
+export type DebtPaymentType =
+  'supplier' | 'transporter' | 'customs' | 'transit' | 'border' | 'loading' | 'trip_other'
+
+export interface PayableDebt {
+  id: number
+  debt_type: DebtPaymentType
+  label: string
+  total_amount: string
+  paid_amount: string
+  remaining_amount: string
+  status: string
+  lines?: PayableDebt[]
+}
+
+export interface DebtPaymentResult {
+  transaction: TreasuryTransaction | null
+  transactions: TreasuryTransaction[]
+  debt: PayableDebt
+  bank_balance_before: string
+  bank_balance_after: string
 }
 
 export interface CustomerLedgerInvoice {
@@ -397,9 +427,31 @@ export interface ShareholderLedger {
   total_amount_due: string
   total_withdrawn: string
   remaining_due: string
+  // ShareholderLedgerService.get_available_balance(): remaining_due +
+  // loans given (as lender, still receivable) - loans received (as
+  // borrower, a liability) - the single number that gates both a
+  // withdrawal and lending money to another associate.
+  available_balance: string
   shares: ShareholderLedgerShare[]
   loans_borrowed: ShareholderLedgerLoan[]
   loans_lent: ShareholderLedgerLoan[]
   net_loan_balance: string
   withdrawals: ShareholderLedgerWithdrawal[]
+}
+
+// GET /api/shareholders/profit-preview/ (ShareholderProfitPreviewService.get_preview)
+// Read-only and indicative only - never a stored figure, never affects
+// available_balance or withdrawal eligibility.
+export interface ShareholderProfitPreviewShare {
+  shareholder_id: number
+  name: string
+  participation_percent: string
+  indicative_share: string
+}
+
+export interface ShareholderProfitPreview {
+  period_start: string | null
+  period_end: string | null
+  current_profit: string
+  shareholders: ShareholderProfitPreviewShare[]
 }

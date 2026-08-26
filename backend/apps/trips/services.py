@@ -29,6 +29,7 @@ _INVOICE_REFERENCE_PREFIX = "FAC"
 _MAX_INVOICE_REFERENCE_ATTEMPTS = 5
 
 _ZERO = Decimal("0.00")
+_UNIT = Decimal("0.0001")
 
 
 class InvalidTripTransition(ValueError):
@@ -165,6 +166,32 @@ class TripCostService:
         total_expenses = sum(expenses_by_category.values(), _ZERO)
         total_cost = fuel_purchase_cost + transport_cost + total_expenses
         unit_cost = total_cost / trip.quantity_loaded
+        unit_expenses = {
+            category: (amount / trip.quantity_loaded).quantize(_UNIT)
+            for category, amount in expenses_by_category.items()
+        }
+        unit_components_per_litre = {
+            "supplier": trip.supplier_order.unit_price.quantize(_UNIT),
+            "commission_transporter": (transport_cost / trip.quantity_loaded).quantize(_UNIT),
+            "transit": unit_expenses.get(Expense.Category.TRANSPORT, _ZERO).quantize(_UNIT),
+            "border": unit_expenses.get(Expense.Category.ROAD, _ZERO).quantize(_UNIT),
+            "customs": unit_expenses.get(Expense.Category.CUSTOMS, _ZERO).quantize(_UNIT),
+            "loading": unit_expenses.get(Expense.Category.LOADING, _ZERO).quantize(_UNIT),
+        }
+        known_expense_categories = {
+            Expense.Category.TRANSPORT,
+            Expense.Category.ROAD,
+            Expense.Category.CUSTOMS,
+            Expense.Category.LOADING,
+        }
+        unit_components_per_litre["other"] = sum(
+            (
+                unit
+                for category, unit in unit_expenses.items()
+                if category not in known_expense_categories
+            ),
+            _ZERO,
+        ).quantize(_UNIT)
         return {
             "fuel_purchase_cost": fuel_purchase_cost,
             "transport_cost": transport_cost,
@@ -173,6 +200,25 @@ class TripCostService:
             "total_cost": total_cost,
             "quantity": trip.quantity_loaded,
             "unit_cost": unit_cost,
+            "unit_components_per_litre": unit_components_per_litre,
+        }
+
+    @classmethod
+    def compare_unit_selling_price(cls, trip: Trip, unit_selling_price: Decimal) -> dict:
+        unit_cost = cls.calculate_trip_cost_basis(trip)["unit_cost"]
+        unit_selling_price = unit_selling_price.quantize(_UNIT)
+        unit_result = (unit_selling_price - unit_cost).quantize(_UNIT)
+        if unit_result < _ZERO:
+            result_type = "loss"
+        elif unit_result == _ZERO:
+            result_type = "break_even"
+        else:
+            result_type = "profit"
+        return {
+            "unit_cost": unit_cost,
+            "unit_selling_price": unit_selling_price,
+            "unit_result": unit_result,
+            "result_type": result_type,
         }
 
     @staticmethod
@@ -229,6 +275,8 @@ class TripWorkflowService:
         Trip.Status.ARRIVED_AT_CLIENT: Trip.Status.QUANTITY_CONTROL,
         Trip.Status.QUANTITY_CONTROL: Trip.Status.DELIVERED,
         Trip.Status.DELIVERED: Trip.Status.COMPLETED,
+        Trip.Status.GOING_TO_COMPANY_STOCK: Trip.Status.ARRIVED_AT_COMPANY_STOCK,
+        Trip.Status.ARRIVED_AT_COMPANY_STOCK: Trip.Status.STOCKED,
     }
 
     # "Statuts eligibles (avant livraison) -> CANCELLED": every forward-path
@@ -247,7 +295,19 @@ class TripWorkflowService:
 
         forward = cls.FORWARD_TRANSITIONS.get(current_status)
         if forward:
-            allowed.add(forward)
+            if forward in {
+                Trip.Status.GOING_TO_CLIENT,
+                Trip.Status.ARRIVED_AT_CLIENT,
+                Trip.Status.QUANTITY_CONTROL,
+            } and not (trip.client_id or trip.customer_order_id):
+                allowed.add(Trip.Status.GOING_TO_COMPANY_STOCK)
+            else:
+                allowed.add(forward)
+
+        if current_status == Trip.Status.STOCKED and (
+            trip.client_id or trip.customer_order_id
+        ):
+            allowed.add(Trip.Status.GOING_TO_CLIENT)
 
         if current_status in cls.CANCELLABLE_FROM:
             allowed.add(Trip.Status.CANCELLED)
@@ -258,7 +318,7 @@ class TripWorkflowService:
             resume_status = cls._status_before_blocked(trip)
             if resume_status:
                 allowed.add(resume_status)
-        elif current_status not in Trip.TERMINAL_STATUSES:
+        elif current_status not in Trip.TERMINAL_STATUSES and current_status != Trip.Status.STOCKED:
             # "Tout statut initial -> BLOCKED (exceptionnel)".
             allowed.add(Trip.Status.BLOCKED)
 
@@ -309,7 +369,7 @@ class TripWorkflowService:
             notes=notes,
         )
 
-        if target_status in Trip.TERMINAL_STATUSES:
+        if target_status in Trip.TERMINAL_STATUSES or target_status == Trip.Status.STOCKED:
             # Only release the truck if it has no other active trip - an
             # admin-forced concurrent assignment (plan Section 1.D) can leave
             # a second active trip on the same truck.
@@ -467,11 +527,11 @@ class DeliveryService:
                 unit_price=trip.supplier_order.unit_price,
             )
 
-        unit_cost = TripCostService.calculate_trip_cost_basis(trip)["unit_cost"]
-        if unit_selling_price < unit_cost and not confirm_loss:
+        price_result = TripCostService.compare_unit_selling_price(trip, unit_selling_price)
+        if price_result["result_type"] == "loss" and not confirm_loss:
             raise SaleBelowCostConfirmationRequired(
                 f"Le prix de vente unitaire ({unit_selling_price}) est inferieur au prix de "
-                f"revient ({unit_cost}) pour le trajet {trip.reference} ; renvoyez "
+                f"revient ({price_result['unit_cost']}) pour le trajet {trip.reference} ; renvoyez "
                 "confirm_loss=true pour confirmer une vente a perte."
             )
 

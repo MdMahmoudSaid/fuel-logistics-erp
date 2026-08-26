@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { cessionLetterResource } from './api'
+import { formatQuantity } from '@/utils/currency'
 import type { CessionLetter } from './types'
 import Badge from '@/components/ui/Badge.vue'
 import MonoValue from '@/components/ui/MonoValue.vue'
@@ -97,10 +98,10 @@ function badgeVariant(status: string) {
           >
             <td class="px-3 py-2.5"><MonoValue :value="cession.reference" align="left" /></td>
             <td class="px-3 py-2.5 text-right">
-              <MonoValue :value="Number(cession.authorized_quantity).toLocaleString()" />
+              <MonoValue :value="formatQuantity(cession.authorized_quantity)" />
             </td>
             <td class="px-3 py-2.5 text-right">
-              <MonoValue :value="Number(cession.remaining_quantity).toLocaleString()" />
+              <MonoValue :value="formatQuantity(cession.remaining_quantity)" />
             </td>
             <td class="px-3 py-2.5">{{ cession.issue_date }}</td>
             <td class="px-3 py-2.5">

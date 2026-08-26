@@ -6,6 +6,7 @@ from rest_framework import serializers
 
 from apps.accounts.serializers import UserSerializer
 from apps.customers.serializers import CustomerSerializer
+from apps.finance.labels import describe_treasury_transaction
 from apps.suppliers.serializers import SupplierSerializer
 from apps.transport.serializers import TransporterSerializer
 
@@ -27,9 +28,12 @@ from .models import (
     TreasuryTransaction,
 )
 from .services import (
+    ControlledDebtPaymentService,
     FinancePostingService,
     PaymentAllocationService,
     ShareholderDistributionService,
+    ShareholderLoanError,
+    ShareholderLoanService,
     ShareholderParticipationError,
     ShareholderService,
     ShareholderWithdrawalError,
@@ -414,13 +418,20 @@ class IndirectSettlementRequestSerializer(serializers.Serializer):
 class TreasuryTransactionSerializer(serializers.ModelSerializer):
     recorded_by_detail = UserSerializer(source="recorded_by", read_only=True)
     source_object_repr = serializers.SerializerMethodField()
+    bank_account_name = serializers.SerializerMethodField()
+    cash_account_name = serializers.SerializerMethodField()
+    counterparty = serializers.SerializerMethodField()
+    document_url = serializers.SerializerMethodField()
 
     class Meta:
         model = TreasuryTransaction
         fields = [
-            "id", "bank_account", "cash_account", "type", "is_transfer", "amount", "date",
-            "reference", "source_content_type", "source_object_id", "source_object_repr",
-            "document", "recorded_by", "recorded_by_detail", "created_at", "updated_at",
+            "id", "bank_account", "bank_account_name", "cash_account", "cash_account_name",
+            "type", "is_transfer", "amount", "date",
+            "reference", "note", "source_content_type", "source_object_id", "source_object_repr",
+            "counterparty",
+            "document", "document_url", "recorded_by", "recorded_by_detail",
+            "created_at", "updated_at",
         ]
         # is_transfer is only ever set by TreasuryService.record_transfer() -
         # a direct client create always produces a plain (non-transfer)
@@ -430,6 +441,28 @@ class TreasuryTransactionSerializer(serializers.ModelSerializer):
 
     def get_source_object_repr(self, obj) -> str:
         return str(obj.source_object) if obj.source_object else ""
+
+    def get_bank_account_name(self, obj) -> str | None:
+        return obj.bank_account.name if obj.bank_account_id else None
+
+    def get_cash_account_name(self, obj) -> str | None:
+        return obj.cash_account.name if obj.cash_account_id else None
+
+    def get_counterparty(self, obj) -> str | None:
+        return describe_treasury_transaction(obj)["counterparty"]
+
+    def get_document_url(self, obj) -> str | None:
+        # Deliberately root-relative (never request.build_absolute_uri()):
+        # in the dev/docker-compose topology the frontend only proxies
+        # /api and /media to the backend container, so an absolute URL
+        # would bake in the backend's internal Host header (e.g.
+        # "backend:8000") and be unreachable from the browser. A
+        # same-origin path lets the browser resolve it against whatever
+        # host actually served the page, exactly like /api calls already
+        # do via apiClient's baseURL.
+        if not obj.document_id or not obj.document.file:
+            return None
+        return obj.document.file.url
 
     def validate(self, data):
         bank_account = data.get("bank_account", getattr(self.instance, "bank_account", None))
@@ -467,6 +500,27 @@ class TreasuryTransferRequestSerializer(serializers.Serializer):
                 "Impossible de transferer un compte vers lui-meme."
             )
         return data
+
+
+class ControlledDebtPaymentRequestSerializer(serializers.Serializer):
+    """Input for POST /api/treasury-transactions/record-debt-payment/.
+
+    The serializer handles shape/type validation only; the cross-row
+    financial rules live in ControlledDebtPaymentService.
+    """
+
+    debt_type = serializers.ChoiceField(
+        choices=[(value, value) for value in ControlledDebtPaymentService.supported_debt_types()]
+    )
+    debt_id = serializers.IntegerField()
+    bank_account = serializers.IntegerField()
+    amount = serializers.DecimalField(
+        max_digits=16, decimal_places=2, min_value=Decimal("0.01")
+    )
+    date = serializers.DateField()
+    reference = serializers.CharField(required=False, allow_blank=True, default="")
+    note = serializers.CharField(required=False, allow_blank=True, default="")
+    attachment = serializers.FileField(required=False, allow_null=True, default=None)
 
 
 # ---------------------------------------------------------------------------
@@ -605,6 +659,18 @@ class ShareholderLoanSerializer(serializers.ModelSerializer):
                 "L'emprunteur et le preteur ne peuvent pas etre le meme actionnaire."
             )
         return data
+
+    def create(self, validated_data):
+        try:
+            return ShareholderLoanService.create_loan(
+                borrower_id=validated_data["borrower"].id,
+                lender_id=validated_data["lender"].id,
+                amount=validated_data["amount"],
+                date=validated_data["date"],
+                notes=validated_data.get("notes", ""),
+            )
+        except ShareholderLoanError as exc:
+            raise serializers.ValidationError(str(exc))
 
 
 class ShareholderWithdrawalSerializer(serializers.ModelSerializer):

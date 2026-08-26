@@ -5,7 +5,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import TripDetail from '../TripDetail.vue'
 import { useAuthStore } from '@/stores/auth'
 import type { Trip, TripMargin } from '../types'
-import type { Expense } from '@/modules/finance/types'
+import type { Expense, TransportPayment } from '@/modules/finance/types'
 
 function makeTrip(overrides: Partial<Trip> = {}): Trip {
   return {
@@ -54,25 +54,45 @@ const tripResourceGet = vi.fn(async (_id: number) => tripToReturn)
 const fetchTripHistory = vi.fn(async (_id: number) => [])
 let marginToReturn: TripMargin = { available: false }
 const fetchTripMargin = vi.fn(async (_id: number) => marginToReturn)
+const postTripStatus = vi.fn(async (_id: number, _status: string, _notes = '') => tripToReturn)
+let allowedStatusesToReturn: string[] = ['IN_TRANSIT', 'BLOCKED', 'CANCELLED']
+const fetchAllowedTripStatuses = vi.fn(async (_id: number) => allowedStatusesToReturn)
 vi.mock('../api', () => ({
   tripResource: { get: (id: number) => tripResourceGet(id) },
   fetchTripHistory: (id: number) => fetchTripHistory(id),
   fetchTripMargin: (id: number) => fetchTripMargin(id),
-  postTripStatus: vi.fn(),
+  fetchAllowedTripStatuses: (id: number) => fetchAllowedTripStatuses(id),
+  postTripStatus: (id: number, status: string, notes?: string) => postTripStatus(id, status, notes),
   assignTripCustomer: vi.fn(),
 }))
 
 let expensesToReturn: Expense[] = []
+let transportPaymentsToReturn: TransportPayment[] = []
+const createExpense = vi.fn(async (_payload: Record<string, unknown>) => ({}))
+const createTransportPayment = vi.fn(async (_payload: Record<string, unknown>) => ({}))
 const expenseList = vi.fn(async (_params: Record<string, unknown>) => ({
   count: expensesToReturn.length,
   next: null,
   previous: null,
   results: expensesToReturn,
 }))
+const transportPaymentList = vi.fn(async (_params: Record<string, unknown>) => ({
+  count: transportPaymentsToReturn.length,
+  next: null,
+  previous: null,
+  results: transportPaymentsToReturn,
+}))
 // ExpenseForm.vue (mounted for real inside TripDetail's "Add expense"
 // overlay) also imports fetchAllocatableTypes from this module.
 vi.mock('@/modules/finance/api', () => ({
-  expenseResource: { list: (params: Record<string, unknown>) => expenseList(params) },
+  expenseResource: {
+    list: (params: Record<string, unknown>) => expenseList(params),
+    create: (payload: Record<string, unknown>) => createExpense(payload),
+  },
+  transportPaymentResource: {
+    list: (params: Record<string, unknown>) => transportPaymentList(params),
+    create: (payload: Record<string, unknown>) => createTransportPayment(payload),
+  },
   fetchAllocatableTypes: vi.fn(async () => ({
     trip: 12,
     truck: 13,
@@ -150,6 +170,26 @@ function makeExpense(overrides: Partial<Expense> = {}): Expense {
   }
 }
 
+function makeTransportPayment(overrides: Partial<TransportPayment> = {}): TransportPayment {
+  return {
+    id: 8,
+    trip: 9,
+    trip_reference: 'TRIP-009',
+    transporter: 2,
+    transporter_detail: { id: 2, name: 'Trans SA', company_name: 'Trans SA' },
+    calculation_method: 'PER_LITRE',
+    base_amount: '2925000.00',
+    unit_price_per_litre: '65.0000',
+    deduction_amount: '0.00',
+    advance_applied: null,
+    net_amount: '2925000.00',
+    status: 'PLANNED',
+    created_at: '',
+    updated_at: '',
+    ...overrides,
+  }
+}
+
 describe('TripDetail expenses section', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -157,7 +197,9 @@ describe('TripDetail expenses section', () => {
     tripResourceGet.mockResolvedValue(tripToReturn)
     fetchTripHistory.mockResolvedValue([])
     expensesToReturn = []
+    transportPaymentsToReturn = []
     marginToReturn = { available: false }
+    allowedStatusesToReturn = ['IN_TRANSIT', 'BLOCKED', 'CANCELLED']
   })
 
   async function mountAt(tripId = '9') {
@@ -176,8 +218,20 @@ describe('TripDetail expenses section', () => {
     const wrapper = await mountAt()
 
     expect(expenseList).toHaveBeenCalledWith({ trip: 9 })
-    expect(wrapper.text()).toContain('90,000')
-    expect(wrapper.text()).not.toContain('150,000')
+    expect(wrapper.text()).toContain('90 000 XOF')
+    expect(wrapper.text()).not.toContain('150 000 XOF')
+  })
+
+  it('shows transporter commission together with trip expenses', async () => {
+    setUser({ operations: ['view'], finance: ['view'] })
+    transportPaymentsToReturn = [makeTransportPayment()]
+
+    const wrapper = await mountAt()
+
+    expect(transportPaymentList).toHaveBeenCalledWith({ trip: 9 })
+    expect(wrapper.text()).toContain('Commission transporteur')
+    expect(wrapper.text()).toContain('65')
+    expect(wrapper.text()).toContain('2 925 000 XOF')
   })
 
   it('shows an empty state when the trip has no expenses', async () => {
@@ -236,12 +290,15 @@ describe('TripDetail expenses section', () => {
 
     const wrapper = await mountAt()
 
-    const text = wrapper.text()
-    expect(text).toContain('29,152,500')
-    expect(text).toContain('-27,000,000')
-    expect(text).toContain('-500,000')
-    expect(text).toContain('-90,000')
-    expect(text).toContain('1,562,500')
+    // Amounts are wrapped in bidi isolate marks (LRI/PDI) so they can't be
+    // reordered in RTL locales; strip them before matching adjacent text
+    // (the leading "-" here is concatenated outside the formatter's isolate).
+    const text = wrapper.text().replace(/[⁦⁩]/g, '')
+    expect(text).toContain('29 152 500 XOF')
+    expect(text).toContain('-27 000 000 XOF')
+    expect(text).toContain('-500 000 XOF')
+    expect(text).toContain('-90 000 XOF')
+    expect(text).toContain('1 562 500 XOF')
   })
 
   it('highlights a negative margin', async () => {
@@ -260,7 +317,7 @@ describe('TripDetail expenses section', () => {
 
     const wrapper = await mountAt()
 
-    const marginValue = wrapper.findAll('dd').find((dd) => dd.text().includes('-1,000'))
+    const marginValue = wrapper.findAll('dd').find((dd) => dd.text().includes('-1 000'))
     expect(marginValue?.find('span').classes()).toContain('text-critique')
   })
 
@@ -276,6 +333,7 @@ describe('TripDetail expenses section', () => {
   it('shows "Attribuer un client" for a COMPANY_STOCK trip with operations edit and no sale yet', async () => {
     setUser({ operations: ['view', 'edit'], finance: ['view'] })
     marginToReturn = { available: false }
+    tripResourceGet.mockResolvedValueOnce(makeTrip({ status: 'CUSTOMS' }))
 
     const wrapper = await mountAt()
 
@@ -319,11 +377,71 @@ describe('TripDetail expenses section', () => {
   it('opens the assign-customer overlay when "Attribuer un client" is clicked', async () => {
     setUser({ operations: ['view', 'edit'], finance: ['view'] })
     marginToReturn = { available: false }
+    tripResourceGet.mockResolvedValueOnce(makeTrip({ status: 'CUSTOMS' }))
 
     const wrapper = await mountAt()
     const button = wrapper.findAll('button').find((b) => b.text() === 'Attribuer un client')
     await button!.trigger('click')
 
+    expect(wrapper.text()).toContain('TRIP-009')
+  })
+
+  it('hides assign customer before customs even when there is no sale yet', async () => {
+    setUser({ operations: ['view', 'edit'], finance: ['view'] })
+    marginToReturn = { available: false }
+    tripResourceGet.mockResolvedValueOnce(makeTrip({ status: 'IN_TRANSIT' }))
+
+    const wrapper = await mountAt()
+
+    expect(
+      wrapper.findAll('button').find((b) => b.text() === 'Attribuer un client'),
+    ).toBeUndefined()
+  })
+
+  it('shows only backend-allowed next statuses', async () => {
+    setUser({ operations: ['view', 'edit'], finance: ['view'] })
+    tripResourceGet.mockResolvedValueOnce(makeTrip({ status: 'CUSTOMS', client: null }))
+    allowedStatusesToReturn = ['GOING_TO_COMPANY_STOCK', 'BLOCKED']
+
+    const wrapper = await mountAt()
+
+    const optionText = wrapper.find('#next_status').text()
+    expect(fetchAllowedTripStatuses).toHaveBeenCalledWith(9)
+    expect(optionText).toContain("En route vers stock entreprise")
+    expect(optionText).not.toContain('En route vers le client')
+    expect(optionText).not.toContain('Arrivé chez le client')
+    expect(optionText).not.toContain('Contrôle de quantité')
+  })
+
+  it('opens the transporter commission popup after ASSIGNED -> SENT_FOR_LOADING', async () => {
+    setUser({ operations: ['view', 'edit'], finance: ['view', 'create'] })
+    tripResourceGet.mockResolvedValue(makeTrip({ status: 'ASSIGNED' }))
+    allowedStatusesToReturn = ['SENT_FOR_LOADING']
+
+    const wrapper = await mountAt()
+    await wrapper.find('#next_status').setValue('SENT_FOR_LOADING')
+    await wrapper.findAll('button').find((b) => b.text() === 'Appliquer')!.trigger('click')
+    await flushPromises()
+
+    expect(postTripStatus).toHaveBeenCalledWith(9, 'SENT_FOR_LOADING', '')
+    expect(wrapper.find('#unit_price_per_litre').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Commission du transporteur')
+  })
+
+  it('opens a prefilled per-litre loading expense popup after SENT_FOR_LOADING -> LOADING', async () => {
+    setUser({ operations: ['view', 'edit'], finance: ['view', 'create'] })
+    tripResourceGet.mockResolvedValue(makeTrip({ status: 'SENT_FOR_LOADING' }))
+    allowedStatusesToReturn = ['LOADING']
+
+    const wrapper = await mountAt()
+    await wrapper.find('#next_status').setValue('LOADING')
+    await wrapper.findAll('button').find((b) => b.text() === 'Appliquer')!.trigger('click')
+    await flushPromises()
+
+    expect((wrapper.find('#category').element as HTMLSelectElement).value).toBe('loading')
+    expect((wrapper.find('#calculation_method').element as HTMLSelectElement).value).toBe(
+      'PER_LITRE',
+    )
     expect(wrapper.text()).toContain('TRIP-009')
   })
 
@@ -344,7 +462,7 @@ describe('TripDetail expenses section', () => {
     const wrapper = await mountAt()
 
     const text = wrapper.text()
-    expect(text).toContain('611.11')
-    expect(text).toContain('38.89')
+    expect(text).toContain('611 XOF/L')
+    expect(text).toContain('39 XOF/L')
   })
 })

@@ -6,6 +6,7 @@ import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { createResourceApi } from '@/api/resource'
+import { formatQuantity } from '@/utils/currency'
 import { customerOrderResource } from './api'
 import type { CustomerOrder, CustomerOrderStatus, CustomerBrief, ProductBrief } from './types'
 import Chip from '@/components/ui/Chip.vue'
@@ -174,16 +175,16 @@ function goToDetail(order: CustomerOrder) {
             <td class="px-3 py-2.5 font-medium">{{ order.customer_detail?.name }}</td>
             <td class="px-3 py-2.5">{{ order.product_detail?.name }}</td>
             <td class="px-3 py-2.5 text-right">
-              <MonoValue :value="Number(order.quantity_ordered).toLocaleString()" />
+              <MonoValue :value="formatQuantity(order.quantity_ordered)" />
             </td>
             <td class="px-3 py-2.5 text-right">
-              <MonoValue :value="Number(order.assigned_quantity).toLocaleString()" />
+              <MonoValue :value="formatQuantity(order.assigned_quantity)" />
             </td>
             <td class="px-3 py-2.5 text-right">
-              <MonoValue :value="Number(order.delivered_quantity).toLocaleString()" />
+              <MonoValue :value="formatQuantity(order.delivered_quantity)" />
             </td>
             <td class="px-3 py-2.5 text-right">
-              <MonoValue :value="Number(order.remaining_quantity).toLocaleString()" />
+              <MonoValue :value="formatQuantity(order.remaining_quantity)" />
             </td>
             <td class="px-3 py-2.5">
               <Badge :variant="badgeVariant(order.status)">{{
@@ -221,15 +222,15 @@ function goToDetail(order: CustomerOrder) {
         <div class="grid grid-cols-3 gap-2 text-xs">
           <div>
             <p class="text-texte-3 uppercase">{{ t('sales.orderList.table.ordered') }}</p>
-            <MonoValue :value="Number(order.quantity_ordered).toLocaleString()" align="left" />
+            <MonoValue :value="formatQuantity(order.quantity_ordered)" align="left" />
           </div>
           <div>
             <p class="text-texte-3 uppercase">{{ t('sales.orderList.table.delivered') }}</p>
-            <MonoValue :value="Number(order.delivered_quantity).toLocaleString()" align="left" />
+            <MonoValue :value="formatQuantity(order.delivered_quantity)" align="left" />
           </div>
           <div>
             <p class="text-texte-3 uppercase">{{ t('sales.orderList.table.remaining') }}</p>
-            <MonoValue :value="Number(order.remaining_quantity).toLocaleString()" align="left" />
+            <MonoValue :value="formatQuantity(order.remaining_quantity)" align="left" />
           </div>
         </div>
       </button>

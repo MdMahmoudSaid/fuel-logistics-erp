@@ -8,6 +8,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { formatMoney, formatQuantity } from '@/utils/currency'
 import { invoiceResource, validateInvoice, correctInvoice } from './api'
 import { translateApiError } from '@/i18n/apiErrors'
 import { CORRECTABLE_INVOICE_FIELDS } from './types'
@@ -206,8 +207,7 @@ function formatDateTime(value: string) {
               <MonoValue
                 class="font-medium"
                 align="left"
-                :value="Number(invoice.sale_detail?.delivered_quantity ?? 0).toLocaleString()"
-                unit="L"
+                :value="formatQuantity(invoice.sale_detail?.delivered_quantity ?? 0)"
               />
             </p>
           </div>
@@ -267,8 +267,7 @@ function formatDateTime(value: string) {
           </div>
         </template>
         <div v-else class="text-texte text-base font-semibold">
-          {{ t('sales.invoiceDetail.total') }} {{ Number(invoice.total_amount).toLocaleString() }}
-          {{ invoice.sale_detail?.currency }}
+          {{ t('sales.invoiceDetail.total') }} {{ formatMoney(invoice.total_amount) }}
           <span class="text-texte-2 ms-2 text-sm font-normal"
             >{{ t('sales.invoiceDetail.issued') }} {{ invoice.issued_date }}</span
           >

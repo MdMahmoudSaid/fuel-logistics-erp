@@ -9,6 +9,7 @@ import {
   fetchNextCessionLetterReference,
 } from './api'
 import { translateApiError, extractFieldErrors } from '@/i18n/apiErrors'
+import { formatQuantity } from '@/utils/currency'
 import Button from '@/components/ui/Button.vue'
 import type { CessionLetter, CessionLetterStatus, SupplierOrder } from './types'
 
@@ -210,9 +211,7 @@ async function onUploadDocument() {
         >
           <option value="" disabled>{{ t('purchasing.cessionForm.selectSupplierOrder') }}</option>
           <option v-for="o in availableOrders" :key="o.id" :value="o.id">
-            {{ o.reference }} — {{ o.supplier_detail?.name }} ({{
-              Number(o.reliquat).toLocaleString()
-            }}
+            {{ o.reference }} — {{ o.supplier_detail?.name }} ({{ formatQuantity(o.reliquat) }}
             {{ t('purchasing.cessionForm.remainingSuffix') }})
           </option>
           <option
@@ -235,13 +234,13 @@ async function onUploadDocument() {
 
       <div v-if="order" class="border-ligne space-y-2 rounded-lg border bg-sable p-3">
         <div class="text-texte-2 flex justify-between text-xs">
-          <span>{{ t('purchasing.cessionForm.purchased') }} {{ purchased.toLocaleString() }} L</span>
+          <span>{{ t('purchasing.cessionForm.purchased') }} {{ formatQuantity(purchased) }}</span>
           <span
             >{{ t('purchasing.cessionForm.alreadyAllocated') }}
-            {{ allocatedToOthers.toLocaleString() }} L</span
+            {{ formatQuantity(allocatedToOthers) }}</span
           >
           <span :class="isOverLimit ? 'text-critique font-semibold' : ''">
-            {{ t('purchasing.cessionForm.requested') }} {{ requested.toLocaleString() }} L
+            {{ t('purchasing.cessionForm.requested') }} {{ formatQuantity(requested) }}
           </span>
         </div>
         <div class="bg-ligne flex h-3 w-full overflow-hidden rounded-full">
@@ -255,12 +254,12 @@ async function onUploadDocument() {
         <p v-if="isOverLimit" class="text-critique text-sm font-medium">
           {{
             t('purchasing.cessionForm.exceedsBy', {
-              amount: Math.abs(remainingAfterThis).toLocaleString(),
+              amount: formatQuantity(Math.abs(remainingAfterThis)),
             })
           }}
         </p>
         <p v-else class="text-texte-2 text-sm">
-          {{ t('purchasing.cessionForm.wouldRemain', { amount: remainingAfterThis.toLocaleString() }) }}
+          {{ t('purchasing.cessionForm.wouldRemain', { amount: formatQuantity(remainingAfterThis) }) }}
         </p>
       </div>
 

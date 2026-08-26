@@ -156,6 +156,16 @@ class TripViewSet(viewsets.ModelViewSet):
         history = trip.status_history.all()
         return Response(TripStatusHistorySerializer(history, many=True).data)
 
+    @action(detail=True, methods=["get"], url_path="allowed-statuses")
+    def allowed_statuses(self, request, pk=None):
+        trip = self.get_object()
+        allowed = TripWorkflowService.get_allowed_targets(trip)
+        return Response(
+            {
+                "statuses": [status for status in Trip.Status.values if status in allowed],
+            }
+        )
+
     @action(detail=True, methods=["get"])
     def margin(self, request, pk=None):
         """Revenue/cost breakdown behind this trip's current margin

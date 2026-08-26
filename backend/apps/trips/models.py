@@ -29,6 +29,12 @@ class Trip(TimeStampedModel):
         IN_TRANSIT = "IN_TRANSIT", "In transit"
         BORDER = "BORDER", "Border"
         CUSTOMS = "CUSTOMS", "Customs"
+        GOING_TO_COMPANY_STOCK = "GOING_TO_COMPANY_STOCK", "Going to company stock"
+        ARRIVED_AT_COMPANY_STOCK = (
+            "ARRIVED_AT_COMPANY_STOCK",
+            "Arrived at company stock",
+        )
+        STOCKED = "STOCKED", "Stocked"
         GOING_TO_CLIENT = "GOING_TO_CLIENT", "Going to client"
         ARRIVED_AT_CLIENT = "ARRIVED_AT_CLIENT", "Arrived at client"
         QUANTITY_CONTROL = "QUANTITY_CONTROL", "Quantity control"
@@ -49,7 +55,7 @@ class Trip(TimeStampedModel):
     # DELIVERED -> COMPLETED step yet. Deliberately NOT folded into
     # TERMINAL_STATUSES, which other rules (is_active(), CANCELLABLE_FROM,
     # the active status board) rely on staying just {COMPLETED, CANCELLED}.
-    NON_OCCUPYING_STATUSES = TERMINAL_STATUSES | {Status.DELIVERED}
+    NON_OCCUPYING_STATUSES = TERMINAL_STATUSES | {Status.DELIVERED, Status.STOCKED}
 
     class DestinationType(models.TextChoices):
         """Makes the "no client, no customer order" state a first-class,
@@ -111,7 +117,7 @@ class Trip(TimeStampedModel):
     loading_date = models.DateField()
     bl_reference = models.CharField(max_length=100)
     status = models.CharField(
-        max_length=20, choices=Status.choices, default=Status.ASSIGNED
+        max_length=30, choices=Status.choices, default=Status.ASSIGNED
     )
     notes = models.TextField(blank=True)
     created_by = models.ForeignKey(

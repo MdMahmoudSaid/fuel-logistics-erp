@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { createResourceApi } from '@/api/resource'
+import { formatQuantity } from '@/utils/currency'
 import { supplierOrderResource } from './api'
 import type { SupplierOrder } from './types'
 import type { SupplierBrief, ProductBrief } from './types'
@@ -144,11 +145,11 @@ function badgeVariant(status: string) {
             </td>
             <td class="px-3 py-2.5">{{ order.product_detail?.name }}</td>
             <td class="px-3 py-2.5 text-right">
-              <MonoValue :value="Number(order.quantity_litres).toLocaleString()" />
+              <MonoValue :value="formatQuantity(order.quantity_litres)" />
             </td>
             <td class="px-3 py-2.5 text-right">
               <MonoValue
-                :value="Number(order.reliquat).toLocaleString()"
+                :value="formatQuantity(order.reliquat)"
                 :class="Number(order.reliquat) <= 0 ? 'text-critique' : ''"
               />
             </td>

@@ -4,35 +4,38 @@
 // transfer form.
 import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRoute, useRouter } from 'vue-router'
-import { createResourceApi } from '@/api/resource'
+import { useRoute } from 'vue-router'
 import { treasuryTransactionResource } from './api'
 import { fetchDashboardSummary } from '@/modules/dashboard/api'
 import Button from '@/components/ui/Button.vue'
 import MonoValue from '@/components/ui/MonoValue.vue'
 import Modal from '@/components/ui/Modal.vue'
 import TransferForm from './TransferForm.vue'
-import ExpenseForm from './ExpenseForm.vue'
+import DebtPaymentForm from './DebtPaymentForm.vue'
 import type { TreasuryTransaction } from './types'
+import { formatMoney } from '@/utils/currency'
 
 const route = useRoute()
-const router = useRouter()
 const { t } = useI18n()
 
 const showTransferModal = ref(false)
-const showExpenseModal = ref(false)
+const showDebtPaymentModal = ref(false)
+const previewUrl = ref<string | null>(null)
+
+const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp']
+
+function isImageUrl(url: string): boolean {
+  const path = url.split('?')[0].toLowerCase()
+  return IMAGE_EXTENSIONS.some((ext) => path.endsWith(ext))
+}
 
 function onTransferSuccess() {
   showTransferModal.value = false
   load()
 }
 
-function onExpenseSuccess(customerId: number | null) {
-  showExpenseModal.value = false
-  if (customerId) {
-    router.push({ name: 'customer-ledger', params: { id: customerId } })
-    return
-  }
+function onDebtPaymentSuccess() {
+  showDebtPaymentModal.value = false
   load()
 }
 
@@ -45,40 +48,29 @@ const error = ref('')
 // (backend/apps/reports/views/dashboard.py) à partir de tous les comptes.
 const balance = ref<number | null>(null)
 
-const bankAccountResource = createResourceApi<{ id: number; name: string }>('/bank-accounts/')
-const cashAccountResource = createResourceApi<{ id: number; name: string }>('/cash-accounts/')
-const bankAccounts = ref<{ id: number; name: string }[]>([])
-const cashAccounts = ref<{ id: number; name: string }[]>([])
-
 function accountLabel(txn: TreasuryTransaction): string {
-  if (txn.bank_account) {
-    return (
-      bankAccounts.value.find((a) => a.id === txn.bank_account)?.name ??
-      `${t('finance.transfer.bank')} #${txn.bank_account}`
-    )
-  }
-  if (txn.cash_account) {
-    return (
-      cashAccounts.value.find((a) => a.id === txn.cash_account)?.name ??
-      `${t('finance.transfer.cash')} #${txn.cash_account}`
-    )
-  }
-  return '—'
+  return txn.bank_account_name ?? txn.cash_account_name ?? '—'
+}
+
+// "Source ou beneficiaire" (docs/edit.md UI pass 2026-08-26, Journal de
+// tresorerie): the resolved counterparty when available, else a plain
+// fallback so the row never reads as a bare, unexplained movement.
+function sourceLabel(txn: TreasuryTransaction): string {
+  if (txn.counterparty) return txn.counterparty
+  return txn.is_transfer
+    ? t('transactionType.TRANSFER')
+    : t(`transactionType.${txn.type}`)
 }
 
 async function load() {
   loading.value = true
   error.value = ''
   try {
-    const [txnData, bankData, cashData, summary] = await Promise.all([
+    const [txnData, summary] = await Promise.all([
       treasuryTransactionResource.list(),
-      bankAccountResource.list(),
-      cashAccountResource.list(),
       fetchDashboardSummary({}),
     ])
     transactions.value = txnData.results
-    bankAccounts.value = bankData.results
-    cashAccounts.value = cashData.results
     balance.value = Number(summary.finance.treasury_balance)
   } catch {
     error.value = t('finance.treasuryLedger.loadError')
@@ -90,7 +82,7 @@ async function load() {
 onMounted(() => {
   load()
   if (route.query.action === 'transfer') showTransferModal.value = true
-  if (route.query.action === 'expense') showExpenseModal.value = true
+  if (route.query.action === 'payment') showDebtPaymentModal.value = true
 })
 
 const TYPE_BADGE: Record<string, string> = {
@@ -100,17 +92,14 @@ const TYPE_BADGE: Record<string, string> = {
 </script>
 
 <template>
-  <div class="max-w-4xl space-y-6">
+  <div class="max-w-7xl space-y-6">
     <div class="flex items-center justify-between">
       <h1 class="font-display text-2xl leading-none font-semibold uppercase">
         {{ t('finance.treasuryLedger.title') }}
       </h1>
       <div class="flex gap-2">
-        <Button variant="secondary" @click="showExpenseModal = true">
-          {{ t('finance.treasuryLedger.newExpense') }}
-        </Button>
-        <Button variant="primary" @click="showTransferModal = true">
-          {{ t('finance.treasuryLedger.internalTransfer') }}
+        <Button variant="primary" @click="showDebtPaymentModal = true">
+          {{ t('finance.treasuryLedger.newPayment') }}
         </Button>
       </div>
     </div>
@@ -125,32 +114,39 @@ const TYPE_BADGE: Record<string, string> = {
         class="font-mono text-[30px] leading-none font-semibold tabular-nums"
         :class="balance < 0 ? 'text-critique' : 'text-sable'"
       >
-        {{ balance < 0 ? '−' : '' }}{{ Math.abs(balance).toLocaleString() }}
+        {{ balance < 0 ? '−' : '' }}{{ formatMoney(Math.abs(balance)) }}
       </p>
     </div>
 
     <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
     <p v-else-if="loading" class="text-sm text-slate-400">{{ t('common.loading') }}</p>
 
-    <section v-else class="border-ligne rounded-xl border bg-white p-4">
+    <section v-else class="border-ligne overflow-x-auto rounded-xl border bg-white p-4">
       <table class="w-full text-start text-sm">
         <thead>
           <tr class="border-ligne text-texte-2 border-b">
             <th class="px-2 py-1.5 font-medium">{{ t('finance.treasuryLedger.table.date') }}</th>
             <th class="px-2 py-1.5 font-medium">{{ t('finance.treasuryLedger.table.type') }}</th>
+            <th class="px-2 py-1.5 font-medium">{{ t('finance.treasuryLedger.table.source') }}</th>
             <th class="px-2 py-1.5 font-medium">{{ t('finance.treasuryLedger.table.account') }}</th>
             <th class="px-2 py-1.5 font-medium">
               {{ t('finance.treasuryLedger.table.reference') }}
             </th>
+            <th class="px-2 py-1.5 font-medium">{{ t('finance.treasuryLedger.table.note') }}</th>
             <th class="px-2 py-1.5 text-end font-medium">
               {{ t('finance.treasuryLedger.table.amount') }}
+            </th>
+            <th class="px-2 py-1.5 font-medium">
+              {{ t('finance.treasuryLedger.table.attachment') }}
             </th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="txn in transactions" :key="txn.id" class="border-ligne border-b last:border-0">
-            <td class="px-2 py-1.5"><MonoValue :value="txn.date" align="left" /></td>
-            <td class="px-2 py-1.5">
+            <td class="px-2 py-1.5 whitespace-nowrap">
+              <MonoValue :value="txn.date" align="left" />
+            </td>
+            <td class="px-2 py-1.5 whitespace-nowrap">
               <span
                 class="rounded-full px-2 py-0.5 text-xs font-medium"
                 :class="TYPE_BADGE[txn.type]"
@@ -164,17 +160,30 @@ const TYPE_BADGE: Record<string, string> = {
                 {{ t('transactionType.TRANSFER') }}
               </span>
             </td>
-            <td class="px-2 py-1.5">{{ accountLabel(txn) }}</td>
-            <td class="px-2 py-1.5">{{ txn.reference || '—' }}</td>
-            <td class="px-2 py-1.5 text-end">
+            <td class="px-2 py-1.5">{{ sourceLabel(txn) }}</td>
+            <td class="px-2 py-1.5 whitespace-nowrap">{{ accountLabel(txn) }}</td>
+            <td class="px-2 py-1.5 whitespace-nowrap">{{ txn.reference || '—' }}</td>
+            <td class="px-2 py-1.5">{{ txn.note || '—' }}</td>
+            <td class="px-2 py-1.5 text-end whitespace-nowrap">
               <MonoValue
-                :value="(txn.type === 'MONEY_OUT' ? '−' : '') + Number(txn.amount).toLocaleString()"
+                :value="(txn.type === 'MONEY_OUT' ? '−' : '') + formatMoney(txn.amount)"
                 :class="txn.type === 'MONEY_OUT' ? 'text-critique' : 'text-texte'"
               />
             </td>
+            <td class="px-2 py-1.5 whitespace-nowrap">
+              <button
+                v-if="txn.document_url"
+                type="button"
+                class="text-bitume underline"
+                @click="previewUrl = txn.document_url"
+              >
+                {{ t('finance.treasuryLedger.table.attachment') }}
+              </button>
+              <span v-else class="text-texte-3">—</span>
+            </td>
           </tr>
           <tr v-if="transactions.length === 0">
-            <td colspan="5" class="text-texte-3 px-2 py-4 text-center">
+            <td colspan="8" class="text-texte-3 px-2 py-4 text-center">
               {{ t('finance.treasuryLedger.noTransactions') }}
             </td>
           </tr>
@@ -192,12 +201,26 @@ const TYPE_BADGE: Record<string, string> = {
     </Modal>
 
     <Modal
-      v-if="showExpenseModal"
-      :title="t('finance.expense.title')"
+      v-if="showDebtPaymentModal"
+      :title="t('finance.debtPayment.title')"
       max-width="max-w-2xl"
-      @close="showExpenseModal = false"
+      @close="showDebtPaymentModal = false"
     >
-      <ExpenseForm @success="onExpenseSuccess" @cancel="showExpenseModal = false" />
+      <DebtPaymentForm @success="onDebtPaymentSuccess" @cancel="showDebtPaymentModal = false" />
+    </Modal>
+
+    <Modal
+      v-if="previewUrl"
+      :title="t('finance.treasuryLedger.table.attachment')"
+      max-width="max-w-3xl"
+      @close="previewUrl = null"
+    >
+      <img
+        v-if="isImageUrl(previewUrl)"
+        :src="previewUrl"
+        class="max-h-[80vh] w-full rounded-lg object-contain"
+      />
+      <iframe v-else :src="previewUrl" class="h-[80vh] w-full rounded-lg" />
     </Modal>
   </div>
 </template>

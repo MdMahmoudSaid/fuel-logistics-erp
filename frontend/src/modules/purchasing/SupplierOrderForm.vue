@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { createResourceApi } from '@/api/resource'
 import { translateApiError, extractFieldErrors } from '@/i18n/apiErrors'
+import { formatMoney, formatQuantity } from '@/utils/currency'
 import { supplierOrderResource, uploadDocument, fetchNextSupplierOrderReference } from './api'
 import Button from '@/components/ui/Button.vue'
 import type { SupplierOrder, SupplierOrderStatus, SupplierBrief, ProductBrief } from './types'
@@ -319,7 +320,7 @@ function goToNewCession() {
         <p
           class="text-texte rounded-lg border border-transparent px-3.5 py-2.5 text-sm font-semibold"
         >
-          {{ Number(order.total_amount).toLocaleString() }} {{ order.currency }}
+          {{ formatMoney(order.total_amount) }}
         </p>
       </div>
 
@@ -331,7 +332,7 @@ function goToNewCession() {
           class="rounded-lg border border-transparent px-3.5 py-2.5 text-sm font-semibold"
           :class="Number(order.reliquat) <= 0 ? 'text-critique' : 'text-livre-texte'"
         >
-          {{ Number(order.reliquat).toLocaleString() }} L
+          {{ formatQuantity(order.reliquat) }}
         </p>
       </div>
 
@@ -437,10 +438,10 @@ function goToNewCession() {
           >
             <td class="px-2 py-1.5">{{ cession.reference }}</td>
             <td class="px-2 py-1.5 text-right">
-              {{ Number(cession.authorized_quantity).toLocaleString() }}
+              {{ formatQuantity(cession.authorized_quantity) }}
             </td>
             <td class="px-2 py-1.5 text-right">
-              {{ Number(cession.remaining_quantity).toLocaleString() }}
+              {{ formatQuantity(cession.remaining_quantity) }}
             </td>
             <td class="px-2 py-1.5">{{ t(`cessionStatus.${cession.status}`) }}</td>
           </tr>

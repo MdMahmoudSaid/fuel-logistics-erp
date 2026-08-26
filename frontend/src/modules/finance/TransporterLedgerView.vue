@@ -8,6 +8,7 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { fetchTransporterLedger } from './api'
 import type { TransporterLedger } from './types'
+import { formatMoney } from '@/utils/currency'
 
 const route = useRoute()
 const router = useRouter()
@@ -64,25 +65,25 @@ const STATUS_BADGE: Record<string, string> = {
         <div class="rounded border bg-white p-3">
           <p class="text-xs text-slate-500">{{ t('finance.transporterLedger.grossEarned') }}</p>
           <p class="text-base font-semibold text-slate-800">
-            {{ Number(ledger.gross_amount).toLocaleString() }}
+            {{ formatMoney(ledger.gross_amount) }}
           </p>
         </div>
         <div class="rounded border bg-white p-3">
           <p class="text-xs text-slate-500">{{ t('finance.transporterLedger.deductions') }}</p>
           <p class="text-base font-semibold text-red-600">
-            − {{ Number(ledger.deductions).toLocaleString() }}
+            − {{ formatMoney(ledger.deductions) }}
           </p>
         </div>
         <div class="rounded border bg-white p-3">
           <p class="text-xs text-slate-500">{{ t('finance.transporterLedger.advancesApplied') }}</p>
           <p class="text-base font-semibold text-red-600">
-            − {{ Number(ledger.advances_applied).toLocaleString() }}
+            − {{ formatMoney(ledger.advances_applied) }}
           </p>
         </div>
         <div class="rounded border bg-white p-3">
           <p class="text-xs text-slate-500">{{ t('finance.transporterLedger.alreadySettled') }}</p>
           <p class="text-base font-semibold text-slate-800">
-            {{ Number(ledger.settled).toLocaleString() }}
+            {{ formatMoney(ledger.settled) }}
           </p>
         </div>
         <div class="rounded border bg-white p-3">
@@ -91,7 +92,7 @@ const STATUS_BADGE: Record<string, string> = {
             class="text-base font-semibold"
             :class="Number(ledger.net_outstanding) > 0 ? 'text-amber-600' : 'text-emerald-600'"
           >
-            {{ Number(ledger.net_outstanding).toLocaleString() }}
+            {{ formatMoney(ledger.net_outstanding) }}
           </p>
         </div>
       </section>
@@ -122,13 +123,13 @@ const STATUS_BADGE: Record<string, string> = {
             <tr v-for="payment in ledger.payments" :key="payment.id" class="border-b last:border-0">
               <td class="px-2 py-1.5 font-medium text-slate-800">{{ payment.trip_reference }}</td>
               <td class="px-2 py-1.5 text-right">
-                {{ Number(payment.base_amount).toLocaleString() }}
+                {{ formatMoney(payment.base_amount) }}
               </td>
               <td class="px-2 py-1.5 text-right text-red-600">
-                − {{ Number(payment.deduction_amount).toLocaleString() }}
+                − {{ formatMoney(payment.deduction_amount) }}
               </td>
               <td class="px-2 py-1.5 text-right font-medium text-slate-800">
-                {{ Number(payment.net_amount).toLocaleString() }}
+                {{ formatMoney(payment.net_amount) }}
               </td>
               <td class="px-2 py-1.5">
                 <span
@@ -175,7 +176,7 @@ const STATUS_BADGE: Record<string, string> = {
               <td class="px-2 py-1.5">{{ advance.reference || '—' }}</td>
               <td class="px-2 py-1.5">{{ advance.settled ? t('common.yes') : t('common.no') }}</td>
               <td class="px-2 py-1.5 text-right font-medium text-slate-800">
-                {{ Number(advance.amount).toLocaleString() }}
+                {{ formatMoney(advance.amount) }}
               </td>
             </tr>
             <tr v-if="ledger.advances.length === 0">

@@ -24,6 +24,13 @@ export default defineConfig({
         target: process.env.VITE_API_PROXY_TARGET || 'http://localhost:8000',
         changeOrigin: true,
       },
+      // Uploaded files (e.g. treasury payment proofs) are served by Django
+      // under MEDIA_URL - same backend, needs the same proxy so
+      // root-relative document URLs from the API resolve in the browser.
+      '/media': {
+        target: process.env.VITE_API_PROXY_TARGET || 'http://localhost:8000',
+        changeOrigin: true,
+      },
     },
   },
   test: {

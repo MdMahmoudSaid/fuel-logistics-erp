@@ -9,6 +9,7 @@ import { fetchCustomerLedger } from './api'
 import Modal from '@/components/ui/Modal.vue'
 import PaymentAllocationForm from './PaymentAllocationForm.vue'
 import type { CustomerLedger } from './types'
+import { formatMoney } from '@/utils/currency'
 
 const route = useRoute()
 const router = useRouter()
@@ -81,7 +82,7 @@ const STATUS_BADGE: Record<string, string> = {
           class="text-lg font-semibold"
           :class="Number(ledger.outstanding_balance) > 0 ? 'text-amber-600' : 'text-emerald-600'"
         >
-          {{ Number(ledger.outstanding_balance).toLocaleString() }}
+          {{ formatMoney(ledger.outstanding_balance) }}
         </p>
       </section>
 
@@ -113,10 +114,10 @@ const STATUS_BADGE: Record<string, string> = {
               <td class="px-2 py-1.5 font-medium text-slate-800">{{ invoice.invoice_number }}</td>
               <td class="px-2 py-1.5">{{ invoice.issued_date }}</td>
               <td class="px-2 py-1.5 text-right">
-                {{ Number(invoice.total_amount).toLocaleString() }}
+                {{ formatMoney(invoice.total_amount) }}
               </td>
               <td class="px-2 py-1.5 text-right font-medium text-slate-800">
-                {{ Number(invoice.outstanding).toLocaleString() }}
+                {{ formatMoney(invoice.outstanding) }}
               </td>
               <td class="px-2 py-1.5">
                 <span
@@ -165,7 +166,7 @@ const STATUS_BADGE: Record<string, string> = {
               <td class="px-2 py-1.5">{{ payment.is_indirect ? t('common.yes') : t('common.no') }}</td>
               <td class="px-2 py-1.5">{{ payment.reference || '—' }}</td>
               <td class="px-2 py-1.5 text-right font-medium text-slate-800">
-                {{ Number(payment.amount).toLocaleString() }}
+                {{ formatMoney(payment.amount) }}
               </td>
             </tr>
             <tr v-if="ledger.payments.length === 0">

@@ -24,15 +24,24 @@ const postDeliveryControl = vi.fn(async (_tripId: number, payload: Record<string
   created_at: '',
   updated_at: '',
 }))
-const fetchSuggestedSellingPrice = vi.fn(async () => '650.0000')
+const fetchSuggestedSellingPrice = vi.fn(async () => '850.0000')
 const fetchTripCostBasis = vi.fn(async () => ({
-  fuel_purchase_cost: '27000000.000000',
-  transport_cost: '0.00',
-  expenses_by_category: {},
-  total_expenses: '0.00',
-  total_cost: '27000000.000000',
+  fuel_purchase_cost: '22500000.000000',
+  transport_cost: '2925000.00',
+  expenses_by_category: { transport: '450000.00', customs: '10125000.00' },
+  total_expenses: '10575000.00',
+  total_cost: '36000000.000000',
   quantity: '45000.00',
-  unit_cost: '600.0000',
+  unit_cost: '800.0000',
+  unit_components_per_litre: {
+    supplier: '500.0000',
+    commission_transporter: '65.0000',
+    transit: '10.0000',
+    border: '0.0000',
+    customs: '225.0000',
+    loading: '0.0000',
+    other: '0.0000',
+  },
 }))
 vi.mock('../api', () => ({
   postDeliveryControl: (tripId: number, payload: Record<string, unknown>) =>
@@ -94,7 +103,7 @@ describe('DeliveryControlForm', () => {
     const wrapper = mount(DeliveryControlForm, { props: { tripId: 9, quantityLoaded: '45000.00' } })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('45,000')
+    expect(wrapper.text()).toContain('45 000')
     expect(wrapper.find('#loaded_quantity_display').exists()).toBe(true)
 
     await wrapper.find('#received_quantity').setValue('44850.00')
@@ -165,7 +174,7 @@ describe('DeliveryControlForm', () => {
     const wrapper = mount(DeliveryControlForm, { props: { tripId: 9, quantityLoaded: '45000.00' } })
     await flushPromises()
 
-    expect((wrapper.find('#unit_selling_price').element as HTMLInputElement).value).toBe('650.0000')
+    expect((wrapper.find('#unit_selling_price').element as HTMLInputElement).value).toBe('850.0000')
 
     await wrapper.find('#received_quantity').setValue('44850.00')
     await wrapper.find('#control_date').setValue('2026-08-18')
@@ -173,7 +182,7 @@ describe('DeliveryControlForm', () => {
     await flushPromises()
 
     const [, payload] = postDeliveryControl.mock.calls[0]!
-    expect(payload.unit_selling_price).toBe('650.0000')
+    expect(payload.unit_selling_price).toBe('850.0000')
   })
 
   it('blocks submission when no price is suggested and none is entered', async () => {
@@ -208,12 +217,36 @@ describe('DeliveryControlForm', () => {
 
   it('shows the cost price and live benefit once cost basis and selling price are known', async () => {
     setOpsUser()
+    fetchSuggestedSellingPrice.mockResolvedValueOnce('850.0000')
     const wrapper = mount(DeliveryControlForm, { props: { tripId: 9, quantityLoaded: '45000.00' } })
     await flushPromises()
 
-    // Suggested price 650.0000 vs unit cost 600.0000 -> benefit +50.
-    expect(wrapper.text()).toContain('600')
-    expect(wrapper.text()).toContain('50')
+    expect(wrapper.text()).toContain('Prix fournisseur')
+    expect(wrapper.text()).toContain('500')
+    expect(wrapper.text()).toContain('Commission transporteur')
+    expect(wrapper.text()).toContain('65')
+    expect(wrapper.text()).toContain('Transit')
+    expect(wrapper.text()).toContain('10')
+    expect(wrapper.text()).toContain('Douane')
+    expect(wrapper.text()).toContain('225')
+    expect(wrapper.text()).toContain('Prix de revient')
+    expect(wrapper.text()).toContain('800')
+    expect(wrapper.text()).toContain('Prix de vente saisi')
+    expect(wrapper.text()).toContain('850')
+    // Amounts are wrapped in bidi isolate marks (LRI/PDI) so they can't be
+    // reordered in RTL locales; strip them before matching adjacent text.
+    expect(wrapper.text().replace(/[⁦⁩]/g, '')).toContain('Bénéfice de 50')
+    expect(wrapper.find('#loss_confirmed').exists()).toBe(false)
+  })
+
+  it('shows zero result when the selling price equals the cost price', async () => {
+    setOpsUser()
+    fetchSuggestedSellingPrice.mockResolvedValueOnce('800.0000')
+    const wrapper = mount(DeliveryControlForm, { props: { tripId: 9, quantityLoaded: '45000.00' } })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Résultat')
+    expect(wrapper.text()).toContain('Zéro')
     expect(wrapper.find('#loss_confirmed').exists()).toBe(false)
   })
 
@@ -224,9 +257,13 @@ describe('DeliveryControlForm', () => {
 
     await wrapper.find('#received_quantity').setValue('44850.00')
     await wrapper.find('#control_date').setValue('2026-08-18')
-    await wrapper.find('#unit_selling_price').setValue('500.0000')
+    await wrapper.find('#unit_selling_price').setValue('790.0000')
     await flushPromises()
 
+    // Amounts are wrapped in bidi isolate marks (LRI/PDI) so they can't be
+    // reordered in RTL locales; strip them before matching adjacent text.
+    expect(wrapper.text().replace(/[⁦⁩]/g, '')).toContain('Perte de 10')
+    expect(wrapper.text()).toContain('Attention : vente à perte')
     expect(wrapper.find('#loss_confirmed').exists()).toBe(true)
 
     await wrapper.find('form').trigger('submit.prevent')

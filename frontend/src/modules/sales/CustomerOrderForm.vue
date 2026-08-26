@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { createResourceApi } from '@/api/resource'
 import { translateApiError, extractFieldErrors } from '@/i18n/apiErrors'
+import { formatQuantity } from '@/utils/currency'
 import { customerOrderResource, fetchCustomerOrderTrips } from './api'
 import { MANUALLY_SETTABLE_STATUSES } from './types'
 import type { CustomerOrder, CustomerOrderStatus, CustomerBrief, ProductBrief } from './types'
@@ -147,7 +148,7 @@ function badgeVariant(status: TripStatus) {
         <div class="space-y-0.5">
           <div class="flex justify-between">
             <span>{{ t('sales.orderForm.assigned') }}</span>
-            <span>{{ Number(order.assigned_quantity).toLocaleString() }} L</span>
+            <span>{{ formatQuantity(order.assigned_quantity) }}</span>
           </div>
           <div class="bg-ligne h-2 w-full overflow-hidden rounded-full">
             <div class="bg-texte-3 h-full" :style="{ width: assignedPct + '%' }" />
@@ -156,7 +157,7 @@ function badgeVariant(status: TripStatus) {
         <div class="space-y-0.5">
           <div class="flex justify-between">
             <span>{{ t('sales.orderForm.loaded') }}</span>
-            <span>{{ Number(order.loaded_quantity).toLocaleString() }} L</span>
+            <span>{{ formatQuantity(order.loaded_quantity) }}</span>
           </div>
           <div class="bg-ligne h-2 w-full overflow-hidden rounded-full">
             <div class="bg-transit h-full" :style="{ width: loadedPct + '%' }" />
@@ -165,7 +166,7 @@ function badgeVariant(status: TripStatus) {
         <div class="space-y-0.5">
           <div class="flex justify-between">
             <span>{{ t('sales.orderForm.delivered') }}</span>
-            <span>{{ Number(order.delivered_quantity).toLocaleString() }} L</span>
+            <span>{{ formatQuantity(order.delivered_quantity) }}</span>
           </div>
           <div class="bg-ligne h-2 w-full overflow-hidden rounded-full">
             <div class="bg-livre h-full" :style="{ width: deliveredPct + '%' }" />
@@ -174,11 +175,9 @@ function badgeVariant(status: TripStatus) {
       </div>
       <p class="text-texte-2 pt-1 text-sm">
         {{ t('sales.orderForm.ordered') }}
-        <span class="text-texte font-medium">{{ ordered.toLocaleString() }} L</span>
+        <span class="text-texte font-medium">{{ formatQuantity(ordered) }}</span>
         · {{ t('sales.orderForm.remaining') }}
-        <span class="text-texte font-medium"
-          >{{ Number(order.remaining_quantity).toLocaleString() }} L</span
-        >
+        <span class="text-texte font-medium">{{ formatQuantity(order.remaining_quantity) }}</span>
       </p>
     </div>
 
@@ -328,7 +327,7 @@ function badgeVariant(status: TripStatus) {
             <td class="text-texte px-2 py-1.5 font-medium">{{ trip.reference }}</td>
             <td class="px-2 py-1.5">{{ trip.truck_detail?.internal_id }}</td>
             <td class="px-2 py-1.5 text-right">
-              {{ Number(trip.quantity_loaded).toLocaleString() }}
+              {{ formatQuantity(trip.quantity_loaded) }}
             </td>
             <td class="px-2 py-1.5">
               <Badge :variant="badgeVariant(trip.status)">{{ tripStatusLabel(trip.status) }}</Badge>

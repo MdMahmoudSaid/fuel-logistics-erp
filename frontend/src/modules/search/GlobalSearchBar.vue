@@ -7,6 +7,7 @@ import { useI18n } from 'vue-i18n'
 import { useRouter, type RouteLocationRaw } from 'vue-router'
 import { searchGlobal } from './api'
 import type { SearchResults } from './types'
+import { formatQuantity } from '@/utils/currency'
 
 const { t, te } = useI18n()
 const router = useRouter()
@@ -80,7 +81,7 @@ watch(query, (value) => {
             <div v-if="truck.current_trip" class="text-texte-2 text-xs">
               {{ statusLabel('trips.status', truck.current_trip.status) }} ·
               {{ truck.current_trip.reference }} · {{ truck.current_trip.product }} ·
-              {{ Number(truck.current_trip.quantity_loaded).toLocaleString() }} L
+              {{ formatQuantity(truck.current_trip.quantity_loaded) }}
               <span v-if="truck.current_trip.client"> · {{ truck.current_trip.client }}</span>
             </div>
             <div v-else class="text-texte-3 text-xs">{{ t('search.noActiveTrip') }}</div>

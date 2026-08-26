@@ -12,7 +12,14 @@ from rest_framework.test import APIClient
 from apps.accounts.models import Role, User
 from apps.core.models import Product
 from apps.customers.models import Customer
-from apps.finance.models import BankAccount, Expense
+from apps.finance.models import (
+    BankAccount,
+    CashAccount,
+    Expense,
+    Shareholder,
+    ShareholderLoan,
+)
+from apps.finance.services import ShareholderDistributionService, ShareholderWithdrawalService
 from apps.purchasing.models import CessionLetter, SupplierOrder
 from apps.sales.models import Sale
 from apps.suppliers.models import Supplier
@@ -120,6 +127,47 @@ def test_dashboard_summary_filters_by_explicit_date_range():
 
 
 @pytest.mark.django_db
+def test_dashboard_summary_includes_shareholders_summary_section():
+    """Design doc 2026-08-26-benefices-associes-refinement-design.md:
+    dashboard shows a summary only - current profit, total withdrawn,
+    remaining undistributed, open loans - the Benefices page stays the
+    detailed source."""
+    admin_user = _make_admin("DASHSH")
+    a = Shareholder.objects.create(name="Dash A", participation_percent=Decimal("100"))
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=admin_user,
+    )
+    ShareholderDistributionService.validate_distribution(distribution.id, admin_user)
+    share = distribution.shares.get(shareholder=a)
+    cash_account = CashAccount.objects.create(name="Dash Cash", opening_balance=Decimal("100000.00"))
+    ShareholderWithdrawalService.record_withdrawal(
+        shareholder_id=a.id,
+        profit_share_id=share.id,
+        amount=Decimal("30000.00"),
+        date="2026-08-01",
+        cash_account_id=cash_account.id,
+        actor=admin_user,
+    )
+    b = Shareholder.objects.create(name="Dash B", participation_percent=Decimal("0"))
+    ShareholderLoan.objects.create(
+        borrower=b, lender=a, amount=Decimal("5000.00"), date="2026-08-01"
+    )
+
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    response = client.get("/api/dashboard/summary/")
+
+    assert response.status_code == 200, response.data
+    summary = response.data["shareholders_summary"]
+    assert summary["total_withdrawn"] == "30000.00"
+    assert summary["remaining_undistributed"] == "70000.00"
+    assert summary["open_loans_total"] == "5000.00"
+
+
+@pytest.mark.django_db
 def test_dashboard_summary_requires_reports_permission():
     role = _make_role_without_reports("DASH")
     user = User.objects.create_user(phone="+2220000013", pin="1234", role=role)
@@ -152,6 +200,8 @@ def test_dashboard_summary_includes_debts_customer_and_bank_sections():
     assert "rows" in response.data["customer_amounts"]
     assert "total" in response.data["bank_amounts"]
     assert "rows" in response.data["bank_amounts"]
+    assert "total" in response.data["cash_amounts"]
+    assert "rows" in response.data["cash_amounts"]
 
 
 @pytest.mark.django_db
@@ -233,6 +283,26 @@ def test_dashboard_summary_bank_amounts_only_include_active_banks():
 
 
 @pytest.mark.django_db
+def test_dashboard_summary_cash_amounts_only_include_active_cash_accounts():
+    admin_user = _make_admin("DASHCASH")
+    CashAccount.objects.create(
+        name="Active Cash", opening_balance=Decimal("125.00"), is_active=True
+    )
+    CashAccount.objects.create(
+        name="Closed Cash", opening_balance=Decimal("75.00"), is_active=False
+    )
+
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    response = client.get("/api/dashboard/summary/")
+
+    assert response.status_code == 200, response.data
+    cash_names = {row["cash_account"] for row in response.data["cash_amounts"]["rows"]}
+    assert cash_names == {"Active Cash"}
+    assert response.data["cash_amounts"]["total"] == "125.00"
+
+
+@pytest.mark.django_db
 def test_dashboard_summary_debts_customer_and_bank_sections_ignore_date_range():
     admin_user = _make_admin("DASHNODATE")
     Expense.objects.create(
@@ -262,6 +332,7 @@ def test_dashboard_summary_debts_customer_and_bank_sections_ignore_date_range():
     assert filtered.data["debts"] == unfiltered.data["debts"]
     assert filtered.data["customer_amounts"] == unfiltered.data["customer_amounts"]
     assert filtered.data["bank_amounts"] == unfiltered.data["bank_amounts"]
+    assert filtered.data["cash_amounts"] == unfiltered.data["cash_amounts"]
     assert filtered.data["debts"]["customs"] == "1000.00"
     assert filtered.data["bank_amounts"]["total"] == "250.00"
 

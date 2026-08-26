@@ -71,6 +71,10 @@ const NAV_GROUPS: NavGroup[] = [
       // plain finance-gated items, so reusing 'finance' would over-expose
       // this nav item relative to actual permissions.
       { to: 'shareholders', labelKey: 'navigation.shareholders', module: 'shareholders' },
+      // "Benefices" page (design doc 2026-08-26-benefices-associes-
+      // refinement-design.md) - same gate as Actionnaires/Associes, since
+      // it surfaces the same shareholder-facing profit split.
+      { to: 'profit', labelKey: 'navigation.profit', module: 'shareholders' },
     ],
   },
   {

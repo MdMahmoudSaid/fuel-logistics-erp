@@ -4,6 +4,7 @@ defineOptions({ name: 'DashboardVolumeTrendChart' })
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { VolumeDay } from './aggregate'
+import { formatQuantity } from '@/utils/currency'
 
 const props = defineProps<{ days: VolumeDay[] }>()
 
@@ -22,7 +23,7 @@ const maxValue = computed(() => Math.max(1, ...props.days.map((d) => d.value)))
         v-for="day in days"
         :key="day.date"
         class="group flex flex-1 flex-col items-center gap-1.5"
-        :title="`${day.date} — ${Math.round(day.value).toLocaleString()} L`"
+        :title="`${day.date} — ${formatQuantity(Math.round(day.value))}`"
       >
         <div class="flex h-24 w-full items-end">
           <div

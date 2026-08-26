@@ -5,6 +5,7 @@
 import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { createResourceApi } from '@/api/resource'
+import { formatMoney, formatQuantity, formatUnitMoney } from '@/utils/currency'
 import { saleResource } from './api'
 import type { Sale, CustomerBrief, ProductBrief } from './types'
 import MonoValue from '@/components/ui/MonoValue.vue'
@@ -111,16 +112,13 @@ onMounted(async () => {
             <td class="px-3 py-2.5 font-medium">{{ sale.customer_detail?.name }}</td>
             <td class="px-3 py-2.5">{{ sale.product_detail?.name }}</td>
             <td class="px-3 py-2.5 text-right">
-              <MonoValue :value="Number(sale.delivered_quantity).toLocaleString()" />
+              <MonoValue :value="formatQuantity(sale.delivered_quantity)" />
             </td>
             <td class="px-3 py-2.5 text-right">
-              <MonoValue
-                :value="Number(sale.unit_selling_price).toLocaleString()"
-                :unit="sale.currency"
-              />
+              <MonoValue :value="formatUnitMoney(sale.unit_selling_price)" />
             </td>
             <td class="px-3 py-2.5 text-right">
-              <MonoValue :value="Number(sale.subtotal).toLocaleString()" :unit="sale.currency" />
+              <MonoValue :value="formatMoney(sale.subtotal)" />
             </td>
           </tr>
           <tr v-if="!loading && sales.length === 0">

@@ -116,7 +116,7 @@ describe('InvoiceDetail', () => {
     const wrapper = mount(InvoiceDetail, { global: { plugins: [router] } })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('44,850')
+    expect(wrapper.text()).toContain('44 850 L')
     expect(wrapper.find('#total_amount').exists()).toBe(true)
     expect((wrapper.find('#total_amount').element as HTMLInputElement).value).toBe('29152500.00')
     expect(wrapper.find('button#validate-invoice').exists()).toBe(true)

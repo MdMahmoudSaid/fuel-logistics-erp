@@ -22,6 +22,7 @@ import { translateApiError } from '@/i18n/apiErrors'
 import { fetchLossTolerance } from '@/modules/settings/api'
 import Button from '@/components/ui/Button.vue'
 import type { DeliveryControl, DeliveryMethod, TripCostBasis } from './types'
+import { formatQuantity, formatUnitMoney } from '@/utils/currency'
 
 const props = defineProps<{
   tripId: number
@@ -100,6 +101,30 @@ const benefit = computed(() =>
     : null,
 )
 const isLoss = computed(() => benefit.value !== null && benefit.value < 0)
+const isBreakEven = computed(() => benefit.value === 0)
+const resultText = computed(() => {
+  if (benefit.value === null) return ''
+  const amount = formatUnitMoney(Math.abs(benefit.value))
+  if (benefit.value > 0) return t('trips.delivery.profitResult', { amount })
+  if (benefit.value < 0) return t('trips.delivery.lossResult', { amount })
+  return t('trips.delivery.breakEvenResult')
+})
+const componentRows = computed(() => {
+  if (!costBasis.value) return []
+  const components = costBasis.value.unit_components_per_litre
+  return [
+    { label: t('trips.delivery.supplierPrice'), value: Number(components.supplier) },
+    {
+      label: t('trips.delivery.transporterCommission'),
+      value: Number(components.commission_transporter),
+    },
+    { label: t('trips.delivery.transit'), value: Number(components.transit) },
+    { label: t('trips.delivery.border'), value: Number(components.border) },
+    { label: t('trips.delivery.customs'), value: Number(components.customs) },
+    { label: t('trips.delivery.loading'), value: Number(components.loading) },
+    { label: t('trips.delivery.otherFees'), value: Number(components.other) },
+  ]
+})
 
 // Anomaly confirmation is gated on the same "validate" tier the backend
 // Role permission matrix already uses for other frozen/high-stakes actions
@@ -159,7 +184,7 @@ async function onSubmit() {
           t('trips.delivery.loadedQuantity')
         }}</span>
         <p id="loaded_quantity_display" class="text-texte text-sm font-medium">
-          {{ loadedQty.toLocaleString() }} L
+          {{ formatQuantity(loadedQty) }}
         </p>
       </div>
 
@@ -227,28 +252,47 @@ async function onSubmit() {
     >
       <div>
         <span class="text-texte-2">{{ t('trips.delivery.lossEstimate') }}</span>
-        <p class="text-texte font-medium">{{ lossQty.toLocaleString() }} L</p>
+        <p class="text-texte font-medium">{{ formatQuantity(lossQty) }}</p>
       </div>
       <div>
         <span class="text-texte-2">{{ t('trips.delivery.chargeableLossEstimate') }}</span>
-        <p class="text-texte font-medium">{{ chargeableLossQty.toLocaleString() }} L</p>
+        <p class="text-texte font-medium">{{ formatQuantity(chargeableLossQty) }}</p>
       </div>
     </div>
 
     <div
       v-if="unitCost !== null"
-      class="border-ligne grid grid-cols-2 gap-4 rounded-lg border bg-sable p-3 text-sm"
+      class="border-ligne space-y-3 rounded-lg border bg-sable p-3 text-sm"
     >
-      <div>
-        <span class="text-texte-2">{{ t('trips.delivery.costBasis') }}</span>
-        <p class="text-texte font-medium">{{ unitCost.toLocaleString() }} MRU/L</p>
-      </div>
-      <div v-if="benefit !== null">
-        <span class="text-texte-2">{{ t('trips.delivery.benefit') }}</span>
-        <p class="font-medium" :class="isLoss ? 'text-critique' : 'text-livre'">
-          {{ benefit.toLocaleString() }} MRU/L
-        </p>
-      </div>
+      <dl class="divide-ligne divide-y">
+        <div
+          v-for="row in componentRows"
+          :key="row.label"
+          class="flex items-center justify-between py-1.5"
+        >
+          <dt class="text-texte-2">{{ row.label }}</dt>
+          <dd class="text-texte font-medium">{{ formatUnitMoney(row.value) }}</dd>
+        </div>
+        <div class="flex items-center justify-between py-1.5">
+          <dt class="text-texte font-semibold">{{ t('trips.delivery.costBasis') }}</dt>
+          <dd class="text-texte font-semibold">{{ formatUnitMoney(unitCost) }}</dd>
+        </div>
+        <div v-if="hasSellingPriceInput" class="flex items-center justify-between py-1.5">
+          <dt class="text-texte-2">{{ t('trips.delivery.enteredSellingPrice') }}</dt>
+          <dd class="text-texte font-medium">
+            {{ formatUnitMoney(form.unit_selling_price) }}
+          </dd>
+        </div>
+        <div v-if="benefit !== null" class="flex items-center justify-between py-1.5">
+          <dt class="text-texte-2">{{ t('trips.delivery.result') }}</dt>
+          <dd
+            class="font-medium"
+            :class="isLoss ? 'text-critique' : isBreakEven ? 'text-texte' : 'text-livre'"
+          >
+            {{ resultText }}
+          </dd>
+        </div>
+      </dl>
     </div>
 
     <div v-if="isAnomaly" class="border-ecart bg-ecart-tint space-y-2 rounded-lg border p-3">

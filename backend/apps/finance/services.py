@@ -7,13 +7,15 @@
 # rows here - once, so no two API paths can compute a different outstanding
 # balance for the same invoice/customer (guide Section 8.4).
 
+from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 
 from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import F, Sum
 from django.utils import timezone
 
+from apps.documents.models import Document
 from apps.finance.models import (
     BankAccount,
     CashAccount,
@@ -26,9 +28,14 @@ from apps.finance.models import (
     ShareholderProfitShare,
     ShareholderWithdrawal,
     SupplierPayment,
+    TransportPayment,
     TreasuryTransaction,
 )
+from apps.purchasing.models import SupplierOrder
+from apps.reports.queries.margin_report import MarginReportQuery
 from apps.sales.models import Invoice
+from apps.suppliers.models import Supplier
+from apps.transport.models import Transporter
 
 ZERO = Decimal("0.00")
 
@@ -232,6 +239,7 @@ class FinancePostingService:
         reference,
         recorded_by,
         resolve_accounts,
+        note="",
     ) -> TreasuryTransaction | None:
         """Shared idempotency-check + create-under-lock body for every
         record_*_treasury() method below, in the same order the original
@@ -263,6 +271,7 @@ class FinancePostingService:
             amount=amount,
             date=date,
             reference=reference,
+            note=note,
             source_content_type=source_content_type,
             source_object_id=source.id,
             recorded_by=recorded_by,
@@ -309,7 +318,9 @@ class FinancePostingService:
 
     @staticmethod
     @transaction.atomic
-    def record_supplier_payment_treasury(payment: SupplierPayment) -> TreasuryTransaction | None:
+    def record_supplier_payment_treasury(
+        payment: SupplierPayment, *, note: str = ""
+    ) -> TreasuryTransaction | None:
         """Create the one TreasuryTransaction(MONEY_OUT) every SupplierPayment
         must produce (Task 5, client modifications plan). Unlike
         CustomerPayment there is no indirect case for SupplierPayment, and
@@ -348,6 +359,7 @@ class FinancePostingService:
             reference=payment.reference,
             recorded_by=payment.recorded_by,
             resolve_accounts=resolve_accounts,
+            note=note,
         )
 
     @staticmethod
@@ -390,6 +402,530 @@ class FinancePostingService:
             recorded_by=withdrawal.recorded_by,
             resolve_accounts=resolve_accounts,
         )
+
+
+class ControlledDebtPaymentError(ValueError):
+    """Raised when a controlled debt payment request breaks a financial rule."""
+
+
+class ControlledDebtPaymentService:
+    """Bank-only outgoing payments tied to an existing payable debt."""
+
+    SUPPLIER = "supplier"
+    TRANSPORTER = "transporter"
+    CUSTOMS = "customs"
+    TRANSIT = "transit"
+    BORDER = "border"
+    LOADING = "loading"
+    TRIP_OTHER = "trip_other"
+
+    _EXPENSE_CATEGORY_BY_DEBT_TYPE = {
+        CUSTOMS: [Expense.Category.CUSTOMS],
+        TRANSIT: [Expense.Category.IMPORT_INTENTION],
+        BORDER: [Expense.Category.ROAD],
+        LOADING: [Expense.Category.LOADING],
+        TRIP_OTHER: [
+            Expense.Category.UNLOADING,
+            Expense.Category.ADMINISTRATION,
+            Expense.Category.RENT,
+            Expense.Category.SALARY,
+            Expense.Category.REPAIRS,
+            Expense.Category.BANK_CHARGES,
+            Expense.Category.OTHER,
+        ],
+    }
+
+    @classmethod
+    def supported_debt_types(cls):
+        return [
+            cls.SUPPLIER,
+            cls.TRANSPORTER,
+            cls.CUSTOMS,
+            cls.TRANSIT,
+            cls.BORDER,
+            cls.LOADING,
+            cls.TRIP_OTHER,
+        ]
+
+    @classmethod
+    def get_payable_debts(cls, debt_type) -> list[dict]:
+        if debt_type == cls.SUPPLIER:
+            rows = []
+            supplier_ids = (
+                SupplierOrder.objects.exclude(status=SupplierOrder.Status.CANCELLED)
+                .values_list("supplier_id", flat=True)
+                .distinct()
+            )
+            for supplier in Supplier.objects.filter(id__in=supplier_ids).order_by("name", "id"):
+                row = cls.describe_supplier(supplier)
+                if row["remaining_amount"] > ZERO:
+                    rows.append(row)
+            return rows
+
+        if debt_type == cls.TRANSPORTER:
+            rows = []
+            transporter_ids = (
+                TransportPayment.objects.exclude(status=TransportPayment.Status.PAID)
+                .values_list("transporter_id", flat=True)
+                .distinct()
+            )
+            for transporter in Transporter.objects.filter(id__in=transporter_ids).order_by("name", "id"):
+                row = cls.describe_transporter(transporter)
+                if row["remaining_amount"] > ZERO:
+                    rows.append(row)
+            return rows
+
+        categories = cls._EXPENSE_CATEGORY_BY_DEBT_TYPE.get(debt_type)
+        if categories is None:
+            raise ControlledDebtPaymentError("Type de dette inconnu.")
+
+        row = cls.describe_expense_group(debt_type)
+        return [row] if row["remaining_amount"] > ZERO else []
+
+    @classmethod
+    @transaction.atomic
+    def record_payment(
+        cls,
+        *,
+        debt_type,
+        debt_id,
+        bank_account_id,
+        amount,
+        date,
+        reference,
+        actor,
+        note="",
+        attachment=None,
+    ) -> dict:
+        amount = Decimal(str(amount)).quantize(Decimal("0.01"))
+        if amount <= ZERO:
+            raise ControlledDebtPaymentError("Le montant a payer doit etre superieur a zero.")
+
+        bank_account = BankAccount.objects.select_for_update().get(pk=bank_account_id)
+        bank_balance = bank_account.current_balance
+        if amount > bank_balance:
+            raise ControlledDebtPaymentError(
+                "Solde bancaire insuffisant pour effectuer ce paiement."
+            )
+
+        if debt_type == cls.SUPPLIER:
+            result = cls._record_supplier_payments(
+                debt_id=debt_id,
+                bank_account=bank_account,
+                amount=amount,
+                date=date,
+                reference=reference,
+                actor=actor,
+                note=note,
+            )
+        elif debt_type == cls.TRANSPORTER:
+            result = cls._record_transport_payments(
+                debt_id=debt_id,
+                bank_account=bank_account,
+                amount=amount,
+                date=date,
+                reference=reference,
+                actor=actor,
+                note=note,
+            )
+        elif debt_type in cls._EXPENSE_CATEGORY_BY_DEBT_TYPE:
+            result = cls._record_expense_payments(
+                debt_type=debt_type,
+                debt_id=debt_id,
+                bank_account=bank_account,
+                amount=amount,
+                date=date,
+                reference=reference,
+                actor=actor,
+                note=note,
+            )
+        else:
+            raise ControlledDebtPaymentError("Type de dette inconnu.")
+
+        if attachment is not None and result["transactions"]:
+            document = Document.objects.create(
+                file=attachment,
+                document_type="treasury_payment_proof",
+                reference=reference,
+                uploaded_by=actor,
+                content_type=ContentType.objects.get_for_model(TreasuryTransaction),
+                object_id=result["transactions"][0].id,
+            )
+            # Set on each in-memory instance (not just the DB row via a bulk
+            # update) so the response this call returns - which serializes
+            # these same objects - already reflects the attachment.
+            for txn in result["transactions"]:
+                txn.document = document
+                txn.save(update_fields=["document"])
+
+        result["bank_balance_before"] = bank_balance
+        result["bank_balance_after"] = bank_balance - amount
+        return result
+
+    @classmethod
+    def _record_supplier_payments(
+        cls, *, debt_id, bank_account, amount, date, reference, actor, note=""
+    ):
+        supplier = Supplier.objects.select_for_update().get(pk=debt_id)
+        debt = cls.describe_supplier(supplier)
+        cls._validate_remaining(amount, debt["remaining_amount"])
+
+        remaining_to_allocate = amount
+        payments = []
+        transactions = []
+        for order in cls._open_supplier_orders(supplier, for_update=True):
+            if remaining_to_allocate <= ZERO:
+                break
+            line = cls.describe_supplier_order(order)
+            line_amount = min(remaining_to_allocate, line["remaining_amount"])
+            if line_amount <= ZERO:
+                continue
+            payment = SupplierPayment.objects.create(
+                supplier=supplier,
+                supplier_order=order,
+                amount=line_amount,
+                payment_date=date,
+                method=SupplierPayment.Method.BANK_TRANSFER,
+                bank_account=bank_account,
+                is_advance=False,
+                reference=reference,
+                recorded_by=actor,
+            )
+            transaction_obj = FinancePostingService.record_supplier_payment_treasury(
+                payment, note=note
+            )
+            payments.append(payment)
+            if transaction_obj is not None:
+                transactions.append(transaction_obj)
+            remaining_to_allocate -= line_amount
+
+        if remaining_to_allocate > ZERO:
+            raise ControlledDebtPaymentError("Aucune dette fournisseur ouverte suffisante.")
+
+        return {
+            "transaction": transactions[0] if transactions else None,
+            "transactions": transactions,
+            "sources": payments,
+            "debt": cls.describe_supplier(supplier),
+            "remaining_after": debt["remaining_amount"] - amount,
+        }
+
+    @classmethod
+    def _record_transport_payments(
+        cls, *, debt_id, bank_account, amount, date, reference, actor, note=""
+    ):
+        transporter = Transporter.objects.select_for_update().get(pk=debt_id)
+        debt = cls.describe_transporter(transporter)
+        cls._validate_remaining(amount, debt["remaining_amount"])
+
+        remaining_to_allocate = amount
+        transactions = []
+        for payment in cls._open_transport_payments(transporter, for_update=True):
+            if remaining_to_allocate <= ZERO:
+                break
+            line = cls.describe_transport_payment(payment)
+            line_amount = min(remaining_to_allocate, line["remaining_amount"])
+            if line_amount <= ZERO:
+                continue
+            transaction_obj = cls._create_debt_transaction(
+                debt=payment,
+                bank_account=bank_account,
+                amount=line_amount,
+                date=date,
+                reference=reference,
+                actor=actor,
+                note=note,
+            )
+            transactions.append(transaction_obj)
+            cls._sync_transport_status(payment)
+            remaining_to_allocate -= line_amount
+
+        if remaining_to_allocate > ZERO:
+            raise ControlledDebtPaymentError("Aucune dette transporteur ouverte suffisante.")
+
+        return {
+            "transaction": transactions[0] if transactions else None,
+            "transactions": transactions,
+            "debt": cls.describe_transporter(transporter),
+            "remaining_after": debt["remaining_amount"] - amount,
+        }
+
+    @classmethod
+    def _record_expense_payments(
+        cls, *, debt_type, debt_id, bank_account, amount, date, reference, actor, note=""
+    ):
+        if debt_id != 0:
+            raise ControlledDebtPaymentError("Cette dette doit etre payee au niveau du groupe.")
+        debt = cls.describe_expense_group(debt_type)
+        cls._validate_remaining(amount, debt["remaining_amount"])
+
+        remaining_to_allocate = amount
+        transactions = []
+        for expense in cls._open_expenses(debt_type, for_update=True):
+            if remaining_to_allocate <= ZERO:
+                break
+            line = cls.describe_expense(expense)
+            line_amount = min(remaining_to_allocate, line["remaining_amount"])
+            if line_amount <= ZERO:
+                continue
+            transaction_obj = cls._create_debt_transaction(
+                debt=expense,
+                bank_account=bank_account,
+                amount=line_amount,
+                date=date,
+                reference=reference,
+                actor=actor,
+                note=note,
+            )
+            transactions.append(transaction_obj)
+            cls._sync_expense_status(expense)
+            remaining_to_allocate -= line_amount
+
+        if remaining_to_allocate > ZERO:
+            raise ControlledDebtPaymentError("Aucune dette de frais ouverte suffisante.")
+
+        return {
+            "transaction": transactions[0] if transactions else None,
+            "transactions": transactions,
+            "debt": cls.describe_expense_group(debt_type),
+            "remaining_after": debt["remaining_amount"] - amount,
+        }
+
+    @staticmethod
+    def _validate_remaining(amount, remaining):
+        if amount > remaining:
+            raise ControlledDebtPaymentError(
+                f"Le montant a payer ({amount}) depasse le reste a payer ({remaining})."
+            )
+
+    @staticmethod
+    def _create_debt_transaction(*, debt, bank_account, amount, date, reference, actor, note=""):
+        return TreasuryTransaction.objects.create(
+            bank_account=bank_account,
+            type=TreasuryTransaction.Type.MONEY_OUT,
+            amount=amount,
+            note=note,
+            date=date,
+            reference=reference,
+            source_content_type=ContentType.objects.get_for_model(debt.__class__),
+            source_object_id=debt.id,
+            recorded_by=actor,
+        )
+
+    @staticmethod
+    def _paid_for_source(model, object_id) -> Decimal:
+        content_type = ContentType.objects.get_for_model(model)
+        return (
+            TreasuryTransaction.objects.filter(
+                source_content_type=content_type,
+                source_object_id=object_id,
+                type=TreasuryTransaction.Type.MONEY_OUT,
+            ).aggregate(total=Sum("amount"))["total"]
+            or ZERO
+        )
+
+    @staticmethod
+    def _supplier_order_paid(order, *, override=None) -> Decimal:
+        if override is not None:
+            return override
+        return (
+            SupplierPayment.objects.filter(
+                supplier_order=order,
+                is_advance=False,
+            ).aggregate(total=Sum("amount"))["total"]
+            or ZERO
+        )
+
+    @classmethod
+    def _open_supplier_orders(cls, supplier, *, for_update=False):
+        queryset = (
+            SupplierOrder.objects.filter(supplier=supplier)
+            .exclude(status=SupplierOrder.Status.CANCELLED)
+            .select_related("supplier")
+            .order_by("purchase_date", "id")
+        )
+        if for_update:
+            queryset = queryset.select_for_update()
+        return [
+            order
+            for order in queryset
+            if cls.describe_supplier_order(order)["remaining_amount"] > ZERO
+        ]
+
+    @classmethod
+    def _open_transport_payments(cls, transporter, *, for_update=False):
+        queryset = (
+            TransportPayment.objects.filter(transporter=transporter)
+            .exclude(status=TransportPayment.Status.PAID)
+            .select_related("trip", "transporter")
+            .order_by("created_at", "id")
+        )
+        if for_update:
+            queryset = queryset.select_for_update()
+        return [
+            payment
+            for payment in queryset
+            if cls.describe_transport_payment(payment)["remaining_amount"] > ZERO
+        ]
+
+    @classmethod
+    def _open_expenses(cls, debt_type, *, for_update=False):
+        categories = cls._EXPENSE_CATEGORY_BY_DEBT_TYPE[debt_type]
+        queryset = (
+            Expense.objects.filter(
+                category__in=categories,
+                status__in=[Expense.Status.UNPAID, Expense.Status.PARTIALLY_PAID],
+                paid_by_customer_directly=False,
+            )
+            .prefetch_related("allocations")
+            .order_by("date", "id")
+        )
+        if for_update:
+            queryset = queryset.select_for_update()
+        return [
+            expense
+            for expense in queryset
+            if cls.describe_expense(expense)["remaining_amount"] > ZERO
+        ]
+
+    @classmethod
+    def describe_supplier(cls, supplier) -> dict:
+        lines = [cls.describe_supplier_order(order) for order in cls._open_supplier_orders(supplier)]
+        total = sum((line["total_amount"] for line in lines), ZERO)
+        paid = sum((line["paid_amount"] for line in lines), ZERO)
+        return {
+            "id": supplier.id,
+            "debt_type": cls.SUPPLIER,
+            "label": supplier.name,
+            "total_amount": total,
+            "paid_amount": paid,
+            "remaining_amount": total - paid,
+            "status": "PARTIALLY_PAID" if paid > ZERO else "UNPAID",
+            "lines": lines,
+        }
+
+    @classmethod
+    def describe_supplier_order(cls, order, *, paid_amount=None) -> dict:
+        paid = cls._supplier_order_paid(order, override=paid_amount)
+        return {
+            "id": order.id,
+            "debt_type": cls.SUPPLIER,
+            "label": f"{order.reference} - {order.supplier.name}",
+            "total_amount": order.total_amount,
+            "paid_amount": paid,
+            "remaining_amount": order.total_amount - paid,
+            "status": order.status,
+        }
+
+    @classmethod
+    def describe_transporter(cls, transporter) -> dict:
+        lines = [
+            cls.describe_transport_payment(payment)
+            for payment in cls._open_transport_payments(transporter)
+        ]
+        total = sum((line["total_amount"] for line in lines), ZERO)
+        paid = sum((line["paid_amount"] for line in lines), ZERO)
+        return {
+            "id": transporter.id,
+            "debt_type": cls.TRANSPORTER,
+            "label": transporter.name,
+            "total_amount": total,
+            "paid_amount": paid,
+            "remaining_amount": total - paid,
+            "status": "PARTIALLY_PAID" if paid > ZERO else "UNPAID",
+            "lines": lines,
+        }
+
+    @classmethod
+    def describe_transport_payment(cls, payment) -> dict:
+        paid = cls._paid_for_source(TransportPayment, payment.id)
+        return {
+            "id": payment.id,
+            "debt_type": cls.TRANSPORTER,
+            "label": f"{payment.trip.reference} - {payment.transporter.name}",
+            "total_amount": payment.net_amount,
+            "paid_amount": paid,
+            "remaining_amount": payment.net_amount - paid,
+            "status": payment.status,
+        }
+
+    @classmethod
+    def describe_expense_group(cls, debt_type) -> dict:
+        lines = [cls.describe_expense(expense) for expense in cls._open_expenses(debt_type)]
+        total = sum((line["total_amount"] for line in lines), ZERO)
+        paid = sum((line["paid_amount"] for line in lines), ZERO)
+        return {
+            "id": 0,
+            "debt_type": debt_type,
+            "label": cls._expense_group_label(debt_type),
+            "total_amount": total,
+            "paid_amount": paid,
+            "remaining_amount": total - paid,
+            "status": "PARTIALLY_PAID" if paid > ZERO else "UNPAID",
+            "lines": lines,
+        }
+
+    @classmethod
+    def describe_expense(cls, expense) -> dict:
+        paid = cls._paid_for_source(Expense, expense.id)
+        trip_labels = [
+            allocation.content_object.reference
+            for allocation in expense.allocations.all()
+            if getattr(allocation.content_object, "reference", None)
+        ]
+        label_suffix = f" - {', '.join(trip_labels)}" if trip_labels else ""
+        return {
+            "id": expense.id,
+            "debt_type": cls._debt_type_for_expense(expense),
+            "label": f"{expense.get_category_display()} {expense.date}{label_suffix}",
+            "total_amount": expense.amount,
+            "paid_amount": paid,
+            "remaining_amount": expense.amount - paid,
+            "status": expense.status,
+        }
+
+    @classmethod
+    def _expense_group_label(cls, debt_type):
+        return {
+            cls.CUSTOMS: "Douane",
+            cls.TRANSIT: "Transit",
+            cls.BORDER: "Frontiere",
+            cls.LOADING: "Chargement",
+            cls.TRIP_OTHER: "Autres frais du trajet",
+        }.get(debt_type, debt_type)
+
+    @classmethod
+    def _debt_type_for_expense(cls, expense):
+        for debt_type, categories in cls._EXPENSE_CATEGORY_BY_DEBT_TYPE.items():
+            if expense.category in categories:
+                return debt_type
+        return cls.TRIP_OTHER
+
+    @classmethod
+    def _sync_transport_status(cls, payment):
+        remaining = cls.describe_transport_payment(payment)["remaining_amount"]
+        if remaining <= ZERO:
+            status = TransportPayment.Status.PAID
+        elif remaining < payment.net_amount:
+            status = TransportPayment.Status.PARTIALLY_PAID
+        else:
+            status = payment.status
+        if status != payment.status:
+            payment.status = status
+            payment.save(update_fields=["status", "updated_at"])
+
+    @classmethod
+    def _sync_expense_status(cls, expense):
+        remaining = cls.describe_expense(expense)["remaining_amount"]
+        if remaining <= ZERO:
+            status = Expense.Status.PAID
+        elif remaining < expense.amount:
+            status = Expense.Status.PARTIALLY_PAID
+        else:
+            status = expense.status
+        if status != expense.status:
+            expense.status = status
+            expense.save(update_fields=["status", "updated_at"])
 
 
 class TreasuryTransferError(ValueError):
@@ -592,6 +1128,25 @@ class ShareholderWithdrawalService:
         notes="",
     ) -> ShareholderWithdrawal:
         shareholder = Shareholder.objects.select_for_update().get(pk=shareholder_id)
+        amount_decimal = Decimal(str(amount))
+
+        # Unconditional balance checks (design doc
+        # 2026-08-26-benefices-associes-refinement-design.md, Fix 1): before
+        # this, a withdrawal without a profit_share_id skipped every
+        # balance check, and even a profit_share-tied withdrawal never
+        # checked the destination account - a shareholder could withdraw an
+        # arbitrary amount regardless of what they were actually owed or
+        # what the bank/cash account actually held.
+        available_balance = ShareholderLedgerService.get_available_balance(shareholder_id)
+        if amount_decimal > available_balance:
+            raise ShareholderWithdrawalError("Solde associe insuffisant.")
+
+        if bank_account_id is not None:
+            account = BankAccount.objects.select_for_update().get(pk=bank_account_id)
+        else:
+            account = CashAccount.objects.select_for_update().get(pk=cash_account_id)
+        if amount_decimal > account.current_balance:
+            raise ShareholderWithdrawalError("Solde bancaire insuffisant.")
 
         profit_share = None
         if profit_share_id is not None:
@@ -603,7 +1158,6 @@ class ShareholderWithdrawalService:
                     "Cette part de benefice n'appartient pas a cet actionnaire."
                 )
             remaining_due = profit_share.remaining_due
-            amount_decimal = Decimal(str(amount))
             if amount_decimal > remaining_due:
                 raise ShareholderWithdrawalError(
                     f"Le montant du retrait ({amount_decimal}) depasse le reste "
@@ -630,13 +1184,16 @@ class ShareholderWithdrawalService:
 
 
 class ShareholderLoanError(ValueError):
-    """Raised when a repayment increment is invalid or would push
+    """Raised when a loan's principal exceeds what the lender has
+    available, or a repayment increment is invalid or would push
     amount_repaid past the loan's principal."""
 
 
 class ShareholderLoanService:
-    """Owns ShareholderLoan repayment recording (Task 7, client
-    modifications plan - fix for the loan-repayment lost-update race).
+    """Owns ShareholderLoan creation and repayment recording (Task 7,
+    client modifications plan - fix for the loan-repayment lost-update
+    race; design doc 2026-08-26-benefices-associes-refinement-design.md
+    Fix 2 for creation).
 
     A client PATCHing an absolute `amount_repaid` it computed from its own
     stale read (current + entered increment) can silently overwrite a
@@ -648,6 +1205,32 @@ class ShareholderLoanService:
     reason: two concurrent requests must not be able to jointly clobber
     each other's effect on the same row.
     """
+
+    @staticmethod
+    @transaction.atomic
+    def create_loan(*, borrower_id, lender_id, amount, date, notes="") -> ShareholderLoan:
+        """Create an advance/debt between two associates. Deliberately
+        creates only the ShareholderLoan row - money moving between
+        shareholders never touches company treasury (the model docstring's
+        invariant), so unlike ShareholderWithdrawalService.record_withdrawal
+        this never calls FinancePostingService and never creates a
+        TreasuryTransaction. The lender is row-locked and checked against
+        ShareholderLedgerService.get_available_balance so a loan can never
+        commit the lender past what they actually have available."""
+        lender = Shareholder.objects.select_for_update().get(pk=lender_id)
+        amount_decimal = Decimal(str(amount))
+
+        available_balance = ShareholderLedgerService.get_available_balance(lender.id)
+        if amount_decimal > available_balance:
+            raise ShareholderLoanError("Solde disponible du preteur insuffisant.")
+
+        return ShareholderLoan.objects.create(
+            borrower_id=borrower_id,
+            lender_id=lender.id,
+            amount=amount_decimal,
+            date=date,
+            notes=notes,
+        )
 
     @staticmethod
     @transaction.atomic
@@ -679,6 +1262,44 @@ class ShareholderLedgerService:
     withdrawal history, in one place so the API endpoint and any future
     report compute the same numbers (same rationale as
     PaymentAllocationService.get_customer_outstanding)."""
+
+    @staticmethod
+    def get_available_balance(shareholder_id) -> Decimal:
+        """Single source of truth for how much a shareholder can withdraw
+        or lend out right now (design doc
+        2026-08-26-benefices-associes-refinement-design.md):
+
+            available_balance =
+                profit_share_remaining_due
+              + loans_given_remaining
+              - loans_received_remaining
+
+        Lending money to another associate is a receivable - it stays this
+        shareholder's equity, just claimed via an IOU instead of sitting in
+        remaining_due, so it *adds* to the balance. Receiving an advance is
+        a liability that must be repaid, so it *subtracts*. Called by both
+        ShareholderWithdrawalService.record_withdrawal and
+        ShareholderLoanService.create_loan so a withdrawal and a loan can
+        never be validated against two different numbers.
+        """
+        shares_remaining = (
+            ShareholderProfitShare.objects.filter(shareholder_id=shareholder_id).aggregate(
+                total=Sum(F("amount_due") - F("amount_withdrawn"))
+            )["total"]
+            or ZERO
+        )
+        loans_given_remaining = sum(
+            (loan.remaining_amount for loan in ShareholderLoan.objects.filter(lender_id=shareholder_id)),
+            ZERO,
+        )
+        loans_received_remaining = sum(
+            (
+                loan.remaining_amount
+                for loan in ShareholderLoan.objects.filter(borrower_id=shareholder_id)
+            ),
+            ZERO,
+        )
+        return shares_remaining + loans_given_remaining - loans_received_remaining
 
     @staticmethod
     def get_shareholder_summary(shareholder_id) -> dict:
@@ -737,6 +1358,7 @@ class ShareholderLedgerService:
             "total_amount_due": total_amount_due,
             "total_withdrawn": total_withdrawn,
             "remaining_due": remaining_due,
+            "available_balance": ShareholderLedgerService.get_available_balance(shareholder_id),
             "shares": [
                 {
                     "id": s.id,
@@ -765,4 +1387,50 @@ class ShareholderLedgerService:
                 }
                 for w in withdrawals
             ],
+        }
+
+
+class ShareholderProfitPreviewService:
+    """Read-only, indicative profit preview (design doc
+    2026-08-26-benefices-associes-refinement-design.md) - never stored,
+    never creates a ShareholderProfitDistribution/ShareholderProfitShare,
+    and never feeds into ShareholderLedgerService.get_available_balance.
+    Delegates every cost/margin number to the existing profit engine
+    (MarginReportQuery -> TripProfitService) instead of recomputing margin
+    here, same rule Task 8's margin report already follows.
+    """
+
+    @staticmethod
+    def get_preview(date_from=None, date_to=None) -> dict:
+        if date_from is None and date_to is None:
+            last_validated = (
+                ShareholderProfitDistribution.objects.filter(
+                    status=ShareholderProfitDistribution.Status.VALIDATED
+                )
+                .order_by("-period_end")
+                .first()
+            )
+            if last_validated is not None:
+                date_from = last_validated.period_end + timedelta(days=1)
+
+        rows = MarginReportQuery.run(date_from=date_from, date_to=date_to)
+        current_profit = sum((row["current_margin"] for row in rows), ZERO)
+
+        shareholders = [
+            {
+                "shareholder_id": shareholder.id,
+                "name": shareholder.name,
+                "participation_percent": shareholder.participation_percent,
+                "indicative_share": (
+                    current_profit * shareholder.participation_percent / Decimal("100")
+                ).quantize(Decimal("0.01")),
+            }
+            for shareholder in Shareholder.objects.filter(is_active=True)
+        ]
+
+        return {
+            "period_start": date_from,
+            "period_end": date_to,
+            "current_profit": current_profit,
+            "shareholders": shareholders,
         }

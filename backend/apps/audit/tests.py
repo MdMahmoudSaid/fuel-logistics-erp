@@ -510,3 +510,90 @@ def test_creating_a_delivery_control_writes_a_create_audit_log_and_cannot_be_har
     assert _audit_logs_for(control).filter(action=AuditLog.Action.CREATE).exists()
     with pytest.raises(HardDeleteBlocked):
         control.delete()
+
+
+# ---------------------------------------------------------------------------
+# Human-readable summary (docs/edit.md UI pass 2026-08-26, Journal d'audit) -
+# describe() resolves FK ids captured in a snapshot to a readable module,
+# reference and related party so the frontend never has to show raw
+# `finance.treasurytransaction` / object ids.
+# ---------------------------------------------------------------------------
+
+from apps.audit.labels import describe  # noqa: E402
+
+
+@pytest.mark.django_db
+def test_describe_supplier_order_resolves_module_reference_and_supplier_name():
+    _admin_user, order = _make_supplier_order("DESCRIBE-SO")
+    log = _audit_logs_for(order).latest("id")
+
+    summary = describe(log)
+
+    assert summary["module_key"] == "supplier_order"
+    assert summary["reference"] == order.reference
+    assert summary["related_party"] == order.supplier.name
+
+
+@pytest.mark.django_db
+def test_describe_supplier_payment_resolves_supplier_name_and_account():
+    admin_user = _make_admin("DESCRIBE-SP")
+    supplier = Supplier.objects.create(name="Supplier DESCRIBE-SP", country="Senegal")
+    cash_account = CashAccount.objects.create(name="Main Cash DESCRIBE-SP")
+    payment = SupplierPayment.objects.create(
+        supplier=supplier,
+        amount=Decimal("100000.00"),
+        payment_date="2026-08-18",
+        method=SupplierPayment.Method.CASH,
+        cash_account=cash_account,
+        recorded_by=admin_user,
+    )
+    log = _audit_logs_for(payment).latest("id")
+
+    summary = describe(log)
+
+    assert summary["module_key"] == "supplier_payment"
+    assert summary["related_party"] == "Supplier DESCRIBE-SP"
+    assert summary["account_label"] == "Main Cash DESCRIBE-SP"
+    assert summary["amount"] == "100000.00"
+
+
+@pytest.mark.django_db
+def test_describe_treasury_transaction_resolves_account_and_amount():
+    admin_user = _make_admin("DESCRIBE-TT")
+    cash_account = CashAccount.objects.create(name="Main Cash DESCRIBE-TT")
+    txn = TreasuryTransaction.objects.create(
+        cash_account=cash_account,
+        type=TreasuryTransaction.Type.MONEY_IN,
+        amount=Decimal("22500000.00"),
+        date="2026-08-18",
+        recorded_by=admin_user,
+    )
+    log = _audit_logs_for(txn).latest("id")
+
+    summary = describe(log)
+
+    assert summary["module_key"] == "treasury"
+    assert summary["account_label"] == "Main Cash DESCRIBE-TT"
+    assert summary["amount"] == "22500000.00"
+
+
+@pytest.mark.django_db
+def test_describe_falls_back_gracefully_when_related_row_is_gone():
+    """A snapshot always survives even if the FK'd row it referenced is
+    later deleted - describe() must degrade to no label, never raise."""
+    admin_user, order = _make_supplier_order("DESCRIBE-GONE")
+    original_supplier = order.supplier
+    replacement_supplier = Supplier.objects.create(
+        name="Supplier DESCRIBE-GONE-2", country="Senegal"
+    )
+    # Move the live row off the original supplier so it's no longer
+    # PROTECTed, then delete it - only the CREATE log still points to it.
+    order.supplier = replacement_supplier
+    order.save(user=admin_user)
+    create_log = _audit_logs_for(order).filter(action=AuditLog.Action.CREATE).latest("id")
+    original_supplier.delete()
+
+    summary = describe(create_log)
+
+    assert summary["module_key"] == "supplier_order"
+    assert summary["related_party"] is None

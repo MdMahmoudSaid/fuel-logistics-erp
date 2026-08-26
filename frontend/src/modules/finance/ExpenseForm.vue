@@ -3,7 +3,7 @@
 // lines, and an "Paid directly by customer" switch that routes the
 // submission through IndirectSettlementService instead of a plain Expense
 // create (guide Section 1.6/8.9: never creates a TreasuryTransaction).
-import { ref, onMounted, watch } from 'vue'
+import { computed, ref, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { createResourceApi } from '@/api/resource'
 import { translateApiError } from '@/i18n/apiErrors'
@@ -16,6 +16,7 @@ import {
 import { EXPENSE_CATEGORIES } from './types'
 import Button from '@/components/ui/Button.vue'
 import EntityAllocationPicker, { type AllocationDraft } from './EntityAllocationPicker.vue'
+import { formatMoney, formatQuantity, formatUnitMoney } from '@/utils/currency'
 import type {
   AllocatableKind,
   AllocatableTypeMap,
@@ -33,14 +34,18 @@ import type {
 // from any one of them, then add one line per additional trip).
 const props = defineProps<{
   presetAllocation?: { kind: AllocatableKind; objectId: number; label: string }
+  initialCategory?: ExpenseCategory
+  initialCalculationMethod?: ExpenseCalculationMethod
+  perLitreQuantity?: string
+  title?: string
 }>()
 const emit = defineEmits<{ success: [customerId: number | null]; cancel: [] }>()
 const { t } = useI18n()
 
 const form = ref({
-  category: 'other' as ExpenseCategory,
+  category: props.initialCategory ?? ('other' as ExpenseCategory),
   amount: '',
-  calculation_method: 'MANUAL' as ExpenseCalculationMethod,
+  calculation_method: props.initialCalculationMethod ?? ('MANUAL' as ExpenseCalculationMethod),
   date: new Date().toISOString().slice(0, 10),
   notes: '',
 })
@@ -103,6 +108,16 @@ async function onCustomerChange() {
 
 const saving = ref(false)
 const error = ref('')
+const perLitreMode = computed(
+  () => form.value.calculation_method === 'PER_LITRE' && Boolean(props.perLitreQuantity),
+)
+const amountTotal = computed(() => {
+  if (!perLitreMode.value) return form.value.amount
+  const quantity = Number(props.perLitreQuantity)
+  const amount = Number(form.value.amount)
+  if (!quantity || !amount) return form.value.amount
+  return (quantity * amount).toFixed(2)
+})
 
 async function onSubmit() {
   saving.value = true
@@ -113,7 +128,7 @@ async function onSubmit() {
         customer: Number(indirectForm.value.customer),
         invoice: indirectForm.value.invoice ? Number(indirectForm.value.invoice) : null,
         category: form.value.category,
-        amount: form.value.amount,
+        amount: amountTotal.value,
         calculation_method: form.value.calculation_method,
         date: form.value.date,
         notes: form.value.notes,
@@ -127,12 +142,12 @@ async function onSubmit() {
       .map((line) => ({
         content_type: allocatableTypes.value[line.kind as AllocatableKind] ?? null,
         object_id: line.objectId,
-        allocated_amount: line.allocatedAmount,
+        allocated_amount: perLitreMode.value ? amountTotal.value : line.allocatedAmount,
       }))
 
     await expenseResource.create({
       category: form.value.category,
-      amount: form.value.amount,
+      amount: amountTotal.value,
       calculation_method: form.value.calculation_method,
       date: form.value.date,
       notes: form.value.notes,
@@ -157,6 +172,9 @@ async function onSubmit() {
       @submit.prevent="onSubmit"
     >
       <div class="grid grid-cols-2 gap-4">
+        <h2 v-if="title" class="font-display col-span-2 text-sm font-semibold uppercase">
+          {{ title }}
+        </h2>
         <div class="space-y-1.5">
           <label class="text-texte-2 text-sm font-medium" for="category">{{
             t('finance.expense.category')
@@ -192,7 +210,7 @@ async function onSubmit() {
 
         <div class="space-y-1.5">
           <label class="text-texte-2 text-sm font-medium" for="amount">{{
-            t('finance.expense.amount')
+            perLitreMode ? t('finance.expense.amountPerLitre') : t('finance.expense.amount')
           }}</label>
           <input
             id="amount"
@@ -275,7 +293,7 @@ async function onSubmit() {
               <option value="">{{ t('finance.expense.unallocatedCredit') }}</option>
               <option v-for="inv in customerInvoices" :key="inv.id" :value="inv.id">
                 {{ inv.invoice_number }} — outstanding
-                {{ Number(inv.outstanding).toLocaleString() }}
+                {{ formatMoney(inv.outstanding) }}
               </option>
             </select>
           </div>
@@ -283,11 +301,26 @@ async function onSubmit() {
       </template>
 
       <div v-else class="border-ligne space-y-2 border-t pt-4">
+        <div
+          v-if="perLitreMode"
+          class="border-ligne flex items-center justify-between rounded-lg border bg-fond px-3.5 py-2.5 text-sm"
+        >
+          <span class="text-texte-2">{{ t('finance.expense.perLitreCalculation') }}</span>
+          <span class="text-texte font-medium">
+            {{ formatQuantity(perLitreQuantity ?? 0) }} × {{ formatUnitMoney(form.amount || 0) }} =
+            {{ formatMoney(amountTotal || 0) }}
+          </span>
+        </div>
         <div class="flex items-center justify-between">
           <h2 class="font-display text-sm font-semibold uppercase">
             {{ t('finance.expense.allocationOptional') }}
           </h2>
-          <button type="button" class="text-texte-2 hover:text-texte text-sm" @click="addLine">
+          <button
+            v-if="!perLitreMode"
+            type="button"
+            class="text-texte-2 hover:text-texte text-sm"
+            @click="addLine"
+          >
             {{ t('finance.expense.addLine') }}
           </button>
         </div>

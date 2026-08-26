@@ -12,6 +12,7 @@ import { tripResource } from './api'
 import type { Trip, TruckBrief, TransporterBrief, DriverBrief, CustomerBrief } from './types'
 import { translateApiError, extractFieldErrors } from '@/i18n/apiErrors'
 import Button from '@/components/ui/Button.vue'
+import { formatQuantity } from '@/utils/currency'
 
 const route = useRoute()
 const router = useRouter()
@@ -153,8 +154,8 @@ const exceedsCapacity = computed(
 )
 const capacityErrorMessage = computed(() =>
   t('trips.newForm.exceedsCapacity', {
-    quantity: requested.value.toLocaleString(),
-    capacity: truckCapacity.value.toLocaleString(),
+    quantity: formatQuantity(requested.value),
+    capacity: formatQuantity(truckCapacity.value),
   }),
 )
 
@@ -230,7 +231,7 @@ async function onSubmit() {
         >
           <option value="" disabled>{{ t('trips.newForm.selectCessionLetter') }}</option>
           <option v-for="c in cessions" :key="c.id" :value="c.id">
-            {{ c.reference }} ({{ Number(c.remaining_quantity).toLocaleString() }}
+            {{ c.reference }} ({{ formatQuantity(c.remaining_quantity) }}
             {{ t('purchasing.cessionForm.remainingSuffix') }})
           </option>
         </select>
@@ -241,10 +242,10 @@ async function onSubmit() {
 
       <div v-if="selectedCession" class="border-ligne space-y-2 rounded-lg border bg-sable p-3">
         <div class="text-texte-2 flex justify-between text-xs">
-          <span>{{ t('trips.newForm.cessionAuthorized') }} {{ cessionAuthorized.toLocaleString() }} L</span>
-          <span>{{ t('trips.newForm.remaining') }} {{ cessionRemaining.toLocaleString() }} L</span>
+          <span>{{ t('trips.newForm.cessionAuthorized') }} {{ formatQuantity(cessionAuthorized) }}</span>
+          <span>{{ t('trips.newForm.remaining') }} {{ formatQuantity(cessionRemaining) }}</span>
           <span :class="isOverLimit ? 'text-critique font-semibold' : ''">
-            {{ t('trips.newForm.requested') }} {{ requested.toLocaleString() }} L
+            {{ t('trips.newForm.requested') }} {{ formatQuantity(requested) }}
           </span>
         </div>
         <div class="bg-ligne flex h-3 w-full overflow-hidden rounded-full">
@@ -395,7 +396,7 @@ async function onSubmit() {
           <option value="">{{ t('trips.newForm.noCustomerOrder') }}</option>
           <option v-for="o in customerOrders" :key="o.id" :value="o.id">
             #{{ o.id }} — {{ o.customer_detail?.name }} ({{
-              Number(o.remaining_quantity).toLocaleString()
+              formatQuantity(o.remaining_quantity)
             }}
             {{ t('purchasing.cessionForm.remainingSuffix') }})
           </option>

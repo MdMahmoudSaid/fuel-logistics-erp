@@ -61,11 +61,16 @@ function openEdit(row: Record<string, unknown>) {
 }
 
 async function onSubmit() {
+  const payload = Object.fromEntries(
+    Object.entries(formValue.value).filter(
+      ([key]) => !props.fields.some((field) => field.key === key && field.readOnly),
+    ),
+  )
   try {
     if (editingId.value === null) {
-      await props.resource.create(formValue.value)
+      await props.resource.create(payload)
     } else {
-      await props.resource.update(editingId.value, formValue.value)
+      await props.resource.update(editingId.value, payload)
     }
     showForm.value = false
     await load()

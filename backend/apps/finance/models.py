@@ -530,6 +530,7 @@ class TreasuryTransaction(AuditableModel, TimeStampedModel):
     amount = models.DecimalField(max_digits=16, decimal_places=2)
     date = models.DateField()
     reference = models.CharField(max_length=100, blank=True)
+    note = models.TextField(blank=True)
     source_content_type = models.ForeignKey(
         ContentType, on_delete=models.CASCADE, null=True, blank=True, related_name="+"
     )

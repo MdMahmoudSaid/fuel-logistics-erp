@@ -12,6 +12,7 @@ import { useI18n } from 'vue-i18n'
 import { createResourceApi } from '@/api/resource'
 import {
   fetchShareholderLedger,
+  fetchShareholderProfitPreview,
   recordShareholderLoanRepayment,
   shareholderDistributionResource,
   shareholderLoanResource,
@@ -24,6 +25,7 @@ import type {
   ShareholderLedger,
   ShareholderLoan,
   ShareholderProfitDistribution,
+  ShareholderProfitPreview,
   ShareholderWithdrawal,
 } from './types'
 import Badge from '@/components/ui/Badge.vue'
@@ -32,6 +34,7 @@ import Card from '@/components/ui/Card.vue'
 import MonoValue from '@/components/ui/MonoValue.vue'
 import EntityForm from '@/components/master-data/EntityForm.vue'
 import type { FieldSchema } from '@/components/master-data/types'
+import { formatMoney } from '@/utils/currency'
 
 const { t } = useI18n()
 
@@ -68,8 +71,31 @@ onMounted(async () => {
     loadDistributions(),
     loadLoans(),
     loadWithdrawals(),
+    loadPreview(),
   ])
 })
+
+// --- Live profit preview (read-only, indicative) ----------------------------
+// backend/apps/finance/services.py ShareholderProfitPreviewService - never
+// stored, never gates a withdrawal. Shown as a clearly-labelled banner so
+// it can never be mistaken for a validated ShareholderProfitDistribution,
+// and used to pre-fill (still-editable) the distribution form below.
+
+const preview = ref<ShareholderProfitPreview | null>(null)
+
+async function loadPreview() {
+  try {
+    preview.value = await fetchShareholderProfitPreview()
+    // Pre-fill (not lock) the distribution form's total_profit from the
+    // same engine, so a manager isn't typing a number from memory - still
+    // freely editable before submit.
+    if (!distributionForm.value.total_profit && preview.value) {
+      distributionForm.value.total_profit = preview.value.current_profit
+    }
+  } catch {
+    preview.value = null
+  }
+}
 
 // --- Section 1: Shareholders ------------------------------------------------
 
@@ -326,6 +352,27 @@ async function onViewLedger() {
       </h1>
     </div>
 
+    <!-- Live profit preview: read-only, clearly marked as indicative - it
+         never gates a withdrawal and is never a stored distribution. -->
+    <div v-if="preview" class="border-ecart bg-ecart-tint rounded-xl border p-4">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <Badge variant="transit">{{ t('finance.shareholder.preview.badge') }}</Badge>
+          <p class="text-texte-2 text-sm">{{ t('finance.shareholder.preview.notice') }}</p>
+        </div>
+        <MonoValue
+          class="text-lg font-semibold"
+          :value="formatMoney(preview.current_profit)"
+        />
+      </div>
+      <div v-if="preview.shareholders.length" class="mt-3 flex flex-wrap gap-4">
+        <div v-for="row in preview.shareholders" :key="row.shareholder_id" class="text-sm">
+          <span class="text-texte-2">{{ row.name }} ({{ row.participation_percent }}%):</span>
+          <MonoValue class="ms-1 inline" :value="formatMoney(row.indicative_share)" />
+        </div>
+      </div>
+    </div>
+
     <!-- Section 1: Shareholders -->
     <Card :title="t('finance.shareholder.listTitle')">
       <template #actions>
@@ -444,7 +491,7 @@ async function onViewLedger() {
             >
               <td class="px-3 py-2.5">{{ d.period_start }} — {{ d.period_end }}</td>
               <td class="px-3 py-2.5 text-end">
-                <MonoValue :value="Number(d.total_profit).toLocaleString()" />
+                <MonoValue :value="formatMoney(d.total_profit)" />
               </td>
               <td class="px-3 py-2.5">
                 <Badge :variant="d.status === 'VALIDATED' ? 'livre' : 'transit'">
@@ -487,10 +534,10 @@ async function onViewLedger() {
                         <MonoValue :value="`${share.percent_snapshot}%`" />
                       </td>
                       <td class="px-3 py-1.5 text-end">
-                        <MonoValue :value="Number(share.amount_due).toLocaleString()" />
+                        <MonoValue :value="formatMoney(share.amount_due)" />
                       </td>
                       <td class="px-3 py-1.5 text-end">
-                        <MonoValue :value="Number(share.remaining_due).toLocaleString()" />
+                        <MonoValue :value="formatMoney(share.remaining_due)" />
                       </td>
                     </tr>
                   </tbody>
@@ -605,10 +652,10 @@ async function onViewLedger() {
             <td class="px-3 py-2.5">{{ loan.lender_detail?.name }}</td>
             <td class="px-3 py-2.5">{{ loan.borrower_detail?.name }}</td>
             <td class="px-3 py-2.5 text-end">
-              <MonoValue :value="Number(loan.amount).toLocaleString()" />
+              <MonoValue :value="formatMoney(loan.amount)" />
             </td>
             <td class="px-3 py-2.5 text-end">
-              <MonoValue :value="Number(loan.remaining_amount).toLocaleString()" />
+              <MonoValue :value="formatMoney(loan.remaining_amount)" />
             </td>
             <td class="px-3 py-2.5">
               <Badge :variant="loanStatusVariant(loan.status)">
@@ -765,7 +812,7 @@ async function onViewLedger() {
             <td class="px-3 py-2.5">{{ w.shareholder_detail?.name }}</td>
             <td class="px-3 py-2.5">{{ w.date }}</td>
             <td class="px-3 py-2.5 text-end">
-              <MonoValue :value="Number(w.amount).toLocaleString()" />
+              <MonoValue :value="formatMoney(w.amount)" />
             </td>
           </tr>
           <tr v-if="withdrawals.length === 0">
@@ -802,13 +849,13 @@ async function onViewLedger() {
       <p v-else-if="ledgerLoading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
       <template v-else-if="ledger">
-        <section class="mb-5 grid grid-cols-4 gap-4">
+        <section class="mb-5 grid grid-cols-5 gap-4">
           <div class="border-ligne rounded-xl border p-4">
             <p class="text-texte-2 text-xs">{{ t('finance.shareholder.ledger.totalDue') }}</p>
             <MonoValue
               class="text-lg font-semibold"
               align="left"
-              :value="Number(ledger.total_amount_due).toLocaleString()"
+              :value="formatMoney(ledger.total_amount_due)"
             />
           </div>
           <div class="border-ligne rounded-xl border p-4">
@@ -816,7 +863,7 @@ async function onViewLedger() {
             <MonoValue
               class="text-lg font-semibold"
               align="left"
-              :value="Number(ledger.total_withdrawn).toLocaleString()"
+              :value="formatMoney(ledger.total_withdrawn)"
             />
           </div>
           <div class="border-ligne rounded-xl border p-4">
@@ -825,7 +872,7 @@ async function onViewLedger() {
               class="text-lg font-semibold"
               align="left"
               :class="Number(ledger.remaining_due) > 0 ? 'text-ecart' : 'text-livre'"
-              :value="Number(ledger.remaining_due).toLocaleString()"
+              :value="formatMoney(ledger.remaining_due)"
             />
           </div>
           <div class="border-ligne rounded-xl border p-4">
@@ -833,7 +880,18 @@ async function onViewLedger() {
             <MonoValue
               class="text-lg font-semibold"
               align="left"
-              :value="Number(ledger.net_loan_balance).toLocaleString()"
+              :value="formatMoney(ledger.net_loan_balance)"
+            />
+          </div>
+          <div class="border-bitume bg-sable/40 rounded-xl border-2 p-4">
+            <p class="text-texte-2 text-xs">
+              {{ t('finance.shareholder.ledger.availableBalance') }}
+            </p>
+            <MonoValue
+              class="text-lg font-semibold"
+              align="left"
+              :class="Number(ledger.available_balance) > 0 ? 'text-livre' : 'text-critique'"
+              :value="formatMoney(ledger.available_balance)"
             />
           </div>
         </section>
@@ -848,7 +906,7 @@ async function onViewLedger() {
                 <tr v-for="loan in ledger.loans_lent" :key="loan.id" class="border-ligne border-b">
                   <td class="px-2 py-1.5">{{ loan.borrower_name }}</td>
                   <td class="px-2 py-1.5 text-end">
-                    <MonoValue :value="Number(loan.remaining_amount).toLocaleString()" />
+                    <MonoValue :value="formatMoney(loan.remaining_amount)" />
                   </td>
                 </tr>
                 <tr v-if="ledger.loans_lent.length === 0">
@@ -872,7 +930,7 @@ async function onViewLedger() {
                 >
                   <td class="px-2 py-1.5">{{ loan.lender_name }}</td>
                   <td class="px-2 py-1.5 text-end">
-                    <MonoValue :value="Number(loan.remaining_amount).toLocaleString()" />
+                    <MonoValue :value="formatMoney(loan.remaining_amount)" />
                   </td>
                 </tr>
                 <tr v-if="ledger.loans_borrowed.length === 0">

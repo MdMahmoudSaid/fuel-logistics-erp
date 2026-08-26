@@ -5,6 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { fetchSupplierLedger } from '@/modules/purchasing/api'
 import type { SupplierLedger } from '@/modules/purchasing/types'
 import SupplierPaymentForm from '@/modules/finance/SupplierPaymentForm.vue'
+import { formatMoney, formatQuantity } from '@/utils/currency'
 import Badge from '@/components/ui/Badge.vue'
 import Button from '@/components/ui/Button.vue'
 import Card from '@/components/ui/Card.vue'
@@ -73,7 +74,7 @@ function badgeVariant(status: string) {
           <MonoValue
             class="text-lg font-semibold"
             align="left"
-            :value="Number(ledger.total_purchased).toLocaleString()"
+            :value="formatMoney(ledger.total_purchased)"
           />
         </div>
         <div class="border-ligne rounded-xl border bg-white p-4">
@@ -81,7 +82,7 @@ function badgeVariant(status: string) {
           <MonoValue
             class="text-lg font-semibold"
             align="left"
-            :value="Number(ledger.total_paid).toLocaleString()"
+            :value="formatMoney(ledger.total_paid)"
           />
         </div>
         <div class="border-ligne rounded-xl border bg-white p-4">
@@ -92,7 +93,7 @@ function badgeVariant(status: string) {
             class="text-lg font-semibold"
             align="left"
             :class="Number(ledger.outstanding_balance) > 0 ? 'text-ecart' : 'text-livre'"
-            :value="Number(ledger.outstanding_balance).toLocaleString()"
+            :value="formatMoney(ledger.outstanding_balance)"
           />
         </div>
       </section>
@@ -117,7 +118,7 @@ function badgeVariant(status: string) {
               <td class="px-3 py-2.5 text-end">
                 <MonoValue
                   :class="Number(item.total_reliquat) <= 0 ? 'text-critique' : 'text-texte'"
-                  :value="Number(item.total_reliquat).toLocaleString()"
+                  :value="formatQuantity(item.total_reliquat)"
                 />
               </td>
             </tr>
@@ -165,12 +166,12 @@ function badgeVariant(status: string) {
               <td class="px-3 py-2.5">{{ order.product_detail?.name }}</td>
               <td class="px-3 py-2.5">{{ order.purchase_date }}</td>
               <td class="px-3 py-2.5 text-end">
-                <MonoValue :value="Number(order.quantity_litres).toLocaleString()" />
+                <MonoValue :value="formatQuantity(order.quantity_litres)" />
               </td>
               <td class="px-3 py-2.5 text-end">
                 <MonoValue
                   :class="Number(order.reliquat) <= 0 ? 'text-critique' : 'text-texte'"
-                  :value="Number(order.reliquat).toLocaleString()"
+                  :value="formatQuantity(order.reliquat)"
                 />
               </td>
               <td class="px-3 py-2.5">
@@ -222,7 +223,7 @@ function badgeVariant(status: string) {
                 {{ payment.is_advance ? t('common.yes') : t('common.no') }}
               </td>
               <td class="px-3 py-2.5 text-end">
-                <MonoValue :value="Number(payment.amount).toLocaleString()" />
+                <MonoValue :value="formatMoney(payment.amount)" />
               </td>
             </tr>
             <tr v-if="ledger.payments.length === 0">

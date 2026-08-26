@@ -17,7 +17,18 @@ const fields = computed<FieldSchema[]>(() => [
     type: 'select',
     options: [{ value: 'XOF', label: 'XOF' }],
   },
-  { key: 'opening_balance', label: t('masterData.fields.openingBalance'), type: 'number', required: true },
+  {
+    key: 'opening_balance',
+    label: t('masterData.fields.openingBalance'),
+    type: 'number',
+    required: true,
+  },
+  {
+    key: 'current_balance',
+    label: t('masterData.fields.currentBalance'),
+    type: 'number',
+    readOnly: true,
+  },
   { key: 'is_active', label: t('masterData.fields.active'), type: 'checkbox' },
 ])
 </script>

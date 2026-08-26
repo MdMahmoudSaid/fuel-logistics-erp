@@ -17,6 +17,7 @@ import type {
   PaymentMethod,
 } from './types'
 import Button from '@/components/ui/Button.vue'
+import { formatMoney } from '@/utils/currency'
 
 // Dedicated cash account name FinancePostingService owns server-side
 // (backend/apps/finance/services.py FinancePostingService.VERS_MOI_ACCOUNT_NAME)
@@ -392,7 +393,7 @@ async function onSubmit() {
         <p class="text-texte-2 text-sm font-medium" data-test="outstanding-balance">
           {{ t('finance.payment.outstandingBalance') }}:
           <span class="text-texte font-semibold">{{
-            Number(outstandingBalance).toLocaleString()
+            formatMoney(outstandingBalance ?? 0)
           }}</span>
         </p>
       </div>
@@ -429,7 +430,7 @@ async function onSubmit() {
           >
             <option value="">{{ t('finance.payment.unallocatedCredit') }}</option>
             <option v-for="inv in unpaidInvoices" :key="inv.id" :value="inv.id">
-              {{ inv.invoice_number }} — outstanding {{ Number(inv.outstanding).toLocaleString() }}
+              {{ inv.invoice_number }} — outstanding {{ formatMoney(inv.outstanding) }}
             </option>
           </select>
           <input
@@ -453,10 +454,10 @@ async function onSubmit() {
 
         <p class="text-texte-2 text-sm">
           {{
-            t('finance.payment.allocatedSummary', { allocated: allocatedTotal.toLocaleString() })
+            t('finance.payment.allocatedSummary', { allocated: formatMoney(allocatedTotal) })
           }}
           <span :class="unallocatedRemainder < 0 ? 'text-critique font-medium' : ''">
-            {{ unallocatedRemainder.toLocaleString() }}
+            {{ formatMoney(unallocatedRemainder) }}
           </span>
         </p>
       </div>

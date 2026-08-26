@@ -6,6 +6,7 @@ from rest_framework.exceptions import MethodNotAllowed
 from rest_framework.response import Response
 
 from apps.accounts.permissions import HasModulePermission
+from apps.reports.date_range import resolve_date_range
 from apps.reports.serialization import decimals_to_str
 from apps.trips.models import Trip
 
@@ -26,6 +27,7 @@ from .models import (
 from .serializers import (
     BankAccountSerializer,
     CashAccountSerializer,
+    ControlledDebtPaymentRequestSerializer,
     CustomerPaymentSerializer,
     ExpenseSerializer,
     IndirectSettlementRequestSerializer,
@@ -40,12 +42,15 @@ from .serializers import (
     TreasuryTransferRequestSerializer,
 )
 from .services import (
+    ControlledDebtPaymentError,
+    ControlledDebtPaymentService,
     IndirectSettlementService,
     PaymentAllocationError,
     ShareholderDistributionService,
     ShareholderLedgerService,
     ShareholderLoanError,
     ShareholderLoanService,
+    ShareholderProfitPreviewService,
     TreasuryService,
     TreasuryTransferError,
 )
@@ -254,6 +259,67 @@ class TreasuryTransactionViewSet(viewsets.ModelViewSet):
             status=http_status.HTTP_201_CREATED,
         )
 
+    @action(detail=False, methods=["get"], url_path="payable-debts")
+    def payable_debts(self, request):
+        """List unpaid or partially paid debts for the controlled outgoing
+        payment workflow.
+
+        GET /api/treasury-transactions/payable-debts/?debt_type=supplier
+        """
+        debt_type = request.query_params.get("debt_type")
+        if debt_type not in ControlledDebtPaymentService.supported_debt_types():
+            return Response(
+                {"detail": "Type de dette inconnu."},
+                status=http_status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            debts = ControlledDebtPaymentService.get_payable_debts(debt_type)
+        except ControlledDebtPaymentError as exc:
+            return Response({"detail": str(exc)}, status=http_status.HTTP_400_BAD_REQUEST)
+        return Response(decimals_to_str(debts))
+
+    @action(detail=False, methods=["post"], url_path="record-debt-payment")
+    def record_debt_payment(self, request):
+        """Create one bank MONEY_OUT tied to an existing payable debt.
+
+        POST /api/treasury-transactions/record-debt-payment/
+        """
+        request_serializer = ControlledDebtPaymentRequestSerializer(data=request.data)
+        request_serializer.is_valid(raise_exception=True)
+        data = request_serializer.validated_data
+
+        try:
+            result = ControlledDebtPaymentService.record_payment(
+                debt_type=data["debt_type"],
+                debt_id=data["debt_id"],
+                bank_account_id=data["bank_account"],
+                amount=data["amount"],
+                date=data["date"],
+                reference=data["reference"],
+                actor=request.user,
+                note=data["note"],
+                attachment=data["attachment"],
+            )
+        except ControlledDebtPaymentError as exc:
+            return Response({"detail": str(exc)}, status=http_status.HTTP_400_BAD_REQUEST)
+
+        return Response(
+            decimals_to_str(
+                {
+                    "transaction": TreasuryTransactionSerializer(
+                        result["transaction"], context={"request": request}
+                    ).data if result["transaction"] is not None else None,
+                    "transactions": TreasuryTransactionSerializer(
+                        result.get("transactions", []), many=True, context={"request": request}
+                    ).data,
+                    "debt": result["debt"],
+                    "bank_balance_before": result["bank_balance_before"],
+                    "bank_balance_after": result["bank_balance_after"],
+                }
+            ),
+            status=http_status.HTTP_201_CREATED,
+        )
+
 
 # ---------------------------------------------------------------------------
 # Task 7 (client modifications plan): Shareholders / Associates domain
@@ -278,6 +344,21 @@ class ShareholderViewSet(viewsets.ModelViewSet):
         shareholder = self.get_object()
         summary = ShareholderLedgerService.get_shareholder_summary(shareholder.id)
         return Response(decimals_to_str(summary))
+
+    @action(detail=False, methods=["get"], url_path="profit-preview")
+    def profit_preview(self, request):
+        """Read-only, indicative current-profit split across active
+        shareholders, computed from the existing profit engine - never a
+        stored figure and never gates a withdrawal (design doc
+        2026-08-26-benefices-associes-refinement-design.md).
+
+        GET /api/shareholders/profit-preview/?from=&to=
+        """
+        date_from, date_to = resolve_date_range(request.query_params)
+        preview = ShareholderProfitPreviewService.get_preview(
+            date_from=date_from, date_to=date_to
+        )
+        return Response(decimals_to_str(preview))
 
 
 class ShareholderProfitDistributionViewSet(viewsets.ModelViewSet):

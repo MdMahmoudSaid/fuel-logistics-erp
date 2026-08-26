@@ -47,4 +47,19 @@ export interface DashboardSummary {
     total: string
     rows: { bank: string; balance: string }[]
   }
+  cash_amounts: {
+    total: string
+    rows: { cash_account: string; balance: string }[]
+  }
+  // Summary only (design doc 2026-08-26-benefices-associes-refinement-
+  // design.md) - point-in-time like debts/customer_amounts above, not
+  // scoped by date_from/date_to. The Benefices page (/profit) stays the
+  // single detailed source; this is never broken down per trip or
+  // per shareholder.
+  shareholders_summary: {
+    current_profit: string
+    total_withdrawn: string
+    remaining_undistributed: string
+    open_loans_total: string
+  }
 }

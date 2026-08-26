@@ -12,4 +12,13 @@ export interface AuditLog {
   previous_value: Record<string, unknown> | null
   new_value: Record<string, unknown> | null
   reason: string | null
+  summary: AuditLogSummary
+}
+
+export interface AuditLogSummary {
+  module_key: string
+  reference: string | null
+  related_party: string | null
+  account_label: string | null
+  amount: string | null
 }

@@ -12,6 +12,7 @@ import { createResourceApi } from '@/api/resource'
 import { translateApiError } from '@/i18n/apiErrors'
 import { supplierPaymentResource } from './api'
 import Button from '@/components/ui/Button.vue'
+import { formatMoney } from '@/utils/currency'
 
 const props = defineProps<{
   supplierId: number
@@ -88,7 +89,7 @@ async function onSubmit() {
             t('finance.supplierPayment.outstandingBalance')
           }}</span>
           <p class="text-texte h-12 flex items-center font-semibold">
-            {{ Number(outstandingBalance).toLocaleString() }}
+            {{ formatMoney(outstandingBalance) }}
           </p>
         </div>
 
