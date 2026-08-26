@@ -43,7 +43,12 @@ const badgeVariant = computed(() => {
       <div>
         <p class="font-mono text-sm font-medium">{{ trip.reference }}</p>
         <p class="text-texte-2 text-xs">
-          {{ trip.truck_detail?.internal_id }} · {{ trip.client_detail?.name ?? t('trips.directSale') }}
+          {{ trip.truck_detail?.internal_id }} ·
+          {{
+            trip.destination_type === 'COMPANY_STOCK'
+              ? t('trips.detail.companyStock')
+              : (trip.client_detail?.name ?? '—')
+          }}
         </p>
       </div>
       <UiBadge :variant="badgeVariant">{{ statusLabel(trip.status) }}</UiBadge>

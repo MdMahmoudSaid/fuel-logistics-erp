@@ -44,6 +44,18 @@ export function fetchTruckTrips(truckId: number): Promise<Trip[]> {
   return apiClient.get<Trip[]>(`/trucks/${truckId}/trips/`).then((r) => r.data)
 }
 
+// TripCostService.assign_customer_for_sale (backend/apps/trips/services.py)
+// via TripViewSet.assign_customer - attaches/replaces this trip's direct
+// customer and flips destination_type to CUSTOMER. Rejected by the server
+// (400) once the trip already has a Sale - the sold customer is fixed at
+// delivery time. Client modifications plan Task 9 gap-closure: this is the
+// only way a COMPANY_STOCK trip ever gets a customer assigned post-creation.
+export function assignTripCustomer(tripId: number, customerId: number): Promise<Trip> {
+  return apiClient
+    .post<Trip>(`/trips/${tripId}/assign-customer/`, { customer: customerId })
+    .then((r) => r.data)
+}
+
 export interface DeliveryControlPayload {
   received_quantity: string
   control_date: string

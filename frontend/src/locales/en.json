@@ -231,6 +231,8 @@
       "loadingDate": "Loading date",
       "blReference": "BL reference",
       "client": "Client",
+      "companyStock": "Company stock",
+      "assignCustomer": "Assign customer",
       "customerOrder": "Customer order",
       "notes": "Notes",
       "changeStatus": "Change status",
@@ -261,6 +263,15 @@
       "unitCost": "Unit cost",
       "unitProfit": "Unit profit",
       "netMargin": "Net margin"
+    },
+    "assignCustomer": {
+      "title": "Assign customer",
+      "trip": "Trip",
+      "customer": "Customer",
+      "selectCustomer": "Select a customer",
+      "saving": "Saving…",
+      "save": "Assign",
+      "saveError": "Could not assign this customer — check the fields and your permissions."
     },
     "newForm": {
       "title": "New Trip (Loading)",

@@ -36,6 +36,7 @@ function makeTrip(overrides: Partial<Trip> = {}): Trip {
     client: null,
     client_detail: null,
     customer_order: null,
+    destination_type: 'COMPANY_STOCK',
     loading_date: '2026-08-18',
     bl_reference: 'BL-1',
     status: 'IN_TRANSIT',
@@ -58,6 +59,7 @@ vi.mock('../api', () => ({
   fetchTripHistory: (id: number) => fetchTripHistory(id),
   fetchTripMargin: (id: number) => fetchTripMargin(id),
   postTripStatus: vi.fn(),
+  assignTripCustomer: vi.fn(),
 }))
 
 let expensesToReturn: Expense[] = []
@@ -260,6 +262,69 @@ describe('TripDetail expenses section', () => {
 
     const marginValue = wrapper.findAll('dd').find((dd) => dd.text().includes('-1,000'))
     expect(marginValue?.find('span').classes()).toContain('text-critique')
+  })
+
+  it('shows "Stock de l\'entreprise" for a COMPANY_STOCK trip instead of a generic direct-sale label', async () => {
+    setUser({ operations: ['view'], finance: ['view'] })
+
+    const wrapper = await mountAt()
+
+    expect(wrapper.text()).toContain("Stock de l'entreprise")
+    expect(wrapper.text()).not.toContain('Vente directe')
+  })
+
+  it('shows "Attribuer un client" for a COMPANY_STOCK trip with operations edit and no sale yet', async () => {
+    setUser({ operations: ['view', 'edit'], finance: ['view'] })
+    marginToReturn = { available: false }
+
+    const wrapper = await mountAt()
+
+    expect(
+      wrapper.findAll('button').find((b) => b.text() === 'Attribuer un client'),
+    ).toBeDefined()
+  })
+
+  it('hides "Attribuer un client" without operations edit permission', async () => {
+    setUser({ operations: ['view'], finance: ['view'] })
+    marginToReturn = { available: false }
+
+    const wrapper = await mountAt()
+
+    expect(
+      wrapper.findAll('button').find((b) => b.text() === 'Attribuer un client'),
+    ).toBeUndefined()
+  })
+
+  it('hides "Attribuer un client" once the trip already has a Sale (mirrors the backend reject-after-sale rule)', async () => {
+    setUser({ operations: ['view', 'edit'], finance: ['view'] })
+    marginToReturn = {
+      available: true,
+      revenue: '1000.00',
+      fuel_purchase_cost: '500.00',
+      transport_cost: '0.00',
+      expenses_by_category: {},
+      total_expenses: '0.00',
+      margin: '500.00',
+      unit_cost: '500.00',
+      unit_profit: '11.11',
+    }
+
+    const wrapper = await mountAt()
+
+    expect(
+      wrapper.findAll('button').find((b) => b.text() === 'Attribuer un client'),
+    ).toBeUndefined()
+  })
+
+  it('opens the assign-customer overlay when "Attribuer un client" is clicked', async () => {
+    setUser({ operations: ['view', 'edit'], finance: ['view'] })
+    marginToReturn = { available: false }
+
+    const wrapper = await mountAt()
+    const button = wrapper.findAll('button').find((b) => b.text() === 'Attribuer un client')
+    await button!.trigger('click')
+
+    expect(wrapper.text()).toContain('TRIP-009')
   })
 
   it('shows the unit cost and unit profit lines from the margin breakdown', async () => {

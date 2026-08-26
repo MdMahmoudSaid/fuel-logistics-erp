@@ -232,6 +232,8 @@
       "loadingDate": "Date de chargement",
       "blReference": "Référence BL",
       "client": "Client",
+      "companyStock": "Stock de l'entreprise",
+      "assignCustomer": "Attribuer un client",
       "customerOrder": "Commande client",
       "notes": "Notes",
       "changeStatus": "Changer le statut",
@@ -262,6 +264,15 @@
       "unitCost": "Coût unitaire",
       "unitProfit": "Bénéfice unitaire",
       "netMargin": "Marge nette"
+    },
+    "assignCustomer": {
+      "title": "Attribuer un client",
+      "trip": "Trajet",
+      "customer": "Client",
+      "selectCustomer": "Sélectionner un client",
+      "saving": "Enregistrement…",
+      "save": "Attribuer",
+      "saveError": "Impossible d'attribuer ce client — vérifiez les champs et vos droits."
     },
     "newForm": {
       "title": "Nouveau trajet (chargement)",

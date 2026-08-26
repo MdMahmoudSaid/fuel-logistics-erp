@@ -231,6 +231,8 @@
       "loadingDate": "تاريخ التحميل",
       "blReference": "مرجع بوليصة الشحن",
       "client": "العميل",
+      "companyStock": "مخزون الشركة",
+      "assignCustomer": "تعيين عميل",
       "customerOrder": "طلب العميل",
       "notes": "ملاحظات",
       "changeStatus": "تغيير الحالة",
@@ -261,6 +263,15 @@
       "unitCost": "تكلفة الوحدة",
       "unitProfit": "ربح الوحدة",
       "netMargin": "الهامش الصافي"
+    },
+    "assignCustomer": {
+      "title": "تعيين عميل",
+      "trip": "الرحلة",
+      "customer": "العميل",
+      "selectCustomer": "اختر عميلاً",
+      "saving": "جارٍ الحفظ…",
+      "save": "تعيين",
+      "saveError": "تعذر تعيين هذا العميل — تحقق من الحقول وصلاحياتك."
     },
     "newForm": {
       "title": "رحلة جديدة (تحميل)",

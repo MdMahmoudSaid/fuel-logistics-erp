@@ -118,7 +118,13 @@ function goToNew() {
               <td class="px-3 py-2.5"><MonoValue :value="trip.reference" align="left" /></td>
               <td class="px-3 py-2.5">{{ trip.truck_detail?.internal_id ?? '—' }}</td>
               <td class="px-3 py-2.5">{{ trip.transporter_detail?.name ?? '—' }}</td>
-              <td class="px-3 py-2.5">{{ trip.client_detail?.name ?? t('trips.directSale') }}</td>
+              <td class="px-3 py-2.5">
+                {{
+                  trip.destination_type === 'COMPANY_STOCK'
+                    ? t('trips.detail.companyStock')
+                    : (trip.client_detail?.name ?? '—')
+                }}
+              </td>
               <td class="px-3 py-2.5 text-right">
                 <MonoValue :value="Number(trip.quantity_loaded).toLocaleString()" unit="L" />
               </td>

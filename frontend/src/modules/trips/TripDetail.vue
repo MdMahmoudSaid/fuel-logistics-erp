@@ -19,6 +19,7 @@ import { useTripStatusLabel } from './tripStatusLabels'
 import { expenseResource } from '@/modules/finance/api'
 import ExpenseForm from '@/modules/finance/ExpenseForm.vue'
 import TransportPaymentForm from '@/modules/finance/TransportPaymentForm.vue'
+import AssignCustomerForm from './AssignCustomerForm.vue'
 import type { Expense } from '@/modules/finance/types'
 
 const route = useRoute()
@@ -62,6 +63,26 @@ const canManageExpenses = computed(() => auth.can('finance', 'create'))
 // Client modification Task 2: transporter fees per litre create payable
 // debt - same "finance" module create permission gates both forms.
 const showTransportPaymentForm = ref(false)
+
+// Client modifications plan Task 9 (gap-closure): assign-customer is
+// "edit" tier on the "operations" module (backend/apps/accounts/
+// permissions.py ACTION_MAP["assign_customer"]), same tier as a trip
+// status transition - reuse the same gate rather than introduce a new one.
+const canAssignCustomer = computed(() => auth.can('operations', 'edit'))
+const showAssignCustomerForm = ref(false)
+
+// Mirrors the backend's own reject-after-sale rule
+// (TripCostService.assign_customer_for_sale raises CustomerAlreadySoldError
+// once trip.sale exists): margin.available flips true exactly when a Sale
+// has been recorded, so "no sale yet" is `margin !== null && !available`.
+// The stricter `margin !== null` (vs. `!margin?.available`) hides the
+// action while margin is still loading rather than flashing it briefly.
+const noSaleYet = computed(() => margin.value !== null && !margin.value.available)
+
+async function onCustomerAssigned() {
+  showAssignCustomerForm.value = false
+  await Promise.all([load(), loadMargin()])
+}
 
 async function loadExpenses() {
   expensesError.value = ''
@@ -260,8 +281,20 @@ function formatDateTime(value: string) {
         <div>
           <span class="text-texte-2">{{ t('trips.detail.client') }}</span>
           <p class="text-texte font-medium">
-            {{ trip.client_detail?.name ?? (trip.customer_order ? '—' : t('trips.directSale')) }}
+            {{
+              trip.destination_type === 'COMPANY_STOCK'
+                ? t('trips.detail.companyStock')
+                : (trip.client_detail?.name ?? '—')
+            }}
           </p>
+          <Button
+            v-if="trip.destination_type === 'COMPANY_STOCK' && canAssignCustomer && noSaleYet"
+            variant="ghost"
+            class="mt-1"
+            @click="showAssignCustomerForm = true"
+          >
+            {{ t('trips.detail.assignCustomer') }}
+          </Button>
         </div>
         <div v-if="trip.customer_order">
           <span class="text-texte-2">{{ t('trips.detail.customerOrder') }}</span>
@@ -513,6 +546,20 @@ function formatDateTime(value: string) {
             :quantity-loaded="trip.quantity_loaded"
             @success="onTransportPaymentSaved"
             @cancel="showTransportPaymentForm = false"
+          />
+        </div>
+      </div>
+
+      <div
+        v-if="showAssignCustomerForm"
+        class="fixed inset-0 z-30 flex items-center justify-center bg-black/40"
+      >
+        <div class="w-full max-w-lg">
+          <AssignCustomerForm
+            :trip-id="trip.id"
+            :trip-reference="trip.reference"
+            @success="onCustomerAssigned"
+            @cancel="showAssignCustomerForm = false"
           />
         </div>
       </div>

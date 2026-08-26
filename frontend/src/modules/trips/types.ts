@@ -107,6 +107,13 @@ export interface UserBrief {
   full_name: string
 }
 
+// Mirrors backend/apps/trips/models.py Trip.DestinationType. Server-derived
+// only (TripSerializer._normalize_destination_type): CUSTOMER whenever
+// either `client` or `customer_order` is set, COMPANY_STOCK otherwise - the
+// "Stock de l'entreprise" first-class state (client modifications plan
+// Global Constraints / Task 1). Never settable directly by the frontend.
+export type TripDestinationType = 'COMPANY_STOCK' | 'CUSTOMER'
+
 export interface Trip {
   id: number
   reference: string
@@ -126,6 +133,7 @@ export interface Trip {
   client: number | null
   client_detail: CustomerBrief | null
   customer_order: number | null
+  destination_type: TripDestinationType
   loading_date: string
   bl_reference: string
   status: TripStatus
