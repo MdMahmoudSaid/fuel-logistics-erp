@@ -270,3 +270,136 @@ export interface TransporterLedger {
   payments: TransportPayment[]
   advances: TransporterAdvance[]
 }
+
+// --- Task 7 (client modifications plan): Shareholders / Associates -------
+// Mirrors backend/apps/finance/models.py's Shareholder* models and
+// backend/apps/finance/serializers.py's Shareholder* serializers.
+
+export interface ShareholderBrief {
+  id: number
+  name: string
+  participation_percent: string
+}
+
+export interface Shareholder {
+  id: number
+  name: string
+  participation_percent: string
+  phone: string
+  notes: string
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export type ShareholderDistributionStatus = 'DRAFT' | 'VALIDATED'
+
+export interface ShareholderProfitShare {
+  id: number
+  distribution: number
+  shareholder: number
+  shareholder_detail: ShareholderBrief | null
+  percent_snapshot: string
+  amount_due: string
+  amount_withdrawn: string
+  remaining_due: string
+  created_at: string
+  updated_at: string
+}
+
+export interface ShareholderProfitDistribution {
+  id: number
+  period_start: string
+  period_end: string
+  total_profit: string
+  status: ShareholderDistributionStatus
+  created_by: number | null
+  created_by_detail: UserBrief | null
+  validated_by: number | null
+  validated_by_detail: UserBrief | null
+  validated_at: string | null
+  shares: ShareholderProfitShare[]
+  created_at: string
+  updated_at: string
+}
+
+export type ShareholderLoanStatus = 'OPEN' | 'PARTIALLY_REPAID' | 'REPAID'
+
+export interface ShareholderLoan {
+  id: number
+  borrower: number
+  borrower_detail: ShareholderBrief | null
+  lender: number
+  lender_detail: ShareholderBrief | null
+  amount: string
+  date: string
+  status: ShareholderLoanStatus
+  amount_repaid: string
+  remaining_amount: string
+  notes: string
+  created_at: string
+  updated_at: string
+}
+
+export interface ShareholderWithdrawal {
+  id: number
+  shareholder: number
+  shareholder_detail: ShareholderBrief | null
+  profit_share: number | null
+  amount: string
+  date: string
+  bank_account: number | null
+  cash_account: number | null
+  notes: string
+  recorded_by: number | null
+  recorded_by_detail: UserBrief | null
+  created_at: string
+  updated_at: string
+}
+
+// GET /api/shareholders/{id}/ledger/ (ShareholderLedgerService.get_shareholder_summary)
+export interface ShareholderLedgerShare {
+  id: number
+  distribution_id: number
+  period_start: string
+  period_end: string
+  percent_snapshot: string
+  amount_due: string
+  amount_withdrawn: string
+  remaining_due: string
+}
+
+export interface ShareholderLedgerLoan {
+  id: number
+  amount: string
+  amount_repaid: string
+  remaining_amount: string
+  status: ShareholderLoanStatus
+  date: string
+  lender_id?: number
+  lender_name?: string
+  borrower_id?: number
+  borrower_name?: string
+}
+
+export interface ShareholderLedgerWithdrawal {
+  id: number
+  amount: string
+  date: string
+  profit_share_id: number | null
+  bank_account_id: number | null
+  cash_account_id: number | null
+  notes: string
+}
+
+export interface ShareholderLedger {
+  shareholder: { id: number; name: string; participation_percent: string; is_active: boolean }
+  total_amount_due: string
+  total_withdrawn: string
+  remaining_due: string
+  shares: ShareholderLedgerShare[]
+  loans_borrowed: ShareholderLedgerLoan[]
+  loans_lent: ShareholderLedgerLoan[]
+  net_loan_balance: string
+  withdrawals: ShareholderLedgerWithdrawal[]
+}

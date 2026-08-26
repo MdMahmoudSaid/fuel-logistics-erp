@@ -60,7 +60,17 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: 'bank-accounts', labelKey: 'navigation.bankAccounts', module: 'finance' },
       { to: 'cash-accounts', labelKey: 'navigation.cashAccounts', module: 'finance' },
-      { to: 'treasury-transactions', labelKey: 'navigation.treasuryTransactions', module: 'finance' },
+      {
+        to: 'treasury-transactions',
+        labelKey: 'navigation.treasuryTransactions',
+        module: 'finance',
+      },
+      // Gated on the dedicated "shareholders" module (Task 7, client
+      // modifications plan, ruling 3) rather than "finance" - the Finance
+      // role only has view/create here, not the broader access it has on
+      // plain finance-gated items, so reusing 'finance' would over-expose
+      // this nav item relative to actual permissions.
+      { to: 'shareholders', labelKey: 'navigation.shareholders', module: 'shareholders' },
     ],
   },
   {
@@ -70,7 +80,11 @@ const NAV_GROUPS: NavGroup[] = [
       { to: 'products', labelKey: 'navigation.products', module: 'operations' },
       { to: 'users', labelKey: 'navigation.users', module: 'admin' },
       { to: 'roles', labelKey: 'navigation.roles', module: 'admin' },
-      { to: 'loss-tolerance-settings', labelKey: 'navigation.lossToleranceSettings', module: 'admin' },
+      {
+        to: 'loss-tolerance-settings',
+        labelKey: 'navigation.lossToleranceSettings',
+        module: 'admin',
+      },
       { to: 'reports', labelKey: 'navigation.reports', module: 'reports' },
       { to: 'audit-logs', labelKey: 'navigation.auditLogs', module: 'admin' },
     ],
@@ -169,7 +183,9 @@ onUnmounted(() => {
           v-if="homeVisible"
           :to="{ name: HOME_ITEM.to }"
           class="text-sable/70 hover:bg-bitume-2 hover:text-sable flex h-11 items-center rounded-lg border-s-2 border-transparent px-3 text-sm transition"
-          :class="isNavActive(HOME_ITEM.to) ? '!border-orange bg-bitume-2 !text-sable font-medium' : ''"
+          :class="
+            isNavActive(HOME_ITEM.to) ? '!border-orange bg-bitume-2 !text-sable font-medium' : ''
+          "
         >
           {{ t(HOME_ITEM.labelKey) }}
         </RouterLink>
@@ -206,7 +222,9 @@ onUnmounted(() => {
               :key="item.to"
               :to="{ name: item.to }"
               class="text-sable/70 hover:bg-bitume-2 hover:text-sable flex h-11 items-center rounded-lg border-s-2 border-transparent px-3 text-sm transition"
-              :class="isNavActive(item.to) ? '!border-orange bg-bitume-2 !text-sable font-medium' : ''"
+              :class="
+                isNavActive(item.to) ? '!border-orange bg-bitume-2 !text-sable font-medium' : ''
+              "
             >
               {{ t(item.labelKey) }}
             </RouterLink>
@@ -247,9 +265,9 @@ onUnmounted(() => {
             {{ auth.user.full_name || auth.user.email }} · {{ auth.user.role_detail?.name }}
           </span>
           <LanguageSwitcher />
-          <Button variant="ghost" size="md" class="!h-9 !px-3 text-sm" @click="onLogout"
-            >{{ t('header.logout') }}</Button
-          >
+          <Button variant="ghost" size="md" class="!h-9 !px-3 text-sm" @click="onLogout">{{
+            t('header.logout')
+          }}</Button>
         </div>
       </header>
 

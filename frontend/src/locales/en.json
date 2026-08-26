@@ -47,7 +47,8 @@
       "fleet": "Fleet & Logistics",
       "treasury": "Treasury & Finance",
       "settings": "Settings & Configuration"
-    }
+    },
+    "shareholders": "Shareholders / Associates"
   },
   "header": {
     "logout": "Log out",
@@ -177,7 +178,8 @@
       "capacityLitres": "Capacity (L)",
       "ownership": "Ownership",
       "ownerTransporterId": "Owner Transporter ID",
-      "defaultDriverId": "Default Driver ID"
+      "defaultDriverId": "Default Driver ID",
+      "participationPercent": "Participation percent"
     },
     "ownershipOptions": {
       "companyOwned": "Company owned",
@@ -507,10 +509,21 @@
       "alreadySettled": "Already settled",
       "netOutstanding": "Net outstanding",
       "settlementsByTrip": "Settlements by trip",
-      "table": { "trip": "Trip", "base": "Base", "deduction": "Deduction", "net": "Net", "status": "Status" },
+      "table": {
+        "trip": "Trip",
+        "base": "Base",
+        "deduction": "Deduction",
+        "net": "Net",
+        "status": "Status"
+      },
       "noSettlements": "No settlements yet.",
       "advances": "Advances",
-      "advancesTable": { "date": "Date", "reference": "Reference", "settled": "Settled", "amount": "Amount" },
+      "advancesTable": {
+        "date": "Date",
+        "reference": "Reference",
+        "settled": "Settled",
+        "amount": "Amount"
+      },
       "noAdvances": "No advances yet."
     },
     "treasuryLedger": {
@@ -527,6 +540,72 @@
         "amount": "Amount"
       },
       "noTransactions": "No transactions yet."
+    },
+    "shareholder": {
+      "title": "Shareholders / Associates",
+      "listTitle": "Shareholder list",
+      "saveError": "Could not save this shareholder — check the fields and your permissions.",
+      "selectShareholder": "Select a shareholder",
+      "distribution": {
+        "title": "Profit distribution",
+        "periodStart": "Period start",
+        "periodEnd": "Period end",
+        "totalProfit": "Total profit",
+        "create": "Create distribution",
+        "period": "Period",
+        "status": "Status",
+        "statusValues": {
+          "DRAFT": "Draft",
+          "VALIDATED": "Validated"
+        },
+        "validate": "Validate",
+        "shareholder": "Shareholder",
+        "percent": "Percent",
+        "amountDue": "Amount due",
+        "remainingDue": "Remaining due",
+        "saveError": "Could not create this distribution — check the fields."
+      },
+      "loan": {
+        "title": "Advances between associates",
+        "lender": "Lender",
+        "borrower": "Borrower",
+        "amount": "Amount",
+        "date": "Date",
+        "record": "Record advance",
+        "remaining": "Remaining balance",
+        "status": "Status",
+        "statusValues": {
+          "OPEN": "Open",
+          "PARTIALLY_REPAID": "Partially repaid",
+          "REPAID": "Repaid"
+        },
+        "recordRepayment": "Repayment",
+        "repaymentAmount": "Amount",
+        "saveError": "Could not save this advance — check the fields."
+      },
+      "withdrawal": {
+        "title": "Shareholder withdrawal",
+        "shareholder": "Shareholder",
+        "profitShare": "Profit share",
+        "general": "General withdrawal (not tied to a distribution)",
+        "amount": "Amount",
+        "date": "Date",
+        "accountType": "Account type",
+        "account": "Account",
+        "record": "Record withdrawal",
+        "saveError": "Could not save this withdrawal — check the fields."
+      },
+      "ledger": {
+        "title": "Shareholder ledger",
+        "view": "View",
+        "loadError": "Could not load the shareholder ledger.",
+        "totalDue": "Total due",
+        "totalWithdrawn": "Total withdrawn",
+        "remainingDue": "Remaining due",
+        "netLoanBalance": "Net loan balance",
+        "loansLent": "Loans lent",
+        "loansBorrowed": "Loans borrowed"
+      }
     }
   },
   "truckStatus": {
@@ -710,7 +789,12 @@
       "saveError": "Could not save — check the fields and your permissions.",
       "trips": "Trips",
       "newTrip": "New Trip",
-      "table": { "reference": "Reference", "truck": "Truck", "quantity": "Quantity (L)", "status": "Status" },
+      "table": {
+        "reference": "Reference",
+        "truck": "Truck",
+        "quantity": "Quantity (L)",
+        "status": "Status"
+      },
       "noTrips": "No trips yet."
     },
     "orderList": {
@@ -806,7 +890,8 @@
       "finance": "Finance",
       "sales": "Sales",
       "purchasing": "Purchasing",
-      "admin": "Admin"
+      "admin": "Admin",
+      "shareholders": "Shareholders"
     },
     "actions": {
       "view": "View",
@@ -827,22 +912,60 @@
     "exportError": "Could not export this report.",
     "noData": "No data for this selection.",
     "types": {
-      "customer-statement": { "label": "Customer statement", "idLabel": "Customer ID" },
-      "supplier-statement": { "label": "Supplier statement", "idLabel": "Supplier ID" },
-      "transporter-statement": { "label": "Transporter statement", "idLabel": "Transporter ID" },
-      "truck-history": { "label": "Truck history", "idLabel": "Truck ID" },
-      "trip-report": { "label": "Trip report" },
-      "purchase-report": { "label": "Purchase report" },
-      "sales-report": { "label": "Sales report" },
-      "expense-report": { "label": "Expense report" },
-      "customer-outstanding": { "label": "Customer outstanding" },
-      "supplier-outstanding": { "label": "Supplier outstanding" },
-      "transporter-outstanding": { "label": "Transporter outstanding" },
-      "fuel-stock": { "label": "Fuel stock" },
-      "loss-report": { "label": "Loss report" },
-      "margin-report": { "label": "Margin report" },
-      "bank-statement": { "label": "Bank statement", "idLabel": "Bank account ID" },
-      "cash-statement": { "label": "Cash statement", "idLabel": "Cash account ID" }
+      "customer-statement": {
+        "label": "Customer statement",
+        "idLabel": "Customer ID"
+      },
+      "supplier-statement": {
+        "label": "Supplier statement",
+        "idLabel": "Supplier ID"
+      },
+      "transporter-statement": {
+        "label": "Transporter statement",
+        "idLabel": "Transporter ID"
+      },
+      "truck-history": {
+        "label": "Truck history",
+        "idLabel": "Truck ID"
+      },
+      "trip-report": {
+        "label": "Trip report"
+      },
+      "purchase-report": {
+        "label": "Purchase report"
+      },
+      "sales-report": {
+        "label": "Sales report"
+      },
+      "expense-report": {
+        "label": "Expense report"
+      },
+      "customer-outstanding": {
+        "label": "Customer outstanding"
+      },
+      "supplier-outstanding": {
+        "label": "Supplier outstanding"
+      },
+      "transporter-outstanding": {
+        "label": "Transporter outstanding"
+      },
+      "fuel-stock": {
+        "label": "Fuel stock"
+      },
+      "loss-report": {
+        "label": "Loss report"
+      },
+      "margin-report": {
+        "label": "Margin report"
+      },
+      "bank-statement": {
+        "label": "Bank statement",
+        "idLabel": "Bank account ID"
+      },
+      "cash-statement": {
+        "label": "Cash statement",
+        "idLabel": "Cash account ID"
+      }
     },
     "fields": {
       "customer": "Customer",

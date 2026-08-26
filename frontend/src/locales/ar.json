@@ -47,7 +47,8 @@
       "fleet": "الأسطول واللوجستيات",
       "treasury": "الخزينة والمالية",
       "settings": "الإعدادات والتكوين"
-    }
+    },
+    "shareholders": "المساهمون / الشركاء"
   },
   "header": {
     "logout": "تسجيل الخروج",
@@ -177,7 +178,8 @@
       "capacityLitres": "السعة (لتر)",
       "ownership": "نوع الملكية",
       "ownerTransporterId": "معرّف الناقل المالك",
-      "defaultDriverId": "معرّف السائق الافتراضي"
+      "defaultDriverId": "معرّف السائق الافتراضي",
+      "participationPercent": "نسبة المشاركة"
     },
     "ownershipOptions": {
       "companyOwned": "ملك الشركة",
@@ -507,10 +509,21 @@
       "alreadySettled": "تمت تسويته",
       "netOutstanding": "الرصيد الصافي",
       "settlementsByTrip": "التسويات حسب الرحلة",
-      "table": { "trip": "الرحلة", "base": "الأساس", "deduction": "الخصم", "net": "الصافي", "status": "الحالة" },
+      "table": {
+        "trip": "الرحلة",
+        "base": "الأساس",
+        "deduction": "الخصم",
+        "net": "الصافي",
+        "status": "الحالة"
+      },
       "noSettlements": "لا توجد تسويات.",
       "advances": "السلف",
-      "advancesTable": { "date": "التاريخ", "reference": "المرجع", "settled": "مسوّى", "amount": "المبلغ" },
+      "advancesTable": {
+        "date": "التاريخ",
+        "reference": "المرجع",
+        "settled": "مسوّى",
+        "amount": "المبلغ"
+      },
       "noAdvances": "لا توجد سلف."
     },
     "treasuryLedger": {
@@ -527,6 +540,72 @@
         "amount": "المبلغ"
       },
       "noTransactions": "لا توجد معاملات."
+    },
+    "shareholder": {
+      "title": "المساهمون / الشركاء",
+      "listTitle": "قائمة المساهمين",
+      "saveError": "تعذر حفظ هذا المساهم — تحقق من الحقول وصلاحياتك.",
+      "selectShareholder": "اختر مساهمًا",
+      "distribution": {
+        "title": "توزيع الأرباح",
+        "periodStart": "بداية الفترة",
+        "periodEnd": "نهاية الفترة",
+        "totalProfit": "إجمالي الربح",
+        "create": "إنشاء التوزيع",
+        "period": "الفترة",
+        "status": "الحالة",
+        "statusValues": {
+          "DRAFT": "مسودة",
+          "VALIDATED": "مصادق عليه"
+        },
+        "validate": "مصادقة",
+        "shareholder": "المساهم",
+        "percent": "النسبة",
+        "amountDue": "المبلغ المستحق",
+        "remainingDue": "المتبقي للتحصيل",
+        "saveError": "تعذر إنشاء هذا التوزيع — تحقق من الحقول."
+      },
+      "loan": {
+        "title": "سلف بين الشركاء",
+        "lender": "المقرض",
+        "borrower": "المقترض",
+        "amount": "المبلغ",
+        "date": "التاريخ",
+        "record": "تسجيل السلفة",
+        "remaining": "الرصيد المتبقي",
+        "status": "الحالة",
+        "statusValues": {
+          "OPEN": "مفتوحة",
+          "PARTIALLY_REPAID": "مسددة جزئيًا",
+          "REPAID": "مسددة"
+        },
+        "recordRepayment": "سداد",
+        "repaymentAmount": "المبلغ",
+        "saveError": "تعذر حفظ هذه السلفة — تحقق من الحقول."
+      },
+      "withdrawal": {
+        "title": "سحب أموال المساهم",
+        "shareholder": "المساهم",
+        "profitShare": "حصة الربح",
+        "general": "سحب عام (غير مرتبط بتوزيع)",
+        "amount": "المبلغ",
+        "date": "التاريخ",
+        "accountType": "نوع الحساب",
+        "account": "الحساب",
+        "record": "تسجيل السحب",
+        "saveError": "تعذر حفظ هذا السحب — تحقق من الحقول."
+      },
+      "ledger": {
+        "title": "دفتر أستاذ المساهم",
+        "view": "عرض",
+        "loadError": "تعذر تحميل دفتر أستاذ المساهم.",
+        "totalDue": "إجمالي المستحق",
+        "totalWithdrawn": "إجمالي المسحوب",
+        "remainingDue": "المتبقي للتحصيل",
+        "netLoanBalance": "صافي رصيد السلف",
+        "loansLent": "سلف ممنوحة",
+        "loansBorrowed": "سلف مقترضة"
+      }
     }
   },
   "truckStatus": {
@@ -710,7 +789,12 @@
       "saveError": "تعذر الحفظ — تحقق من الحقول وصلاحياتك.",
       "trips": "الرحلات",
       "newTrip": "رحلة جديدة",
-      "table": { "reference": "المرجع", "truck": "الشاحنة", "quantity": "الكمية (لتر)", "status": "الحالة" },
+      "table": {
+        "reference": "المرجع",
+        "truck": "الشاحنة",
+        "quantity": "الكمية (لتر)",
+        "status": "الحالة"
+      },
       "noTrips": "لا توجد رحلات."
     },
     "orderList": {
@@ -806,7 +890,8 @@
       "finance": "المالية",
       "sales": "المبيعات",
       "purchasing": "المشتريات",
-      "admin": "الإدارة"
+      "admin": "الإدارة",
+      "shareholders": "المساهمون / الشركاء"
     },
     "actions": {
       "view": "عرض",
@@ -827,22 +912,60 @@
     "exportError": "تعذر تصدير هذا التقرير.",
     "noData": "لا توجد بيانات لهذا الاختيار.",
     "types": {
-      "customer-statement": { "label": "كشف حساب العميل", "idLabel": "معرّف العميل" },
-      "supplier-statement": { "label": "كشف حساب المورد", "idLabel": "معرّف المورد" },
-      "transporter-statement": { "label": "كشف حساب الناقل", "idLabel": "معرّف الناقل" },
-      "truck-history": { "label": "سجل الشاحنة", "idLabel": "معرّف الشاحنة" },
-      "trip-report": { "label": "تقرير الرحلات" },
-      "purchase-report": { "label": "تقرير المشتريات" },
-      "sales-report": { "label": "تقرير المبيعات" },
-      "expense-report": { "label": "تقرير المصروفات" },
-      "customer-outstanding": { "label": "مستحقات العملاء" },
-      "supplier-outstanding": { "label": "مستحقات الموردين" },
-      "transporter-outstanding": { "label": "مستحقات الناقلين" },
-      "fuel-stock": { "label": "مخزون الوقود" },
-      "loss-report": { "label": "تقرير الفروقات" },
-      "margin-report": { "label": "تقرير الهامش" },
-      "bank-statement": { "label": "كشف الحساب البنكي", "idLabel": "معرّف الحساب البنكي" },
-      "cash-statement": { "label": "كشف حساب الصندوق", "idLabel": "معرّف حساب الصندوق" }
+      "customer-statement": {
+        "label": "كشف حساب العميل",
+        "idLabel": "معرّف العميل"
+      },
+      "supplier-statement": {
+        "label": "كشف حساب المورد",
+        "idLabel": "معرّف المورد"
+      },
+      "transporter-statement": {
+        "label": "كشف حساب الناقل",
+        "idLabel": "معرّف الناقل"
+      },
+      "truck-history": {
+        "label": "سجل الشاحنة",
+        "idLabel": "معرّف الشاحنة"
+      },
+      "trip-report": {
+        "label": "تقرير الرحلات"
+      },
+      "purchase-report": {
+        "label": "تقرير المشتريات"
+      },
+      "sales-report": {
+        "label": "تقرير المبيعات"
+      },
+      "expense-report": {
+        "label": "تقرير المصروفات"
+      },
+      "customer-outstanding": {
+        "label": "مستحقات العملاء"
+      },
+      "supplier-outstanding": {
+        "label": "مستحقات الموردين"
+      },
+      "transporter-outstanding": {
+        "label": "مستحقات الناقلين"
+      },
+      "fuel-stock": {
+        "label": "مخزون الوقود"
+      },
+      "loss-report": {
+        "label": "تقرير الفروقات"
+      },
+      "margin-report": {
+        "label": "تقرير الهامش"
+      },
+      "bank-statement": {
+        "label": "كشف الحساب البنكي",
+        "idLabel": "معرّف الحساب البنكي"
+      },
+      "cash-statement": {
+        "label": "كشف حساب الصندوق",
+        "idLabel": "معرّف حساب الصندوق"
+      }
     },
     "fields": {
       "customer": "العميل",

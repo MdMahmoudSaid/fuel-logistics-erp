@@ -194,6 +194,11 @@ const router = createRouter({
           name: 'cash-accounts',
           component: () => import('@/modules/finance/CashAccountView.vue'),
         },
+        {
+          path: 'shareholders',
+          name: 'shareholders',
+          component: () => import('@/modules/finance/ShareholderView.vue'),
+        },
         { path: 'users', name: 'users', component: () => import('@/modules/users/UserView.vue') },
         {
           path: 'roles',

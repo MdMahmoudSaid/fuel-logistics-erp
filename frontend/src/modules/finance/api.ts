@@ -6,6 +6,11 @@ import type {
   CustomerLedger,
   CustomerPayment,
   Expense,
+  Shareholder,
+  ShareholderLedger,
+  ShareholderLoan,
+  ShareholderProfitDistribution,
+  ShareholderWithdrawal,
   SupplierPayment,
   TransporterAdvance,
   TransporterLedger,
@@ -96,4 +101,32 @@ export function recordTransfer(payload: {
   return apiClient
     .post('/treasury-transactions/transfer/', payload)
     .then((r) => r.data as { money_out: TreasuryTransaction; money_in: TreasuryTransaction })
+}
+
+// --- Task 7 (client modifications plan): Shareholders / Associates -------
+
+export const shareholderResource = createResourceApi<Shareholder>('/shareholders/')
+export const shareholderLoanResource = createResourceApi<ShareholderLoan>('/shareholder-loans/')
+export const shareholderWithdrawalResource = createResourceApi<ShareholderWithdrawal>(
+  '/shareholder-withdrawals/',
+)
+export const shareholderDistributionResource = createResourceApi<ShareholderProfitDistribution>(
+  '/shareholder-distributions/',
+)
+
+export function fetchShareholderLedger(shareholderId: number): Promise<ShareholderLedger> {
+  return apiClient
+    .get<ShareholderLedger>(`/shareholders/${shareholderId}/ledger/`)
+    .then((r) => r.data)
+}
+
+// backend/apps/finance/services.py ShareholderDistributionService.validate_distribution()
+// is the sole authority on this transition (DRAFT -> VALIDATED, stamps
+// validated_by/validated_at) - this just posts the request.
+export function validateShareholderDistribution(
+  distributionId: number,
+): Promise<ShareholderProfitDistribution> {
+  return apiClient
+    .post<ShareholderProfitDistribution>(`/shareholder-distributions/${distributionId}/validate/`)
+    .then((r) => r.data)
 }

@@ -47,7 +47,8 @@
       "fleet": "Flotte & Logistique",
       "treasury": "Trésorerie & Finance",
       "settings": "Paramètres & Configuration"
-    }
+    },
+    "shareholders": "Actionnaires / Associés"
   },
   "header": {
     "logout": "Déconnexion",
@@ -178,7 +179,8 @@
       "ownership": "Type de propriété",
       "ownerTransporterId": "Transporteur propriétaire",
       "defaultDriverId": "Chauffeur par défaut",
-      "none": "Aucun"
+      "none": "Aucun",
+      "participationPercent": "Pourcentage de participation"
     },
     "ownershipOptions": {
       "companyOwned": "Propriété de l'entreprise",
@@ -509,10 +511,21 @@
       "alreadySettled": "Déjà réglé",
       "netOutstanding": "Solde net",
       "settlementsByTrip": "Règlements par trajet",
-      "table": { "trip": "Trajet", "base": "Base", "deduction": "Déduction", "net": "Net", "status": "Statut" },
+      "table": {
+        "trip": "Trajet",
+        "base": "Base",
+        "deduction": "Déduction",
+        "net": "Net",
+        "status": "Statut"
+      },
       "noSettlements": "Aucun règlement.",
       "advances": "Avances",
-      "advancesTable": { "date": "Date", "reference": "Référence", "settled": "Réglé", "amount": "Montant" },
+      "advancesTable": {
+        "date": "Date",
+        "reference": "Référence",
+        "settled": "Réglé",
+        "amount": "Montant"
+      },
       "noAdvances": "Aucune avance."
     },
     "treasuryLedger": {
@@ -529,6 +542,72 @@
         "amount": "Montant"
       },
       "noTransactions": "Aucune transaction."
+    },
+    "shareholder": {
+      "title": "Actionnaires / Associés",
+      "listTitle": "Liste des actionnaires",
+      "saveError": "Impossible d'enregistrer cet actionnaire — vérifiez les champs et vos droits.",
+      "selectShareholder": "Sélectionner un actionnaire",
+      "distribution": {
+        "title": "Répartition des bénéfices",
+        "periodStart": "Début de période",
+        "periodEnd": "Fin de période",
+        "totalProfit": "Bénéfice total",
+        "create": "Créer la répartition",
+        "period": "Période",
+        "status": "Statut",
+        "statusValues": {
+          "DRAFT": "Brouillon",
+          "VALIDATED": "Validée"
+        },
+        "validate": "Valider",
+        "shareholder": "Actionnaire",
+        "percent": "Pourcentage",
+        "amountDue": "Montant dû",
+        "remainingDue": "Reste à percevoir",
+        "saveError": "Impossible de créer cette répartition — vérifiez les champs."
+      },
+      "loan": {
+        "title": "Avances entre associés",
+        "lender": "Prêteur",
+        "borrower": "Emprunteur",
+        "amount": "Montant",
+        "date": "Date",
+        "record": "Enregistrer l'avance",
+        "remaining": "Solde restant",
+        "status": "Statut",
+        "statusValues": {
+          "OPEN": "Ouverte",
+          "PARTIALLY_REPAID": "Partiellement remboursée",
+          "REPAID": "Remboursée"
+        },
+        "recordRepayment": "Remboursement",
+        "repaymentAmount": "Montant",
+        "saveError": "Impossible d'enregistrer cette avance — vérifiez les champs."
+      },
+      "withdrawal": {
+        "title": "Retrait d'argent de l'associé",
+        "shareholder": "Actionnaire",
+        "profitShare": "Part de bénéfice",
+        "general": "Retrait général (sans répartition)",
+        "amount": "Montant",
+        "date": "Date",
+        "accountType": "Type de compte",
+        "account": "Compte",
+        "record": "Enregistrer le retrait",
+        "saveError": "Impossible d'enregistrer ce retrait — vérifiez les champs."
+      },
+      "ledger": {
+        "title": "Grand livre de l'actionnaire",
+        "view": "Afficher",
+        "loadError": "Impossible de charger le grand livre de l'actionnaire.",
+        "totalDue": "Total dû",
+        "totalWithdrawn": "Total retiré",
+        "remainingDue": "Reste à percevoir",
+        "netLoanBalance": "Solde net des avances",
+        "loansLent": "Avances prêtées",
+        "loansBorrowed": "Avances empruntées"
+      }
     }
   },
   "truckStatus": {
@@ -714,7 +793,12 @@
       "saveError": "Impossible d'enregistrer — vérifiez les champs et vos droits.",
       "trips": "Trajets",
       "newTrip": "Nouveau trajet",
-      "table": { "reference": "Référence", "truck": "Camion", "quantity": "Quantité (L)", "status": "Statut" },
+      "table": {
+        "reference": "Référence",
+        "truck": "Camion",
+        "quantity": "Quantité (L)",
+        "status": "Statut"
+      },
       "noTrips": "Aucun trajet."
     },
     "orderList": {
@@ -810,7 +894,8 @@
       "finance": "Finance",
       "sales": "Ventes",
       "purchasing": "Achats",
-      "admin": "Administration"
+      "admin": "Administration",
+      "shareholders": "Actionnaires / Associés"
     },
     "actions": {
       "view": "Voir",
@@ -831,22 +916,60 @@
     "exportError": "Impossible d'exporter ce rapport.",
     "noData": "Aucune donnée pour cette sélection.",
     "types": {
-      "customer-statement": { "label": "Relevé client", "idLabel": "ID client" },
-      "supplier-statement": { "label": "Relevé fournisseur", "idLabel": "ID fournisseur" },
-      "transporter-statement": { "label": "Relevé transporteur", "idLabel": "ID transporteur" },
-      "truck-history": { "label": "Historique camion", "idLabel": "ID camion" },
-      "trip-report": { "label": "Rapport des trajets" },
-      "purchase-report": { "label": "Rapport des achats" },
-      "sales-report": { "label": "Rapport des ventes" },
-      "expense-report": { "label": "Rapport des dépenses" },
-      "customer-outstanding": { "label": "Impayés clients" },
-      "supplier-outstanding": { "label": "Impayés fournisseurs" },
-      "transporter-outstanding": { "label": "Impayés transporteurs" },
-      "fuel-stock": { "label": "Stock carburant" },
-      "loss-report": { "label": "Rapport des écarts" },
-      "margin-report": { "label": "Rapport de marge" },
-      "bank-statement": { "label": "Relevé bancaire", "idLabel": "ID compte bancaire" },
-      "cash-statement": { "label": "Relevé de caisse", "idLabel": "ID compte de caisse" }
+      "customer-statement": {
+        "label": "Relevé client",
+        "idLabel": "ID client"
+      },
+      "supplier-statement": {
+        "label": "Relevé fournisseur",
+        "idLabel": "ID fournisseur"
+      },
+      "transporter-statement": {
+        "label": "Relevé transporteur",
+        "idLabel": "ID transporteur"
+      },
+      "truck-history": {
+        "label": "Historique camion",
+        "idLabel": "ID camion"
+      },
+      "trip-report": {
+        "label": "Rapport des trajets"
+      },
+      "purchase-report": {
+        "label": "Rapport des achats"
+      },
+      "sales-report": {
+        "label": "Rapport des ventes"
+      },
+      "expense-report": {
+        "label": "Rapport des dépenses"
+      },
+      "customer-outstanding": {
+        "label": "Impayés clients"
+      },
+      "supplier-outstanding": {
+        "label": "Impayés fournisseurs"
+      },
+      "transporter-outstanding": {
+        "label": "Impayés transporteurs"
+      },
+      "fuel-stock": {
+        "label": "Stock carburant"
+      },
+      "loss-report": {
+        "label": "Rapport des écarts"
+      },
+      "margin-report": {
+        "label": "Rapport de marge"
+      },
+      "bank-statement": {
+        "label": "Relevé bancaire",
+        "idLabel": "ID compte bancaire"
+      },
+      "cash-statement": {
+        "label": "Relevé de caisse",
+        "idLabel": "ID compte de caisse"
+      }
     },
     "fields": {
       "customer": "Client",
