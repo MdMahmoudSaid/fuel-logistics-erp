@@ -2306,6 +2306,48 @@ def test_shareholder_loan_record_repayment_rejects_amount_exceeding_principal():
 
 
 @pytest.mark.django_db
+def test_shareholder_loan_record_repayment_rejects_non_numeric_amount():
+    """Reviewer finding (final whole-branch review, promoted from a
+    deferred Task 7 Minor): record_repayment()'s `amount` arrives from the
+    record-repayment action's raw request.data.get("amount") - it never
+    passes through a DRF serializer field, so nothing upstream validates
+    it's numeric before it reaches Decimal(str(...)) here. A bad value like
+    "abc" must raise ShareholderLoanError (which the view already turns
+    into a clean 400), not an uncaught decimal.InvalidOperation."""
+    borrower, lender = _make_shareholders([Decimal("50"), Decimal("50")], prefix="BADAMT")
+    loan = ShareholderLoan.objects.create(
+        borrower=borrower, lender=lender, amount=Decimal("20000.00"), date="2026-08-01"
+    )
+
+    with pytest.raises(ShareholderLoanError):
+        ShareholderLoanService.record_repayment(loan.id, "abc")
+
+    loan.refresh_from_db()
+    assert loan.amount_repaid == Decimal("0.00")
+
+
+@pytest.mark.django_db
+def test_shareholder_loan_record_repayment_endpoint_rejects_non_numeric_amount(admin_client):
+    """API-level counterpart: POSTing a non-numeric amount to
+    record-repayment/ must come back as a clean 400, not a 500 - this was
+    the only unhandled-500 path in the new shareholders API surface before
+    ShareholderLoanService.record_repayment() started catching
+    decimal.InvalidOperation and re-raising it as ShareholderLoanError."""
+    borrower, lender = _make_shareholders([Decimal("50"), Decimal("50")], prefix="BADAMTAPI")
+    loan = ShareholderLoan.objects.create(
+        borrower=borrower, lender=lender, amount=Decimal("20000.00"), date="2026-08-01"
+    )
+
+    response = admin_client.post(
+        f"/api/shareholder-loans/{loan.id}/record-repayment/", {"amount": "abc"}
+    )
+
+    assert response.status_code == 400, response.data
+    loan.refresh_from_db()
+    assert loan.amount_repaid == Decimal("0.00")
+
+
+@pytest.mark.django_db
 def test_shareholder_ledger_service_get_shareholder_summary():
     shareholder = _make_shareholders([Decimal("100")])[0]
     actor = _make_admin_user("8")
@@ -2350,3 +2392,50 @@ def test_shareholder_ledger_endpoint_via_api(admin_client):
     assert "remaining_due" in response.data
     assert "loans_borrowed" in response.data
     assert "loans_lent" in response.data
+
+
+@pytest.mark.django_db
+def test_shareholder_ledger_endpoint_money_fields_are_strings_not_floats(admin_client):
+    """Reviewer finding (final whole-branch review): this is the only new
+    endpoint in the plan that built its Response() from a plain dict
+    instead of a ModelSerializer, so without decimals_to_str() every money
+    value would ride over the wire as a DRF-JSONEncoder-coerced float
+    instead of the exact Decimal string every other endpoint in this
+    codebase sends (guide "never float" discipline) - matching the
+    frontend ShareholderLedger TypeScript type, which declares these
+    fields as `string`."""
+    shareholder = _make_shareholders([Decimal("100")])[0]
+    actor = _make_admin_user("9")
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=actor,
+    )
+    share = ShareholderProfitShare.objects.get(distribution=distribution)
+    cash_account = CashAccount.objects.create(name="Ledger Test Cash")
+    ShareholderWithdrawalService.record_withdrawal(
+        shareholder_id=shareholder.id,
+        profit_share_id=share.id,
+        amount=Decimal("30000.00"),
+        date="2026-08-01",
+        cash_account_id=cash_account.id,
+        actor=actor,
+    )
+    other = _make_shareholders([Decimal("0")], prefix="LOANLDG")[0]
+    ShareholderLoan.objects.create(
+        borrower=other, lender=shareholder, amount=Decimal("15000.00"), date="2026-08-01"
+    )
+
+    response = admin_client.get(f"/api/shareholders/{shareholder.id}/ledger/")
+
+    assert response.status_code == 200, response.data
+    assert isinstance(response.data["total_amount_due"], str)
+    assert isinstance(response.data["total_withdrawn"], str)
+    assert isinstance(response.data["remaining_due"], str)
+    assert isinstance(response.data["net_loan_balance"], str)
+    assert isinstance(response.data["shares"][0]["amount_due"], str)
+    assert isinstance(response.data["shares"][0]["remaining_due"], str)
+    assert isinstance(response.data["loans_lent"][0]["amount"], str)
+    assert isinstance(response.data["loans_lent"][0]["remaining_amount"], str)
+    assert isinstance(response.data["withdrawals"][0]["amount"], str)

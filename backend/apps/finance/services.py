@@ -7,7 +7,7 @@
 # rows here - once, so no two API paths can compute a different outstanding
 # balance for the same invoice/customer (guide Section 8.4).
 
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
@@ -222,6 +222,53 @@ class FinancePostingService:
         return account
 
     @staticmethod
+    def _post_treasury(
+        *,
+        source,
+        model,
+        transaction_type,
+        amount,
+        date,
+        reference,
+        recorded_by,
+        resolve_accounts,
+    ) -> TreasuryTransaction | None:
+        """Shared idempotency-check + create-under-lock body for every
+        record_*_treasury() method below, in the same order the original
+        three methods each had it: check source_content_type/
+        source_object_id for an already-posted TreasuryTransaction FIRST
+        (no-op if found, before taking any account lock), only then resolve
+        + select_for_update() the account to debit/credit via the
+        `resolve_accounts` callback (each caller's own account-resolution
+        logic - bank vs cash, and what "neither set" means - legitimately
+        differs per source model, so it stays in the caller), and finally
+        create the TreasuryTransaction row. Runs inside the caller's own
+        @transaction.atomic.
+        """
+        source_content_type = ContentType.objects.get_for_model(model)
+        already_posted = TreasuryTransaction.objects.filter(
+            source_content_type=source_content_type, source_object_id=source.id
+        ).exists()
+        if already_posted:
+            return None
+
+        bank_account, cash_account = resolve_accounts()
+        if bank_account is None and cash_account is None:
+            return None
+
+        return TreasuryTransaction.objects.create(
+            bank_account=bank_account,
+            cash_account=cash_account,
+            type=transaction_type,
+            amount=amount,
+            date=date,
+            reference=reference,
+            source_content_type=source_content_type,
+            source_object_id=source.id,
+            recorded_by=recorded_by,
+        )
+
+    @staticmethod
     @transaction.atomic
     def record_customer_payment_treasury(payment: CustomerPayment) -> TreasuryTransaction | None:
         """Create the one TreasuryTransaction(MONEY_IN) a direct customer
@@ -233,35 +280,31 @@ class FinancePostingService:
         if payment.is_indirect:
             return None
 
-        payment_content_type = ContentType.objects.get_for_model(CustomerPayment)
-        already_posted = TreasuryTransaction.objects.filter(
-            source_content_type=payment_content_type, source_object_id=payment.id
-        ).exists()
-        if already_posted:
-            return None
-
-        if payment.bank_account_id:
-            bank_account = BankAccount.objects.select_for_update().get(pk=payment.bank_account_id)
-            cash_account = None
-        elif payment.cash_account_id:
-            bank_account = None
-            cash_account = CashAccount.objects.select_for_update().get(pk=payment.cash_account_id)
-        else:
+        def resolve_accounts():
+            if payment.bank_account_id:
+                return (
+                    BankAccount.objects.select_for_update().get(pk=payment.bank_account_id),
+                    None,
+                )
+            if payment.cash_account_id:
+                return (
+                    None,
+                    CashAccount.objects.select_for_update().get(pk=payment.cash_account_id),
+                )
             # Neither account set on a non-indirect payment shouldn't happen
             # given CustomerPaymentSerializer.validate(), but there's
             # nothing sane to post here - stay defensive rather than raise.
-            return None
+            return None, None
 
-        return TreasuryTransaction.objects.create(
-            bank_account=bank_account,
-            cash_account=cash_account,
-            type=TreasuryTransaction.Type.MONEY_IN,
+        return FinancePostingService._post_treasury(
+            source=payment,
+            model=CustomerPayment,
+            transaction_type=TreasuryTransaction.Type.MONEY_IN,
             amount=payment.amount,
             date=payment.payment_date,
             reference=payment.reference,
-            source_content_type=payment_content_type,
-            source_object_id=payment.id,
             recorded_by=payment.recorded_by,
+            resolve_accounts=resolve_accounts,
         )
 
     @staticmethod
@@ -278,38 +321,34 @@ class FinancePostingService:
         Returns None (no-op) for a payment that was already posted -
         callers don't need to check that themselves.
         """
-        payment_content_type = ContentType.objects.get_for_model(SupplierPayment)
-        already_posted = TreasuryTransaction.objects.filter(
-            source_content_type=payment_content_type, source_object_id=payment.id
-        ).exists()
-        if already_posted:
-            return None
 
-        if payment.bank_account_id:
-            bank_account = BankAccount.objects.select_for_update().get(pk=payment.bank_account_id)
-            cash_account = None
-        elif payment.cash_account_id:
-            bank_account = None
-            cash_account = CashAccount.objects.select_for_update().get(pk=payment.cash_account_id)
-        else:
+        def resolve_accounts():
+            if payment.bank_account_id:
+                return (
+                    BankAccount.objects.select_for_update().get(pk=payment.bank_account_id),
+                    None,
+                )
+            if payment.cash_account_id:
+                return (
+                    None,
+                    CashAccount.objects.select_for_update().get(pk=payment.cash_account_id),
+                )
             # Neither account set shouldn't happen given the DB-level
             # finance_supplierpayment_requires_account constraint, but
             # there's nothing sane to post here - stay defensive rather
             # than raise.
-            return None
+            return None, None
 
-        return TreasuryTransaction.objects.create(
-            bank_account=bank_account,
-            cash_account=cash_account,
-            type=TreasuryTransaction.Type.MONEY_OUT,
+        return FinancePostingService._post_treasury(
+            source=payment,
+            model=SupplierPayment,
+            transaction_type=TreasuryTransaction.Type.MONEY_OUT,
             amount=payment.amount,
             date=payment.payment_date,
             reference=payment.reference,
-            source_content_type=payment_content_type,
-            source_object_id=payment.id,
             recorded_by=payment.recorded_by,
+            resolve_accounts=resolve_accounts,
         )
-
 
     @staticmethod
     @transaction.atomic
@@ -323,36 +362,33 @@ class FinancePostingService:
         source_content_type/source_object_id, idempotent against
         already-posted withdrawals.
         """
-        withdrawal_content_type = ContentType.objects.get_for_model(ShareholderWithdrawal)
-        already_posted = TreasuryTransaction.objects.filter(
-            source_content_type=withdrawal_content_type, source_object_id=withdrawal.id
-        ).exists()
-        if already_posted:
-            return None
 
-        if withdrawal.bank_account_id:
-            bank_account = BankAccount.objects.select_for_update().get(pk=withdrawal.bank_account_id)
-            cash_account = None
-        elif withdrawal.cash_account_id:
-            bank_account = None
-            cash_account = CashAccount.objects.select_for_update().get(pk=withdrawal.cash_account_id)
-        else:
+        def resolve_accounts():
+            if withdrawal.bank_account_id:
+                return (
+                    BankAccount.objects.select_for_update().get(pk=withdrawal.bank_account_id),
+                    None,
+                )
+            if withdrawal.cash_account_id:
+                return (
+                    None,
+                    CashAccount.objects.select_for_update().get(pk=withdrawal.cash_account_id),
+                )
             # Neither account set shouldn't happen given the DB-level
             # finance_shareholderwithdrawal_requires_account constraint, but
             # there's nothing sane to post here - stay defensive rather
             # than raise.
-            return None
+            return None, None
 
-        return TreasuryTransaction.objects.create(
-            bank_account=bank_account,
-            cash_account=cash_account,
-            type=TreasuryTransaction.Type.MONEY_OUT,
+        return FinancePostingService._post_treasury(
+            source=withdrawal,
+            model=ShareholderWithdrawal,
+            transaction_type=TreasuryTransaction.Type.MONEY_OUT,
             amount=withdrawal.amount,
             date=withdrawal.date,
             reference="",
-            source_content_type=withdrawal_content_type,
-            source_object_id=withdrawal.id,
             recorded_by=withdrawal.recorded_by,
+            resolve_accounts=resolve_accounts,
         )
 
 
@@ -618,7 +654,10 @@ class ShareholderLoanService:
     def record_repayment(loan_id, increment_amount) -> ShareholderLoan:
         loan = ShareholderLoan.objects.select_for_update().get(pk=loan_id)
 
-        increment = Decimal(str(increment_amount))
+        try:
+            increment = Decimal(str(increment_amount))
+        except (InvalidOperation, TypeError, ValueError):
+            raise ShareholderLoanError("Montant invalide.")
         if increment <= 0:
             raise ShareholderLoanError("Le montant du remboursement doit etre positif.")
 

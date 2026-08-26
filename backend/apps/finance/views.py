@@ -6,6 +6,7 @@ from rest_framework.exceptions import MethodNotAllowed
 from rest_framework.response import Response
 
 from apps.accounts.permissions import HasModulePermission
+from apps.reports.serialization import decimals_to_str
 from apps.trips.models import Trip
 
 from .models import (
@@ -276,7 +277,7 @@ class ShareholderViewSet(viewsets.ModelViewSet):
         """
         shareholder = self.get_object()
         summary = ShareholderLedgerService.get_shareholder_summary(shareholder.id)
-        return Response(summary)
+        return Response(decimals_to_str(summary))
 
 
 class ShareholderProfitDistributionViewSet(viewsets.ModelViewSet):
