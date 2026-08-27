@@ -1,3 +1,4 @@
+from django.db.models import Sum
 from rest_framework import serializers
 
 from apps.accounts.serializers import UserSerializer
@@ -146,6 +147,8 @@ class InvoiceSerializer(serializers.ModelSerializer):
 
     sale_detail = SaleSerializer(source="sale", read_only=True)
     corrections = InvoiceCorrectionSerializer(many=True, read_only=True)
+    paid_amount = serializers.SerializerMethodField()
+    outstanding_amount = serializers.SerializerMethodField()
 
     class Meta:
         model = Invoice
@@ -156,6 +159,8 @@ class InvoiceSerializer(serializers.ModelSerializer):
             "sale_detail",
             "status",
             "total_amount",
+            "paid_amount",
+            "outstanding_amount",
             "issued_date",
             "corrections",
             "created_at",
@@ -167,10 +172,20 @@ class InvoiceSerializer(serializers.ModelSerializer):
             "sale",
             "sale_detail",
             "status",
+            "paid_amount",
+            "outstanding_amount",
             "corrections",
             "created_at",
             "updated_at",
         ]
+
+    def get_paid_amount(self, obj) -> str:
+        paid = obj.allocations.aggregate(total=Sum("amount"))["total"] or 0
+        return f"{paid:.2f}"
+
+    def get_outstanding_amount(self, obj) -> str:
+        paid = obj.allocations.aggregate(total=Sum("amount"))["total"] or 0
+        return f"{max(obj.total_amount - paid, 0):.2f}"
 
     def validate(self, data):
         if (

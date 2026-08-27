@@ -26,6 +26,15 @@ const HOME_ITEM: NavItem = { to: 'home', labelKey: 'navigation.home', module: 'r
 // lien direct hors groupe.
 const NAV_GROUPS: NavGroup[] = [
   {
+    key: 'operations',
+    titleKey: 'navigation.groups.operations',
+    items: [
+      { to: 'trips', labelKey: 'navigation.trips', module: 'operations' },
+      { to: 'company-stock', labelKey: 'navigation.companyStock', module: 'operations' },
+      { to: 'loss-report', labelKey: 'navigation.lossesToReview', module: 'reports' },
+    ],
+  },
+  {
     key: 'purchasing',
     titleKey: 'navigation.groups.purchasing',
     items: [
@@ -40,41 +49,38 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: 'customers', labelKey: 'navigation.customers', module: 'sales' },
       { to: 'customer-orders', labelKey: 'navigation.customerOrders', module: 'sales' },
-      { to: 'trips', labelKey: 'navigation.trips', module: 'operations' },
       { to: 'sales', labelKey: 'navigation.sales', module: 'sales' },
       { to: 'invoices', labelKey: 'navigation.invoices', module: 'sales' },
-    ],
-  },
-  {
-    key: 'fleet',
-    titleKey: 'navigation.groups.fleet',
-    items: [
-      { to: 'transporters', labelKey: 'navigation.transporters', module: 'operations' },
-      { to: 'drivers', labelKey: 'navigation.drivers', module: 'operations' },
-      { to: 'trucks', labelKey: 'navigation.trucks', module: 'operations' },
     ],
   },
   {
     key: 'treasury',
     titleKey: 'navigation.groups.treasury',
     items: [
-      { to: 'bank-accounts', labelKey: 'navigation.bankAccounts', module: 'finance' },
-      { to: 'cash-accounts', labelKey: 'navigation.cashAccounts', module: 'finance' },
       {
         to: 'treasury-transactions',
         labelKey: 'navigation.treasuryTransactions',
         module: 'finance',
       },
-      // Gated on the dedicated "shareholders" module (Task 7, client
-      // modifications plan, ruling 3) rather than "finance" - the Finance
-      // role only has view/create here, not the broader access it has on
-      // plain finance-gated items, so reusing 'finance' would over-expose
-      // this nav item relative to actual permissions.
-      { to: 'shareholders', labelKey: 'navigation.shareholders', module: 'shareholders' },
-      // "Benefices" page (design doc 2026-08-26-benefices-associes-
-      // refinement-design.md) - same gate as Actionnaires/Associes, since
-      // it surfaces the same shareholder-facing profit split.
+      { to: 'bank-accounts', labelKey: 'navigation.bankAccounts', module: 'finance' },
+      { to: 'cash-accounts', labelKey: 'navigation.cashAccounts', module: 'finance' },
+    ],
+  },
+  {
+    key: 'results',
+    titleKey: 'navigation.groups.results',
+    items: [
       { to: 'profit', labelKey: 'navigation.profit', module: 'shareholders' },
+      { to: 'shareholders', labelKey: 'navigation.shareholders', module: 'shareholders' },
+    ],
+  },
+  {
+    key: 'logistics',
+    titleKey: 'navigation.groups.logistics',
+    items: [
+      { to: 'transporters', labelKey: 'navigation.transporters', module: 'operations' },
+      { to: 'drivers', labelKey: 'navigation.drivers', module: 'operations' },
+      { to: 'trucks', labelKey: 'navigation.trucks', module: 'operations' },
     ],
   },
   {

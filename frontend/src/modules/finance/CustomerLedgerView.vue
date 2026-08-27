@@ -157,6 +157,7 @@ const STATUS_BADGE: Record<string, string> = {
               <th class="px-2 py-1.5 font-medium text-right">
                 {{ t('finance.customerLedger.paymentsTable.amount') }}
               </th>
+              <th class="px-2 py-1.5 font-medium">Justificatif</th>
             </tr>
           </thead>
           <tbody>
@@ -168,9 +169,21 @@ const STATUS_BADGE: Record<string, string> = {
               <td class="px-2 py-1.5 text-right font-medium text-slate-800">
                 {{ formatMoney(payment.amount) }}
               </td>
+              <td class="px-2 py-1.5">
+                <a
+                  v-if="payment.proof_url"
+                  :href="payment.proof_url"
+                  target="_blank"
+                  rel="noreferrer"
+                  class="text-bitume underline"
+                >
+                  Voir justificatif
+                </a>
+                <span v-else class="text-texte-3">—</span>
+              </td>
             </tr>
             <tr v-if="ledger.payments.length === 0">
-              <td colspan="5" class="px-2 py-4 text-center text-slate-400">
+              <td colspan="6" class="px-2 py-4 text-center text-slate-400">
                 {{ t('finance.customerLedger.noPayments') }}
               </td>
             </tr>

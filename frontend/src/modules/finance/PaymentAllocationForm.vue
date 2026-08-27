@@ -183,6 +183,11 @@ async function onSubmit() {
   error.value = ''
   proofUploadError.value = ''
   try {
+    if (!proofFile.value) {
+      error.value = t('finance.payment.proofRequired')
+      return
+    }
+
     const allocations: InvoiceAllocationInput[] = lines.value
       .filter((line) => line.amount)
       .map((line) => ({
@@ -382,6 +387,7 @@ async function onSubmit() {
         <input
           id="proof_file"
           type="file"
+          required
           accept="image/*,application/pdf"
           class="text-texte-2 text-sm"
           @change="onProofFileChange"

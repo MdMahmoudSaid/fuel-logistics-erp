@@ -28,6 +28,8 @@ function makeInvoice(overrides: Partial<Invoice> = {}): Invoice {
     },
     status: 'DRAFT',
     total_amount: '29152500.00',
+    paid_amount: '0.00',
+    outstanding_amount: '29152500.00',
     issued_date: '2026-08-18',
     corrections: [],
     created_at: '',

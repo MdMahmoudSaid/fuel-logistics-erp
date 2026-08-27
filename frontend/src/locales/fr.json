@@ -28,6 +28,8 @@
     "customers": "Clients",
     "customerOrders": "Commandes clients",
     "trips": "Trajets & chargements",
+    "companyStock": "Stock de l'entreprise",
+    "lossesToReview": "Écarts à traiter",
     "sales": "Ventes",
     "invoices": "Factures",
     "transporters": "Transporteurs",
@@ -42,11 +44,14 @@
     "lossToleranceSettings": "Tolérance de perte",
     "auditLogs": "Journal d'audit",
     "groups": {
-      "purchasing": "Achats & Approvisionnements",
-      "sales": "Ventes & Livraisons",
-      "fleet": "Flotte & Logistique",
-      "treasury": "Trésorerie & Finance",
-      "settings": "Paramètres & Configuration"
+      "operations": "Opérations",
+      "purchasing": "Achats",
+      "sales": "Ventes",
+      "treasury": "Trésorerie",
+      "results": "Résultats & associés",
+      "logistics": "Logistique",
+      "fleet": "Logistique",
+      "settings": "Paramètres"
     },
     "shareholders": "Actionnaires / Associés",
     "profit": "Bénéfices"
@@ -146,7 +151,7 @@
     "deactivate": "Désactiver",
     "toggleError": "Impossible de changer le statut — vérifiez vos droits.",
     "showInactive": "Afficher les inactifs",
-    "viewLedger": "Grand livre",
+    "viewLedger": "Détail",
     "titles": {
       "products": "Produits",
       "suppliers": "Fournisseurs",
@@ -494,6 +499,7 @@
       "destinationIndirect": "Indirect (aucun mouvement de trésorerie)",
       "note": "Note",
       "proofImage": "Image justificative",
+      "proofRequired": "Le justificatif de paiement est obligatoire.",
       "proofUploadError": "Le paiement a été enregistré, mais l'image justificative n'a pas pu être envoyée.",
       "outstandingBalance": "Total de la dette du Client",
       "allocateToInvoices": "Répartir sur les factures",
@@ -526,7 +532,7 @@
       "cash": "Caisse"
     },
     "customerLedger": {
-      "title": "Grand livre client — {name}",
+      "title": "Compte client — {name}",
       "newPayment": "Nouveau paiement",
       "back": "Retour",
       "loadError": "Impossible de charger le grand livre client.",
@@ -551,7 +557,7 @@
       "noPayments": "Aucun paiement."
     },
     "transporterLedger": {
-      "title": "Grand livre transporteur — {name}",
+      "title": "Compte transporteur — {name}",
       "back": "Retour",
       "loadError": "Impossible de charger le grand livre transporteur.",
       "grossEarned": "Brut gagné",
@@ -688,7 +694,7 @@
         "saveError": "Impossible d'enregistrer ce retrait — vérifiez les champs."
       },
       "ledger": {
-        "title": "Grand livre de l'actionnaire",
+        "title": "Compte de l'actionnaire",
         "view": "Afficher",
         "loadError": "Impossible de charger le grand livre de l'actionnaire.",
         "totalDue": "Total dû",
@@ -833,7 +839,7 @@
       "noCessions": "Aucune lettre de cession."
     },
     "supplierLedger": {
-      "title": "Grand livre fournisseur — {name}",
+      "title": "Compte fournisseur — {name}",
       "back": "Retour",
       "loadError": "Impossible de charger le grand livre fournisseur.",
       "totalPurchased": "Total acheté",

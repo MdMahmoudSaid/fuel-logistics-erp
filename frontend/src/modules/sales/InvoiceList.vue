@@ -2,7 +2,7 @@
 // docs/PHASE_4_PLAN.md Etape 9: invoice list with status filters. No "New"
 // button - invoices are generated automatically by DeliveryService, never
 // created directly (backend/apps/sales/views.py InvoiceViewSet.create()).
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { invoiceResource } from './api'
@@ -24,6 +24,22 @@ const error = ref('')
 const statusFilter = ref<InvoiceStatus | ''>('')
 const showPaymentModal = ref(false)
 const paymentCustomerId = ref<number | null>(null)
+
+const invoiceSummary = computed(() => {
+  const total = invoices.value.reduce((sum, invoice) => sum + Number(invoice.total_amount), 0)
+  const paid = invoices.value.reduce((sum, invoice) => sum + Number(invoice.paid_amount || 0), 0)
+  const outstanding = invoices.value.reduce(
+    (sum, invoice) => sum + Number(invoice.outstanding_amount || 0),
+    0,
+  )
+  return {
+    total,
+    paid,
+    outstanding,
+    unpaidCount: invoices.value.filter((invoice) => invoice.status === 'VALIDATED').length,
+    partialCount: invoices.value.filter((invoice) => invoice.status === 'PARTIALLY_PAID').length,
+  }
+})
 
 function openPaymentModal() {
   paymentCustomerId.value = route.query.customer ? Number(route.query.customer) : null
@@ -94,6 +110,29 @@ function badgeVariant(status: string) {
       </select>
     </div>
 
+    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div class="border-ligne rounded-lg border bg-white p-4">
+        <p class="text-texte-2 text-xs font-semibold uppercase">Total facturé</p>
+        <p class="font-mono text-lg font-semibold">{{ formatMoney(invoiceSummary.total) }}</p>
+      </div>
+      <div class="border-ligne rounded-lg border bg-white p-4">
+        <p class="text-texte-2 text-xs font-semibold uppercase">Total encaissé</p>
+        <p class="font-mono text-lg font-semibold">{{ formatMoney(invoiceSummary.paid) }}</p>
+      </div>
+      <div class="border-ligne rounded-lg border bg-white p-4">
+        <p class="text-texte-2 text-xs font-semibold uppercase">Reste à encaisser</p>
+        <p class="font-mono text-lg font-semibold">{{ formatMoney(invoiceSummary.outstanding) }}</p>
+      </div>
+      <div class="border-ligne rounded-lg border bg-white p-4">
+        <p class="text-texte-2 text-xs font-semibold uppercase">Factures impayées</p>
+        <p class="font-mono text-lg font-semibold">{{ invoiceSummary.unpaidCount }}</p>
+      </div>
+      <div class="border-ligne rounded-lg border bg-white p-4">
+        <p class="text-texte-2 text-xs font-semibold uppercase">Partiellement payées</p>
+        <p class="font-mono text-lg font-semibold">{{ invoiceSummary.partialCount }}</p>
+      </div>
+    </div>
+
     <p v-if="error" class="text-critique text-sm">{{ error }}</p>
 
     <div class="border-ligne overflow-x-auto rounded-xl border bg-white">
@@ -105,8 +144,11 @@ function badgeVariant(status: string) {
             <th class="px-3 py-2.5 text-right font-medium">
               {{ t('sales.invoiceList.table.total') }}
             </th>
+            <th class="px-3 py-2.5 text-right font-medium">Déjà payé</th>
+            <th class="px-3 py-2.5 text-right font-medium">Reste à payer</th>
             <th class="px-3 py-2.5 font-medium">{{ t('sales.invoiceList.table.issued') }}</th>
             <th class="px-3 py-2.5 font-medium">{{ t('sales.invoiceList.table.status') }}</th>
+            <th class="px-3 py-2.5 font-medium">Action</th>
           </tr>
         </thead>
         <tbody>
@@ -121,15 +163,22 @@ function badgeVariant(status: string) {
             <td class="px-3 py-2.5 text-right">
               <MonoValue :value="formatMoney(invoice.total_amount)" />
             </td>
+            <td class="px-3 py-2.5 text-right">
+              <MonoValue :value="formatMoney(invoice.paid_amount || 0)" />
+            </td>
+            <td class="px-3 py-2.5 text-right">
+              <MonoValue :value="formatMoney(invoice.outstanding_amount || 0)" />
+            </td>
             <td class="px-3 py-2.5">{{ invoice.issued_date }}</td>
             <td class="px-3 py-2.5">
               <Badge :variant="badgeVariant(invoice.status)">{{
                 t(`invoiceStatus.${invoice.status}`)
               }}</Badge>
             </td>
+            <td class="px-3 py-2.5">Détail / paiement</td>
           </tr>
           <tr v-if="!loading && invoices.length === 0">
-            <td colspan="5" class="text-texte-3 px-3 py-8 text-center">
+            <td colspan="8" class="text-texte-3 px-3 py-8 text-center">
               {{ t('sales.invoiceList.noInvoices') }}
             </td>
           </tr>

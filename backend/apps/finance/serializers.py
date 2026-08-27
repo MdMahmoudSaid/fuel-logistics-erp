@@ -6,6 +6,7 @@ from rest_framework import serializers
 
 from apps.accounts.serializers import UserSerializer
 from apps.customers.serializers import CustomerSerializer
+from apps.documents.models import Document
 from apps.finance.labels import describe_treasury_transaction
 from apps.suppliers.serializers import SupplierSerializer
 from apps.transport.serializers import TransporterSerializer
@@ -102,6 +103,7 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
     recorded_by_detail = UserSerializer(source="recorded_by", read_only=True)
     allocations_detail = PaymentAllocationSerializer(source="allocations", many=True, read_only=True)
     allocations = InvoiceAllocationInputSerializer(many=True, write_only=True, required=False)
+    proof_url = serializers.SerializerMethodField()
 
     class Meta:
         model = CustomerPayment
@@ -109,10 +111,25 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
             "id", "customer", "customer_detail", "amount", "payment_date", "method",
             "bank_account", "cash_account", "reference", "is_indirect", "destination", "note",
             "recorded_by", "recorded_by_detail",
-            "allocations", "allocations_detail",
+            "allocations", "allocations_detail", "proof_url",
             "created_at", "updated_at",
         ]
         read_only_fields = ["id", "recorded_by", "created_at", "updated_at"]
+
+    def get_proof_url(self, obj) -> str | None:
+        content_type = ContentType.objects.get_for_model(CustomerPayment)
+        document = (
+            Document.objects.filter(
+                content_type=content_type,
+                object_id=obj.id,
+                document_type="customer_payment_proof",
+            )
+            .order_by("-created_at", "-id")
+            .first()
+        )
+        if not document or not document.file:
+            return None
+        return document.file.url
 
     def validate(self, data):
         """`destination` is the single source of truth for is_indirect/

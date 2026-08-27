@@ -105,6 +105,9 @@ describe('ShareholderView', () => {
     const wrapper = mount(ShareholderView)
     await flushPromises()
 
+    await wrapper.findAll('button').find((b) => b.text() === 'Grand livre')!.trigger('click')
+    await flushPromises()
+
     await wrapper.find('#ledger_shareholder').setValue('1')
     const viewButton = wrapper.findAll('button').find((b) => b.text() === 'Afficher')
     expect(viewButton).toBeTruthy()

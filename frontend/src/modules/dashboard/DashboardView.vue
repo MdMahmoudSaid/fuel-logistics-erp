@@ -154,6 +154,66 @@ const deliveredGauge = computed(() =>
   todayLoaded.value > 0 ? (todayDelivered.value / todayLoaded.value) * 100 : 0,
 )
 const lossGaugeTone = computed(() => lossSeverityTone(avgLossPct.value))
+
+const financialCards = computed(() => {
+  if (!summary.value) return []
+  const s = summary.value.financial_summary
+  return [
+    { label: "Chiffre d'affaires de la période", value: formatMoney(s.period_revenue) },
+    { label: 'Encaissements de la période', value: formatMoney(s.period_collections) },
+    { label: 'Dépenses payées de la période', value: formatMoney(s.period_paid_expenses) },
+    { label: 'Bénéfice comptable de la période', value: formatMoney(s.period_accounting_profit) },
+    { label: 'Solde trésorerie actuel', value: formatMoney(s.current_treasury_balance) },
+  ]
+})
+
+const partyCards = computed(() => {
+  if (!summary.value) return []
+  const p = summary.value.party_balances
+  return [
+    {
+      label: 'Clients',
+      to: { name: 'customers' },
+      balance: p.customers.balance,
+      detail: `${p.customers.open_count} client(s) avec solde ouvert`,
+      sub: p.customers.largest_open
+        ? `Plus gros débiteur: ${p.customers.largest_open.name}`
+        : 'Rien à régler',
+    },
+    {
+      label: 'Fournisseurs',
+      to: { name: 'suppliers' },
+      balance: p.suppliers.balance,
+      detail: `${p.suppliers.open_count} fournisseur(s) avec dette`,
+      sub: p.suppliers.largest_open
+        ? `Plus gros impayé: ${p.suppliers.largest_open.name}`
+        : 'Rien à régler',
+    },
+    {
+      label: 'Transporteurs',
+      to: { name: 'transporters' },
+      balance: p.transporters.balance,
+      detail: `${p.transporters.open_count} transporteur(s) avec solde ouvert`,
+      sub: p.transporters.largest_open
+        ? `Plus gros solde: ${p.transporters.largest_open.name}`
+        : 'Rien à régler',
+    },
+    {
+      label: 'Actionnaires / Associés',
+      to: { name: 'shareholders' },
+      balance: p.shareholders.balance,
+      detail: `Retiré: ${formatMoney(p.shareholders.total_withdrawn)}`,
+      sub: `Avances ouvertes: ${formatMoney(p.shareholders.open_loans_total)}`,
+    },
+    {
+      label: 'Douane / Transit / autres frais',
+      to: { name: 'treasury-transactions' },
+      balance: p.customs_and_other.balance,
+      detail: `Douane: ${formatMoney(p.customs_and_other.customs)}`,
+      sub: `Autres frais: ${formatMoney(p.customs_and_other.other)}`,
+    },
+  ]
+})
 </script>
 
 <template>
@@ -164,6 +224,92 @@ const lossGaugeTone = computed(() => lossSeverityTone(avgLossPct.value))
       </h1>
       <span class="text-texte-2 font-mono text-sm capitalize">{{ todayLabel }}</span>
     </div>
+
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <p class="text-texte-2 text-sm">
+        La période filtre les ventes, encaissements, dépenses, volumes et bénéfices.
+      </p>
+      <DateRangeFilter @change="load" />
+    </div>
+
+    <template v-if="summary">
+      <section class="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <div
+          v-for="card in financialCards"
+          :key="card.label"
+          class="border-ligne rounded-lg border bg-white p-4"
+        >
+          <p class="text-texte-2 text-xs font-semibold uppercase">{{ card.label }}</p>
+          <p class="text-texte mt-2 font-mono text-xl font-semibold tabular-nums">
+            {{ card.value }}
+          </p>
+        </div>
+      </section>
+
+      <section class="space-y-3">
+        <h2 class="text-texte-2 text-sm font-semibold uppercase">Soldes par partie</h2>
+        <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <RouterLink
+            v-for="card in partyCards"
+            :key="card.label"
+            :to="card.to"
+            class="border-ligne hover:border-bitume rounded-lg border bg-white p-4 transition"
+          >
+            <p class="text-texte-2 text-xs font-semibold uppercase">{{ card.label }}</p>
+            <p class="text-texte mt-2 font-mono text-xl font-semibold tabular-nums">
+              {{ formatMoney(card.balance) }}
+            </p>
+            <p class="text-texte-2 mt-2 text-sm">{{ card.detail }}</p>
+            <p class="text-texte-3 mt-1 text-xs">{{ card.sub }}</p>
+          </RouterLink>
+        </div>
+      </section>
+
+      <section class="border-ligne rounded-lg border bg-white p-4">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 class="text-texte-2 text-sm font-semibold uppercase">Stock de l'entreprise</h2>
+            <p class="text-texte mt-2 font-mono text-2xl font-semibold">
+              {{ formatQuantity(summary.company_stock.total_quantity) }}
+            </p>
+            <p class="text-texte-2 text-sm">
+              {{ summary.company_stock.trips_count }} trajet(s) actuellement en stock
+            </p>
+          </div>
+          <RouterLink :to="{ name: 'trips', query: { filter: 'company-stock' } }" class="text-bitume text-sm underline">
+            Voir le détail
+          </RouterLink>
+        </div>
+        <div class="mt-4 grid gap-2 md:grid-cols-3">
+          <div
+            v-for="row in summary.company_stock.by_product"
+            :key="row.product"
+            class="bg-sable rounded-lg px-3 py-2"
+          >
+            <span class="text-texte-2 text-sm">{{ row.product }}</span>
+            <span class="text-texte ms-2 font-mono font-medium">{{
+              formatQuantity(row.quantity)
+            }}</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="border-ligne rounded-lg border bg-white p-4">
+        <h2 class="text-texte-2 mb-3 text-sm font-semibold uppercase">À traiter</h2>
+        <ul v-if="summary.action_items.length" class="grid gap-2 md:grid-cols-2">
+          <li v-for="item in summary.action_items" :key="item.kind + item.object_id">
+            <RouterLink
+              :to="{ name: 'trip-detail', params: { id: item.object_id } }"
+              class="bg-critique-tint text-critique-texte flex items-center justify-between rounded-lg px-3 py-2 text-sm"
+            >
+              <span>{{ item.label }}</span>
+              <span class="font-mono">{{ item.reference }}</span>
+            </RouterLink>
+          </li>
+        </ul>
+        <p v-else class="text-texte-3 text-sm">Aucune action urgente.</p>
+      </section>
+    </template>
 
     <p v-if="liveError" class="text-critique text-sm">{{ liveError }}</p>
     <p v-else-if="liveLoading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
@@ -286,7 +432,6 @@ const lossGaugeTone = computed(() => lossSeverityTone(avgLossPct.value))
       <h2 class="text-texte-2 text-sm font-semibold uppercase">
         {{ t('dashboard.periodDetail') }}
       </h2>
-      <DateRangeFilter @change="load" />
     </div>
 
     <p v-if="error" class="text-critique text-sm">{{ error }}</p>

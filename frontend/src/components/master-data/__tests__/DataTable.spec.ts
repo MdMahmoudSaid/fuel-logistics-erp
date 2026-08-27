@@ -53,6 +53,6 @@ describe('DataTable', () => {
 
     const link = wrapper.find('a[href="/customers/42/ledger"]')
     expect(link.exists()).toBe(true)
-    expect(link.text()).toBe('Grand livre')
+    expect(link.text()).toBe('Détail')
   })
 })
