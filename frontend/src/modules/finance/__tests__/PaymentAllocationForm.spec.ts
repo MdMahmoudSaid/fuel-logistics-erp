@@ -45,9 +45,10 @@ const fetchCustomerLedger = vi.fn(async (_id: number) => ({
   invoices: ledgerInvoices,
   payments: [],
 }))
+const createCustomerPayment = vi.fn(async (p: Record<string, unknown>) => ({ id: 1, ...p }))
 vi.mock('../api', () => ({
   customerPaymentResource: {
-    create: vi.fn(async (p: Record<string, unknown>) => ({ id: 1, ...p })),
+    create: (p: Record<string, unknown>) => createCustomerPayment(p),
   },
   fetchCustomerLedger: (id: number) => fetchCustomerLedger(id),
   uploadCustomerPaymentProof: vi.fn(async () => undefined),
@@ -146,5 +147,19 @@ describe('PaymentAllocationForm FIFO auto-allocation', () => {
     await flushPromises()
 
     expect(amountInputs()[0].element.value).toBe('500.00')
+  })
+
+  it('refuses to save a customer payment without a proof document', async () => {
+    const wrapper = mount(PaymentAllocationForm)
+    await flushPromises()
+    await selectCustomer(wrapper)
+
+    await wrapper.find('#amount').setValue('600')
+    await wrapper.find('#cash_account').setValue('1')
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Le justificatif de paiement est obligatoire.')
+    expect(createCustomerPayment).not.toHaveBeenCalled()
   })
 })

@@ -25,6 +25,11 @@ const router = createRouter({
           component: () => import('@/modules/reports/ReportsView.vue'),
         },
         {
+          path: 'loss-report',
+          name: 'loss-report',
+          component: () => import('@/modules/reports/ReportsView.vue'),
+        },
+        {
           path: 'audit-logs',
           name: 'audit-logs',
           component: () => import('@/modules/audit/AuditLogViewer.vue'),
@@ -92,6 +97,11 @@ const router = createRouter({
         {
           path: 'trips',
           name: 'trips',
+          component: () => import('@/modules/trips/TripStatusBoard.vue'),
+        },
+        {
+          path: 'company-stock',
+          name: 'company-stock',
           component: () => import('@/modules/trips/TripStatusBoard.vue'),
         },
         {

@@ -28,6 +28,8 @@
     "customers": "العملاء",
     "customerOrders": "طلبات العملاء",
     "trips": "الرحلات والتحميل",
+    "companyStock": "مخزون الشركة",
+    "lossesToReview": "الفروقات للمراجعة",
     "sales": "المبيعات",
     "invoices": "الفواتير",
     "transporters": "الناقلون",
@@ -42,11 +44,14 @@
     "lossToleranceSettings": "هامش تحمل الفاقد",
     "auditLogs": "سجل التدقيق",
     "groups": {
-      "purchasing": "المشتريات والتموين",
-      "sales": "المبيعات والتسليم",
-      "fleet": "الأسطول واللوجستيات",
-      "treasury": "الخزينة والمالية",
-      "settings": "الإعدادات والتكوين"
+      "operations": "العمليات",
+      "purchasing": "المشتريات",
+      "sales": "المبيعات",
+      "treasury": "الخزينة",
+      "results": "النتائج والشركاء",
+      "logistics": "اللوجستيات",
+      "fleet": "اللوجستيات",
+      "settings": "الإعدادات"
     },
     "shareholders": "المساهمون / الشركاء",
     "profit": "الأرباح"
@@ -492,6 +497,7 @@
       "destinationIndirect": "غير مباشر (بدون حركة خزينة)",
       "note": "ملاحظة",
       "proofImage": "صورة الإثبات",
+      "proofRequired": "إثبات الدفع إلزامي.",
       "proofUploadError": "تم تسجيل الدفعة، لكن تعذر رفع صورة الإثبات.",
       "outstandingBalance": "إجمالي دين العميل",
       "allocateToInvoices": "توزيع على الفواتير",

@@ -62,4 +62,62 @@ export interface DashboardSummary {
     remaining_undistributed: string
     open_loans_total: string
   }
+  financial_summary: {
+    period_revenue: string
+    period_collections: string
+    period_paid_expenses: string
+    period_accounting_profit: string
+    current_treasury_balance: string
+  }
+  party_balances: {
+    customers: {
+      balance: string
+      open_count: number
+      largest_open: { name: string; amount: string } | null
+    }
+    suppliers: {
+      balance: string
+      open_count: number
+      largest_open: { name: string; amount: string } | null
+    }
+    transporters: {
+      balance: string
+      open_count: number
+      largest_open: { name: string; amount: string } | null
+    }
+    shareholders: {
+      balance: string
+      remaining_undistributed: string
+      total_withdrawn: string
+      open_loans_total: string
+    }
+    customs_and_other: {
+      balance: string
+      customs: string
+      other: string
+    }
+  }
+  company_stock: {
+    total_quantity: string
+    trips_count: number
+    by_product: { product: string; quantity: string }[]
+    trips: {
+      id: number
+      reference: string
+      truck: string
+      supplier: string
+      transporter: string
+      product: string
+      remaining_quantity: string
+      entry_date: string
+      status: string
+    }[]
+  }
+  action_items: {
+    kind: string
+    label: string
+    target: string
+    object_id: number
+    reference: string
+  }[]
 }

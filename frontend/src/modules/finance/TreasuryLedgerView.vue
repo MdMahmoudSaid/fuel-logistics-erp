@@ -2,7 +2,7 @@
 // docs/PHASE_5_PLAN.md Etape 10: global treasury journal
 // (GET /api/treasury-transactions/), with a shortcut into the internal
 // transfer form.
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { treasuryTransactionResource } from './api'
@@ -42,11 +42,18 @@ function onDebtPaymentSuccess() {
 const transactions = ref<TreasuryTransaction[]>([])
 const loading = ref(true)
 const error = ref('')
+const typeFilter = ref('')
+const accountFilter = ref('')
+const proofFilter = ref('')
 
 // §0.3/Etape 6.3 : solde courant global (pas borné par une période - c'est
 // une balance, pas un flux), déjà calculé par le dashboard summary
 // (backend/apps/reports/views/dashboard.py) à partir de tous les comptes.
 const balance = ref<number | null>(null)
+const bankBalance = ref(0)
+const cashBalance = ref(0)
+const periodIn = ref(0)
+const periodOut = ref(0)
 
 function accountLabel(txn: TreasuryTransaction): string {
   return txn.bank_account_name ?? txn.cash_account_name ?? '—'
@@ -72,6 +79,10 @@ async function load() {
     ])
     transactions.value = txnData.results
     balance.value = Number(summary.finance.treasury_balance)
+    bankBalance.value = Number(summary.bank_amounts.total)
+    cashBalance.value = Number(summary.cash_amounts.total)
+    periodIn.value = Number(summary.financial_summary.period_collections)
+    periodOut.value = Number(summary.financial_summary.period_paid_expenses)
   } catch {
     error.value = t('finance.treasuryLedger.loadError')
   } finally {
@@ -89,6 +100,22 @@ const TYPE_BADGE: Record<string, string> = {
   MONEY_IN: 'bg-emerald-100 text-emerald-700',
   MONEY_OUT: 'bg-red-100 text-red-700',
 }
+
+const accountOptions = computed(() =>
+  Array.from(new Set(transactions.value.map(accountLabel).filter((value) => value !== '—'))),
+)
+
+const filteredTransactions = computed(() =>
+  transactions.value.filter((txn) => {
+    if (typeFilter.value === 'in' && txn.type !== 'MONEY_IN') return false
+    if (typeFilter.value === 'out' && txn.type !== 'MONEY_OUT') return false
+    if (typeFilter.value === 'transfer' && !txn.is_transfer) return false
+    if (accountFilter.value && accountLabel(txn) !== accountFilter.value) return false
+    if (proofFilter.value === 'with' && !txn.document_url) return false
+    if (proofFilter.value === 'without' && txn.document_url) return false
+    return true
+  }),
+)
 </script>
 
 <template>
@@ -106,16 +133,48 @@ const TYPE_BADGE: Record<string, string> = {
 
     <!-- Solde courant — §0.3 : Mono 30px sur carte bitume, négatif en
          --critique sans parenthèses. -->
-    <div v-if="balance !== null" class="bg-bitume rounded-xl p-5">
-      <p class="text-sable/60 text-xs font-medium uppercase">
-        {{ t('finance.treasuryLedger.currentBalance') }}
-      </p>
-      <p
-        class="font-mono text-[30px] leading-none font-semibold tabular-nums"
-        :class="balance < 0 ? 'text-critique' : 'text-sable'"
-      >
-        {{ balance < 0 ? '−' : '' }}{{ formatMoney(Math.abs(balance)) }}
-      </p>
+    <div v-if="balance !== null" class="grid gap-3 md:grid-cols-5">
+      <div class="bg-bitume rounded-xl p-5 md:col-span-2">
+        <p class="text-sable/60 text-xs font-medium uppercase">
+          {{ t('finance.treasuryLedger.currentBalance') }}
+        </p>
+        <p
+          class="font-mono text-[30px] leading-none font-semibold tabular-nums"
+          :class="balance < 0 ? 'text-critique' : 'text-sable'"
+        >
+          {{ balance < 0 ? '−' : '' }}{{ formatMoney(Math.abs(balance)) }}
+        </p>
+      </div>
+      <div class="border-ligne rounded-lg border bg-white p-4">
+        <p class="text-texte-2 text-xs font-semibold uppercase">Solde banques</p>
+        <p class="font-mono font-semibold">{{ formatMoney(bankBalance) }}</p>
+      </div>
+      <div class="border-ligne rounded-lg border bg-white p-4">
+        <p class="text-texte-2 text-xs font-semibold uppercase">Solde caisses</p>
+        <p class="font-mono font-semibold">{{ formatMoney(cashBalance) }}</p>
+      </div>
+      <div class="border-ligne rounded-lg border bg-white p-4">
+        <p class="text-texte-2 text-xs font-semibold uppercase">Entrées / sorties</p>
+        <p class="font-mono text-sm">{{ formatMoney(periodIn) }} / {{ formatMoney(periodOut) }}</p>
+      </div>
+    </div>
+
+    <div class="flex flex-wrap gap-2">
+      <select v-model="typeFilter" class="border-ligne-forte h-11 rounded-lg border bg-white px-3 text-sm">
+        <option value="">Tous les types</option>
+        <option value="in">Entrée</option>
+        <option value="out">Sortie</option>
+        <option value="transfer">Transfert</option>
+      </select>
+      <select v-model="accountFilter" class="border-ligne-forte h-11 rounded-lg border bg-white px-3 text-sm">
+        <option value="">Tous les comptes</option>
+        <option v-for="account in accountOptions" :key="account" :value="account">{{ account }}</option>
+      </select>
+      <select v-model="proofFilter" class="border-ligne-forte h-11 rounded-lg border bg-white px-3 text-sm">
+        <option value="">Tous les justificatifs</option>
+        <option value="with">Avec justificatif</option>
+        <option value="without">Sans justificatif</option>
+      </select>
     </div>
 
     <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
@@ -142,7 +201,11 @@ const TYPE_BADGE: Record<string, string> = {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="txn in transactions" :key="txn.id" class="border-ligne border-b last:border-0">
+          <tr
+            v-for="txn in filteredTransactions"
+            :key="txn.id"
+            class="border-ligne border-b last:border-0"
+          >
             <td class="px-2 py-1.5 whitespace-nowrap">
               <MonoValue :value="txn.date" align="left" />
             </td>
@@ -182,7 +245,7 @@ const TYPE_BADGE: Record<string, string> = {
               <span v-else class="text-texte-3">—</span>
             </td>
           </tr>
-          <tr v-if="transactions.length === 0">
+          <tr v-if="filteredTransactions.length === 0">
             <td colspan="8" class="text-texte-3 px-2 py-4 text-center">
               {{ t('finance.treasuryLedger.noTransactions') }}
             </td>

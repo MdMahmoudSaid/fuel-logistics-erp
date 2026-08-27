@@ -13,6 +13,7 @@ from apps.accounts.permissions import HasModulePermission
 from apps.finance.models import (
     BankAccount,
     CashAccount,
+    CustomerPayment,
     Expense,
     ShareholderLoan,
     ShareholderProfitShare,
@@ -191,6 +192,126 @@ class DashboardViewSet(viewsets.ViewSet):
             ),
         }
 
+        period_collections = CustomerPayment.objects.all()
+        if date_from:
+            period_collections = period_collections.filter(payment_date__gte=date_from)
+        if date_to:
+            period_collections = period_collections.filter(payment_date__lte=date_to)
+
+        paid_expenses = expenses.filter(status=Expense.Status.PAID)
+        financial_summary = {
+            "period_revenue": sales["revenue"],
+            "period_collections": period_collections.aggregate(total=Sum("amount"))["total"]
+            or ZERO,
+            "period_paid_expenses": paid_expenses.aggregate(total=Sum("amount"))["total"]
+            or ZERO,
+            "period_accounting_profit": profit["total_margin"],
+            "current_treasury_balance": treasury_balance,
+        }
+
+        def _largest(rows, name_key):
+            open_rows = [row for row in rows if row["outstanding"] > ZERO]
+            if not open_rows:
+                return None
+            row = max(open_rows, key=lambda item: item["outstanding"])
+            return {"name": row[name_key], "amount": row["outstanding"]}
+
+        shareholder_balance = (
+            shareholders_summary["remaining_undistributed"]
+            - shareholders_summary["open_loans_total"]
+        )
+        party_balances = {
+            "customers": {
+                "balance": customer_amounts["total"],
+                "open_count": len(
+                    [row for row in customer_amounts["rows"] if row["outstanding"] > ZERO]
+                ),
+                "largest_open": _largest(customer_amounts["rows"], "customer"),
+            },
+            "suppliers": {
+                "balance": -supplier_total,
+                "open_count": len([row for row in supplier_rows if row["outstanding"] > ZERO]),
+                "largest_open": _largest(supplier_rows, "supplier"),
+            },
+            "transporters": {
+                "balance": -transporter_total,
+                "open_count": len(
+                    [row for row in transporter_rows if row["outstanding"] > ZERO]
+                ),
+                "largest_open": _largest(transporter_rows, "transporter"),
+            },
+            "shareholders": {
+                "balance": shareholder_balance,
+                "remaining_undistributed": shareholders_summary["remaining_undistributed"],
+                "total_withdrawn": shareholders_summary["total_withdrawn"],
+                "open_loans_total": shareholders_summary["open_loans_total"],
+            },
+            "customs_and_other": {
+                "balance": -(customs_total + other_total),
+                "customs": customs_total,
+                "other": other_total,
+            },
+        }
+
+        stock_trips = (
+            Trip.objects.filter(
+                sale__isnull=True,
+                destination_type=Trip.DestinationType.COMPANY_STOCK,
+            )
+            .exclude(status=Trip.Status.CANCELLED)
+            .select_related("truck", "supplier", "transporter", "product")
+            .order_by("-loading_date", "-id")
+        )
+        stock_by_product = [
+            {"product": row["product__name"], "quantity": row["quantity"]}
+            for row in stock_trips.values("product__name")
+            .annotate(quantity=Sum("quantity_loaded"))
+            .order_by("product__name")
+        ]
+        company_stock = {
+            "total_quantity": stock_trips.aggregate(total=Sum("quantity_loaded"))["total"]
+            or ZERO,
+            "trips_count": stock_trips.count(),
+            "by_product": stock_by_product,
+            "trips": [
+                {
+                    "id": trip.id,
+                    "reference": trip.reference,
+                    "truck": trip.truck.internal_id,
+                    "supplier": trip.supplier.name,
+                    "transporter": trip.transporter.name,
+                    "product": trip.product.name,
+                    "remaining_quantity": trip.quantity_loaded,
+                    "entry_date": trip.loading_date,
+                    "status": trip.status,
+                }
+                for trip in stock_trips[:25]
+            ],
+        }
+
+        action_items = [
+            {
+                "kind": "company_stock_without_customer",
+                "label": "Trajet arrive au stock sans client",
+                "target": "trip-detail",
+                "object_id": trip.id,
+                "reference": trip.reference,
+            }
+            for trip in stock_trips[:10]
+        ]
+        action_items.extend(
+            {
+                "kind": "blocked_trip",
+                "label": "Trajet bloque ou necessitant une action",
+                "target": "trip-detail",
+                "object_id": trip.id,
+                "reference": trip.reference,
+            }
+            for trip in Trip.objects.filter(status=Trip.Status.BLOCKED).order_by("-updated_at")[
+                :10
+            ]
+        )
+
         return Response(
             decimals_to_str(
                 {
@@ -207,6 +328,10 @@ class DashboardViewSet(viewsets.ViewSet):
                     "bank_amounts": bank_amounts,
                     "cash_amounts": cash_amounts,
                     "shareholders_summary": shareholders_summary,
+                    "financial_summary": financial_summary,
+                    "party_balances": party_balances,
+                    "company_stock": company_stock,
+                    "action_items": action_items,
                 }
             )
         )

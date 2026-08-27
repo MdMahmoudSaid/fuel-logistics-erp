@@ -103,6 +103,8 @@ export interface Invoice {
   sale_detail: Sale | null
   status: InvoiceStatus
   total_amount: string
+  paid_amount: string
+  outstanding_amount: string
   issued_date: string
   corrections: InvoiceCorrectionEntry[]
   created_at: string

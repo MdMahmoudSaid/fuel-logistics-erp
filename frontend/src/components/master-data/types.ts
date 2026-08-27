@@ -7,6 +7,8 @@ export type FieldType =
   | 'password'
   | 'phone'
   | 'pin'
+  | 'money'
+  | 'quantity'
 
 export interface FieldOption {
   value: string

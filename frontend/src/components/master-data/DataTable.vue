@@ -2,6 +2,7 @@
 import { useI18n } from 'vue-i18n'
 import type { FieldOption, FieldType } from './types'
 import { formatPhoneDisplay } from '@/data/countries'
+import { formatMoney, formatQuantity } from '@/utils/currency'
 
 defineProps<{
   columns: { key: string; label: string; type?: FieldType; options?: FieldOption[] }[]
@@ -44,6 +45,12 @@ const { t } = useI18n()
           </template>
           <template v-else-if="col.type === 'phone'">
             {{ formatPhoneDisplay(row[col.key] as string) }}
+          </template>
+          <template v-else-if="col.type === 'money'">
+            {{ formatMoney((row[col.key] as string | number | undefined) ?? 0) }}
+          </template>
+          <template v-else-if="col.type === 'quantity'">
+            {{ formatQuantity((row[col.key] as string | number | undefined) ?? 0) }}
           </template>
           <template v-else>{{ row[col.key] }}</template>
         </td>

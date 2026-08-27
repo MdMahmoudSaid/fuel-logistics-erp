@@ -12,6 +12,11 @@ const fields = computed<FieldSchema[]>(() => [
   { key: 'name', label: t('masterData.fields.name'), type: 'text', required: true },
   { key: 'company_name', label: t('masterData.fields.company'), type: 'text' },
   { key: 'phone', label: t('masterData.fields.phone'), type: 'phone' },
+  { key: 'gross_earned', label: 'Brut gagné', type: 'money', readOnly: true },
+  { key: 'deductions', label: 'Déductions', type: 'money', readOnly: true },
+  { key: 'advances_applied', label: 'Avances appliquées', type: 'money', readOnly: true },
+  { key: 'already_paid', label: 'Déjà réglé', type: 'money', readOnly: true },
+  { key: 'net_balance', label: 'Solde net', type: 'money', readOnly: true },
   { key: 'address', label: t('masterData.fields.address'), type: 'text' },
   { key: 'is_active', label: t('masterData.fields.active'), type: 'checkbox' },
 ])

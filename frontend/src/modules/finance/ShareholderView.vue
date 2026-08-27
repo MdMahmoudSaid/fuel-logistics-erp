@@ -38,6 +38,17 @@ import { formatMoney } from '@/utils/currency'
 
 const { t } = useI18n()
 
+type ShareholderTab = 'summary' | 'associates' | 'distributions' | 'loans' | 'withdrawals' | 'ledger'
+const activeTab = ref<ShareholderTab>('summary')
+const tabs: { key: ShareholderTab; label: string }[] = [
+  { key: 'summary', label: 'Résumé' },
+  { key: 'associates', label: 'Associés' },
+  { key: 'distributions', label: 'Répartition des bénéfices' },
+  { key: 'loans', label: 'Avances' },
+  { key: 'withdrawals', label: 'Retraits' },
+  { key: 'ledger', label: 'Grand livre' },
+]
+
 function extractErrorMessage(e: unknown, fallback: string): string {
   const data = (e as { response?: { data?: Record<string, unknown> } })?.response?.data
   if (!data) return fallback
@@ -373,8 +384,34 @@ async function onViewLedger() {
       </div>
     </div>
 
+    <div class="border-ligne flex gap-2 overflow-x-auto border-b pb-2">
+      <button
+        v-for="tab in tabs"
+        :key="tab.key"
+        type="button"
+        class="rounded-lg px-3 py-2 text-sm font-medium whitespace-nowrap"
+        :class="activeTab === tab.key ? 'bg-bitume text-sable' : 'text-texte-2 hover:bg-white'"
+        @click="activeTab = tab.key"
+      >
+        {{ tab.label }}
+      </button>
+    </div>
+
+    <section v-if="activeTab === 'summary'" class="grid gap-3 md:grid-cols-2">
+      <div
+        v-for="row in preview?.shareholders ?? []"
+        :key="row.shareholder_id"
+        class="border-ligne rounded-lg border bg-white p-4"
+      >
+        <p class="text-texte font-semibold">{{ row.name }}</p>
+        <p class="text-texte-2 text-sm">{{ row.participation_percent }} %</p>
+        <p class="mt-3 text-sm">Bénéfice indicatif actuel</p>
+        <MonoValue class="text-lg font-semibold" align="left" :value="formatMoney(row.indicative_share)" />
+      </div>
+    </section>
+
     <!-- Section 1: Shareholders -->
-    <Card :title="t('finance.shareholder.listTitle')">
+    <Card v-if="activeTab === 'associates'" :title="t('finance.shareholder.listTitle')">
       <template #actions>
         <Button variant="primary" @click="openCreateShareholder">{{ t('masterData.add') }}</Button>
       </template>
@@ -419,7 +456,10 @@ async function onViewLedger() {
     </Card>
 
     <!-- Section 2: Profit distributions -->
-    <Card :title="t('finance.shareholder.distribution.title')">
+    <Card
+      v-if="activeTab === 'distributions'"
+      :title="t('finance.shareholder.distribution.title')"
+    >
       <p v-if="distributionError" class="text-critique mb-3 text-sm">{{ distributionError }}</p>
 
       <form class="mb-5 grid grid-cols-4 gap-3" @submit.prevent="onCreateDistribution">
@@ -555,7 +595,7 @@ async function onViewLedger() {
     </Card>
 
     <!-- Section 3: Loans between associates -->
-    <Card :title="t('finance.shareholder.loan.title')">
+    <Card v-if="activeTab === 'loans'" :title="t('finance.shareholder.loan.title')">
       <p v-if="loanError" class="text-critique mb-3 text-sm">{{ loanError }}</p>
 
       <form class="mb-5 grid grid-cols-4 gap-3" @submit.prevent="onCreateLoan">
@@ -688,7 +728,10 @@ async function onViewLedger() {
     </Card>
 
     <!-- Section 4: Shareholder withdrawals -->
-    <Card :title="t('finance.shareholder.withdrawal.title')">
+    <Card
+      v-if="activeTab === 'withdrawals'"
+      :title="t('finance.shareholder.withdrawal.title')"
+    >
       <p v-if="withdrawalError" class="text-critique mb-3 text-sm">{{ withdrawalError }}</p>
 
       <form class="mb-5 grid grid-cols-4 gap-3" @submit.prevent="onCreateWithdrawal">
@@ -825,7 +868,7 @@ async function onViewLedger() {
     </Card>
 
     <!-- Section 5: Per-shareholder ledger -->
-    <Card :title="t('finance.shareholder.ledger.title')">
+    <Card v-if="activeTab === 'ledger'" :title="t('finance.shareholder.ledger.title')">
       <div class="mb-5 flex items-end gap-3">
         <div class="flex-1 space-y-1.5">
           <label class="text-texte-2 text-sm font-medium" for="ledger_shareholder">

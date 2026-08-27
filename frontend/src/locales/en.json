@@ -28,6 +28,8 @@
     "customers": "Customers",
     "customerOrders": "Customer Orders",
     "trips": "Trips & Loading",
+    "companyStock": "Company Stock",
+    "lossesToReview": "Losses to Review",
     "sales": "Sales",
     "invoices": "Invoices",
     "transporters": "Transporters",
@@ -42,11 +44,14 @@
     "lossToleranceSettings": "Loss Tolerance",
     "auditLogs": "Audit Log",
     "groups": {
-      "purchasing": "Purchasing & Procurement",
-      "sales": "Sales & Deliveries",
-      "fleet": "Fleet & Logistics",
-      "treasury": "Treasury & Finance",
-      "settings": "Settings & Configuration"
+      "operations": "Operations",
+      "purchasing": "Purchasing",
+      "sales": "Sales",
+      "treasury": "Treasury",
+      "results": "Results & Associates",
+      "logistics": "Logistics",
+      "fleet": "Logistics",
+      "settings": "Settings"
     },
     "shareholders": "Shareholders / Associates",
     "profit": "Profit"
@@ -492,6 +497,7 @@
       "destinationIndirect": "Indirect (no treasury movement)",
       "note": "Note",
       "proofImage": "Proof image",
+      "proofRequired": "Payment proof is required.",
       "proofUploadError": "The payment was recorded, but the proof image could not be uploaded.",
       "outstandingBalance": "Customer's total outstanding debt",
       "allocateToInvoices": "Allocate to invoices",

@@ -15,11 +15,16 @@ from apps.customers.models import Customer
 from apps.finance.models import (
     BankAccount,
     CashAccount,
+    CustomerPayment,
     Expense,
     Shareholder,
     ShareholderLoan,
 )
-from apps.finance.services import ShareholderDistributionService, ShareholderWithdrawalService
+from apps.finance.services import (
+    FinancePostingService,
+    ShareholderDistributionService,
+    ShareholderWithdrawalService,
+)
 from apps.purchasing.models import CessionLetter, SupplierOrder
 from apps.sales.models import Sale
 from apps.suppliers.models import Supplier
@@ -335,6 +340,59 @@ def test_dashboard_summary_debts_customer_and_bank_sections_ignore_date_range():
     assert filtered.data["cash_amounts"] == unfiltered.data["cash_amounts"]
     assert filtered.data["debts"]["customs"] == "1000.00"
     assert filtered.data["bank_amounts"]["total"] == "250.00"
+
+
+@pytest.mark.django_db
+def test_dashboard_summary_exposes_final_business_sections():
+    admin_user = _make_admin("DASHFINAL")
+    fx = _make_full_trip(
+        "DASHFINAL", admin_user, status=Trip.Status.ARRIVED_AT_COMPANY_STOCK, with_sale=False
+    )
+    BankAccount.objects.create(name="Bank Recette", opening_balance=Decimal("1000000.00"))
+    CashAccount.objects.create(name="Caisse Recette", opening_balance=Decimal("250000.00"))
+    payment = CustomerPayment.objects.create(
+        customer=fx["customer"],
+        amount=Decimal("300000.00"),
+        payment_date="2026-08-18",
+        method=CustomerPayment.Method.CASH,
+        cash_account=CashAccount.objects.get(name="Caisse Recette"),
+        recorded_by=admin_user,
+    )
+    FinancePostingService.record_customer_payment_treasury(payment)
+    Expense.objects.create(
+        category=Expense.Category.CUSTOMS,
+        amount=Decimal("50000.00"),
+        calculation_method=Expense.CalculationMethod.FIXED,
+        date="2026-08-18",
+        status=Expense.Status.PAID,
+    )
+
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    response = client.get(
+        "/api/dashboard/summary/", {"from": "2026-08-18", "to": "2026-08-18"}
+    )
+
+    assert response.status_code == 200, response.data
+    financial = response.data["financial_summary"]
+    assert financial["period_revenue"] == "0.00"
+    assert financial["period_collections"] == "300000.00"
+    assert financial["period_paid_expenses"] == "50000.00"
+    assert financial["current_treasury_balance"] == "1550000.00"
+
+    company_stock = response.data["company_stock"]
+    assert company_stock["total_quantity"] == "45000.00"
+    assert company_stock["trips_count"] == 1
+    assert company_stock["by_product"] == [{"product": "Gasoil", "quantity": "45000.00"}]
+    assert company_stock["trips"][0]["reference"] == fx["trip"].reference
+    assert company_stock["trips"][0]["remaining_quantity"] == "45000.00"
+
+    party_balances = response.data["party_balances"]
+    assert set(party_balances) >= {"customers", "suppliers", "transporters", "shareholders"}
+    assert party_balances["shareholders"]["balance"] == "0.00"
+
+    action_items = response.data["action_items"]
+    assert any(item["kind"] == "company_stock_without_customer" for item in action_items)
 
 
 # ---------------------------------------------------------------------------

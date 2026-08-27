@@ -4,9 +4,8 @@
 // (<768px), avec puces de filtre statut à défilement horizontal.
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { tripResource } from './api'
-import { TRIP_STATUSES } from './types'
 import type { Trip, TripStatus } from './types'
 import Chip from '@/components/ui/Chip.vue'
 import Badge from '@/components/ui/Badge.vue'
@@ -17,6 +16,7 @@ import { useTripStatusLabel } from './tripStatusLabels'
 import { formatQuantity } from '@/utils/currency'
 
 const router = useRouter()
+const route = useRoute()
 const { t } = useI18n()
 const statusLabel = useTripStatusLabel()
 
@@ -27,11 +27,22 @@ const error = ref('')
 // Cette vue couvre les opérations "en cours d'exécution" (plan Etape 9) -
 // les trajets livrés/annulés ont leur propre historique (TripDetail, listes
 // camion/commande) plutôt que de s'accumuler ici indéfiniment.
-const FILTER_STATUSES: TripStatus[] = TRIP_STATUSES.filter(
-  (s) => s !== 'COMPLETED' && s !== 'CANCELLED' && s !== 'STOCKED',
-)
+type BusinessFilter = 'all' | 'in-progress' | 'company-stock' | 'to-deliver' | 'to-control' | 'delivered'
 
-const selectedStatus = ref<TripStatus | ''>('')
+const BUSINESS_FILTERS: { key: BusinessFilter; label: string }[] = [
+  { key: 'all', label: 'Tous' },
+  { key: 'in-progress', label: 'En cours' },
+  { key: 'company-stock', label: "Stock entreprise" },
+  { key: 'to-deliver', label: 'À livrer' },
+  { key: 'to-control', label: 'À contrôler' },
+  { key: 'delivered', label: 'Livrés' },
+]
+
+const selectedFilter = ref<BusinessFilter>(
+  route.name === 'company-stock' || route.query.filter === 'company-stock'
+    ? 'company-stock'
+    : 'all',
+)
 
 async function load() {
   loading.value = true
@@ -52,8 +63,33 @@ async function load() {
 onMounted(load)
 
 const filteredTrips = computed(() => {
-  if (selectedStatus.value) return trips.value.filter((t) => t.status === selectedStatus.value)
-  return trips.value.filter((t) => FILTER_STATUSES.includes(t.status))
+  if (selectedFilter.value === 'company-stock') {
+    return trips.value.filter(
+      (t) =>
+        t.destination_type === 'COMPANY_STOCK' &&
+        t.status !== 'CANCELLED' &&
+        t.status !== 'COMPLETED',
+    )
+  }
+  if (selectedFilter.value === 'in-progress') {
+    return trips.value.filter((t) =>
+      ['ASSIGNED', 'SENT_FOR_LOADING', 'LOADING', 'LOADED', 'IN_TRANSIT', 'BORDER', 'CUSTOMS'].includes(
+        t.status,
+      ),
+    )
+  }
+  if (selectedFilter.value === 'to-deliver') {
+    return trips.value.filter((t) =>
+      ['GOING_TO_CLIENT', 'ARRIVED_AT_CLIENT'].includes(t.status),
+    )
+  }
+  if (selectedFilter.value === 'to-control') {
+    return trips.value.filter((t) => t.status === 'QUANTITY_CONTROL' || t.status === 'BLOCKED')
+  }
+  if (selectedFilter.value === 'delivered') {
+    return trips.value.filter((t) => ['DELIVERED', 'COMPLETED'].includes(t.status))
+  }
+  return trips.value.filter((t) => t.status !== 'CANCELLED')
 })
 
 const badgeVariant = (status: TripStatus) => {
@@ -69,6 +105,14 @@ function goToDetail(trip: Trip) {
 function goToNew() {
   router.push({ name: 'trip-new' })
 }
+
+function nextAction(trip: Trip) {
+  if (trip.destination_type === 'COMPANY_STOCK' && !trip.client) return 'Attribuer à un client'
+  if (trip.status === 'QUANTITY_CONTROL') return 'Contrôler la quantité'
+  if (trip.status === 'BLOCKED') return 'Débloquer / corriger'
+  if (trip.status === 'ARRIVED_AT_CLIENT') return 'Valider la livraison'
+  return 'Voir détail'
+}
 </script>
 
 <template>
@@ -81,14 +125,13 @@ function goToNew() {
     </div>
 
     <div class="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
-      <Chip :active="selectedStatus === ''" @click="selectedStatus = ''">{{ t('trips.all') }}</Chip>
       <Chip
-        v-for="status in FILTER_STATUSES"
-        :key="status"
-        :active="selectedStatus === status"
-        @click="selectedStatus = selectedStatus === status ? '' : status"
+        v-for="filter in BUSINESS_FILTERS"
+        :key="filter.key"
+        :active="selectedFilter === filter.key"
+        @click="selectedFilter = filter.key"
       >
-        {{ statusLabel(status) }}
+        {{ filter.label }}
       </Chip>
     </div>
 
@@ -104,9 +147,12 @@ function goToNew() {
               <th class="px-3 py-2.5 font-medium">{{ t('trips.table.reference') }}</th>
               <th class="px-3 py-2.5 font-medium">{{ t('trips.table.truck') }}</th>
               <th class="px-3 py-2.5 font-medium">{{ t('trips.table.transporter') }}</th>
+              <th class="px-3 py-2.5 font-medium">Fournisseur</th>
               <th class="px-3 py-2.5 font-medium">{{ t('trips.table.client') }}</th>
+              <th class="px-3 py-2.5 font-medium">Produit</th>
               <th class="px-3 py-2.5 text-right font-medium">{{ t('trips.table.quantity') }}</th>
               <th class="px-3 py-2.5 font-medium">{{ t('trips.table.status') }}</th>
+              <th class="px-3 py-2.5 font-medium">Prochaine action</th>
             </tr>
           </thead>
           <tbody>
@@ -119,6 +165,7 @@ function goToNew() {
               <td class="px-3 py-2.5"><MonoValue :value="trip.reference" align="left" /></td>
               <td class="px-3 py-2.5">{{ trip.truck_detail?.internal_id ?? '—' }}</td>
               <td class="px-3 py-2.5">{{ trip.transporter_detail?.name ?? '—' }}</td>
+              <td class="px-3 py-2.5">{{ trip.supplier_detail?.name ?? '—' }}</td>
               <td class="px-3 py-2.5">
                 {{
                   trip.destination_type === 'COMPANY_STOCK'
@@ -126,15 +173,17 @@ function goToNew() {
                     : (trip.client_detail?.name ?? '—')
                 }}
               </td>
+              <td class="px-3 py-2.5">{{ trip.product_detail?.name ?? '—' }}</td>
               <td class="px-3 py-2.5 text-right">
                 <MonoValue :value="formatQuantity(trip.quantity_loaded)" />
               </td>
               <td class="px-3 py-2.5">
                 <Badge :variant="badgeVariant(trip.status)">{{ statusLabel(trip.status) }}</Badge>
               </td>
+              <td class="px-3 py-2.5">{{ nextAction(trip) }}</td>
             </tr>
             <tr v-if="!filteredTrips.length">
-              <td colspan="6" class="text-texte-3 px-3 py-8 text-center">
+              <td colspan="9" class="text-texte-3 px-3 py-8 text-center">
                 {{ t('trips.noTripsForFilter') }}
               </td>
             </tr>

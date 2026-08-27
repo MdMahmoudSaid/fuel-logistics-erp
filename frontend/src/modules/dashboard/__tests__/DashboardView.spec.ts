@@ -49,6 +49,68 @@ const summary: DashboardSummary = {
     remaining_undistributed: '600000.00',
     open_loans_total: '50000.00',
   },
+  financial_summary: {
+    period_revenue: '14580000.00',
+    period_collections: '500000.00',
+    period_paid_expenses: '600000.00',
+    period_accounting_profit: '1957500.00',
+    current_treasury_balance: '6200000.00',
+  },
+  party_balances: {
+    customers: {
+      balance: '750000.00',
+      open_count: 1,
+      largest_open: { name: 'Client 1', amount: '750000.00' },
+    },
+    suppliers: {
+      balance: '-2000000.00',
+      open_count: 1,
+      largest_open: { name: 'Supplier 1', amount: '2000000.00' },
+    },
+    transporters: {
+      balance: '-1000000.00',
+      open_count: 1,
+      largest_open: { name: 'Transporteur 1', amount: '1000000.00' },
+    },
+    shareholders: {
+      balance: '550000.00',
+      remaining_undistributed: '600000.00',
+      total_withdrawn: '300000.00',
+      open_loans_total: '50000.00',
+    },
+    customs_and_other: {
+      balance: '-500000.00',
+      customs: '400000.00',
+      other: '100000.00',
+    },
+  },
+  company_stock: {
+    total_quantity: '80000.00',
+    trips_count: 2,
+    by_product: [{ product: 'Gasoil', quantity: '80000.00' }],
+    trips: [
+      {
+        id: 1,
+        reference: 'TRIP-000042',
+        truck: 'TRK-01',
+        supplier: 'Supplier 1',
+        transporter: 'Transporteur 1',
+        product: 'Gasoil',
+        remaining_quantity: '10000.00',
+        entry_date: todayIso,
+        status: 'ARRIVED_AT_COMPANY_STOCK',
+      },
+    ],
+  },
+  action_items: [
+    {
+      kind: 'company_stock_without_customer',
+      label: 'Trajet arrive au stock sans client',
+      target: 'trip-detail',
+      object_id: 1,
+      reference: 'TRIP-000042',
+    },
+  ],
 }
 
 const fetchDashboardSummary = vi.fn(async (params: Record<string, string | undefined>) => {
@@ -169,6 +231,7 @@ const payments: CustomerPayment[] = [
     recorded_by: null,
     recorded_by_detail: null,
     allocations_detail: [],
+    proof_url: null,
     created_at: todayIso,
     updated_at: todayIso,
   },
@@ -191,6 +254,16 @@ function makeRouter() {
     routes: [
       { path: '/', component: { template: '<div />' } },
       { path: '/trips/:id', name: 'trip-detail', component: { template: '<div />' } },
+      { path: '/trips', name: 'trips', component: { template: '<div />' } },
+      { path: '/customers', name: 'customers', component: { template: '<div />' } },
+      { path: '/suppliers', name: 'suppliers', component: { template: '<div />' } },
+      { path: '/transporters', name: 'transporters', component: { template: '<div />' } },
+      { path: '/shareholders', name: 'shareholders', component: { template: '<div />' } },
+      {
+        path: '/treasury/transactions',
+        name: 'treasury-transactions',
+        component: { template: '<div />' },
+      },
       { path: '/profit', name: 'profit', component: { template: '<div />' } },
     ],
   })

@@ -10,10 +10,8 @@ const { t } = useI18n()
 
 const PRESETS = [
   { value: 'today', labelKey: 'dateRange.today' },
-  { value: 'yesterday', labelKey: 'dateRange.yesterday' },
   { value: 'week', labelKey: 'dateRange.week' },
   { value: 'month', labelKey: 'dateRange.month' },
-  { value: 'year', labelKey: 'dateRange.year' },
   { value: 'custom', labelKey: 'dateRange.custom' },
 ] as const
 

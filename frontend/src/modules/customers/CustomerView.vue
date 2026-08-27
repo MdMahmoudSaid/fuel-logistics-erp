@@ -10,8 +10,13 @@ const { t } = useI18n()
 const resource = createResourceApi('/customers/')
 const fields = computed<FieldSchema[]>(() => [
   { key: 'name', label: t('masterData.fields.name'), type: 'text', required: true },
-  { key: 'company_name', label: t('masterData.fields.company'), type: 'text' },
   { key: 'phone', label: t('masterData.fields.phone'), type: 'phone' },
+  { key: 'total_invoiced', label: 'Total facturé', type: 'money', readOnly: true },
+  { key: 'total_collected', label: 'Total encaissé', type: 'money', readOnly: true },
+  { key: 'outstanding_balance', label: 'Solde impayé', type: 'money', readOnly: true },
+  { key: 'open_invoices_count', label: 'Factures ouvertes', type: 'number', readOnly: true },
+  { key: 'last_payment_date', label: 'Dernier paiement', type: 'text', readOnly: true },
+  { key: 'company_name', label: t('masterData.fields.company'), type: 'text' },
   { key: 'address', label: t('masterData.fields.address'), type: 'text' },
   { key: 'contact_name', label: t('masterData.fields.contact'), type: 'text' },
   { key: 'notes', label: t('masterData.fields.notes'), type: 'textarea' },
