@@ -4,6 +4,7 @@ from rest_framework.routers import DefaultRouter
 from .views import LossToleranceConfigView, ProductViewSet
 
 router = DefaultRouter()
+router.include_format_suffixes = False
 router.register("products", ProductViewSet, basename="product")
 
 urlpatterns = router.urls + [

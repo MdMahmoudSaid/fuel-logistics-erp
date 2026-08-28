@@ -6,6 +6,7 @@ from .views.reports import ReportViewSet
 from .views.search import SearchView
 
 router = DefaultRouter()
+router.include_format_suffixes = False
 router.register("dashboard", DashboardViewSet, basename="dashboard")
 router.register("reports", ReportViewSet, basename="report")
 

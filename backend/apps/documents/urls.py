@@ -3,6 +3,7 @@ from django.urls import path, include
 from .views import DocumentViewSet
 
 router = DefaultRouter()
+router.include_format_suffixes = False
 router.register("documents", DocumentViewSet, basename="document")
 
 urlpatterns = [

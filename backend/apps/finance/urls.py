@@ -17,6 +17,7 @@ from .views import (
 )
 
 router = DefaultRouter()
+router.include_format_suffixes = False
 router.register("bank-accounts", BankAccountViewSet, basename="bankaccount")
 router.register("cash-accounts", CashAccountViewSet, basename="cashaccount")
 router.register("customer-payments", CustomerPaymentViewSet, basename="customerpayment")
