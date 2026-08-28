@@ -135,6 +135,8 @@ export interface TransportPayment {
 export type ExpenseCategory =
   | 'customs'
   | 'import_intention'
+  | 'transit'
+  | 'road_transit'
   | 'transport'
   | 'loading'
   | 'unloading'
@@ -149,6 +151,8 @@ export type ExpenseCategory =
 export const EXPENSE_CATEGORIES: { value: ExpenseCategory; label: string }[] = [
   { value: 'customs', label: 'Customs' },
   { value: 'import_intention', label: 'Import intention' },
+  { value: 'transit', label: 'Transit' },
+  { value: 'road_transit', label: 'Road transit' },
   { value: 'transport', label: 'Transport' },
   { value: 'loading', label: 'Loading' },
   { value: 'unloading', label: 'Unloading' },
@@ -251,7 +255,14 @@ export interface TreasuryTransaction {
 }
 
 export type DebtPaymentType =
-  'supplier' | 'transporter' | 'customs' | 'transit' | 'border' | 'loading' | 'trip_other'
+  | 'supplier'
+  | 'transporter'
+  | 'customs'
+  | 'transit'
+  | 'road_transit'
+  | 'border'
+  | 'loading'
+  | 'trip_other'
 
 export interface PayableDebt {
   id: number

@@ -137,6 +137,7 @@
       "withdrawn": "Withdrawn: {amount}",
       "openLoans": "Open advances: {amount}",
       "customs": "Customs: {amount}",
+      "roadTransit": "Road transit: {amount}",
       "otherFees": "Other fees: {amount}"
     },
     "sections": {
@@ -168,6 +169,8 @@
       "debtSuppliers": "Supplier debts",
       "debtTransporters": "Transporter debts",
       "debtCustoms": "Customs debts",
+      "debtTransit": "Transit debts",
+      "debtRoadTransit": "Road transit debts",
       "debtOther": "Other",
       "shareholdersWithdrawn": "Total withdrawn",
       "shareholdersRemaining": "Remaining undistributed profit",
@@ -303,12 +306,14 @@
       "autoExpense": {
         "transporterCommission": "Transporter commission",
         "loading": "Loading fee",
+        "roadTransit": "Road transit fee",
         "transit": "Transit fee",
         "border": "Border fee",
         "customs": "Customs fee"
       },
       "expenseLabels": {
         "transit": "Transit",
+        "roadTransit": "Road transit",
         "border": "Border"
       },
       "gauges": "Gauges",
@@ -473,6 +478,8 @@
   "expenseCategory": {
     "customs": "Customs",
     "import_intention": "Import intention",
+    "transit": "Transit",
+    "road_transit": "Road transit",
     "transport": "Transport",
     "loading": "Loading",
     "unloading": "Unloading",
@@ -705,6 +712,7 @@
         "transporter": "Transporter",
         "customs": "Customs",
         "transit": "Transit",
+        "roadTransit": "Road transit",
         "border": "Border",
         "loading": "Loading",
         "tripOther": "Other trip expenses"
@@ -715,7 +723,9 @@
         "positiveAmount": "The amount must be greater than zero.",
         "aboveRemaining": "The amount exceeds the remaining debt.",
         "insufficientBank": "The bank balance is insufficient for this payment.",
-        "debtNotFound": "No payable debt found for this entity."
+        "debtNotFound": "No payable debt found for this entity.",
+        "noOpenDebts": "No open debt for this type.",
+        "proofRequired": "An image proof is required to record this payment."
       }
     },
     "shareholder": {
@@ -961,7 +971,8 @@
         "method": "Method",
         "reference": "Reference",
         "advance": "Advance",
-        "amount": "Amount"
+        "amount": "Amount",
+        "proof": "Proof"
       },
       "noPayments": "No payments yet."
     },

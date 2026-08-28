@@ -342,7 +342,7 @@ def test_margin_report_row_includes_expanded_cost_breakdown_fields():
         base_amount=Decimal("800000.00"),
     )
     _allocate_expense(trip, Expense.Category.CUSTOMS, Decimal("1200000.00"), "CUST")
-    _allocate_expense(trip, Expense.Category.IMPORT_INTENTION, Decimal("300000.00"), "TRANSIT")
+    _allocate_expense(trip, Expense.Category.TRANSIT, Decimal("300000.00"), "TRANSIT")
     _allocate_expense(trip, Expense.Category.ROAD, Decimal("50000.00"), "ROAD")
     _allocate_expense(trip, Expense.Category.LOADING, Decimal("40000.00"), "LOADING")
     _allocate_expense(trip, Expense.Category.OTHER, Decimal("20000.00"), "OTHER")
@@ -372,7 +372,7 @@ def test_margin_report_row_includes_expanded_cost_breakdown_fields():
     assert row["border_cost"] == Decimal("50000.00")
     assert row["loading_cost"] == Decimal("40000.00")
     # additional_costs = other only, excluding
-    # customs/import_intention/transport/road/loading
+    # customs/transit/transport/road/loading
     assert row["additional_costs"] == Decimal("20000.00")
     assert row["unit_selling_price"] == trip.sale.unit_selling_price
 

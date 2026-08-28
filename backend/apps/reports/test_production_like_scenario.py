@@ -347,11 +347,11 @@ def test_scenario_complet_production_like(capsys):
         base_amount=money(2925000),
         status=TransportPayment.Status.PAYABLE,
     )
-    road_expense = create_trip_expense(trip=trip, category=Expense.Category.IMPORT_INTENTION, amount=money(450000))
+    transit_expense = create_trip_expense(trip=trip, category=Expense.Category.TRANSIT, amount=money(450000))
     customs_expense = create_trip_expense(trip=trip, category=Expense.Category.CUSTOMS, amount=money(10125000))
     cost_basis = TripCostService.calculate_trip_cost_basis(trip)
     report.check("4. Trajet et frais", "commission transporteur", "45 000 x 65", money(2925000), transport_payment.base_amount)
-    report.check("4. Trajet et frais", "transit routiere", "45 000 x 10", money(450000), road_expense.amount)
+    report.check("4. Trajet et frais", "transit classique", "45 000 x 10", money(450000), transit_expense.amount)
     report.check("4. Trajet et frais", "douane", "45 000 x 225", money(10125000), customs_expense.amount)
     report.check("4. Trajet et frais", "prix revient estime", "(22 500 000 + 2 925 000 + 450 000 + 10 125 000) / 45 000", D("800.00"), cost_basis["unit_cost"].quantize(D("0.01")))
 

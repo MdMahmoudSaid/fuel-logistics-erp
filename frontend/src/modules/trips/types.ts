@@ -216,6 +216,7 @@ export interface TripCostBasis {
     supplier: string
     commission_transporter: string
     transit: string
+    road_transit: string
     border: string
     customs: string
     loading: string

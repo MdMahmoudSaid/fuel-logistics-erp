@@ -1477,7 +1477,7 @@ def test_delivery_service_compares_selling_price_against_full_unit_cost_basis():
         base_amount=Decimal("2925000.00"),
     )
     for category, unit_amount in [
-        (Expense.Category.TRANSPORT, Decimal("10.0000")),
+        (Expense.Category.TRANSIT, Decimal("10.0000")),
         (Expense.Category.CUSTOMS, Decimal("225.0000")),
     ]:
         expense = Expense.objects.create(
@@ -1499,6 +1499,7 @@ def test_delivery_service_compares_selling_price_against_full_unit_cost_basis():
         "supplier": Decimal("500.0000"),
         "commission_transporter": Decimal("65.0000"),
         "transit": Decimal("10.0000"),
+        "road_transit": Decimal("0.0000"),
         "border": Decimal("0.0000"),
         "customs": Decimal("225.0000"),
         "loading": Decimal("0.0000"),

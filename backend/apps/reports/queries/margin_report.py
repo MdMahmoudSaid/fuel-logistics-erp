@@ -49,7 +49,7 @@ FIELDS = [
 # items, matching docs/finances_edit.md).
 _EXCLUDED_FROM_ADDITIONAL_COSTS = {
     Expense.Category.CUSTOMS,
-    Expense.Category.IMPORT_INTENTION,
+    Expense.Category.TRANSIT,
     Expense.Category.TRANSPORT,
     Expense.Category.ROAD,
     Expense.Category.LOADING,
@@ -99,7 +99,7 @@ class MarginReportQuery:
                     "transport_cost": breakdown["transport_cost"],
                     "customs_cost": expenses_by_category.get(Expense.Category.CUSTOMS, ZERO),
                     "transit_cost": expenses_by_category.get(
-                        Expense.Category.IMPORT_INTENTION, ZERO
+                        Expense.Category.TRANSIT, ZERO
                     ),
                     "border_cost": expenses_by_category.get(Expense.Category.ROAD, ZERO),
                     "loading_cost": expenses_by_category.get(Expense.Category.LOADING, ZERO),

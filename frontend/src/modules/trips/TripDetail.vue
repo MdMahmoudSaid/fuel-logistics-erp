@@ -245,7 +245,11 @@ const visibleNextStatuses = computed(() => allowedStatuses.value as TripStatus[]
 const automaticExpenseByStatus: Partial<Record<TripStatus, { title: string; category: ExpenseCategory }>> =
   {
     LOADING: { title: t('trips.detail.autoExpense.loading'), category: 'loading' },
-    IN_TRANSIT: { title: t('trips.detail.autoExpense.transit'), category: 'transport' },
+    ROAD_TRANSIT: {
+      title: t('trips.detail.autoExpense.roadTransit'),
+      category: 'road_transit',
+    },
+    IN_TRANSIT: { title: t('trips.detail.autoExpense.transit'), category: 'transit' },
     BORDER: { title: t('trips.detail.autoExpense.border'), category: 'road' },
     CUSTOMS: { title: t('trips.detail.autoExpense.customs'), category: 'customs' },
   }
@@ -301,7 +305,8 @@ function expenseUnitPrice(expense: Expense) {
 }
 
 function tripExpenseLabel(expense: Expense) {
-  if (expense.category === 'transport') return t('trips.detail.expenseLabels.transit')
+  if (expense.category === 'transit') return t('trips.detail.expenseLabels.transit')
+  if (expense.category === 'road_transit') return t('trips.detail.expenseLabels.roadTransit')
   if (expense.category === 'road') return t('trips.detail.expenseLabels.border')
   return t(`expenseCategory.${expense.category}`)
 }

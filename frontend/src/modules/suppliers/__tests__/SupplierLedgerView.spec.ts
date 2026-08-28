@@ -72,7 +72,26 @@ const ledger: SupplierLedger = {
     },
   ],
   reliquat_summary: [],
-  payments: [],
+  payments: [
+    {
+      id: 30,
+      amount: '100000.00',
+      payment_date: '2026-08-20',
+      method: 'BANK_TRANSFER',
+      is_advance: false,
+      reference: 'PAY-WITH-PROOF',
+      proof_url: '/media/documents/supplier-payment.png',
+    },
+    {
+      id: 31,
+      amount: '50000.00',
+      payment_date: '2026-08-21',
+      method: 'BANK_TRANSFER',
+      is_advance: false,
+      reference: 'PAY-NO-PROOF',
+      proof_url: null,
+    },
+  ],
   total_purchased: '90000000.00',
   total_paid: '0.00',
   outstanding_balance: '90000000.00',
@@ -105,5 +124,23 @@ describe('SupplierLedgerView', () => {
 
     expect(push).not.toHaveBeenCalled()
     expect(wrapper.find('img[src="/media/documents/achat.png"]').exists()).toBe(true)
+  })
+
+  it('shows supplier payment proofs in payments and advances with an internal preview modal', async () => {
+    const wrapper = mount(SupplierLedgerView)
+    await flushPromises()
+
+    const paymentSectionText = wrapper.text()
+    expect(paymentSectionText).toContain('PAY-WITH-PROOF')
+    expect(paymentSectionText).toContain('PAY-NO-PROOF')
+    expect(paymentSectionText).toContain('Voir justificatif')
+    expect(wrapper.find('a[target="_blank"]').exists()).toBe(false)
+
+    const proofButtons = wrapper.findAll('button').filter((button) => button.text() === 'Voir justificatif')
+    await proofButtons[1].trigger('click')
+    await flushPromises()
+
+    expect(push).not.toHaveBeenCalled()
+    expect(wrapper.find('img[src="/media/documents/supplier-payment.png"]').exists()).toBe(true)
   })
 })

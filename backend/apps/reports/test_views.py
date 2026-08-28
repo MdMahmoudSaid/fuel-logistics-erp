@@ -6,6 +6,7 @@ import io
 from decimal import Decimal
 
 import pytest
+from django.core.files.uploadedfile import SimpleUploadedFile
 from openpyxl import load_workbook
 from rest_framework.test import APIClient
 
@@ -21,6 +22,7 @@ from apps.finance.models import (
     ShareholderLoan,
 )
 from apps.finance.services import (
+    ControlledDebtPaymentService,
     FinancePostingService,
     ShareholderDistributionService,
     ShareholderWithdrawalService,
@@ -251,6 +253,13 @@ def test_dashboard_summary_aggregates_customs_and_other_debts_correctly():
         status=Expense.Status.UNPAID,
     )
     Expense.objects.create(
+        category=Expense.Category.ROAD_TRANSIT,
+        amount=Decimal("450000.00"),
+        calculation_method=Expense.CalculationMethod.PER_LITRE,
+        date="2020-01-01",
+        status=Expense.Status.UNPAID,
+    )
+    Expense.objects.create(
         category=Expense.Category.RENT,
         amount=Decimal("50.00"),
         calculation_method=Expense.CalculationMethod.FIXED,
@@ -264,7 +273,60 @@ def test_dashboard_summary_aggregates_customs_and_other_debts_correctly():
 
     assert response.status_code == 200, response.data
     assert response.data["debts"]["customs"] == "1500.00"
+    assert response.data["debts"]["road_transit"] == "450000.00"
     assert response.data["debts"]["other"] == "300.00"
+    assert response.data["party_balances"]["customs_and_other"]["road_transit"] == "450000.00"
+
+
+@pytest.mark.django_db
+def test_dashboard_summary_shows_transit_debt_until_controlled_payment():
+    admin_user = _make_admin("DASHTRANSIT")
+    transit = Expense.objects.create(
+        category="transit",
+        amount=Decimal("90000.00"),
+        calculation_method=Expense.CalculationMethod.PER_LITRE,
+        date="2020-01-01",
+        status=Expense.Status.UNPAID,
+    )
+    Expense.objects.create(
+        category=Expense.Category.TRANSPORT,
+        amount=Decimal("125000.00"),
+        calculation_method=Expense.CalculationMethod.FIXED,
+        date="2020-01-01",
+        status=Expense.Status.UNPAID,
+    )
+    bank = BankAccount.objects.create(
+        name="Dashboard Transit Bank", opening_balance=Decimal("1000000.00")
+    )
+    client = APIClient()
+    client.force_authenticate(admin_user)
+
+    before = client.get("/api/dashboard/summary/")
+
+    assert before.status_code == 200, before.data
+    assert before.data["debts"]["transit"] == "90000.00"
+    assert before.data["party_balances"]["customs_and_other"]["transit"] == "90000.00"
+
+    ControlledDebtPaymentService.record_payment(
+        debt_type="transit",
+        debt_id=0,
+        bank_account_id=bank.id,
+        amount=Decimal("90000.00"),
+        date="2020-01-02",
+        reference="DASH-TRANSIT-PAY",
+        actor=admin_user,
+        attachment=SimpleUploadedFile(
+            "transit.png", b"fake png receipt", content_type="image/png"
+        ),
+    )
+    transit.refresh_from_db()
+
+    after = client.get("/api/dashboard/summary/")
+
+    assert transit.status == Expense.Status.PAID
+    assert after.status_code == 200, after.data
+    assert after.data["debts"]["transit"] == "0.00"
+    assert after.data["party_balances"]["customs_and_other"]["transit"] == "0.00"
 
 
 @pytest.mark.django_db

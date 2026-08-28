@@ -137,6 +137,7 @@
       "withdrawn": "Retiré : {amount}",
       "openLoans": "Avances ouvertes : {amount}",
       "customs": "Douane : {amount}",
+      "roadTransit": "Transit routière : {amount}",
       "otherFees": "Autres frais : {amount}"
     },
     "sections": {
@@ -168,6 +169,8 @@
       "debtSuppliers": "Dettes Fournisseurs",
       "debtTransporters": "Dettes Transporteurs",
       "debtCustoms": "Dettes Douanes",
+      "debtTransit": "Dettes Transit",
+      "debtRoadTransit": "Dettes Transit routière",
       "debtOther": "Autres",
       "shareholdersWithdrawn": "Total retiré",
       "shareholdersRemaining": "Bénéfice restant non retiré",
@@ -304,12 +307,14 @@
       "autoExpense": {
         "transporterCommission": "Commission du transporteur",
         "loading": "Frais de chargement",
+        "roadTransit": "Frais transit routière",
         "transit": "Frais transit",
         "border": "Frais frontière",
         "customs": "Frais douane"
       },
       "expenseLabels": {
         "transit": "Transit",
+        "roadTransit": "Transit routière",
         "border": "Frontière"
       },
       "gauges": "Jauges",
@@ -475,6 +480,8 @@
   "expenseCategory": {
     "customs": "Douane",
     "import_intention": "Intention d'importation",
+    "transit": "Transit",
+    "road_transit": "Transit routière",
     "transport": "Transport",
     "loading": "Chargement",
     "unloading": "Déchargement",
@@ -707,6 +714,7 @@
         "transporter": "Transporteur",
         "customs": "Douane",
         "transit": "Transit",
+        "roadTransit": "Transit routière",
         "border": "Frontière",
         "loading": "Chargement",
         "tripOther": "Autres frais du trajet"
@@ -717,7 +725,9 @@
         "positiveAmount": "Le montant doit être supérieur à zéro.",
         "aboveRemaining": "Le montant dépasse le reste à payer.",
         "insufficientBank": "Solde bancaire insuffisant pour effectuer ce paiement.",
-        "debtNotFound": "Aucune dette à payer trouvée pour cette entité."
+        "debtNotFound": "Aucune dette à payer trouvée pour cette entité.",
+        "noOpenDebts": "Aucune dette ouverte pour ce type.",
+        "proofRequired": "Un justificatif image est obligatoire pour enregistrer ce paiement."
       }
     },
     "shareholder": {
@@ -965,7 +975,8 @@
         "method": "Méthode",
         "reference": "Référence",
         "advance": "Avance",
-        "amount": "Montant"
+        "amount": "Montant",
+        "proof": "Justificatif"
       },
       "noPayments": "Aucun paiement."
     },

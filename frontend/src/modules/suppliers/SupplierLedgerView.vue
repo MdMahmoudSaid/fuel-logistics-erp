@@ -256,6 +256,9 @@ function proofUrl(order: SupplierLedger['orders'][number]) {
               <th class="px-3 py-2.5 text-end font-medium">
                 {{ t('purchasing.supplierLedger.paymentsTable.amount') }}
               </th>
+              <th class="px-3 py-2.5 font-medium">
+                {{ t('purchasing.supplierLedger.paymentsTable.proof') }}
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -273,9 +276,20 @@ function proofUrl(order: SupplierLedger['orders'][number]) {
               <td class="px-3 py-2.5 text-end">
                 <MonoValue :value="formatMoney(payment.amount)" />
               </td>
+              <td class="px-3 py-2.5">
+                <button
+                  v-if="payment.proof_url"
+                  type="button"
+                  class="text-bitume underline"
+                  @click="previewUrl = payment.proof_url"
+                >
+                  {{ t('purchasing.supplierLedger.viewProof') }}
+                </button>
+                <span v-else class="text-texte-3">—</span>
+              </td>
             </tr>
             <tr v-if="ledger.payments.length === 0">
-              <td colspan="5" class="text-texte-3 px-3 py-8 text-center">
+              <td colspan="6" class="text-texte-3 px-3 py-8 text-center">
                 {{ t('purchasing.supplierLedger.noPayments') }}
               </td>
             </tr>

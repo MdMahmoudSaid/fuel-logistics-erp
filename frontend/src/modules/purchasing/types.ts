@@ -94,6 +94,7 @@ export interface SupplierLedgerPayment {
   method: string
   is_advance: boolean
   reference: string
+  proof_url: string | null
 }
 
 export interface SupplierLedger {

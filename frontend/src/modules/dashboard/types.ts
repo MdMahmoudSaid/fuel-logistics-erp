@@ -37,6 +37,8 @@ export interface DashboardSummary {
     suppliers: { total: string; rows: { supplier: string; outstanding: string }[] }
     transporters: { total: string; rows: { transporter: string; outstanding: string }[] }
     customs: string
+    transit: string
+    road_transit: string
     other: string
   }
   customer_amounts: {
@@ -94,6 +96,8 @@ export interface DashboardSummary {
     customs_and_other: {
       balance: string
       customs: string
+      transit: string
+      road_transit: string
       other: string
     }
   }

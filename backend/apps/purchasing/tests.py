@@ -1,12 +1,17 @@
 import threading
 import time
 from decimal import Decimal
+
 import pytest
+from django.contrib.contenttypes.models import ContentType
+from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework.test import APIClient
 from rest_framework.exceptions import ValidationError
 
 from apps.accounts.models import Role, User
 from apps.core.models import Product
+from apps.documents.models import Document
+from apps.finance.models import BankAccount, SupplierPayment, TreasuryTransaction
 from apps.suppliers.models import Supplier
 from apps.purchasing.models import SupplierOrder, CessionLetter
 from apps.purchasing.serializers import CessionLetterSerializer
@@ -215,6 +220,74 @@ def test_supplier_ledger_endpoint():
     assert len(response.data["orders"]) == 1
     assert response.data["orders"][0]["reliquat"] == "70000.00"
     assert response.data["reliquat_summary"][0]["total_reliquat"] == "70000.00"
+
+
+@pytest.mark.django_db
+def test_supplier_ledger_payments_include_proof_url_for_internal_preview():
+    admin_role = Role.objects.get(name=Role.NAME_ADMIN)
+    admin_user = User.objects.create_user(
+        phone="+2220000022", pin="1234", role=admin_role
+    )
+    product = Product.objects.get(code="gasoil")
+    supplier = Supplier.objects.create(name="Total", country="Senegal")
+    order = SupplierOrder.objects.create(
+        reference="SO-LEDGER-PROOF",
+        supplier=supplier,
+        product=product,
+        purchase_date="2026-08-18",
+        quantity_litres=Decimal("100000.00"),
+        unit_price=Decimal("600.0000"),
+        status=SupplierOrder.Status.CONFIRMED,
+        created_by=admin_user,
+    )
+    bank_account = BankAccount.objects.create(name="BIM", opening_balance=Decimal("1000000.00"))
+    with_proof = SupplierPayment.objects.create(
+        supplier=supplier,
+        supplier_order=order,
+        amount=Decimal("100000.00"),
+        payment_date="2026-08-18",
+        method=SupplierPayment.Method.BANK_TRANSFER,
+        bank_account=bank_account,
+        recorded_by=admin_user,
+        reference="PAY-WITH-PROOF",
+    )
+    SupplierPayment.objects.create(
+        supplier=supplier,
+        supplier_order=order,
+        amount=Decimal("50000.00"),
+        payment_date="2026-08-19",
+        method=SupplierPayment.Method.BANK_TRANSFER,
+        bank_account=bank_account,
+        recorded_by=admin_user,
+        reference="PAY-NO-PROOF",
+    )
+    txn = TreasuryTransaction.objects.create(
+        bank_account=bank_account,
+        type=TreasuryTransaction.Type.MONEY_OUT,
+        amount=with_proof.amount,
+        date=with_proof.payment_date,
+        source_content_type=ContentType.objects.get_for_model(SupplierPayment),
+        source_object_id=with_proof.id,
+        recorded_by=admin_user,
+    )
+    document = Document.objects.create(
+        file=SimpleUploadedFile("supplier-payment.png", b"fake png", content_type="image/png"),
+        document_type="treasury_payment_proof",
+        uploaded_by=admin_user,
+        content_type=ContentType.objects.get_for_model(TreasuryTransaction),
+        object_id=txn.id,
+    )
+    txn.document = document
+    txn.save(update_fields=["document"])
+
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    response = client.get(f"/api/suppliers/{supplier.id}/ledger/")
+
+    assert response.status_code == 200, response.data
+    payments_by_reference = {payment["reference"]: payment for payment in response.data["payments"]}
+    assert payments_by_reference["PAY-WITH-PROOF"]["proof_url"].startswith("/media/")
+    assert payments_by_reference["PAY-NO-PROOF"]["proof_url"] is None
 
 
 @pytest.mark.django_db(transaction=True)

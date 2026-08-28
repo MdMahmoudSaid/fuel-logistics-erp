@@ -39,7 +39,12 @@ ZERO = Decimal("0.00")
 # (TransporterOutstandingReportQuery, based on TransportPayment) already
 # fully represents transporter liability; counting Expense(category=
 # TRANSPORT) too would double-count the same debt.
-_OTHER_DEBT_EXCLUDED_CATEGORIES = [Expense.Category.CUSTOMS, Expense.Category.TRANSPORT]
+_OTHER_DEBT_EXCLUDED_CATEGORIES = [
+    Expense.Category.CUSTOMS,
+    Expense.Category.TRANSIT,
+    Expense.Category.ROAD_TRANSIT,
+    Expense.Category.TRANSPORT,
+]
 _OUTSTANDING_EXPENSE_STATUSES = [Expense.Status.UNPAID, Expense.Status.PARTIALLY_PAID]
 
 
@@ -127,6 +132,18 @@ class DashboardViewSet(viewsets.ViewSet):
             )["total"]
             or ZERO
         )
+        transit_total = (
+            outstanding_expenses.filter(category=Expense.Category.TRANSIT).aggregate(
+                total=Sum("amount")
+            )["total"]
+            or ZERO
+        )
+        road_transit_total = (
+            outstanding_expenses.filter(category=Expense.Category.ROAD_TRANSIT).aggregate(
+                total=Sum("amount")
+            )["total"]
+            or ZERO
+        )
         other_total = (
             outstanding_expenses.exclude(
                 category__in=_OTHER_DEBT_EXCLUDED_CATEGORIES
@@ -135,10 +152,19 @@ class DashboardViewSet(viewsets.ViewSet):
         )
 
         debts = {
-            "total": supplier_total + transporter_total + customs_total + other_total,
+            "total": (
+                supplier_total
+                + transporter_total
+                + customs_total
+                + transit_total
+                + road_transit_total
+                + other_total
+            ),
             "suppliers": {"total": supplier_total, "rows": supplier_rows},
             "transporters": {"total": transporter_total, "rows": transporter_rows},
             "customs": customs_total,
+            "transit": transit_total,
+            "road_transit": road_transit_total,
             "other": other_total,
         }
 
@@ -247,8 +273,10 @@ class DashboardViewSet(viewsets.ViewSet):
                 "open_loans_total": shareholders_summary["open_loans_total"],
             },
             "customs_and_other": {
-                "balance": -(customs_total + other_total),
+                "balance": -(customs_total + transit_total + road_transit_total + other_total),
                 "customs": customs_total,
+                "transit": transit_total,
+                "road_transit": road_transit_total,
                 "other": other_total,
             },
         }

@@ -1521,6 +1521,136 @@ def test_controlled_expense_payment_creates_bank_out_and_keeps_cost_basis(treasu
 
 
 @pytest.mark.django_db
+def test_road_transit_expense_has_its_own_payable_debt_and_cost_basis(treasury_user):
+    trip, _transporter = _make_trip_for_deduction("CTRL-ROAD-TRANSIT")
+    road_transit = Expense.objects.create(
+        category=Expense.Category.ROAD_TRANSIT,
+        amount=Decimal("450000.00"),
+        calculation_method=Expense.CalculationMethod.PER_LITRE,
+        date="2026-08-18",
+    )
+    classic_transit = Expense.objects.create(
+        category=Expense.Category.TRANSIT,
+        amount=Decimal("90000.00"),
+        calculation_method=Expense.CalculationMethod.PER_LITRE,
+        date="2026-08-18",
+    )
+    trip_content_type = ContentType.objects.get_for_model(Trip)
+    ExpenseAllocation.objects.create(
+        expense=road_transit,
+        content_type=trip_content_type,
+        object_id=trip.id,
+        allocated_amount=Decimal("450000.00"),
+    )
+    ExpenseAllocation.objects.create(
+        expense=classic_transit,
+        content_type=trip_content_type,
+        object_id=trip.id,
+        allocated_amount=Decimal("90000.00"),
+    )
+    bank_account = BankAccount.objects.create(
+        name="Main BOA Account ROAD-TRANSIT", opening_balance=Decimal("1000000.00")
+    )
+
+    road_rows = ControlledDebtPaymentService.get_payable_debts("road_transit")
+    transit_rows = ControlledDebtPaymentService.get_payable_debts("transit")
+
+    assert road_rows[0]["remaining_amount"] == Decimal("450000.00")
+    assert road_rows[0]["lines"][0]["debt_type"] == "road_transit"
+    assert transit_rows[0]["remaining_amount"] == Decimal("90000.00")
+
+    result = ControlledDebtPaymentService.record_payment(
+        debt_type="road_transit",
+        debt_id=0,
+        bank_account_id=bank_account.id,
+        amount=Decimal("450000.00"),
+        date="2026-08-18",
+        reference="PAY-ROAD-TRANSIT",
+        actor=treasury_user,
+        attachment=SimpleUploadedFile(
+            "road-transit.webp", b"fake webp receipt", content_type="image/webp"
+        ),
+    )
+    road_transit.refresh_from_db()
+    classic_transit.refresh_from_db()
+
+    assert road_transit.status == Expense.Status.PAID
+    assert classic_transit.status == Expense.Status.UNPAID
+    assert result["transaction"].source_object == road_transit
+    from apps.trips.services import TripCostService
+
+    cost_basis = TripCostService.calculate_trip_cost_basis(trip)
+    assert cost_basis["expenses_by_category"][Expense.Category.ROAD_TRANSIT] == Decimal("450000.00")
+    assert cost_basis["unit_components_per_litre"]["road_transit"] == Decimal("10.0000")
+
+
+@pytest.mark.django_db
+def test_transit_expense_has_its_own_payable_debt_and_is_settled_without_transport(
+    treasury_user,
+):
+    trip, _transporter = _make_trip_for_deduction("CTRL-TRANSIT")
+    transit = Expense.objects.create(
+        category="transit",
+        amount=Decimal("90000.00"),
+        calculation_method=Expense.CalculationMethod.PER_LITRE,
+        date="2026-08-18",
+    )
+    transport = Expense.objects.create(
+        category=Expense.Category.TRANSPORT,
+        amount=Decimal("125000.00"),
+        calculation_method=Expense.CalculationMethod.FIXED,
+        date="2026-08-18",
+    )
+    trip_content_type = ContentType.objects.get_for_model(Trip)
+    ExpenseAllocation.objects.create(
+        expense=transit,
+        content_type=trip_content_type,
+        object_id=trip.id,
+        allocated_amount=Decimal("90000.00"),
+    )
+    ExpenseAllocation.objects.create(
+        expense=transport,
+        content_type=trip_content_type,
+        object_id=trip.id,
+        allocated_amount=Decimal("125000.00"),
+    )
+    bank_account = BankAccount.objects.create(
+        name="Main BOA Account TRANSIT", opening_balance=Decimal("1000000.00")
+    )
+
+    transit_rows = ControlledDebtPaymentService.get_payable_debts("transit")
+
+    assert transit_rows[0]["remaining_amount"] == Decimal("90000.00")
+    assert transit_rows[0]["lines"][0]["debt_type"] == "transit"
+
+    result = ControlledDebtPaymentService.record_payment(
+        debt_type="transit",
+        debt_id=0,
+        bank_account_id=bank_account.id,
+        amount=Decimal("90000.00"),
+        date="2026-08-18",
+        reference="PAY-TRANSIT",
+        actor=treasury_user,
+        attachment=SimpleUploadedFile(
+            "transit.jpg", b"fake jpg receipt", content_type="image/jpeg"
+        ),
+    )
+    transit.refresh_from_db()
+    transport.refresh_from_db()
+
+    assert transit.status == Expense.Status.PAID
+    assert transport.status == Expense.Status.UNPAID
+    assert result["transaction"].source_object == transit
+    assert ControlledDebtPaymentService.get_payable_debts("transit") == []
+
+    from apps.trips.services import TripCostService
+
+    cost_basis = TripCostService.calculate_trip_cost_basis(trip)
+    assert cost_basis["expenses_by_category"]["transit"] == Decimal("90000.00")
+    assert cost_basis["unit_components_per_litre"]["transit"] == Decimal("2.0000")
+
+
+@pytest.mark.django_db
 def test_controlled_expense_payment_allocates_category_fifo(treasury_user):
     old_expense = Expense.objects.create(
         category=Expense.Category.CUSTOMS,
@@ -1572,8 +1702,11 @@ def test_controlled_debt_payment_api_returns_remaining_fields(finance_client):
             "amount": "100000.00",
             "date": "2026-08-18",
             "reference": "PAY-API",
+            "attachment": SimpleUploadedFile(
+                "pay-api.png", b"fake png receipt", content_type="image/png"
+            ),
         },
-        format="json",
+        format="multipart",
     )
 
     assert response.status_code == 201, response.data
@@ -1700,9 +1833,7 @@ def test_controlled_debt_payment_api_rejects_non_image_attachment(finance_client
 
 
 @pytest.mark.django_db
-def test_controlled_debt_payment_api_works_without_note_or_attachment(finance_client):
-    """note/attachment are optional - a plain JSON payment request (no
-    multipart body) must keep working exactly as before."""
+def test_controlled_debt_payment_api_rejects_missing_attachment(finance_client):
     _admin_user, supplier, _order = _make_supplier_order("NO-NOTE-API")
     bank_account = BankAccount.objects.create(
         name="Main BOA Account NO-NOTE-API", opening_balance=Decimal("1000000.00")
@@ -1721,9 +1852,11 @@ def test_controlled_debt_payment_api_works_without_note_or_attachment(finance_cl
         format="json",
     )
 
-    assert response.status_code == 201, response.data
-    assert response.data["transaction"]["note"] == ""
-    assert response.data["transaction"]["document"] is None
+    assert response.status_code == 400, response.data
+    assert response.data["attachment"][0] == (
+        "Un justificatif image est obligatoire pour enregistrer ce paiement."
+    )
+    assert TreasuryTransaction.objects.count() == 0
 
 
 # ---------------------------------------------------------------------------

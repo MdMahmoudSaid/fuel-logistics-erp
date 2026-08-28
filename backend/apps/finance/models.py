@@ -418,6 +418,8 @@ class Expense(AuditableModel, TimeStampedModel):
     class Category(models.TextChoices):
         CUSTOMS = "customs", "Customs"
         IMPORT_INTENTION = "import_intention", "Import intention"
+        TRANSIT = "transit", "Transit"
+        ROAD_TRANSIT = "road_transit", "Road transit"
         TRANSPORT = "transport", "Transport"
         LOADING = "loading", "Loading"
         UNLOADING = "unloading", "Unloading"

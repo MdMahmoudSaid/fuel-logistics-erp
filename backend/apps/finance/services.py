@@ -420,13 +420,15 @@ class ControlledDebtPaymentService:
     TRANSPORTER = "transporter"
     CUSTOMS = "customs"
     TRANSIT = "transit"
+    ROAD_TRANSIT = "road_transit"
     BORDER = "border"
     LOADING = "loading"
     TRIP_OTHER = "trip_other"
 
     _EXPENSE_CATEGORY_BY_DEBT_TYPE = {
         CUSTOMS: [Expense.Category.CUSTOMS],
-        TRANSIT: [Expense.Category.IMPORT_INTENTION],
+        TRANSIT: [Expense.Category.TRANSIT],
+        ROAD_TRANSIT: [Expense.Category.ROAD_TRANSIT],
         BORDER: [Expense.Category.ROAD],
         LOADING: [Expense.Category.LOADING],
         TRIP_OTHER: [
@@ -447,6 +449,7 @@ class ControlledDebtPaymentService:
             cls.TRANSPORTER,
             cls.CUSTOMS,
             cls.TRANSIT,
+            cls.ROAD_TRANSIT,
             cls.BORDER,
             cls.LOADING,
             cls.TRIP_OTHER,
@@ -897,6 +900,7 @@ class ControlledDebtPaymentService:
         return {
             cls.CUSTOMS: "Douane",
             cls.TRANSIT: "Transit",
+            cls.ROAD_TRANSIT: "Transit routiere",
             cls.BORDER: "Frontiere",
             cls.LOADING: "Chargement",
             cls.TRIP_OTHER: "Autres frais du trajet",

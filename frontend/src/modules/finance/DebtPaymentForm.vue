@@ -42,6 +42,7 @@ const DEBT_TYPES: { value: DebtPaymentType; labelKey: string }[] = [
   { value: 'transporter', labelKey: 'finance.debtPayment.types.transporter' },
   { value: 'customs', labelKey: 'finance.debtPayment.types.customs' },
   { value: 'transit', labelKey: 'finance.debtPayment.types.transit' },
+  { value: 'road_transit', labelKey: 'finance.debtPayment.types.roadTransit' },
   { value: 'border', labelKey: 'finance.debtPayment.types.border' },
   { value: 'loading', labelKey: 'finance.debtPayment.types.loading' },
   { value: 'trip_other', labelKey: 'finance.debtPayment.types.tripOther' },
@@ -77,6 +78,7 @@ const loading = ref(true)
 const debtLoading = ref(false)
 const saving = ref(false)
 const error = ref('')
+const emptyDebtMessage = ref('')
 
 const selectedDebt = computed(
   () => debts.value.find((debt) => debt.id === Number(debtId.value)) ?? null,
@@ -93,6 +95,8 @@ const remainingAfterPayment = computed(() => {
 async function loadDebts() {
   debtLoading.value = true
   error.value = ''
+  emptyDebtMessage.value = ''
+  debtId.value = ''
   try {
     const fetched = await fetchPayableDebts(debtType.value)
     if (props.lockDebt) {
@@ -108,11 +112,14 @@ async function loadDebts() {
     } else {
       debts.value = fetched
       const initialDebt = debts.value.find((debt) => debt.id === props.initialDebtId)
-      debtId.value = initialDebt?.id
+      debtId.value = initialDebt
         ? String(initialDebt.id)
-        : debts.value[0]?.id
+        : debts.value[0]
           ? String(debts.value[0].id)
           : ''
+      if (!debts.value.length) {
+        emptyDebtMessage.value = t('finance.debtPayment.errors.noOpenDebts')
+      }
     }
   } catch {
     debts.value = []
@@ -156,6 +163,10 @@ function validate(): boolean {
   }
   if (amountNumber.value > Number(selectedBank.value.current_balance)) {
     error.value = t('finance.debtPayment.errors.insufficientBank')
+    return false
+  }
+  if (!attachment.value) {
+    error.value = t('finance.debtPayment.errors.proofRequired')
     return false
   }
   return true
@@ -220,6 +231,9 @@ onMounted(load)
               {{ debt.label }}
             </option>
           </select>
+          <span v-if="emptyDebtMessage" class="text-texte-3 block text-xs">
+            {{ emptyDebtMessage }}
+          </span>
         </label>
       </div>
 
@@ -337,6 +351,7 @@ onMounted(load)
           </span>
           <input
             type="file"
+            required
             :accept="IMAGE_UPLOAD_ACCEPT"
             class="border-ligne w-full rounded-lg border px-3 py-2 text-sm"
             @change="onAttachmentChange"

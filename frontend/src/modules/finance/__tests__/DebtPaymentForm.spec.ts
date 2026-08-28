@@ -215,4 +215,80 @@ describe('DebtPaymentForm', () => {
       expect.objectContaining({ note: 'Virement confirme par SMS.', attachment: file }),
     )
   })
+
+  it('offers road transit as a separate payable debt type and reloads debts when type changes', async () => {
+    fetchPayableDebts
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: 0,
+          debt_type: 'road_transit',
+          label: 'Transit routière',
+          total_amount: '450000.00',
+          paid_amount: '0.00',
+          remaining_amount: '450000.00',
+          status: 'UNPAID',
+          lines: [
+            {
+              id: 44,
+              debt_type: 'road_transit',
+              label: 'Transit routière 2026-08-18 - TRIP-009',
+              total_amount: '450000.00',
+              paid_amount: '0.00',
+              remaining_amount: '450000.00',
+              status: 'UNPAID',
+            },
+          ],
+        },
+      ])
+
+    const wrapper = mount(DebtPaymentForm)
+    await flushPromises()
+
+    const typeSelect = wrapper.findAll('select')[0]
+    expect(typeSelect.text()).toContain('Transit routière')
+    await typeSelect.setValue('road_transit')
+    await flushPromises()
+
+    expect(fetchPayableDebts).toHaveBeenLastCalledWith('road_transit')
+    expect((wrapper.find('select#debt').element as HTMLSelectElement).value).toBe('0')
+    expect(wrapper.text()).toContain('Transit routière 2026-08-18 - TRIP-009')
+  })
+
+  it('shows a clear empty-debt message after switching to a type without open debts', async () => {
+    fetchPayableDebts.mockResolvedValueOnce([
+      {
+        id: 10,
+        debt_type: 'supplier',
+        label: 'Supplier 1',
+        total_amount: '700000.00',
+        paid_amount: '200000.00',
+        remaining_amount: '500000.00',
+        status: 'CONFIRMED',
+      },
+    ])
+    fetchPayableDebts.mockResolvedValueOnce([])
+
+    const wrapper = mount(DebtPaymentForm)
+    await flushPromises()
+
+    await wrapper.findAll('select')[0].setValue('transporter')
+    await flushPromises()
+
+    expect((wrapper.find('select#debt').element as HTMLSelectElement).disabled).toBe(true)
+    expect(wrapper.text()).toContain('Aucune dette ouverte pour ce type.')
+  })
+
+  it('requires an image proof before submitting a controlled outgoing payment', async () => {
+    const wrapper = mount(DebtPaymentForm)
+    await flushPromises()
+
+    await wrapper.find('#amount').setValue('100000')
+    await wrapper.find('form').trigger('submit')
+
+    expect(recordDebtPayment).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain(
+      'Un justificatif image est obligatoire pour enregistrer ce paiement.',
+    )
+  })
 })

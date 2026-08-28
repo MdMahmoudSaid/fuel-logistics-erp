@@ -242,15 +242,32 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
 class SupplierPaymentSerializer(serializers.ModelSerializer):
     supplier_detail = SupplierSerializer(source="supplier", read_only=True)
     recorded_by_detail = UserSerializer(source="recorded_by", read_only=True)
+    proof_url = serializers.SerializerMethodField()
 
     class Meta:
         model = SupplierPayment
         fields = [
             "id", "supplier", "supplier_detail", "supplier_order", "amount", "payment_date",
             "method", "bank_account", "cash_account", "is_advance", "reference",
-            "recorded_by", "recorded_by_detail", "created_at", "updated_at",
+            "recorded_by", "recorded_by_detail", "proof_url", "created_at", "updated_at",
         ]
         read_only_fields = ["id", "recorded_by", "created_at", "updated_at"]
+
+    def get_proof_url(self, obj) -> str | None:
+        payment_content_type = ContentType.objects.get_for_model(SupplierPayment)
+        txn = (
+            TreasuryTransaction.objects.filter(
+                source_content_type=payment_content_type,
+                source_object_id=obj.id,
+                document__isnull=False,
+            )
+            .select_related("document")
+            .order_by("-date", "-id")
+            .first()
+        )
+        if txn is None or not txn.document.file:
+            return None
+        return txn.document.file.url
 
     def validate(self, data):
         bank_account = data.get("bank_account", getattr(self.instance, "bank_account", None))
@@ -589,9 +606,22 @@ class ControlledDebtPaymentRequestSerializer(serializers.Serializer):
     note = serializers.CharField(required=False, allow_blank=True, default="")
     attachment = serializers.FileField(required=False, allow_null=True, default=None)
 
+    def validate(self, data):
+        if not data.get("attachment"):
+            raise serializers.ValidationError(
+                {
+                    "attachment": (
+                        "Un justificatif image est obligatoire pour enregistrer ce paiement."
+                    )
+                }
+            )
+        return data
+
     def validate_attachment(self, value):
         if value is None:
-            return value
+            raise serializers.ValidationError(
+                "Un justificatif image est obligatoire pour enregistrer ce paiement."
+            )
         return validate_image_upload(value)
 
 

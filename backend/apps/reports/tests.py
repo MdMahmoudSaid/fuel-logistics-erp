@@ -256,7 +256,7 @@ def test_current_margin_includes_transporter_loss_indemnity():
         allocated_amount=Decimal("10125000.00"),
     )
     transit = Expense.objects.create(
-        category=Expense.Category.IMPORT_INTENTION,
+        category=Expense.Category.TRANSIT,
         amount=Decimal("450000.00"),
         calculation_method=Expense.CalculationMethod.PER_LITRE,
         date="2026-08-18",

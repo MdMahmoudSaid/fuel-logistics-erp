@@ -516,6 +516,107 @@ describe('TripDetail expenses section', () => {
     expect(wrapper.text()).toContain('TRIP-009')
   })
 
+  it('opens a separate road transit expense popup after LOADED -> ROAD_TRANSIT', async () => {
+    setUser({ operations: ['view', 'edit'], finance: ['view', 'create'] })
+    tripResourceGet.mockResolvedValue(makeTrip({ status: 'LOADED' }))
+    allowedStatusesToReturn = ['ROAD_TRANSIT']
+
+    const wrapper = await mountAt()
+    await wrapper.find('#next_status').setValue('ROAD_TRANSIT')
+    await wrapper.findAll('button').find((b) => b.text() === 'Appliquer')!.trigger('click')
+    await flushPromises()
+
+    expect(postTripStatus).toHaveBeenCalledWith(9, 'ROAD_TRANSIT', '')
+    expect((wrapper.find('#category').element as HTMLSelectElement).value).toBe('road_transit')
+    expect((wrapper.find('#calculation_method').element as HTMLSelectElement).value).toBe(
+      'PER_LITRE',
+    )
+    expect(wrapper.text()).toContain('Transit routière')
+  })
+
+  it('opens a transit expense popup after ROAD_TRANSIT -> IN_TRANSIT without using transport', async () => {
+    setUser({ operations: ['view', 'edit'], finance: ['view', 'create'] })
+    tripResourceGet.mockResolvedValue(makeTrip({ status: 'ROAD_TRANSIT' }))
+    allowedStatusesToReturn = ['IN_TRANSIT']
+
+    const wrapper = await mountAt()
+    await wrapper.find('#next_status').setValue('IN_TRANSIT')
+    await wrapper.findAll('button').find((b) => b.text() === 'Appliquer')!.trigger('click')
+    await flushPromises()
+
+    expect(postTripStatus).toHaveBeenCalledWith(9, 'IN_TRANSIT', '')
+    expect((wrapper.find('#category').element as HTMLSelectElement).value).toBe('transit')
+    expect((wrapper.find('#category').element as HTMLSelectElement).value).not.toBe('transport')
+    expect(wrapper.text()).toContain('Frais transit')
+  })
+
+  it('shows road transit as its own line in expenses and margin breakdown', async () => {
+    setUser({ operations: ['view'], finance: ['view'] })
+    expensesToReturn = [
+      makeExpense({
+        category: 'road_transit',
+        amount: '450000.00',
+        allocations_detail: [
+          {
+            id: 2,
+            expense: 1,
+            content_type: 12,
+            content_type_name: 'trip',
+            object_id: 9,
+            content_object_repr: 'TRIP-009',
+            allocated_amount: '450000.00',
+            created_at: '',
+          },
+        ],
+      }),
+    ]
+    marginToReturn = makeMargin({
+      expenses_by_category: { road_transit: '450000.00' },
+      total_expenses: '450000.00',
+      real_total_cost: '27950000.00',
+      margin: '1202500.00',
+    })
+
+    const wrapper = await mountAt()
+
+    expect(wrapper.text()).toContain('Transit routière')
+    expect(wrapper.text().replace(/[⁦⁩]/g, '')).toContain('-450 000 XOF')
+  })
+
+  it('shows classic transit as a transit line instead of transport', async () => {
+    setUser({ operations: ['view'], finance: ['view'] })
+    expensesToReturn = [
+      makeExpense({
+        category: 'transit',
+        amount: '90000.00',
+        allocations_detail: [
+          {
+            id: 3,
+            expense: 1,
+            content_type: 12,
+            content_type_name: 'trip',
+            object_id: 9,
+            content_object_repr: 'TRIP-009',
+            allocated_amount: '90000.00',
+            created_at: '',
+          },
+        ],
+      }),
+    ]
+    marginToReturn = makeMargin({
+      expenses_by_category: { transit: '90000.00' },
+      total_expenses: '90000.00',
+      real_total_cost: '27590000.00',
+      margin: '1562500.00',
+    })
+
+    const wrapper = await mountAt()
+
+    expect(wrapper.text()).toContain('Transit')
+    expect(wrapper.text().replace(/[⁦⁩]/g, '')).toContain('-90 000 XOF')
+    expect(wrapper.text()).not.toContain('Transport: -90 000')
+  })
+
   it('shows the unit cost and unit profit lines from the margin breakdown', async () => {
     setUser({ operations: ['view'], finance: ['view'] })
     marginToReturn = makeMargin({

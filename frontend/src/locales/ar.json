@@ -137,6 +137,7 @@
       "withdrawn": "المسحوب: {amount}",
       "openLoans": "السلف المفتوحة: {amount}",
       "customs": "الجمارك: {amount}",
+      "roadTransit": "العبور البري: {amount}",
       "otherFees": "رسوم أخرى: {amount}"
     },
     "sections": {
@@ -168,6 +169,8 @@
       "debtSuppliers": "ديون الموردين",
       "debtTransporters": "ديون الناقلين",
       "debtCustoms": "ديون الجمارك",
+      "debtTransit": "ديون العبور",
+      "debtRoadTransit": "ديون العبور البري",
       "debtOther": "أخرى",
       "shareholdersWithdrawn": "إجمالي المسحوب",
       "shareholdersRemaining": "الربح المتبقي غير الموزع",
@@ -303,12 +306,14 @@
       "autoExpense": {
         "transporterCommission": "عمولة الناقل",
         "loading": "رسوم التحميل",
+        "roadTransit": "رسوم العبور البري",
         "transit": "رسوم العبور",
         "border": "رسوم الحدود",
         "customs": "رسوم الجمارك"
       },
       "expenseLabels": {
         "transit": "العبور",
+        "roadTransit": "العبور البري",
         "border": "الحدود"
       },
       "gauges": "القياسات",
@@ -473,6 +478,8 @@
   "expenseCategory": {
     "customs": "الجمارك",
     "import_intention": "نية الاستيراد",
+    "transit": "العبور",
+    "road_transit": "العبور البري",
     "transport": "النقل",
     "loading": "التحميل",
     "unloading": "التفريغ",
@@ -705,6 +712,7 @@
         "transporter": "ناقل",
         "customs": "جمارك",
         "transit": "ترانزيت",
+        "roadTransit": "عبور بري",
         "border": "حدود",
         "loading": "تحميل",
         "tripOther": "مصروفات رحلة أخرى"
@@ -715,7 +723,9 @@
         "positiveAmount": "يجب أن يكون المبلغ أكبر من صفر.",
         "aboveRemaining": "المبلغ يتجاوز المتبقي للدفع.",
         "insufficientBank": "الرصيد البنكي غير كافٍ لإجراء هذا الدفع.",
-        "debtNotFound": "لم يتم العثور على دين قابل للدفع لهذه الجهة."
+        "debtNotFound": "لم يتم العثور على دين قابل للدفع لهذه الجهة.",
+        "noOpenDebts": "لا توجد ديون مفتوحة لهذا النوع.",
+        "proofRequired": "صورة إثبات إلزامية لتسجيل هذه الدفعة."
       }
     },
     "shareholder": {
@@ -961,7 +971,8 @@
         "method": "الطريقة",
         "reference": "المرجع",
         "advance": "سلفة",
-        "amount": "المبلغ"
+        "amount": "المبلغ",
+        "proof": "إثبات"
       },
       "noPayments": "لا توجد دفعات."
     },

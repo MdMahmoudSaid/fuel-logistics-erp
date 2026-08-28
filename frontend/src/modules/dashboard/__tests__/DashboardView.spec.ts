@@ -20,7 +20,7 @@ const summary: DashboardSummary = {
   finance: { expenses_total: '600000.00', treasury_balance: '12000000.00' },
   profit: { total_margin: '1957500.00' },
   debts: {
-    total: '3500000.00',
+    total: '4040000.00',
     suppliers: {
       total: '2000000.00',
       rows: [{ supplier: 'Supplier 1', outstanding: '2000000.00' }],
@@ -30,6 +30,8 @@ const summary: DashboardSummary = {
       rows: [{ transporter: 'Transporteur 1', outstanding: '1000000.00' }],
     },
     customs: '400000.00',
+    transit: '90000.00',
+    road_transit: '450000.00',
     other: '100000.00',
   },
   customer_amounts: {
@@ -80,8 +82,10 @@ const summary: DashboardSummary = {
       open_loans_total: '50000.00',
     },
     customs_and_other: {
-      balance: '-500000.00',
+      balance: '-1040000.00',
       customs: '400000.00',
+      transit: '90000.00',
+      road_transit: '450000.00',
       other: '100000.00',
     },
   },
@@ -343,7 +347,7 @@ describe('DashboardView', () => {
     // debts / customer_amounts / bank_amounts sections (point-in-time
     // snapshots, always present alongside the period-filtered sections).
     expect(wrapper.text()).toContain('Total des dettes')
-    expect(wrapper.text()).toContain('3 500 000 XOF')
+    expect(wrapper.text()).toContain('4 040 000 XOF')
     expect(wrapper.text()).toContain('Montant total des clients')
     expect(wrapper.text()).toContain('Client 1')
     expect(wrapper.text()).toContain('Montant total des banques')

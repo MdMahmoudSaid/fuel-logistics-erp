@@ -246,7 +246,9 @@ const partyCards = computed(() => {
       to: { name: 'treasury-transactions' },
       balance: p.customs_and_other.balance,
       detail: t('dashboard.final.customs', { amount: formatMoney(p.customs_and_other.customs) }),
-      sub: t('dashboard.final.otherFees', { amount: formatMoney(p.customs_and_other.other) }),
+      sub: t('dashboard.final.roadTransit', {
+        amount: formatMoney(p.customs_and_other.road_transit),
+      }),
       icon: 'shield' as IconName,
     },
   ].map((card) => ({
@@ -755,6 +757,18 @@ const compactEnRouteTrips = computed(() => enRouteTrips.value.slice(0, 5))
               <dt class="text-texte-2">{{ t('dashboard.fields.debtCustoms') }}</dt>
               <dd class="text-texte font-medium">
                 <MonoValue v-bind="formatMoneyParts(summary.debts.customs)" />
+              </dd>
+            </div>
+            <div class="flex justify-between">
+              <dt class="text-texte-2">{{ t('dashboard.fields.debtTransit') }}</dt>
+              <dd class="text-texte font-medium">
+                <MonoValue v-bind="formatMoneyParts(summary.debts.transit)" />
+              </dd>
+            </div>
+            <div class="flex justify-between">
+              <dt class="text-texte-2">{{ t('dashboard.fields.debtRoadTransit') }}</dt>
+              <dd class="text-texte font-medium">
+                <MonoValue v-bind="formatMoneyParts(summary.debts.road_transit)" />
               </dd>
             </div>
             <div class="flex justify-between">

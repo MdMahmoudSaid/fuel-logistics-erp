@@ -173,13 +173,15 @@ class TripCostService:
         unit_components_per_litre = {
             "supplier": trip.supplier_order.unit_price.quantize(_UNIT),
             "commission_transporter": (transport_cost / trip.quantity_loaded).quantize(_UNIT),
-            "transit": unit_expenses.get(Expense.Category.TRANSPORT, _ZERO).quantize(_UNIT),
+            "transit": unit_expenses.get(Expense.Category.TRANSIT, _ZERO).quantize(_UNIT),
+            "road_transit": unit_expenses.get(Expense.Category.ROAD_TRANSIT, _ZERO).quantize(_UNIT),
             "border": unit_expenses.get(Expense.Category.ROAD, _ZERO).quantize(_UNIT),
             "customs": unit_expenses.get(Expense.Category.CUSTOMS, _ZERO).quantize(_UNIT),
             "loading": unit_expenses.get(Expense.Category.LOADING, _ZERO).quantize(_UNIT),
         }
         known_expense_categories = {
-            Expense.Category.TRANSPORT,
+            Expense.Category.TRANSIT,
+            Expense.Category.ROAD_TRANSIT,
             Expense.Category.ROAD,
             Expense.Category.CUSTOMS,
             Expense.Category.LOADING,
