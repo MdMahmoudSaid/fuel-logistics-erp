@@ -26,6 +26,7 @@ class Trip(TimeStampedModel):
         SENT_FOR_LOADING = "SENT_FOR_LOADING", "Sent for loading"
         LOADING = "LOADING", "Loading"
         LOADED = "LOADED", "Loaded"
+        ROAD_TRANSIT = "ROAD_TRANSIT", "Road transit"
         IN_TRANSIT = "IN_TRANSIT", "In transit"
         BORDER = "BORDER", "Border"
         CUSTOMS = "CUSTOMS", "Customs"

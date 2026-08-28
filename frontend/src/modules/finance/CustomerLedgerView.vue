@@ -10,6 +10,10 @@ import Modal from '@/components/ui/Modal.vue'
 import PaymentAllocationForm from './PaymentAllocationForm.vue'
 import type { CustomerLedger } from './types'
 import { formatMoney } from '@/utils/currency'
+import Badge from '@/components/ui/Badge.vue'
+import Button from '@/components/ui/Button.vue'
+import Card from '@/components/ui/Card.vue'
+import MonoValue from '@/components/ui/MonoValue.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -21,6 +25,13 @@ const error = ref('')
 
 const customerId = computed(() => Number(route.params.id))
 const showPaymentModal = ref(false)
+const previewUrl = ref<string | null>(null)
+const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp']
+
+function isImageUrl(url: string): boolean {
+  const path = url.split('?')[0].toLowerCase()
+  return IMAGE_EXTENSIONS.some((ext) => path.endsWith(ext))
+}
 
 async function load() {
   loading.value = true
@@ -41,110 +52,152 @@ function onPaymentSuccess() {
 
 onMounted(load)
 
-const STATUS_BADGE: Record<string, string> = {
-  DRAFT: 'bg-slate-100 text-slate-600',
-  VALIDATED: 'bg-sky-100 text-sky-700',
-  PARTIALLY_PAID: 'bg-amber-100 text-amber-700',
-  PAID: 'bg-emerald-100 text-emerald-700',
-  CANCELLED: 'bg-red-100 text-red-700',
+const totalInvoiced = computed(
+  () =>
+    ledger.value?.invoices.reduce((total, invoice) => total + Number(invoice.total_amount), 0) ?? 0,
+)
+const totalReceived = computed(
+  () => ledger.value?.payments.reduce((total, payment) => total + Number(payment.amount), 0) ?? 0,
+)
+const openInvoices = computed(
+  () =>
+    ledger.value?.invoices.filter(
+      (invoice) => Number(invoice.outstanding) > 0 && invoice.status !== 'CANCELLED',
+    ).length ?? 0,
+)
+const lastPayment = computed(() => {
+  const payments = [...(ledger.value?.payments ?? [])]
+  return payments.sort((a, b) => b.payment_date.localeCompare(a.payment_date))[0] ?? null
+})
+
+function badgeVariant(status: string) {
+  if (status === 'PAID') return 'livre' as const
+  if (status === 'CANCELLED') return 'critique' as const
+  if (status === 'PARTIALLY_PAID') return 'ecart' as const
+  return 'neutre' as const
 }
 </script>
 
 <template>
   <div class="max-w-4xl space-y-6">
     <div class="flex items-center justify-between">
-      <h2 class="text-lg font-semibold text-slate-800">
+      <h1 class="font-display text-2xl leading-none font-semibold uppercase">
         {{ t('finance.customerLedger.title', { name: ledger?.customer.name ?? '…' }) }}
-      </h2>
+      </h1>
       <div class="flex gap-2">
-        <button
-          class="rounded bg-slate-800 px-3 py-1.5 text-sm font-medium text-white"
-          @click="showPaymentModal = true"
-        >
+        <Button v-if="ledger" variant="primary" @click="showPaymentModal = true">
           {{ t('finance.customerLedger.newPayment') }}
-        </button>
-        <button
-          class="px-3 py-2 text-sm text-slate-500"
-          @click="router.push({ name: 'customers' })"
-        >
+        </Button>
+        <Button variant="ghost" @click="router.push({ name: 'customers' })">
           {{ t('finance.customerLedger.back') }}
-        </button>
+        </Button>
       </div>
     </div>
 
-    <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
-    <p v-else-if="loading" class="text-sm text-slate-400">{{ t('common.loading') }}</p>
+    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
+    <p v-else-if="loading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
     <template v-else-if="ledger">
-      <section class="rounded border bg-white p-4">
-        <p class="text-xs text-slate-500">{{ t('finance.customerLedger.outstandingBalance') }}</p>
-        <p
-          class="text-lg font-semibold"
-          :class="Number(ledger.outstanding_balance) > 0 ? 'text-amber-600' : 'text-emerald-600'"
-        >
-          {{ formatMoney(ledger.outstanding_balance) }}
-        </p>
+      <section class="grid gap-3 md:grid-cols-5">
+        <div class="border-ligne rounded-lg border bg-white p-4">
+          <p class="text-texte-2 text-xs font-semibold uppercase">
+            {{ t('finance.customerLedger.totalInvoiced') }}
+          </p>
+          <MonoValue class="font-semibold" align="left" :value="formatMoney(totalInvoiced)" />
+        </div>
+        <div class="border-ligne rounded-lg border bg-white p-4">
+          <p class="text-texte-2 text-xs font-semibold uppercase">
+            {{ t('finance.customerLedger.totalReceived') }}
+          </p>
+          <MonoValue class="font-semibold" align="left" :value="formatMoney(totalReceived)" />
+        </div>
+        <div class="border-ligne rounded-lg border bg-white p-4">
+          <p class="text-texte-2 text-xs font-semibold uppercase">
+            {{ t('finance.customerLedger.outstandingBalance') }}
+          </p>
+          <MonoValue
+            class="font-semibold"
+            align="left"
+            :class="Number(ledger.outstanding_balance) > 0 ? 'text-ecart' : 'text-livre'"
+            :value="formatMoney(ledger.outstanding_balance)"
+          />
+        </div>
+        <div class="border-ligne rounded-lg border bg-white p-4">
+          <p class="text-texte-2 text-xs font-semibold uppercase">
+            {{ t('finance.customerLedger.openInvoices') }}
+          </p>
+          <MonoValue class="font-semibold" align="left" :value="String(openInvoices)" />
+        </div>
+        <div class="border-ligne rounded-lg border bg-white p-4">
+          <p class="text-texte-2 text-xs font-semibold uppercase">
+            {{ t('finance.customerLedger.lastPayment') }}
+          </p>
+          <MonoValue
+            class="font-semibold"
+            align="left"
+            :value="lastPayment ? formatMoney(lastPayment.amount) : '—'"
+          />
+        </div>
       </section>
 
-      <section class="rounded border bg-white p-4">
-        <h3 class="mb-3 text-base font-semibold text-slate-800">
-          {{ t('finance.customerLedger.invoices') }}
-        </h3>
-        <table class="w-full text-left text-sm">
+      <Card :title="t('finance.customerLedger.invoices')">
+        <table class="w-full text-start text-sm">
           <thead>
-            <tr class="border-b text-slate-500">
-              <th class="px-2 py-1.5 font-medium">{{ t('finance.customerLedger.table.invoice') }}</th>
-              <th class="px-2 py-1.5 font-medium">{{ t('finance.customerLedger.table.issued') }}</th>
+            <tr class="border-ligne text-texte-2 border-b">
+              <th class="px-2 py-1.5 font-medium">
+                {{ t('finance.customerLedger.table.invoice') }}
+              </th>
+              <th class="px-2 py-1.5 font-medium">
+                {{ t('finance.customerLedger.table.issued') }}
+              </th>
               <th class="px-2 py-1.5 font-medium text-right">
                 {{ t('finance.customerLedger.table.total') }}
               </th>
               <th class="px-2 py-1.5 font-medium text-right">
                 {{ t('finance.customerLedger.table.outstanding') }}
               </th>
-              <th class="px-2 py-1.5 font-medium">{{ t('finance.customerLedger.table.status') }}</th>
+              <th class="px-2 py-1.5 font-medium">
+                {{ t('finance.customerLedger.table.status') }}
+              </th>
             </tr>
           </thead>
           <tbody>
             <tr
               v-for="invoice in ledger.invoices"
               :key="invoice.id"
-              class="cursor-pointer border-b last:border-0 hover:bg-slate-50"
+              class="border-ligne hover:bg-sable cursor-pointer border-b last:border-0"
               @click="router.push({ name: 'invoice-detail', params: { id: invoice.id } })"
             >
-              <td class="px-2 py-1.5 font-medium text-slate-800">{{ invoice.invoice_number }}</td>
+              <td class="text-texte px-2 py-1.5 font-medium">{{ invoice.invoice_number }}</td>
               <td class="px-2 py-1.5">{{ invoice.issued_date }}</td>
               <td class="px-2 py-1.5 text-right">
                 {{ formatMoney(invoice.total_amount) }}
               </td>
-              <td class="px-2 py-1.5 text-right font-medium text-slate-800">
+              <td class="text-texte px-2 py-1.5 text-right font-medium">
                 {{ formatMoney(invoice.outstanding) }}
               </td>
               <td class="px-2 py-1.5">
-                <span
-                  class="rounded-full px-2 py-0.5 text-xs font-medium"
-                  :class="STATUS_BADGE[invoice.status]"
-                >
+                <Badge :variant="badgeVariant(invoice.status)">
                   {{ t(`invoiceStatus.${invoice.status}`) }}
-                </span>
+                </Badge>
               </td>
             </tr>
             <tr v-if="ledger.invoices.length === 0">
-              <td colspan="5" class="px-2 py-4 text-center text-slate-400">
+              <td colspan="5" class="text-texte-3 px-2 py-4 text-center">
                 {{ t('finance.customerLedger.noInvoices') }}
               </td>
             </tr>
           </tbody>
         </table>
-      </section>
+      </Card>
 
-      <section class="rounded border bg-white p-4">
-        <h3 class="mb-3 text-base font-semibold text-slate-800">
-          {{ t('finance.customerLedger.payments') }}
-        </h3>
-        <table class="w-full text-left text-sm">
+      <Card :title="t('finance.customerLedger.payments')">
+        <table class="w-full text-start text-sm">
           <thead>
-            <tr class="border-b text-slate-500">
-              <th class="px-2 py-1.5 font-medium">{{ t('finance.customerLedger.paymentsTable.date') }}</th>
+            <tr class="border-ligne text-texte-2 border-b">
+              <th class="px-2 py-1.5 font-medium">
+                {{ t('finance.customerLedger.paymentsTable.date') }}
+              </th>
               <th class="px-2 py-1.5 font-medium">
                 {{ t('finance.customerLedger.paymentsTable.method') }}
               </th>
@@ -161,35 +214,40 @@ const STATUS_BADGE: Record<string, string> = {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="payment in ledger.payments" :key="payment.id" class="border-b last:border-0">
+            <tr
+              v-for="payment in ledger.payments"
+              :key="payment.id"
+              class="border-ligne border-b last:border-0"
+            >
               <td class="px-2 py-1.5">{{ payment.payment_date }}</td>
               <td class="px-2 py-1.5">{{ t(`paymentMethod.${payment.method}`) }}</td>
-              <td class="px-2 py-1.5">{{ payment.is_indirect ? t('common.yes') : t('common.no') }}</td>
+              <td class="px-2 py-1.5">
+                {{ payment.is_indirect ? t('common.yes') : t('common.no') }}
+              </td>
               <td class="px-2 py-1.5">{{ payment.reference || '—' }}</td>
-              <td class="px-2 py-1.5 text-right font-medium text-slate-800">
-                {{ formatMoney(payment.amount) }}
+              <td class="text-texte px-2 py-1.5 text-right font-medium">
+                <MonoValue :value="formatMoney(payment.amount)" />
               </td>
               <td class="px-2 py-1.5">
-                <a
+                <button
                   v-if="payment.proof_url"
-                  :href="payment.proof_url"
-                  target="_blank"
-                  rel="noreferrer"
+                  type="button"
                   class="text-bitume underline"
+                  @click="previewUrl = payment.proof_url"
                 >
                   Voir justificatif
-                </a>
+                </button>
                 <span v-else class="text-texte-3">—</span>
               </td>
             </tr>
             <tr v-if="ledger.payments.length === 0">
-              <td colspan="6" class="px-2 py-4 text-center text-slate-400">
+              <td colspan="6" class="text-texte-3 px-2 py-4 text-center">
                 {{ t('finance.customerLedger.noPayments') }}
               </td>
             </tr>
           </tbody>
         </table>
-      </section>
+      </Card>
     </template>
 
     <Modal
@@ -203,6 +261,32 @@ const STATUS_BADGE: Record<string, string> = {
         @success="onPaymentSuccess"
         @cancel="showPaymentModal = false"
       />
+    </Modal>
+
+    <Modal
+      v-if="previewUrl"
+      :title="t('finance.customerLedger.paymentsTable.proof')"
+      max-width="max-w-3xl"
+      @close="previewUrl = null"
+    >
+      <img
+        v-if="isImageUrl(previewUrl)"
+        :src="previewUrl"
+        class="max-h-[80vh] w-full rounded-lg object-contain"
+      />
+      <div v-else class="space-y-3">
+        <iframe
+          v-if="previewUrl.toLowerCase().includes('.pdf')"
+          :src="previewUrl"
+          class="h-[80vh] w-full rounded-lg"
+        />
+        <a :href="previewUrl" download class="text-bitume underline">
+          {{ t('finance.customerLedger.downloadProof') }}
+        </a>
+      </div>
+      <div class="mt-4 flex justify-end">
+        <Button variant="ghost" @click="previewUrl = null">{{ t('common.close') }}</Button>
+      </div>
     </Modal>
   </div>
 </template>

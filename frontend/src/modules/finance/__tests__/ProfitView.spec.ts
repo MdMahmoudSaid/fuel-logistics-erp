@@ -35,6 +35,10 @@ describe('ProfitView', () => {
         'client',
         'product',
         'quantity',
+        'quantity_loaded',
+        'quantity_invoiced',
+        'transporter_loss_quantity',
+        'transporter_loss_indemnity',
         'supplier_unit_price',
         'transport_cost',
         'customs_cost',
@@ -42,6 +46,7 @@ describe('ProfitView', () => {
         'border_cost',
         'loading_cost',
         'additional_costs',
+        'real_total_cost',
         'unit_cost',
         'unit_selling_price',
         'unit_profit',
@@ -53,6 +58,10 @@ describe('ProfitView', () => {
           client: 'Client A',
           product: 'Gasoil',
           quantity: '45000.00',
+          quantity_loaded: '45000.00',
+          quantity_invoiced: '44900.00',
+          transporter_loss_quantity: '100.00',
+          transporter_loss_indemnity: '90000.00',
           supplier_unit_price: '500.0000',
           transport_cost: '2925000.00',
           customs_cost: '10125000.00',
@@ -60,6 +69,7 @@ describe('ProfitView', () => {
           border_cost: '200000.00',
           loading_cost: '100000.00',
           additional_costs: '50000.00',
+          real_total_cost: '36000000.00',
           unit_cost: '800.0000',
           unit_selling_price: '850.0000',
           unit_profit: '50.0000',
@@ -80,8 +90,21 @@ describe('ProfitView', () => {
     expect(fetchShareholderProfitPreview).toHaveBeenCalled()
     expect(wrapper.text()).toContain('TRIP-1')
     expect(wrapper.text()).toContain('Client A')
+    expect(wrapper.text()).toContain('90 000 XOF')
     // period profit = sum of current_margin across rows (one row here)
     expect(wrapper.text()).toContain('2 250 000 XOF')
+  })
+
+  it('clarifies accounting, received, and distributable profit meanings', async () => {
+    const wrapper = mount(ProfitView)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Bénéfice comptable')
+    expect(wrapper.text()).toContain('Bénéfice encaissé')
+    expect(wrapper.text()).toContain('Bénéfice distribuable')
+    expect(wrapper.text()).toContain(
+      "Le bénéfice comptable n'est pas automatiquement distribuable.",
+    )
   })
 
   it('shows an empty state when the period has no trips', async () => {

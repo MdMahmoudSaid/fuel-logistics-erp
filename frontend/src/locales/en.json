@@ -93,6 +93,14 @@
     },
     "enRouteNow": "En route now ({count})",
     "noTripsEnRoute": "No trips en route right now.",
+    "quickActions": {
+      "title": "Quick actions",
+      "newSupplierOrder": "New supplier order",
+      "newCessionLetter": "New cession letter",
+      "newTrip": "New trip (loading)",
+      "newCustomerPayment": "New customer payment",
+      "newPayment": "New payment"
+    },
     "volumeTrend": "Volume delivered — last 14 days",
     "toTreat": "To review",
     "unjustifiedLosses": "Unjustified losses",
@@ -101,6 +109,36 @@
     "noUrgentTrips": "Nothing urgent.",
     "periodDetail": "Period detail",
     "noAmounts": "No amounts.",
+    "final": {
+      "periodFilterHelp": "The period filters sales, collections, expenses, volumes and profit.",
+      "periodRevenue": "Revenue for the period",
+      "periodCollections": "Collections for the period",
+      "periodPaidExpenses": "Paid expenses for the period",
+      "periodAccountingProfit": "Accounting profit for the period",
+      "currentTreasuryBalance": "Current treasury balance",
+      "availableTreasury": "Available cash",
+      "banks": "Banks",
+      "cashAccounts": "Cash accounts",
+      "partyBalances": "Balances by party",
+      "customers": "Customers",
+      "suppliers": "Suppliers",
+      "transporters": "Transporters",
+      "shareholders": "Shareholders / Associates",
+      "customsAndOther": "Customs / Transit / Other fees",
+      "companyStock": "Company stock",
+      "companyStockTrips": "{count} trip(s) currently in stock",
+      "openCustomers": "{count} customer(s) with an open balance",
+      "openSuppliers": "{count} supplier(s) with debt",
+      "openTransporters": "{count} transporter(s) with an open balance",
+      "largestCustomerDebt": "Largest customer debtor: {name}",
+      "largestSupplierDebt": "Largest unpaid supplier: {name}",
+      "largestTransporterBalance": "Largest transporter balance: {name}",
+      "nothingToSettle": "Nothing to settle",
+      "withdrawn": "Withdrawn: {amount}",
+      "openLoans": "Open advances: {amount}",
+      "customs": "Customs: {amount}",
+      "otherFees": "Other fees: {amount}"
+    },
     "sections": {
       "operations": "Operations",
       "fuel": "Fuel",
@@ -135,7 +173,8 @@
       "shareholdersRemaining": "Remaining undistributed profit",
       "shareholdersOpenLoans": "Open loans"
     },
-    "viewDetails": "View details"
+    "viewDetails": "View details",
+    "viewAll": "View all"
   },
   "masterData": {
     "add": "Add",
@@ -192,7 +231,8 @@
       "ownership": "Ownership",
       "ownerTransporterId": "Owner Transporter ID",
       "defaultDriverId": "Default Driver ID",
-      "participationPercent": "Participation percent"
+      "participationPercent": "Participation percent",
+      "contribution": "Contribution"
     },
     "ownershipOptions": {
       "companyOwned": "Company owned",
@@ -219,6 +259,7 @@
       "SENT_FOR_LOADING": "Sent for loading",
       "LOADING": "Loading",
       "LOADED": "Loaded",
+      "ROAD_TRANSIT": "Road transit",
       "IN_TRANSIT": "In transit",
       "BORDER": "Border",
       "CUSTOMS": "Customs",
@@ -246,6 +287,8 @@
       "quantityLoaded": "Quantity loaded",
       "loadingDate": "Loading date",
       "blReference": "BL reference",
+      "proof": "Proof",
+      "viewProof": "View proof",
       "client": "Client",
       "companyStock": "Company stock",
       "assignCustomer": "Assign customer",
@@ -284,11 +327,16 @@
       "margin": "Trip profitability",
       "marginUnavailable": "Available once delivery is confirmed.",
       "marginLoadError": "Could not load this trip's profitability.",
+      "quantityLoaded": "Loaded quantity",
+      "quantityInvoiced": "Received/invoiced quantity",
       "revenue": "Revenue",
+      "transporterLossQuantity": "Transporter loss",
+      "transporterLossIndemnity": "Transporter loss indemnity",
       "fuelPurchaseCost": "Fuel purchase",
       "transportCost": "Transporter cost",
       "totalExpenses": "Other expenses",
       "unitCost": "Unit cost",
+      "realTotalCost": "Real total cost",
       "unitProfit": "Unit profit",
       "netMargin": "Net margin"
     },
@@ -402,6 +450,26 @@
     "PER_TRUCK": "Per truck",
     "MANUAL": "Manual"
   },
+  "purchaseOrderStatus": {
+    "DRAFT": "Draft",
+    "CONFIRMED": "Confirmed",
+    "CANCELLED": "Cancelled"
+  },
+  "expenseStatus": {
+    "UNPAID": "Unpaid",
+    "PARTIALLY_PAID": "Partially paid",
+    "PAID": "Paid",
+    "CANCELLED": "Cancelled"
+  },
+  "statementType": {
+    "INVOICE": "Invoice",
+    "PURCHASE": "Purchase",
+    "PAYMENT": "Payment",
+    "PROFIT_SHARE": "Profit share",
+    "WITHDRAWAL": "Withdrawal",
+    "LOAN_GIVEN": "Loan given",
+    "LOAN_RECEIVED": "Loan received"
+  },
   "expenseCategory": {
     "customs": "Customs",
     "import_intention": "Import intention",
@@ -497,7 +565,11 @@
       "destinationIndirect": "Indirect (no treasury movement)",
       "note": "Note",
       "proofImage": "Proof image",
+      "proofLabel": "Payment proof",
+      "chooseFile": "Choose a file",
+      "noFileSelected": "No file selected",
       "proofRequired": "Payment proof is required.",
+      "imageOnlyError": "Only JPG, JPEG, PNG or WEBP images are allowed.",
       "proofUploadError": "The payment was recorded, but the proof image could not be uploaded.",
       "outstandingBalance": "Customer's total outstanding debt",
       "allocateToInvoices": "Allocate to invoices",
@@ -534,7 +606,11 @@
       "newPayment": "New payment",
       "back": "Back",
       "loadError": "Could not load the customer ledger.",
+      "totalInvoiced": "Total invoiced",
+      "totalReceived": "Total received",
       "outstandingBalance": "Outstanding balance",
+      "openInvoices": "Open invoices",
+      "lastPayment": "Last payment",
       "invoices": "Invoices",
       "table": {
         "invoice": "Invoice",
@@ -550,12 +626,15 @@
         "method": "Method",
         "indirect": "Indirect",
         "reference": "Reference",
-        "amount": "Amount"
+        "amount": "Amount",
+        "proof": "Proof"
       },
-      "noPayments": "No payments yet."
+      "noPayments": "No payments yet.",
+      "downloadProof": "Download proof"
     },
     "transporterLedger": {
       "title": "Transporter Ledger — {name}",
+      "newPayment": "Record a payment",
       "back": "Back",
       "loadError": "Could not load the transporter ledger.",
       "grossEarned": "Gross earned",
@@ -617,6 +696,7 @@
       "reference": "Reference",
       "note": "Note",
       "attachment": "Attachment / proof",
+      "imageOnlyError": "Only JPG, JPEG, PNG or WEBP images are allowed.",
       "submit": "Record payment",
       "loadError": "Could not load payable debts.",
       "saveError": "Could not record this payment.",
@@ -634,7 +714,8 @@
         "bankRequired": "Choose a bank.",
         "positiveAmount": "The amount must be greater than zero.",
         "aboveRemaining": "The amount exceeds the remaining debt.",
-        "insufficientBank": "The bank balance is insufficient for this payment."
+        "insufficientBank": "The bank balance is insufficient for this payment.",
+        "debtNotFound": "No payable debt found for this entity."
       }
     },
     "shareholder": {
@@ -713,6 +794,13 @@
       "loadError": "Could not load the profit report.",
       "currentProfit": "Current indicative profit (not distributed)",
       "periodProfit": "Profit for the period",
+      "accountingProfit": "Accounting profit",
+      "accountingProfitHelp": "Profit calculated from sales - recorded costs for the period.",
+      "receivedProfit": "Received profit",
+      "receivedProfitHelp": "Part actually collected when collection data is available.",
+      "distributableProfit": "Distributable profit",
+      "distributableProfitHelp": "Profit validated for allocation to shareholders.",
+      "distributionNote": "Accounting profit is not automatically distributable. Allocation to associates must be validated separately.",
       "tripsCount": "Trips counted",
       "revenue": "Revenue",
       "costDisclaimer": "These amounts are the costs recorded in the cost price. They do not necessarily reflect payments already made.",
@@ -723,13 +811,18 @@
       "borderCost": "Border fees (recorded)",
       "loadingCost": "Loading fees (recorded)",
       "otherCosts": "Other fees (recorded)",
+      "lossIndemnity": "Transporter loss indemnity",
       "table": {
         "tripReference": "Trip reference",
         "client": "Client",
         "product": "Product",
         "quantity": "Quantity",
+        "quantityLoaded": "Loaded",
+        "quantityInvoiced": "Received/invoiced",
+        "transporterLossQuantity": "Transporter loss",
+        "transporterLossIndemnity": "Loss indemnity",
         "supplierUnitPrice": "Supplier price/L",
-        "unitCost": "Unit cost/L",
+        "realTotalCost": "Real total cost",
         "unitSellingPrice": "Selling price/L",
         "unitProfit": "Profit/L",
         "totalProfit": "Total profit"
@@ -773,11 +866,12 @@
       "saving": "Saving…",
       "save": "Save",
       "saveError": "Could not save — check the fields and your permissions.",
-      "document": "Cession Document",
-      "noDocument": "No document attached yet.",
+      "document": "Proof",
+      "noDocument": "No proof attached yet.",
       "uploading": "Uploading…",
       "upload": "Upload",
-      "uploadError": "Could not upload document."
+      "uploadError": "Could not upload document.",
+      "imageOnlyError": "Only JPG, JPEG, PNG or WEBP images are allowed."
     },
     "cessionList": {
       "title": "Cession Letters",
@@ -788,8 +882,10 @@
         "authorized": "Authorized (L)",
         "remaining": "Remaining (L)",
         "issueDate": "Issue date",
-        "status": "Status"
+        "status": "Status",
+        "proof": "Proof"
       },
+      "viewProof": "View proof",
       "noCessions": "No cession letters yet.",
       "loadError": "Could not load cession letters."
     },
@@ -814,8 +910,8 @@
       "saving": "Saving…",
       "save": "Save",
       "saveError": "Could not save — check the fields and your permissions.",
-      "documents": "Documents",
-      "noDocuments": "No documents attached yet.",
+      "documents": "Proofs",
+      "noDocuments": "No proof attached yet.",
       "documentTypes": {
         "purchase_contract": "Purchase contract",
         "receipt": "Receipt",
@@ -824,6 +920,8 @@
       "uploading": "Uploading…",
       "upload": "Upload",
       "uploadError": "Could not upload document.",
+      "uploadAfterCreateError": "Order created, but some documents could not be uploaded.",
+      "imageOnlyError": "Only JPG, JPEG, PNG or WEBP images are allowed.",
       "cessionLetters": "Cession Letters",
       "newCession": "New Cession",
       "table": {
@@ -841,18 +939,21 @@
       "totalPurchased": "Total purchased",
       "totalPaid": "Total paid",
       "outstandingBalance": "Outstanding balance",
+      "lastPayment": "Last payment",
       "reliquatByProduct": "Reliquat by product",
       "product": "Product",
       "totalReliquat": "Total reliquat (L)",
       "noPurchaseHistory": "No purchase history yet.",
       "purchaseHistory": "Purchase history",
+      "viewProof": "View proof",
       "table": {
         "reference": "Reference",
         "product": "Product",
         "date": "Date",
         "purchased": "Purchased (L)",
         "reliquat": "Reliquat (L)",
-        "status": "Status"
+        "status": "Status",
+        "proof": "Proof"
       },
       "paymentsAndAdvances": "Payments & advances",
       "paymentsTable": {
@@ -986,7 +1087,16 @@
       "applyCorrection": "Apply correction",
       "correctionError": "Could not apply this correction.",
       "correctionAuditTrail": "Correction audit trail",
-      "noCorrections": "No corrections yet."
+      "noCorrections": "No corrections yet.",
+      "payments": "Invoice payments",
+      "paymentDate": "Date",
+      "method": "Method",
+      "reference": "Reference",
+      "amount": "Amount",
+      "proof": "Proof",
+      "viewProof": "View proof",
+      "downloadProof": "Download proof",
+      "noPayments": "No allocated payments."
     },
     "saleList": {
       "title": "Sales",
@@ -1034,8 +1144,8 @@
     "title": "Reports",
     "reportType": "Report type",
     "runReport": "Run report",
-    "exportCsv": "Export CSV",
-    "exportExcel": "Export Excel",
+    "print": "Print",
+    "exportPdf": "Export PDF",
     "loadError": "Could not load this report.",
     "exportError": "Could not export this report.",
     "noData": "No data for this selection.",
@@ -1093,6 +1203,10 @@
       "cash-statement": {
         "label": "Cash statement",
         "idLabel": "Cash account ID"
+      },
+      "shareholder-statement": {
+        "label": "Shareholder statement",
+        "idLabel": "Shareholder ID"
       }
     },
     "fields": {
@@ -1110,6 +1224,10 @@
       "status": "Status",
       "component": "Component",
       "quantity": "Quantity",
+      "quantity_loaded": "Loaded quantity",
+      "quantity_invoiced": "Received/invoiced quantity",
+      "transporter_loss_quantity": "Transporter loss",
+      "transporter_loss_indemnity": "Transporter loss indemnity",
       "trip_reference": "Trip reference",
       "control_date": "Control date",
       "loaded_quantity": "Loaded quantity",
@@ -1126,6 +1244,7 @@
       "border_cost": "Border fees",
       "loading_cost": "Loading fees",
       "additional_costs": "Additional costs",
+      "real_total_cost": "Real total cost",
       "unit_cost": "Unit cost",
       "unit_profit": "Unit profit",
       "current_margin": "Current margin",

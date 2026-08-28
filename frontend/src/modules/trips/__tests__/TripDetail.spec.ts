@@ -30,6 +30,22 @@ function makeTrip(overrides: Partial<Trip> = {}): Trip {
     supplier_detail: { id: 3, name: 'Total' },
     supplier_order: 4,
     cession_letter: 5,
+    cession_letter_detail: {
+      id: 5,
+      reference: 'CES-005',
+      supplier_order: 4,
+      authorized_quantity: '45000.00',
+      issue_date: '2026-08-18',
+      status: 'ACTIVE',
+      notes: '',
+      created_by: 1,
+      created_by_detail: null,
+      loaded_quantity: '0.00',
+      remaining_quantity: '45000.00',
+      documents: [],
+      created_at: '',
+      updated_at: '',
+    },
     product: 6,
     product_detail: { id: 6, name: 'Gasoil', code: 'gasoil' },
     quantity_loaded: '45000.00',
@@ -65,6 +81,26 @@ vi.mock('../api', () => ({
   postTripStatus: (id: number, status: string, notes?: string) => postTripStatus(id, status, notes),
   assignTripCustomer: vi.fn(),
 }))
+
+function makeMargin(overrides: Partial<Extract<TripMargin, { available: true }>> = {}): TripMargin {
+  return {
+    available: true,
+    quantity_loaded: '45000.00',
+    quantity_invoiced: '44850.00',
+    transporter_loss_quantity: '0.00',
+    transporter_loss_indemnity: '0.00',
+    revenue: '29152500.00',
+    fuel_purchase_cost: '27000000.00',
+    transport_cost: '500000.00',
+    expenses_by_category: {},
+    total_expenses: '0.00',
+    real_total_cost: '27500000.00',
+    margin: '1652500.00',
+    unit_cost: '611.11',
+    unit_profit: '38.89',
+    ...overrides,
+  }
+}
 
 let expensesToReturn: Expense[] = []
 let transportPaymentsToReturn: TransportPayment[] = []
@@ -276,17 +312,17 @@ describe('TripDetail expenses section', () => {
 
   it('shows the revenue/cost breakdown once available, including a per-category expense line', async () => {
     setUser({ operations: ['view'], finance: ['view'] })
-    marginToReturn = {
-      available: true,
+    marginToReturn = makeMargin({
       revenue: '29152500.00',
       fuel_purchase_cost: '27000000.00',
       transport_cost: '500000.00',
       expenses_by_category: { customs: '90000.00' },
       total_expenses: '90000.00',
+      real_total_cost: '27590000.00',
       margin: '1562500.00',
       unit_cost: '611.11',
       unit_profit: '38.89',
-    }
+    })
 
     const wrapper = await mountAt()
 
@@ -303,17 +339,19 @@ describe('TripDetail expenses section', () => {
 
   it('highlights a negative margin', async () => {
     setUser({ operations: ['view'], finance: ['view'] })
-    marginToReturn = {
-      available: true,
+    marginToReturn = makeMargin({
+      quantity_loaded: '1.00',
+      quantity_invoiced: '1.00',
       revenue: '1000.00',
       fuel_purchase_cost: '2000.00',
       transport_cost: '0.00',
       expenses_by_category: {},
       total_expenses: '0.00',
+      real_total_cost: '2000.00',
       margin: '-1000.00',
       unit_cost: '2000.00',
       unit_profit: '-1500.00',
-    }
+    })
 
     const wrapper = await mountAt()
 
@@ -355,17 +393,19 @@ describe('TripDetail expenses section', () => {
 
   it('hides "Attribuer un client" once the trip already has a Sale (mirrors the backend reject-after-sale rule)', async () => {
     setUser({ operations: ['view', 'edit'], finance: ['view'] })
-    marginToReturn = {
-      available: true,
+    marginToReturn = makeMargin({
+      quantity_loaded: '1.00',
+      quantity_invoiced: '1.00',
       revenue: '1000.00',
       fuel_purchase_cost: '500.00',
       transport_cost: '0.00',
       expenses_by_category: {},
       total_expenses: '0.00',
+      real_total_cost: '500.00',
       margin: '500.00',
       unit_cost: '500.00',
       unit_profit: '11.11',
-    }
+    })
 
     const wrapper = await mountAt()
 
@@ -413,6 +453,37 @@ describe('TripDetail expenses section', () => {
     expect(optionText).not.toContain('Contrôle de quantité')
   })
 
+  it('shows the source cession proof in an internal preview modal', async () => {
+    setUser({ operations: ['view'], finance: ['view'] })
+    tripResourceGet.mockResolvedValueOnce(
+      makeTrip({
+        cession_letter_detail: {
+          ...makeTrip().cession_letter_detail!,
+          documents: [
+            {
+              id: 14,
+              file: '/media/documents/cession-trip.webp',
+              document_type: 'cession_proof',
+              reference: '',
+              uploaded_by: 1,
+              uploaded_by_email: 'admin@example.com',
+              created_at: '',
+            },
+          ],
+        },
+      }),
+    )
+
+    const wrapper = await mountAt()
+
+    const proofButton = wrapper.findAll('button').find((button) => button.text() === 'Voir justificatif')
+    expect(proofButton).toBeTruthy()
+    await proofButton!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('img[src="/media/documents/cession-trip.webp"]').exists()).toBe(true)
+  })
+
   it('opens the transporter commission popup after ASSIGNED -> SENT_FOR_LOADING', async () => {
     setUser({ operations: ['view', 'edit'], finance: ['view', 'create'] })
     tripResourceGet.mockResolvedValue(makeTrip({ status: 'ASSIGNED' }))
@@ -447,17 +518,17 @@ describe('TripDetail expenses section', () => {
 
   it('shows the unit cost and unit profit lines from the margin breakdown', async () => {
     setUser({ operations: ['view'], finance: ['view'] })
-    marginToReturn = {
-      available: true,
+    marginToReturn = makeMargin({
       revenue: '29152500.00',
       fuel_purchase_cost: '27000000.00',
       transport_cost: '500000.00',
       expenses_by_category: {},
       total_expenses: '0.00',
+      real_total_cost: '27500000.00',
       margin: '1652500.00',
       unit_cost: '611.11',
       unit_profit: '38.89',
-    }
+    })
 
     const wrapper = await mountAt()
 

@@ -93,6 +93,14 @@
     },
     "enRouteNow": "En route maintenant ({count})",
     "noTripsEnRoute": "Aucun trajet en route actuellement.",
+    "quickActions": {
+      "title": "Actions rapides",
+      "newSupplierOrder": "Nouvelle commande fournisseur",
+      "newCessionLetter": "Nouvelle lettre de cession",
+      "newTrip": "Nouveau trajet (chargement)",
+      "newCustomerPayment": "Nouveau paiement client",
+      "newPayment": "Nouveau paiement"
+    },
     "volumeTrend": "Volumes livrés — 14 derniers jours",
     "toTreat": "À traiter",
     "unjustifiedLosses": "Écarts non justifiés",
@@ -101,6 +109,36 @@
     "noUrgentTrips": "Aucune urgence.",
     "periodDetail": "Détail de la période",
     "noAmounts": "Aucun montant.",
+    "final": {
+      "periodFilterHelp": "La période filtre les ventes, encaissements, dépenses, volumes et bénéfices.",
+      "periodRevenue": "Chiffre d'affaires de la période",
+      "periodCollections": "Encaissements de la période",
+      "periodPaidExpenses": "Dépenses payées de la période",
+      "periodAccountingProfit": "Bénéfice comptable de la période",
+      "currentTreasuryBalance": "Solde trésorerie actuel",
+      "availableTreasury": "Trésorerie disponible",
+      "banks": "Banques",
+      "cashAccounts": "Caisses",
+      "partyBalances": "Soldes par partie",
+      "customers": "Clients",
+      "suppliers": "Fournisseurs",
+      "transporters": "Transporteurs",
+      "shareholders": "Actionnaires / Associés",
+      "customsAndOther": "Douane / Transit / Autres frais",
+      "companyStock": "Stock de l'entreprise",
+      "companyStockTrips": "{count} trajet(s) actuellement en stock",
+      "openCustomers": "{count} client(s) avec solde ouvert",
+      "openSuppliers": "{count} fournisseur(s) avec dette",
+      "openTransporters": "{count} transporteur(s) avec solde ouvert",
+      "largestCustomerDebt": "Plus gros débiteur : {name}",
+      "largestSupplierDebt": "Plus gros impayé : {name}",
+      "largestTransporterBalance": "Plus gros solde : {name}",
+      "nothingToSettle": "Rien à régler",
+      "withdrawn": "Retiré : {amount}",
+      "openLoans": "Avances ouvertes : {amount}",
+      "customs": "Douane : {amount}",
+      "otherFees": "Autres frais : {amount}"
+    },
     "sections": {
       "operations": "Opérations",
       "fuel": "Carburant",
@@ -135,7 +173,8 @@
       "shareholdersRemaining": "Bénéfice restant non retiré",
       "shareholdersOpenLoans": "Avances ouvertes"
     },
-    "viewDetails": "Voir le détail"
+    "viewDetails": "Voir le détail",
+    "viewAll": "Voir tous"
   },
   "masterData": {
     "add": "Ajouter",
@@ -193,7 +232,8 @@
       "ownerTransporterId": "Transporteur propriétaire",
       "defaultDriverId": "Chauffeur par défaut",
       "none": "Aucun",
-      "participationPercent": "Pourcentage de participation"
+      "participationPercent": "Pourcentage de participation",
+      "contribution": "Contribution"
     },
     "ownershipOptions": {
       "companyOwned": "Propriété de l'entreprise",
@@ -220,6 +260,7 @@
       "SENT_FOR_LOADING": "Envoyé au chargement",
       "LOADING": "Chargement en cours",
       "LOADED": "Chargé",
+      "ROAD_TRANSIT": "Transit routière",
       "IN_TRANSIT": "En transit",
       "BORDER": "Frontière",
       "CUSTOMS": "Douane",
@@ -247,6 +288,8 @@
       "quantityLoaded": "Quantité chargée",
       "loadingDate": "Date de chargement",
       "blReference": "Référence BL",
+      "proof": "Justificatif",
+      "viewProof": "Voir justificatif",
       "client": "Client",
       "companyStock": "Stock de l'entreprise",
       "assignCustomer": "Attribuer un client",
@@ -285,11 +328,16 @@
       "margin": "Rentabilité du trajet",
       "marginUnavailable": "Disponible une fois la livraison confirmée.",
       "marginLoadError": "Impossible de charger la rentabilité de ce trajet.",
+      "quantityLoaded": "Quantité chargée",
+      "quantityInvoiced": "Quantité reçue/facturée",
       "revenue": "Chiffre d'affaires",
+      "transporterLossQuantity": "Perte transporteur",
+      "transporterLossIndemnity": "Indemnisation perte transporteur",
       "fuelPurchaseCost": "Achat carburant",
       "transportCost": "Coût transporteur",
       "totalExpenses": "Frais annexes",
       "unitCost": "Coût unitaire",
+      "realTotalCost": "Coût total réel",
       "unitProfit": "Bénéfice unitaire",
       "netMargin": "Marge nette"
     },
@@ -404,6 +452,26 @@
     "PER_TRUCK": "Par camion",
     "MANUAL": "Manuel"
   },
+  "purchaseOrderStatus": {
+    "DRAFT": "Brouillon",
+    "CONFIRMED": "Confirmée",
+    "CANCELLED": "Annulée"
+  },
+  "expenseStatus": {
+    "UNPAID": "Non payé",
+    "PARTIALLY_PAID": "Partiellement payé",
+    "PAID": "Payé",
+    "CANCELLED": "Annulé"
+  },
+  "statementType": {
+    "INVOICE": "Facture",
+    "PURCHASE": "Achat",
+    "PAYMENT": "Paiement",
+    "PROFIT_SHARE": "Bénéfice attribué",
+    "WITHDRAWAL": "Retrait",
+    "LOAN_GIVEN": "Avance donnée",
+    "LOAN_RECEIVED": "Avance reçue"
+  },
   "expenseCategory": {
     "customs": "Douane",
     "import_intention": "Intention d'importation",
@@ -499,7 +567,11 @@
       "destinationIndirect": "Indirect (aucun mouvement de trésorerie)",
       "note": "Note",
       "proofImage": "Image justificative",
+      "proofLabel": "Justificatif de paiement",
+      "chooseFile": "Choisir un fichier",
+      "noFileSelected": "Aucun fichier sélectionné",
       "proofRequired": "Le justificatif de paiement est obligatoire.",
+      "imageOnlyError": "Seules les images JPG, JPEG, PNG ou WEBP sont autorisées.",
       "proofUploadError": "Le paiement a été enregistré, mais l'image justificative n'a pas pu être envoyée.",
       "outstandingBalance": "Total de la dette du Client",
       "allocateToInvoices": "Répartir sur les factures",
@@ -536,7 +608,11 @@
       "newPayment": "Nouveau paiement",
       "back": "Retour",
       "loadError": "Impossible de charger le grand livre client.",
+      "totalInvoiced": "Total facturé",
+      "totalReceived": "Total encaissé",
       "outstandingBalance": "Solde impayé",
+      "openInvoices": "Factures ouvertes",
+      "lastPayment": "Dernier paiement",
       "invoices": "Factures",
       "table": {
         "invoice": "Facture",
@@ -552,12 +628,15 @@
         "method": "Méthode",
         "indirect": "Indirect",
         "reference": "Référence",
-        "amount": "Montant"
+        "amount": "Montant",
+        "proof": "Justificatif"
       },
-      "noPayments": "Aucun paiement."
+      "noPayments": "Aucun paiement.",
+      "downloadProof": "Télécharger le justificatif"
     },
     "transporterLedger": {
       "title": "Compte transporteur — {name}",
+      "newPayment": "Enregistrer un paiement",
       "back": "Retour",
       "loadError": "Impossible de charger le grand livre transporteur.",
       "grossEarned": "Brut gagné",
@@ -619,6 +698,7 @@
       "reference": "Référence",
       "note": "Note",
       "attachment": "Pièce jointe / justificatif",
+      "imageOnlyError": "Seules les images JPG, JPEG, PNG ou WEBP sont autorisées.",
       "submit": "Enregistrer le paiement",
       "loadError": "Impossible de charger les dettes à payer.",
       "saveError": "Impossible d'enregistrer ce paiement.",
@@ -636,7 +716,8 @@
         "bankRequired": "Choisissez une banque.",
         "positiveAmount": "Le montant doit être supérieur à zéro.",
         "aboveRemaining": "Le montant dépasse le reste à payer.",
-        "insufficientBank": "Solde bancaire insuffisant pour effectuer ce paiement."
+        "insufficientBank": "Solde bancaire insuffisant pour effectuer ce paiement.",
+        "debtNotFound": "Aucune dette à payer trouvée pour cette entité."
       }
     },
     "shareholder": {
@@ -715,6 +796,13 @@
       "loadError": "Impossible de charger le rapport de bénéfices.",
       "currentProfit": "Bénéfice actuel indicatif (non distribué)",
       "periodProfit": "Bénéfice de la période",
+      "accountingProfit": "Bénéfice comptable",
+      "accountingProfitHelp": "Bénéfice calculé sur ventes - coûts comptabilisés pour la période.",
+      "receivedProfit": "Bénéfice encaissé",
+      "receivedProfitHelp": "Partie réellement encaissée si les encaissements sont disponibles.",
+      "distributableProfit": "Bénéfice distribuable",
+      "distributableProfitHelp": "Bénéfice validé pour répartition aux actionnaires.",
+      "distributionNote": "Le bénéfice comptable n'est pas automatiquement distribuable. La répartition aux associés doit être validée séparément.",
       "tripsCount": "Trajets pris en compte",
       "revenue": "Chiffre d'affaires",
       "costDisclaimer": "Ces montants sont les coûts comptabilisés dans le prix de revient. Ils ne représentent pas forcément les paiements déjà effectués.",
@@ -725,13 +813,18 @@
       "borderCost": "Frais frontière comptabilisés",
       "loadingCost": "Frais chargement comptabilisés",
       "otherCosts": "Autres frais comptabilisés",
+      "lossIndemnity": "Indemnisation pertes transporteur",
       "table": {
         "tripReference": "Référence trajet",
         "client": "Client",
         "product": "Produit",
         "quantity": "Quantité",
+        "quantityLoaded": "Chargée",
+        "quantityInvoiced": "Reçue/facturée",
+        "transporterLossQuantity": "Perte transporteur",
+        "transporterLossIndemnity": "Indemnisation perte",
         "supplierUnitPrice": "Prix fournisseur/L",
-        "unitCost": "Prix de revient/L",
+        "realTotalCost": "Coût total réel",
         "unitSellingPrice": "Prix de vente/L",
         "unitProfit": "Bénéfice/L",
         "totalProfit": "Bénéfice total"
@@ -776,11 +869,12 @@
       "saving": "Enregistrement…",
       "save": "Enregistrer",
       "saveError": "Impossible d'enregistrer — vérifiez les champs et vos droits.",
-      "document": "Document de cession",
-      "noDocument": "Aucun document joint.",
+      "document": "Justificatif",
+      "noDocument": "Aucun justificatif joint.",
       "uploading": "Téléversement…",
       "upload": "Téléverser",
-      "uploadError": "Impossible de téléverser le document."
+      "uploadError": "Impossible de téléverser le document.",
+      "imageOnlyError": "Seules les images JPG, JPEG, PNG ou WEBP sont autorisées."
     },
     "cessionList": {
       "title": "Lettres de cession",
@@ -791,8 +885,10 @@
         "authorized": "Autorisé (L)",
         "remaining": "Restant (L)",
         "issueDate": "Date d'émission",
-        "status": "Statut"
+        "status": "Statut",
+        "proof": "Justificatif"
       },
+      "viewProof": "Voir justificatif",
       "noCessions": "Aucune lettre de cession.",
       "loadError": "Impossible de charger les lettres de cession."
     },
@@ -818,8 +914,8 @@
       "saving": "Enregistrement…",
       "save": "Enregistrer",
       "saveError": "Impossible d'enregistrer — vérifiez les champs et vos droits.",
-      "documents": "Documents",
-      "noDocuments": "Aucun document joint.",
+      "documents": "Justificatifs",
+      "noDocuments": "Aucun justificatif joint.",
       "documentTypes": {
         "purchase_contract": "Contrat d'achat",
         "receipt": "Reçu",
@@ -828,6 +924,8 @@
       "uploading": "Téléversement…",
       "upload": "Téléverser",
       "uploadError": "Impossible de téléverser le document.",
+      "uploadAfterCreateError": "Commande créée, mais certains documents n'ont pas pu être téléversés.",
+      "imageOnlyError": "Seules les images JPG, JPEG, PNG ou WEBP sont autorisées.",
       "cessionLetters": "Lettres de cession",
       "newCession": "Nouvelle cession",
       "table": {
@@ -845,18 +943,21 @@
       "totalPurchased": "Total acheté",
       "totalPaid": "Total payé",
       "outstandingBalance": "Solde impayé",
+      "lastPayment": "Dernier paiement",
       "reliquatByProduct": "Reliquat par produit",
       "product": "Produit",
       "totalReliquat": "Reliquat total (L)",
       "noPurchaseHistory": "Aucun historique d'achat.",
       "purchaseHistory": "Historique des achats",
+      "viewProof": "Voir justificatif",
       "table": {
         "reference": "Référence",
         "product": "Produit",
         "date": "Date",
         "purchased": "Acheté (L)",
         "reliquat": "Reliquat (L)",
-        "status": "Statut"
+        "status": "Statut",
+        "proof": "Justificatif"
       },
       "paymentsAndAdvances": "Paiements & avances",
       "paymentsTable": {
@@ -990,7 +1091,16 @@
       "applyCorrection": "Appliquer la correction",
       "correctionError": "Impossible d'appliquer cette correction.",
       "correctionAuditTrail": "Historique des corrections",
-      "noCorrections": "Aucune correction."
+      "noCorrections": "Aucune correction.",
+      "payments": "Paiements de la facture",
+      "paymentDate": "Date",
+      "method": "Méthode",
+      "reference": "Référence",
+      "amount": "Montant",
+      "proof": "Justificatif",
+      "viewProof": "Voir justificatif",
+      "downloadProof": "Télécharger le justificatif",
+      "noPayments": "Aucun paiement imputé."
     },
     "saleList": {
       "title": "Ventes",
@@ -1038,8 +1148,8 @@
     "title": "Rapports",
     "reportType": "Type de rapport",
     "runReport": "Lancer le rapport",
-    "exportCsv": "Exporter CSV",
-    "exportExcel": "Exporter Excel",
+    "print": "Imprimer",
+    "exportPdf": "Exporter PDF",
     "loadError": "Impossible de charger ce rapport.",
     "exportError": "Impossible d'exporter ce rapport.",
     "noData": "Aucune donnée pour cette sélection.",
@@ -1097,6 +1207,10 @@
       "cash-statement": {
         "label": "Relevé de caisse",
         "idLabel": "ID compte de caisse"
+      },
+      "shareholder-statement": {
+        "label": "Relevé actionnaire",
+        "idLabel": "ID actionnaire"
       }
     },
     "fields": {
@@ -1114,6 +1228,10 @@
       "status": "Statut",
       "component": "Composant",
       "quantity": "Quantité",
+      "quantity_loaded": "Quantité chargée",
+      "quantity_invoiced": "Quantité reçue/facturée",
+      "transporter_loss_quantity": "Perte transporteur",
+      "transporter_loss_indemnity": "Indemnisation perte transporteur",
       "trip_reference": "Référence trajet",
       "control_date": "Date de contrôle",
       "loaded_quantity": "Quantité chargée",
@@ -1130,6 +1248,7 @@
       "border_cost": "Frais frontière",
       "loading_cost": "Frais de chargement",
       "additional_costs": "Charges additionnelles",
+      "real_total_cost": "Coût total réel",
       "unit_cost": "Prix de revient unitaire",
       "unit_profit": "Bénéfice unitaire",
       "current_margin": "Marge actuelle",

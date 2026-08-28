@@ -108,6 +108,7 @@ def test_cession_cancellation_releases_reliquat():
         purchase_date="2026-08-18",
         quantity_litres=Decimal("100000.00"),
         unit_price=Decimal("600.0000"),
+        status=SupplierOrder.Status.CONFIRMED,
         created_by=admin_user,
     )
 
@@ -193,6 +194,7 @@ def test_supplier_ledger_endpoint():
         purchase_date="2026-08-18",
         quantity_litres=Decimal("100000.00"),
         unit_price=Decimal("600.0000"),
+        status=SupplierOrder.Status.CONFIRMED,
         created_by=admin_user,
     )
 

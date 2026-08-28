@@ -267,7 +267,8 @@ class TripWorkflowService:
         Trip.Status.ASSIGNED: Trip.Status.SENT_FOR_LOADING,
         Trip.Status.SENT_FOR_LOADING: Trip.Status.LOADING,
         Trip.Status.LOADING: Trip.Status.LOADED,
-        Trip.Status.LOADED: Trip.Status.IN_TRANSIT,
+        Trip.Status.LOADED: Trip.Status.ROAD_TRANSIT,
+        Trip.Status.ROAD_TRANSIT: Trip.Status.IN_TRANSIT,
         Trip.Status.IN_TRANSIT: Trip.Status.BORDER,
         Trip.Status.BORDER: Trip.Status.CUSTOMS,
         Trip.Status.CUSTOMS: Trip.Status.GOING_TO_CLIENT,
@@ -519,13 +520,11 @@ class DeliveryService:
 
         TripWorkflowService.transition_trip(trip.id, Trip.Status.DELIVERED, controller)
 
-        if control.chargeable_loss_quantity > 0:
-            TransportDeduction.objects.create(
-                trip=trip,
-                transporter=trip.transporter,
-                chargeable_quantity=control.chargeable_loss_quantity,
-                unit_price=trip.supplier_order.unit_price,
-            )
+        DeliveryService.sync_transport_shortage_deduction(
+            trip=trip,
+            received_qty=received_qty,
+            unit_selling_price=unit_selling_price,
+        )
 
         price_result = TripCostService.compare_unit_selling_price(trip, unit_selling_price)
         if price_result["result_type"] == "loss" and not confirm_loss:
@@ -566,3 +565,54 @@ class DeliveryService:
             )
 
         return control
+
+    @staticmethod
+    def sync_transport_shortage_deduction(
+        *, trip: Trip, received_qty: Decimal, unit_selling_price: Decimal
+    ) -> None:
+        missing_quantity = (trip.quantity_loaded - received_qty).quantize(Decimal("0.01"))
+        deductions = list(
+            TransportDeduction.objects.select_for_update().filter(trip=trip).order_by("id")
+        )
+
+        if missing_quantity <= _ZERO:
+            for deduction in deductions:
+                deduction.delete()
+            DeliveryService._sync_transport_payment_deductions(trip)
+            return
+
+        if deductions:
+            deduction = deductions[0]
+            deduction.transporter = trip.transporter
+            deduction.chargeable_quantity = missing_quantity
+            deduction.unit_price = unit_selling_price
+            deduction.save(
+                update_fields=[
+                    "transporter",
+                    "chargeable_quantity",
+                    "unit_price",
+                    "amount",
+                    "updated_at",
+                ]
+            )
+            for duplicate in deductions[1:]:
+                duplicate.delete()
+        else:
+            TransportDeduction.objects.create(
+                trip=trip,
+                transporter=trip.transporter,
+                chargeable_quantity=missing_quantity,
+                unit_price=unit_selling_price,
+            )
+
+        DeliveryService._sync_transport_payment_deductions(trip)
+
+    @staticmethod
+    def _sync_transport_payment_deductions(trip: Trip) -> None:
+        total_deduction = (
+            TransportDeduction.objects.filter(trip=trip).aggregate(total=Sum("amount"))["total"]
+            or _ZERO
+        )
+        for payment in TransportPayment.objects.select_for_update().filter(trip=trip):
+            payment.deduction_amount = total_deduction
+            payment.save(update_fields=["deduction_amount", "net_amount", "updated_at"])

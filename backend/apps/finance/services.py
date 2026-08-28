@@ -240,6 +240,7 @@ class FinancePostingService:
         recorded_by,
         resolve_accounts,
         note="",
+        document=None,
     ) -> TreasuryTransaction | None:
         """Shared idempotency-check + create-under-lock body for every
         record_*_treasury() method below, in the same order the original
@@ -274,12 +275,15 @@ class FinancePostingService:
             note=note,
             source_content_type=source_content_type,
             source_object_id=source.id,
+            document=document,
             recorded_by=recorded_by,
         )
 
     @staticmethod
     @transaction.atomic
-    def record_customer_payment_treasury(payment: CustomerPayment) -> TreasuryTransaction | None:
+    def record_customer_payment_treasury(
+        payment: CustomerPayment, *, document: Document | None = None
+    ) -> TreasuryTransaction | None:
         """Create the one TreasuryTransaction(MONEY_IN) a direct customer
         payment must produce, linked back via source_content_type/
         source_object_id. Returns None (no-op) for an indirect payment or
@@ -314,6 +318,7 @@ class FinancePostingService:
             reference=payment.reference,
             recorded_by=payment.recorded_by,
             resolve_accounts=resolve_accounts,
+            document=document,
         )
 
     @staticmethod
@@ -452,7 +457,7 @@ class ControlledDebtPaymentService:
         if debt_type == cls.SUPPLIER:
             rows = []
             supplier_ids = (
-                SupplierOrder.objects.exclude(status=SupplierOrder.Status.CANCELLED)
+                SupplierOrder.objects.filter(status=SupplierOrder.Status.CONFIRMED)
                 .values_list("supplier_id", flat=True)
                 .distinct()
             )
@@ -739,8 +744,10 @@ class ControlledDebtPaymentService:
     @classmethod
     def _open_supplier_orders(cls, supplier, *, for_update=False):
         queryset = (
-            SupplierOrder.objects.filter(supplier=supplier)
-            .exclude(status=SupplierOrder.Status.CANCELLED)
+            SupplierOrder.objects.filter(
+                supplier=supplier,
+                status=SupplierOrder.Status.CONFIRMED,
+            )
             .select_related("supplier")
             .order_by("purchase_date", "id")
         )
@@ -807,13 +814,14 @@ class ControlledDebtPaymentService:
     @classmethod
     def describe_supplier_order(cls, order, *, paid_amount=None) -> dict:
         paid = cls._supplier_order_paid(order, override=paid_amount)
+        total = order.total_amount if order.status == SupplierOrder.Status.CONFIRMED else ZERO
         return {
             "id": order.id,
             "debt_type": cls.SUPPLIER,
             "label": f"{order.reference} - {order.supplier.name}",
-            "total_amount": order.total_amount,
+            "total_amount": total,
             "paid_amount": paid,
-            "remaining_amount": order.total_amount - paid,
+            "remaining_amount": total - paid,
             "status": order.status,
         }
 

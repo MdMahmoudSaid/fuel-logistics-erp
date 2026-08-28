@@ -21,9 +21,12 @@ withDefaults(
 <template>
   <span
     dir="ltr"
-    class="font-mono tabular-nums"
+    class="inline-flex items-baseline gap-1 whitespace-nowrap font-mono tabular-nums"
     :class="align === 'right' ? 'text-right' : 'text-start'"
   >
-    {{ value }}<span v-if="unit" class="text-texte-2 ms-1">{{ unit }}</span>
+    {{ value
+    }}<span v-if="unit" class="font-mono text-[0.85em] font-normal text-current">{{
+      ' ' + unit
+    }}</span>
   </span>
 </template>

@@ -96,6 +96,15 @@ export interface InvoiceCorrectionEntry {
   reason: string
 }
 
+export interface InvoicePayment {
+  id: number
+  payment_date: string
+  method: string
+  reference: string
+  amount: string
+  proof_url: string | null
+}
+
 export interface Invoice {
   id: number
   invoice_number: string
@@ -107,6 +116,7 @@ export interface Invoice {
   outstanding_amount: string
   issued_date: string
   corrections: InvoiceCorrectionEntry[]
+  payments: InvoicePayment[]
   created_at: string
   updated_at: string
 }

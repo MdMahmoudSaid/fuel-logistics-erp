@@ -66,6 +66,27 @@ export function uploadCustomerPaymentProof(params: {
     .then(() => undefined)
 }
 
+export function createCustomerPaymentWithProof(
+  payload: Record<string, unknown>,
+  proof: File,
+): Promise<CustomerPayment> {
+  const form = new FormData()
+  for (const [key, value] of Object.entries(payload)) {
+    if (value === undefined || value === null) continue
+    if (Array.isArray(value)) {
+      form.append(key, JSON.stringify(value))
+    } else {
+      form.append(key, String(value))
+    }
+  }
+  form.append('proof', proof)
+  return apiClient
+    .post<CustomerPayment>('/customer-payments/', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    .then((r) => r.data)
+}
+
 export function fetchTransporterLedger(transporterId: number): Promise<TransporterLedger> {
   return apiClient
     .get<TransporterLedger>(`/transporters/${transporterId}/ledger/`)

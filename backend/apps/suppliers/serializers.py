@@ -3,6 +3,7 @@ from decimal import Decimal
 from django.db.models import Max, Sum
 from rest_framework import serializers
 
+from apps.purchasing.models import SupplierOrder
 from apps.purchasing.services import SupplierStockService
 
 from .models import Supplier
@@ -26,7 +27,12 @@ class SupplierSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_at", "updated_at"]
 
     def get_total_purchased(self, obj) -> str:
-        total = obj.orders.aggregate(total=Sum("total_amount"))["total"] or Decimal("0.00")
+        total = (
+            obj.orders.filter(status=SupplierOrder.Status.CONFIRMED).aggregate(
+                total=Sum("total_amount")
+            )["total"]
+            or Decimal("0.00")
+        )
         return f"{total:.2f}"
 
     def get_total_paid(self, obj) -> str:
@@ -40,7 +46,10 @@ class SupplierSerializer(serializers.ModelSerializer):
 
     def get_total_reliquat(self, obj) -> str:
         total = sum(
-            (SupplierStockService.get_purchase_reliquat(order) for order in obj.orders.all()),
+            (
+                SupplierStockService.get_purchase_reliquat(order)
+                for order in obj.orders.filter(status=SupplierOrder.Status.CONFIRMED)
+            ),
             Decimal("0.00"),
         )
         return f"{total:.2f}"

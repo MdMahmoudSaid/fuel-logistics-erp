@@ -78,6 +78,114 @@ describe('DebtPaymentForm', () => {
     expect(wrapper.text()).toContain('BIM')
   })
 
+  it('can lock the debt type and preselect a debt from a detail page', async () => {
+    fetchPayableDebts.mockResolvedValueOnce([
+      {
+        id: 10,
+        debt_type: 'transporter',
+        label: 'Trans A',
+        total_amount: '700000.00',
+        paid_amount: '0.00',
+        remaining_amount: '700000.00',
+        status: 'UNPAID',
+      },
+      {
+        id: 22,
+        debt_type: 'transporter',
+        label: 'Trans B',
+        total_amount: '400000.00',
+        paid_amount: '0.00',
+        remaining_amount: '400000.00',
+        status: 'UNPAID',
+      },
+    ])
+
+    const wrapper = mount(DebtPaymentForm, {
+      props: {
+        initialDebtType: 'transporter',
+        initialDebtId: 22,
+        lockDebtType: true,
+      },
+    })
+    await flushPromises()
+
+    expect(fetchPayableDebts).toHaveBeenCalledWith('transporter')
+    const selects = wrapper.findAll('select')
+    expect((selects[0].element as HTMLSelectElement).disabled).toBe(true)
+    expect((selects[1].element as HTMLSelectElement).value).toBe('22')
+    expect(wrapper.text()).toContain('Trans B')
+  })
+
+  it('locks strictly to the given debt and hides other entities from the list', async () => {
+    fetchPayableDebts.mockResolvedValueOnce([
+      {
+        id: 10,
+        debt_type: 'transporter',
+        label: 'Transporteur Recette',
+        total_amount: '700000.00',
+        paid_amount: '0.00',
+        remaining_amount: '700000.00',
+        status: 'UNPAID',
+      },
+      {
+        id: 22,
+        debt_type: 'transporter',
+        label: 'Transporteur Recette Net',
+        total_amount: '400000.00',
+        paid_amount: '0.00',
+        remaining_amount: '400000.00',
+        status: 'UNPAID',
+      },
+    ])
+
+    const wrapper = mount(DebtPaymentForm, {
+      props: {
+        initialDebtType: 'transporter',
+        initialDebtId: 10,
+        lockDebtType: true,
+        lockDebt: true,
+      },
+    })
+    await flushPromises()
+
+    const debtSelect = wrapper.find('select#debt')
+    expect((debtSelect.element as HTMLSelectElement).value).toBe('10')
+    expect(debtSelect.text()).toContain('Transporteur Recette')
+    expect(debtSelect.text()).not.toContain('Transporteur Recette Net')
+  })
+
+  it('does not silently fall back to a different entity when the locked debt is missing from the payable list', async () => {
+    fetchPayableDebts.mockResolvedValueOnce([
+      {
+        id: 22,
+        debt_type: 'transporter',
+        label: 'Transporteur Recette Net',
+        total_amount: '400000.00',
+        paid_amount: '0.00',
+        remaining_amount: '400000.00',
+        status: 'UNPAID',
+      },
+    ])
+
+    const wrapper = mount(DebtPaymentForm, {
+      props: {
+        initialDebtType: 'transporter',
+        initialDebtId: 10,
+        lockDebtType: true,
+        lockDebt: true,
+      },
+    })
+    await flushPromises()
+
+    const debtSelect = wrapper.find('select#debt')
+    expect((debtSelect.element as HTMLSelectElement).value).not.toBe('22')
+    expect(wrapper.text()).not.toContain('Transporteur Recette Net')
+
+    await wrapper.find('#amount').setValue('1000')
+    await wrapper.find('form').trigger('submit')
+    expect(recordDebtPayment).not.toHaveBeenCalled()
+  })
+
   it('rejects an amount greater than the remaining debt', async () => {
     const wrapper = mount(DebtPaymentForm)
     await flushPromises()
@@ -95,7 +203,7 @@ describe('DebtPaymentForm', () => {
 
     await wrapper.find('#amount').setValue('100000')
     await wrapper.find('textarea').setValue('Virement confirme par SMS.')
-    const file = new File(['%PDF-1.4'], 'recu.pdf', { type: 'application/pdf' })
+    const file = new File(['receipt'], 'recu.jpg', { type: 'image/jpeg' })
     const fileInput = wrapper.find('input[type="file"]')
     Object.defineProperty(fileInput.element, 'files', { value: [file] })
     await fileInput.trigger('change')

@@ -40,3 +40,18 @@ export function formatUnitMoney(value: string | number): string {
 export function formatQuantity(value: string | number): string {
   return isolateLtr(`${formatInteger(toNumber(value))} L`)
 }
+
+/**
+ * Same as formatMoney/formatQuantity but with the unit kept separate from
+ * the digit group, so callers can style it distinctly (smaller, lighter,
+ * non-mono) instead of gluing it onto the tabular digits - in IBM Plex Mono
+ * Bold, a bare "XOF" reads as "X0F" (O and 0 render nearly identically at
+ * that weight) when it's part of the same run as the amount.
+ */
+export function formatMoneyParts(value: string | number): { value: string; unit: string } {
+  return { value: formatInteger(toNumber(value)), unit: CURRENCY }
+}
+
+export function formatQuantityParts(value: string | number): { value: string; unit: string } {
+  return { value: formatInteger(toNumber(value)), unit: 'L' }
+}

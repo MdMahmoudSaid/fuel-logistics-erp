@@ -14,6 +14,10 @@ from apps.purchasing.models import CessionLetter, SupplierOrder
 
 class SupplierStockService:
     @staticmethod
+    def confirmed_orders_queryset():
+        return SupplierOrder.objects.filter(status=SupplierOrder.Status.CONFIRMED)
+
+    @staticmethod
     def get_purchase_loaded_quantity(purchase: SupplierOrder) -> Decimal:
         """SUM(trips.quantity_loaded) for this order, excluding cancelled
         trips (Phase 3: apps.trips.Trip now exists). Imported lazily to keep

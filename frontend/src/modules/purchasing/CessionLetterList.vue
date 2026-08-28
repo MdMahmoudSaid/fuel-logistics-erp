@@ -8,6 +8,7 @@ import type { CessionLetter } from './types'
 import Badge from '@/components/ui/Badge.vue'
 import MonoValue from '@/components/ui/MonoValue.vue'
 import Button from '@/components/ui/Button.vue'
+import Modal from '@/components/ui/Modal.vue'
 
 const router = useRouter()
 const { t } = useI18n()
@@ -16,6 +17,7 @@ const cessions = ref<CessionLetter[]>([])
 const loading = ref(false)
 const error = ref('')
 const statusFilter = ref('')
+const previewUrl = ref<string | null>(null)
 
 async function load() {
   loading.value = true
@@ -47,6 +49,10 @@ function badgeVariant(status: string) {
   if (status === 'EXHAUSTED') return 'ecart' as const
   if (status === 'CANCELLED') return 'critique' as const
   return 'neutre' as const
+}
+
+function proofUrl(cession: CessionLetter) {
+  return cession.documents[0]?.file ?? null
 }
 </script>
 
@@ -87,6 +93,7 @@ function badgeVariant(status: string) {
             </th>
             <th class="px-3 py-2.5 font-medium">{{ t('purchasing.cessionList.table.issueDate') }}</th>
             <th class="px-3 py-2.5 font-medium">{{ t('purchasing.cessionList.table.status') }}</th>
+            <th class="px-3 py-2.5 font-medium">{{ t('purchasing.cessionList.table.proof') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -109,14 +116,37 @@ function badgeVariant(status: string) {
                 t(`cessionStatus.${cession.status}`)
               }}</Badge>
             </td>
+            <td class="px-3 py-2.5">
+              <button
+                v-if="proofUrl(cession)"
+                type="button"
+                class="text-bitume underline"
+                @click.stop="previewUrl = proofUrl(cession)"
+              >
+                {{ t('purchasing.cessionList.viewProof') }}
+              </button>
+              <span v-else class="text-texte-3">—</span>
+            </td>
           </tr>
           <tr v-if="!loading && cessions.length === 0">
-            <td colspan="5" class="text-texte-3 px-3 py-8 text-center">
+            <td colspan="6" class="text-texte-3 px-3 py-8 text-center">
               {{ t('purchasing.cessionList.noCessions') }}
             </td>
           </tr>
         </tbody>
       </table>
     </div>
+
+    <Modal
+      v-if="previewUrl"
+      :title="t('purchasing.cessionList.table.proof')"
+      max-width="max-w-3xl"
+      @close="previewUrl = null"
+    >
+      <img :src="previewUrl" class="max-h-[80vh] w-full rounded-lg object-contain" />
+      <div class="mt-4 flex justify-end">
+        <Button variant="ghost" @click="previewUrl = null">{{ t('common.close') }}</Button>
+      </div>
+    </Modal>
   </div>
 </template>

@@ -4,8 +4,8 @@
 // no frontend loops recomputing totals over raw records (guide Section 9.6).
 //
 // docs/UI_REDESIGN_PLAN.md Etape 6: layered on top, a "live ops" pulse (4
-// strategic KPIs, "En route maintenant", 14-day chart, "À traiter") scoped
-// to *today* rather than the DateRangeFilter below - the filter still drives
+// strategic KPIs, "En route maintenant") scoped to *today* rather than the
+// DateRangeFilter below - the filter still drives
 // the legacy period breakdown, but a live dashboard's headline numbers
 // shouldn't silently change meaning when someone picks "This year".
 // No backend endpoint was added for this: everything is derived from the
@@ -21,21 +21,19 @@ import { fetchReport } from '@/modules/reports/api'
 import { tripResource } from '@/modules/trips/api'
 import { isTripEnRoute } from '@/modules/trips/types'
 import type { Trip } from '@/modules/trips/types'
-import TripCard from '@/modules/trips/TripCard.vue'
 import { customerPaymentResource } from '@/modules/finance/api'
 import type { CustomerPayment } from '@/modules/finance/types'
 import KpiTile from './KpiTile.vue'
-import VolumeTrendChart from './VolumeTrendChart.vue'
-import { formatMoney, formatQuantity } from '@/utils/currency'
+import MonoValue from '@/components/ui/MonoValue.vue'
+import Icon from '@/components/ui/Icon.vue'
+import type { IconName } from '@/components/ui/Icon.vue'
+import { formatMoney, formatMoneyParts, formatQuantityParts } from '@/utils/currency'
 import {
   sumField,
   averageLossPercent,
-  unjustifiedLosses,
   lastNDays,
-  groupVolumeByDay,
   lossSeverityTone,
   type LossReportRow,
-  type VolumeDay,
 } from './aggregate'
 
 const { t, locale } = useI18n()
@@ -59,8 +57,13 @@ async function load(filter: DateRangeValue) {
 // --- Live ops (today) --------------------------------------------------
 
 const todayIso = new Date().toISOString().slice(0, 10)
+const dateLocale = computed(() => {
+  if (locale.value === 'fr') return 'fr-FR'
+  if (locale.value === 'ar') return 'ar'
+  return 'en-US'
+})
 const todayLabel = computed(() =>
-  new Date().toLocaleDateString(locale.value === 'fr' ? 'fr-FR' : 'en-US', {
+  new Date().toLocaleDateString(dateLocale.value, {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
@@ -70,15 +73,12 @@ const todayLabel = computed(() =>
 const liveLoading = ref(true)
 const liveError = ref('')
 
-const volumeDays = ref<VolumeDay[]>([])
 const todayDelivered = ref(0)
 const todayLoaded = ref(0)
 const avgLossPct = ref(0)
-const toTreat = ref<LossReportRow[]>([])
 
 const trips = ref<Trip[]>([])
 const enRouteTrips = computed(() => trips.value.filter((t) => isTripEnRoute(t.status)))
-const blockedTrips = computed(() => trips.value.filter((t) => t.status === 'BLOCKED'))
 
 const todayEncaissements = ref(0)
 const encaissementsGauge = ref(0)
@@ -115,12 +115,10 @@ async function loadLive() {
     ])
 
     const lossRows = lossReport.rows as unknown as LossReportRow[]
-    volumeDays.value = groupVolumeByDay(lossRows, days)
     const todayRows = lossRows.filter((row) => row.control_date === todayIso)
     todayDelivered.value = sumField(todayRows, 'received_quantity')
     todayLoaded.value = sumField(todayRows, 'loaded_quantity')
     avgLossPct.value = averageLossPercent(todayRows)
-    toTreat.value = unjustifiedLosses(lossRows)
 
     trips.value = tripsPage.results
 
@@ -143,10 +141,6 @@ async function loadLive() {
 
 onMounted(loadLive)
 
-function tripIdForReference(reference: string): number | null {
-  return trips.value.find((t) => t.reference === reference)?.id ?? null
-}
-
 const enRouteGauge = computed(() =>
   trips.value.length ? (enRouteTrips.value.length / trips.value.length) * 100 : 0,
 )
@@ -159,12 +153,48 @@ const financialCards = computed(() => {
   if (!summary.value) return []
   const s = summary.value.financial_summary
   return [
-    { label: "Chiffre d'affaires de la période", value: formatMoney(s.period_revenue) },
-    { label: 'Encaissements de la période', value: formatMoney(s.period_collections) },
-    { label: 'Dépenses payées de la période', value: formatMoney(s.period_paid_expenses) },
-    { label: 'Bénéfice comptable de la période', value: formatMoney(s.period_accounting_profit) },
-    { label: 'Solde trésorerie actuel', value: formatMoney(s.current_treasury_balance) },
-  ]
+    {
+      labelKey: 'dashboard.final.periodRevenue',
+      raw: s.period_revenue,
+      tone: 'neutral',
+      icon: 'trending-up' as IconName,
+    },
+    {
+      labelKey: 'dashboard.final.periodCollections',
+      raw: s.period_collections,
+      tone: 'positive',
+      icon: 'wallet' as IconName,
+    },
+    {
+      labelKey: 'dashboard.final.periodPaidExpenses',
+      raw: s.period_paid_expenses,
+      tone: 'neutral',
+      icon: 'receipt' as IconName,
+    },
+    {
+      labelKey: 'dashboard.final.periodAccountingProfit',
+      raw: s.period_accounting_profit,
+      tone: Number(s.period_accounting_profit) >= 0 ? 'positive' : 'negative',
+      icon: 'coins' as IconName,
+    },
+  ].map((card) => ({
+    label: t(card.labelKey),
+    amountParts: formatMoneyParts(card.raw),
+    negative: Number(card.raw) < 0,
+    tone: card.tone,
+    icon: card.icon,
+  }))
+})
+
+const treasuryCard = computed(() => {
+  if (!summary.value) return null
+  const balance = summary.value.financial_summary.current_treasury_balance
+  return {
+    amountParts: formatMoneyParts(balance),
+    bankParts: formatMoneyParts(summary.value.bank_amounts.total),
+    cashParts: formatMoneyParts(summary.value.cash_amounts.total),
+    negative: Number(balance) < 0,
+  }
 })
 
 const partyCards = computed(() => {
@@ -172,52 +202,99 @@ const partyCards = computed(() => {
   const p = summary.value.party_balances
   return [
     {
-      label: 'Clients',
+      label: t('dashboard.final.customers'),
       to: { name: 'customers' },
       balance: p.customers.balance,
-      detail: `${p.customers.open_count} client(s) avec solde ouvert`,
+      detail: t('dashboard.final.openCustomers', { count: p.customers.open_count }),
       sub: p.customers.largest_open
-        ? `Plus gros débiteur: ${p.customers.largest_open.name}`
-        : 'Rien à régler',
+        ? t('dashboard.final.largestCustomerDebt', { name: p.customers.largest_open.name })
+        : t('dashboard.final.nothingToSettle'),
+      icon: 'users' as IconName,
     },
     {
-      label: 'Fournisseurs',
+      label: t('dashboard.final.suppliers'),
       to: { name: 'suppliers' },
       balance: p.suppliers.balance,
-      detail: `${p.suppliers.open_count} fournisseur(s) avec dette`,
+      detail: t('dashboard.final.openSuppliers', { count: p.suppliers.open_count }),
       sub: p.suppliers.largest_open
-        ? `Plus gros impayé: ${p.suppliers.largest_open.name}`
-        : 'Rien à régler',
+        ? t('dashboard.final.largestSupplierDebt', { name: p.suppliers.largest_open.name })
+        : t('dashboard.final.nothingToSettle'),
+      icon: 'package' as IconName,
     },
     {
-      label: 'Transporteurs',
+      label: t('dashboard.final.transporters'),
       to: { name: 'transporters' },
       balance: p.transporters.balance,
-      detail: `${p.transporters.open_count} transporteur(s) avec solde ouvert`,
+      detail: t('dashboard.final.openTransporters', { count: p.transporters.open_count }),
       sub: p.transporters.largest_open
-        ? `Plus gros solde: ${p.transporters.largest_open.name}`
-        : 'Rien à régler',
+        ? t('dashboard.final.largestTransporterBalance', { name: p.transporters.largest_open.name })
+        : t('dashboard.final.nothingToSettle'),
+      icon: 'truck' as IconName,
     },
     {
-      label: 'Actionnaires / Associés',
+      label: t('dashboard.final.shareholders'),
       to: { name: 'shareholders' },
       balance: p.shareholders.balance,
-      detail: `Retiré: ${formatMoney(p.shareholders.total_withdrawn)}`,
-      sub: `Avances ouvertes: ${formatMoney(p.shareholders.open_loans_total)}`,
+      detail: t('dashboard.final.withdrawn', {
+        amount: formatMoney(p.shareholders.total_withdrawn),
+      }),
+      sub: t('dashboard.final.openLoans', { amount: formatMoney(p.shareholders.open_loans_total) }),
+      icon: 'pie-chart' as IconName,
     },
     {
-      label: 'Douane / Transit / autres frais',
+      label: t('dashboard.final.customsAndOther'),
       to: { name: 'treasury-transactions' },
       balance: p.customs_and_other.balance,
-      detail: `Douane: ${formatMoney(p.customs_and_other.customs)}`,
-      sub: `Autres frais: ${formatMoney(p.customs_and_other.other)}`,
+      detail: t('dashboard.final.customs', { amount: formatMoney(p.customs_and_other.customs) }),
+      sub: t('dashboard.final.otherFees', { amount: formatMoney(p.customs_and_other.other) }),
+      icon: 'shield' as IconName,
     },
-  ]
+  ].map((card) => ({
+    ...card,
+    balanceParts: formatMoneyParts(card.balance),
+    negative: false,
+  }))
 })
+
+const quickActions: {
+  labelKey: string
+  icon: IconName
+  to: { name: string; query?: Record<string, string> }
+}[] = [
+  {
+    labelKey: 'dashboard.quickActions.newSupplierOrder',
+    icon: 'cart-plus',
+    to: { name: 'supplier-order-new' },
+  },
+  {
+    labelKey: 'dashboard.quickActions.newCessionLetter',
+    icon: 'file-signature',
+    to: { name: 'cession-letter-new' },
+  },
+  { labelKey: 'dashboard.quickActions.newTrip', icon: 'route', to: { name: 'trip-new' } },
+  {
+    labelKey: 'dashboard.quickActions.newCustomerPayment',
+    icon: 'credit-card',
+    to: { name: 'invoices', query: { action: 'payment' } },
+  },
+  {
+    labelKey: 'dashboard.quickActions.newPayment',
+    icon: 'banknote',
+    to: { name: 'treasury-transactions', query: { action: 'payment' } },
+  },
+]
+
+const stockTotalParts = computed(() =>
+  summary.value
+    ? formatQuantityParts(summary.value.company_stock.total_quantity)
+    : { value: '0', unit: 'L' },
+)
+
+const compactEnRouteTrips = computed(() => enRouteTrips.value.slice(0, 5))
 </script>
 
 <template>
-  <div class="max-w-6xl space-y-6">
+  <div class="w-full space-y-6">
     <div class="flex flex-wrap items-center justify-between gap-3">
       <h1 class="font-display text-2xl leading-none font-semibold uppercase">
         {{ t('dashboard.title') }}
@@ -225,39 +302,141 @@ const partyCards = computed(() => {
       <span class="text-texte-2 font-mono text-sm capitalize">{{ todayLabel }}</span>
     </div>
 
-    <div class="flex flex-wrap items-center justify-between gap-3">
-      <p class="text-texte-2 text-sm">
-        La période filtre les ventes, encaissements, dépenses, volumes et bénéfices.
-      </p>
+    <div class="flex justify-end">
       <DateRangeFilter @change="load" />
     </div>
 
     <template v-if="summary">
-      <section class="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <section class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <div
           v-for="card in financialCards"
           :key="card.label"
-          class="border-ligne rounded-lg border bg-white p-4"
+          data-test="financial-kpi-card"
+          class="financial-kpi-card border-ligne rounded-lg border bg-white p-4"
         >
-          <p class="text-texte-2 text-xs font-semibold uppercase">{{ card.label }}</p>
-          <p class="text-texte mt-2 font-mono text-xl font-semibold tabular-nums">
-            {{ card.value }}
+          <div class="flex items-center gap-2">
+            <span
+              class="bg-transit-tint text-transit inline-flex size-7 shrink-0 items-center justify-center rounded-lg"
+            >
+              <Icon :name="card.icon" :size="16" />
+            </span>
+            <p class="financial-kpi-label text-texte-2 text-xs font-semibold uppercase">
+              {{ card.label }}
+            </p>
+          </div>
+          <p
+            class="financial-kpi-amount mt-2 text-xl font-semibold"
+            :class="[
+              card.negative
+                ? 'text-critique'
+                : card.tone === 'positive'
+                  ? 'text-livre-texte'
+                  : card.tone === 'info'
+                    ? 'text-transit-texte'
+                    : 'text-texte',
+            ]"
+          >
+            <MonoValue v-bind="card.amountParts" align="left" />
           </p>
         </div>
       </section>
 
+      <section class="grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]">
+        <section
+          data-test="action-items"
+          class="border-ligne relative rounded-lg border bg-white p-4 shadow-sm before:absolute before:inset-y-4 before:start-0 before:w-1 before:rounded-e-full before:bg-orange"
+        >
+          <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h2 class="text-texte flex items-center gap-2 text-sm font-semibold uppercase">
+              <span
+                class="bg-orange-tint text-orange-fonce inline-flex size-8 shrink-0 items-center justify-center rounded-lg"
+              >
+                <Icon name="route" :size="16" />
+              </span>
+              {{ t('dashboard.toTreat') }}
+            </h2>
+            <span
+              data-test="action-count-badge"
+              class="bg-orange-tint text-orange-fonce inline-flex h-7 min-w-7 items-center justify-center rounded-full px-2 font-mono text-sm font-semibold tabular-nums"
+            >
+              {{ summary.action_items.length }}
+            </span>
+          </div>
+          <ul v-if="summary.action_items.length" class="grid gap-2 md:grid-cols-2">
+            <li v-for="item in summary.action_items" :key="item.kind + item.object_id">
+              <RouterLink
+                :to="{ name: 'trip-detail', params: { id: item.object_id } }"
+                class="border-ligne text-texte hover:border-orange hover:bg-white flex min-h-12 items-center justify-between gap-3 rounded-lg border bg-sable px-3 py-2 text-sm transition"
+              >
+                <span class="line-clamp-2">{{ item.label }}</span>
+                <span class="shrink-0 font-mono tabular-nums">{{ item.reference }}</span>
+              </RouterLink>
+            </li>
+          </ul>
+          <p v-else class="text-texte-2 text-sm">{{ t('dashboard.noUrgentTrips') }}</p>
+        </section>
+
+        <section class="treasury-card border-ligne rounded-lg border bg-white p-4">
+          <div class="flex items-center gap-2">
+            <span
+              class="bg-transit-tint text-transit-texte inline-flex size-8 shrink-0 items-center justify-center rounded-lg"
+            >
+              <Icon name="landmark" :size="16" />
+            </span>
+            <h2 class="text-texte-2 text-sm font-semibold uppercase">
+              {{ t('dashboard.final.availableTreasury') }}
+            </h2>
+          </div>
+          <p
+            v-if="treasuryCard"
+            class="treasury-amount mt-3 text-2xl font-semibold"
+            :class="treasuryCard.negative ? 'text-critique' : 'text-texte'"
+          >
+            <MonoValue v-bind="treasuryCard.amountParts" align="left" />
+          </p>
+          <dl v-if="treasuryCard" class="mt-4 grid gap-2 text-sm">
+            <div class="bg-sable flex items-center justify-between gap-3 rounded-lg px-3 py-2">
+              <dt class="text-texte-2">{{ t('dashboard.final.banks') }}</dt>
+              <dd class="text-texte font-medium">
+                <MonoValue v-bind="treasuryCard.bankParts" />
+              </dd>
+            </div>
+            <div class="bg-sable flex items-center justify-between gap-3 rounded-lg px-3 py-2">
+              <dt class="text-texte-2">{{ t('dashboard.final.cashAccounts') }}</dt>
+              <dd class="text-texte font-medium">
+                <MonoValue v-bind="treasuryCard.cashParts" />
+              </dd>
+            </div>
+          </dl>
+        </section>
+      </section>
+
       <section class="space-y-3">
-        <h2 class="text-texte-2 text-sm font-semibold uppercase">Soldes par partie</h2>
+        <h2 class="text-texte-2 text-sm font-semibold uppercase">
+          {{ t('dashboard.final.partyBalances') }}
+        </h2>
         <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           <RouterLink
             v-for="card in partyCards"
             :key="card.label"
             :to="card.to"
-            class="border-ligne hover:border-bitume rounded-lg border bg-white p-4 transition"
+            data-test="party-balance-card"
+            class="party-balance-card border-ligne hover:border-orange focus-visible:outline-orange rounded-lg border bg-white p-4 transition hover:-translate-y-0.5 hover:shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           >
-            <p class="text-texte-2 text-xs font-semibold uppercase">{{ card.label }}</p>
-            <p class="text-texte mt-2 font-mono text-xl font-semibold tabular-nums">
-              {{ formatMoney(card.balance) }}
+            <div class="flex items-center gap-2">
+              <span
+                class="bg-ecart-tint text-ecart-texte inline-flex size-7 shrink-0 items-center justify-center rounded-lg"
+              >
+                <Icon :name="card.icon" :size="16" />
+              </span>
+              <p class="text-texte-2 min-h-8 text-xs font-semibold uppercase">{{ card.label }}</p>
+            </div>
+            <p
+              data-test="party-balance-amount"
+              class="party-balance-amount mt-2 text-lg font-semibold"
+              :class="card.negative ? 'text-critique' : 'text-texte'"
+            >
+              <MonoValue v-bind="card.balanceParts" align="left" />
             </p>
             <p class="text-texte-2 mt-2 text-sm">{{ card.detail }}</p>
             <p class="text-texte-3 mt-1 text-xs">{{ card.sub }}</p>
@@ -268,16 +447,30 @@ const partyCards = computed(() => {
       <section class="border-ligne rounded-lg border bg-white p-4">
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 class="text-texte-2 text-sm font-semibold uppercase">Stock de l'entreprise</h2>
-            <p class="text-texte mt-2 font-mono text-2xl font-semibold">
-              {{ formatQuantity(summary.company_stock.total_quantity) }}
+            <h2 class="text-texte-2 flex items-center gap-2 text-sm font-semibold uppercase">
+              <span
+                class="bg-livre-tint text-livre-texte inline-flex size-7 shrink-0 items-center justify-center rounded-lg"
+              >
+                <Icon name="droplet" :size="16" />
+              </span>
+              {{ t('dashboard.final.companyStock') }}
+            </h2>
+            <p class="text-texte mt-2 text-2xl font-semibold">
+              <MonoValue v-bind="stockTotalParts" align="left" />
             </p>
             <p class="text-texte-2 text-sm">
-              {{ summary.company_stock.trips_count }} trajet(s) actuellement en stock
+              {{
+                t('dashboard.final.companyStockTrips', {
+                  count: summary.company_stock.trips_count,
+                })
+              }}
             </p>
           </div>
-          <RouterLink :to="{ name: 'trips', query: { filter: 'company-stock' } }" class="text-bitume text-sm underline">
-            Voir le détail
+          <RouterLink
+            :to="{ name: 'company-stock' }"
+            class="border-ligne-forte text-texte hover:bg-sable inline-flex h-9 shrink-0 items-center rounded-lg border px-3 text-sm font-medium transition"
+          >
+            {{ t('dashboard.viewDetails') }}
           </RouterLink>
         </div>
         <div class="mt-4 grid gap-2 md:grid-cols-3">
@@ -287,27 +480,11 @@ const partyCards = computed(() => {
             class="bg-sable rounded-lg px-3 py-2"
           >
             <span class="text-texte-2 text-sm">{{ row.product }}</span>
-            <span class="text-texte ms-2 font-mono font-medium">{{
-              formatQuantity(row.quantity)
-            }}</span>
+            <span class="text-texte ms-2 font-medium">
+              <MonoValue v-bind="formatQuantityParts(row.quantity)" />
+            </span>
           </div>
         </div>
-      </section>
-
-      <section class="border-ligne rounded-lg border bg-white p-4">
-        <h2 class="text-texte-2 mb-3 text-sm font-semibold uppercase">À traiter</h2>
-        <ul v-if="summary.action_items.length" class="grid gap-2 md:grid-cols-2">
-          <li v-for="item in summary.action_items" :key="item.kind + item.object_id">
-            <RouterLink
-              :to="{ name: 'trip-detail', params: { id: item.object_id } }"
-              class="bg-critique-tint text-critique-texte flex items-center justify-between rounded-lg px-3 py-2 text-sm"
-            >
-              <span>{{ item.label }}</span>
-              <span class="font-mono">{{ item.reference }}</span>
-            </RouterLink>
-          </li>
-        </ul>
-        <p v-else class="text-texte-3 text-sm">Aucune action urgente.</p>
       </section>
     </template>
 
@@ -319,7 +496,8 @@ const partyCards = computed(() => {
       <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <KpiTile
           :label="t('dashboard.kpi.deliveredToday')"
-          :value="formatQuantity(Math.round(todayDelivered))"
+          :value="formatQuantityParts(Math.round(todayDelivered)).value"
+          unit="L"
           :gauge-value="deliveredGauge"
           gauge-tone="livre"
         />
@@ -338,371 +516,424 @@ const partyCards = computed(() => {
         />
         <KpiTile
           :label="t('dashboard.kpi.paymentsToday')"
-          :value="formatMoney(Math.round(todayEncaissements))"
+          :value="formatMoneyParts(Math.round(todayEncaissements)).value"
+          unit="XOF"
           :gauge-value="encaissementsGauge"
           gauge-tone="livre"
         />
       </div>
 
       <!-- En route maintenant -->
-      <section class="space-y-3">
-        <h2 class="text-texte-2 text-sm font-semibold uppercase">
-          {{ t('dashboard.enRouteNow', { count: enRouteTrips.length }) }}
-        </h2>
-        <div v-if="enRouteTrips.length" class="flex gap-3 overflow-x-auto pb-2">
-          <TripCard
-            v-for="trip in enRouteTrips.slice(0, 8)"
-            :key="trip.id"
-            :trip="trip"
-            class="w-72 shrink-0"
-          />
+      <section data-test="en-route-compact" class="border-ligne rounded-lg border bg-white p-4">
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <h2 class="text-texte-2 text-sm font-semibold uppercase">
+            {{ t('dashboard.enRouteNow', { count: enRouteTrips.length }) }}
+          </h2>
+          <RouterLink
+            :to="{ name: 'trips' }"
+            class="border-ligne-forte text-texte hover:bg-sable inline-flex h-8 shrink-0 items-center rounded-lg border px-3 text-sm font-medium transition"
+          >
+            {{ t('dashboard.viewAll') }}
+          </RouterLink>
+        </div>
+        <div v-if="enRouteTrips.length" class="overflow-x-auto">
+          <table class="min-w-full text-sm">
+            <tbody class="divide-ligne divide-y">
+              <tr v-for="trip in compactEnRouteTrips" :key="trip.id">
+                <td class="py-2 pe-3">
+                  <RouterLink
+                    :to="{ name: 'trip-detail', params: { id: trip.id } }"
+                    class="text-texte hover:text-orange-fonce font-mono font-semibold tabular-nums"
+                  >
+                    {{ trip.reference }}
+                  </RouterLink>
+                </td>
+                <td class="text-texte-2 px-3 py-2">
+                  {{ trip.truck_detail?.internal_id ?? '—' }}
+                </td>
+                <td class="text-texte-2 px-3 py-2">
+                  {{ trip.transporter_detail?.name ?? '—' }}
+                </td>
+                <td class="py-2 ps-3 text-end">
+                  <MonoValue v-bind="formatQuantityParts(trip.quantity_loaded)" />
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
         <p
           v-else
-          class="text-texte-3 border-ligne rounded-xl border border-dashed p-6 text-center text-sm"
+          class="text-texte-3 border-ligne rounded-lg border border-dashed p-4 text-center text-sm"
         >
           {{ t('dashboard.noTripsEnRoute') }}
         </p>
       </section>
 
-      <VolumeTrendChart :days="volumeDays" />
-
-      <!-- À traiter -->
-      <section class="border-ligne rounded-xl border bg-white p-4">
-        <h2 class="text-texte-2 mb-3 text-sm font-semibold uppercase">
-          {{ t('dashboard.toTreat') }}
+      <!-- Actions rapides -->
+      <section class="space-y-3">
+        <h2 class="text-texte-2 text-sm font-semibold uppercase">
+          {{ t('dashboard.quickActions.title') }}
         </h2>
-        <div class="grid gap-4 sm:grid-cols-2">
-          <div class="space-y-2">
-            <p class="text-texte-3 text-xs font-medium uppercase">
-              {{ t('dashboard.unjustifiedLosses') }}
-            </p>
-            <ul v-if="toTreat.length" class="space-y-1.5">
-              <li
-                v-for="row in toTreat.slice(0, 6)"
-                :key="row.trip_reference + row.control_date"
-                class="bg-critique-tint flex items-center justify-between rounded-lg px-3 py-2 text-sm"
-              >
-                <RouterLink
-                  v-if="tripIdForReference(row.trip_reference)"
-                  class="text-critique-texte font-mono underline decoration-dotted"
-                  :to="{
-                    name: 'trip-detail',
-                    params: { id: tripIdForReference(row.trip_reference)! },
-                  }"
-                >
-                  {{ row.trip_reference }}
-                </RouterLink>
-                <span v-else class="text-critique-texte font-mono">{{ row.trip_reference }}</span>
-                <span dir="ltr" class="text-critique-texte font-mono tabular-nums">
-                  −{{ formatQuantity(row.chargeable_loss_quantity) }}
-                </span>
-              </li>
-            </ul>
-            <p v-else class="text-texte-3 text-sm">{{ t('dashboard.noUnjustifiedLosses') }}</p>
-          </div>
-
-          <div class="space-y-2">
-            <p class="text-texte-3 text-xs font-medium uppercase">
-              {{ t('dashboard.urgentBlockedTrips') }}
-            </p>
-            <ul v-if="blockedTrips.length" class="space-y-1.5">
-              <li
-                v-for="trip in blockedTrips.slice(0, 6)"
-                :key="trip.id"
-                class="bg-critique-tint rounded-lg px-3 py-2 text-sm"
-              >
-                <RouterLink
-                  class="text-critique-texte font-mono underline decoration-dotted"
-                  :to="{ name: 'trip-detail', params: { id: trip.id } }"
-                >
-                  {{ trip.reference }}
-                </RouterLink>
-                <span class="text-critique-texte ml-2">{{ trip.truck_detail?.internal_id }}</span>
-              </li>
-            </ul>
-            <p v-else class="text-texte-3 text-sm">{{ t('dashboard.noUrgentTrips') }}</p>
-          </div>
+        <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <RouterLink
+            v-for="action in quickActions"
+            :key="action.labelKey"
+            :to="action.to"
+            class="border-ligne hover:border-bitume hover:bg-sable flex flex-col items-center gap-2 rounded-lg border bg-white p-4 text-center transition"
+          >
+            <span
+              class="bg-orange-tint text-orange-fonce inline-flex size-9 items-center justify-center rounded-lg"
+            >
+              <Icon :name="action.icon" :size="18" />
+            </span>
+            <span class="text-texte text-xs font-medium">{{ t(action.labelKey) }}</span>
+          </RouterLink>
         </div>
       </section>
     </template>
 
-    <!-- Détail de la période sélectionnée (KPI historiques) -->
-    <div class="flex flex-wrap items-center justify-between gap-3 pt-2">
-      <h2 class="text-texte-2 text-sm font-semibold uppercase">
+    <details data-test="period-detail" class="border-ligne rounded-lg border bg-white p-4">
+      <summary class="text-texte-2 cursor-pointer text-sm font-semibold uppercase">
         {{ t('dashboard.periodDetail') }}
-      </h2>
-    </div>
+      </summary>
 
-    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
-    <p v-else-if="loading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
+      <p v-if="error" class="text-critique mt-4 text-sm">{{ error }}</p>
+      <p v-else-if="loading" class="text-texte-3 mt-4 text-sm">{{ t('common.loading') }}</p>
 
-    <div v-else-if="summary" class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      <section class="border-ligne rounded-xl border bg-white p-4">
-        <h3 class="text-texte-2 mb-3 text-sm font-semibold uppercase">
-          {{ t('dashboard.sections.operations') }}
-        </h3>
-        <dl class="space-y-1 text-sm">
-          <div class="flex justify-between">
-            <dt class="text-texte-2">{{ t('dashboard.fields.trips') }}</dt>
-            <dd class="text-texte font-mono font-medium tabular-nums">
-              {{ summary.operations.trips_count }}
-            </dd>
-          </div>
-          <div class="flex justify-between">
-            <dt class="text-texte-2">{{ t('dashboard.fields.active') }}</dt>
-            <dd class="text-texte font-mono font-medium tabular-nums">
-              {{ summary.operations.active_trips_count }}
-            </dd>
-          </div>
-          <div class="flex justify-between">
-            <dt class="text-texte-2">{{ t('dashboard.fields.delivered') }}</dt>
-            <dd class="text-texte font-mono font-medium tabular-nums">
-              {{ summary.operations.delivered_trips_count }}
-            </dd>
-          </div>
-        </dl>
-      </section>
+      <div v-else-if="summary" class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <section class="border-ligne rounded-xl border bg-white p-4">
+          <h3 class="text-texte-2 mb-3 text-sm font-semibold uppercase">
+            {{ t('dashboard.sections.operations') }}
+          </h3>
+          <dl class="space-y-1 text-sm">
+            <div class="flex justify-between">
+              <dt class="text-texte-2">{{ t('dashboard.fields.trips') }}</dt>
+              <dd class="text-texte font-mono font-medium tabular-nums">
+                {{ summary.operations.trips_count }}
+              </dd>
+            </div>
+            <div class="flex justify-between">
+              <dt class="text-texte-2">{{ t('dashboard.fields.active') }}</dt>
+              <dd class="text-texte font-mono font-medium tabular-nums">
+                {{ summary.operations.active_trips_count }}
+              </dd>
+            </div>
+            <div class="flex justify-between">
+              <dt class="text-texte-2">{{ t('dashboard.fields.delivered') }}</dt>
+              <dd class="text-texte font-mono font-medium tabular-nums">
+                {{ summary.operations.delivered_trips_count }}
+              </dd>
+            </div>
+          </dl>
+        </section>
 
-      <section class="border-ligne rounded-xl border bg-white p-4">
-        <h3 class="text-texte-2 mb-3 text-sm font-semibold uppercase">
-          {{ t('dashboard.sections.fuel') }}
-        </h3>
-        <dl class="space-y-1 text-sm">
-          <div class="flex justify-between">
-            <dt class="text-texte-2">{{ t('dashboard.fields.quantityLoaded') }}</dt>
-            <dd class="text-texte font-mono font-medium tabular-nums">
-              {{ formatQuantity(summary.fuel.quantity_loaded) }}
-            </dd>
-          </div>
-          <div class="flex justify-between">
-            <dt class="text-texte-2">{{ t('dashboard.fields.theoreticalStock') }}</dt>
-            <dd class="text-texte font-mono font-medium tabular-nums">
-              {{ formatQuantity(summary.fuel.theoretical_stock) }}
-            </dd>
-          </div>
-        </dl>
-      </section>
+        <section class="border-ligne rounded-xl border bg-white p-4">
+          <h3 class="text-texte-2 mb-3 text-sm font-semibold uppercase">
+            {{ t('dashboard.sections.fuel') }}
+          </h3>
+          <dl class="space-y-1 text-sm">
+            <div class="flex justify-between">
+              <dt class="text-texte-2">{{ t('dashboard.fields.quantityLoaded') }}</dt>
+              <dd class="text-texte font-medium">
+                <MonoValue v-bind="formatQuantityParts(summary.fuel.quantity_loaded)" />
+              </dd>
+            </div>
+            <div class="flex justify-between">
+              <dt class="text-texte-2">{{ t('dashboard.fields.theoreticalStock') }}</dt>
+              <dd class="text-texte font-medium">
+                <MonoValue v-bind="formatQuantityParts(summary.fuel.theoretical_stock)" />
+              </dd>
+            </div>
+          </dl>
+        </section>
 
-      <section class="border-ligne rounded-xl border bg-white p-4">
-        <h3 class="text-texte-2 mb-3 text-sm font-semibold uppercase">
-          {{ t('dashboard.sections.sales') }}
-        </h3>
-        <dl class="space-y-1 text-sm">
-          <div class="flex justify-between">
-            <dt class="text-texte-2">{{ t('dashboard.fields.salesCount') }}</dt>
-            <dd class="text-texte font-mono font-medium tabular-nums">
-              {{ summary.sales.sales_count }}
-            </dd>
-          </div>
-          <div class="flex justify-between">
-            <dt class="text-texte-2">{{ t('dashboard.fields.revenue') }}</dt>
-            <dd class="text-texte font-mono font-medium tabular-nums">
-              {{ formatMoney(summary.sales.revenue) }}
-            </dd>
-          </div>
-        </dl>
-      </section>
+        <section class="border-ligne rounded-xl border bg-white p-4">
+          <h3 class="text-texte-2 mb-3 text-sm font-semibold uppercase">
+            {{ t('dashboard.sections.sales') }}
+          </h3>
+          <dl class="space-y-1 text-sm">
+            <div class="flex justify-between">
+              <dt class="text-texte-2">{{ t('dashboard.fields.salesCount') }}</dt>
+              <dd class="text-texte font-mono font-medium tabular-nums">
+                {{ summary.sales.sales_count }}
+              </dd>
+            </div>
+            <div class="flex justify-between">
+              <dt class="text-texte-2">{{ t('dashboard.fields.revenue') }}</dt>
+              <dd class="text-texte font-medium">
+                <MonoValue v-bind="formatMoneyParts(summary.sales.revenue)" />
+              </dd>
+            </div>
+          </dl>
+        </section>
 
-      <section class="border-ligne rounded-xl border bg-white p-4">
-        <h3 class="text-texte-2 mb-3 text-sm font-semibold uppercase">
-          {{ t('dashboard.sections.transport') }}
-        </h3>
-        <dl class="space-y-1 text-sm">
-          <div class="flex justify-between">
-            <dt class="text-texte-2">{{ t('dashboard.fields.settlements') }}</dt>
-            <dd class="text-texte font-mono font-medium tabular-nums">
-              {{ summary.transport.settlements_count }}
-            </dd>
-          </div>
-          <div class="flex justify-between">
-            <dt class="text-texte-2">{{ t('dashboard.fields.transportCost') }}</dt>
-            <dd class="text-texte font-mono font-medium tabular-nums">
-              {{ formatMoney(summary.transport.transport_cost) }}
-            </dd>
-          </div>
-        </dl>
-      </section>
+        <section class="border-ligne rounded-xl border bg-white p-4">
+          <h3 class="text-texte-2 mb-3 text-sm font-semibold uppercase">
+            {{ t('dashboard.sections.transport') }}
+          </h3>
+          <dl class="space-y-1 text-sm">
+            <div class="flex justify-between">
+              <dt class="text-texte-2">{{ t('dashboard.fields.settlements') }}</dt>
+              <dd class="text-texte font-mono font-medium tabular-nums">
+                {{ summary.transport.settlements_count }}
+              </dd>
+            </div>
+            <div class="flex justify-between">
+              <dt class="text-texte-2">{{ t('dashboard.fields.transportCost') }}</dt>
+              <dd class="text-texte font-medium">
+                <MonoValue v-bind="formatMoneyParts(summary.transport.transport_cost)" />
+              </dd>
+            </div>
+          </dl>
+        </section>
 
-      <section class="border-ligne rounded-xl border bg-white p-4">
-        <h3 class="text-texte-2 mb-3 text-sm font-semibold uppercase">
-          {{ t('dashboard.sections.finance') }}
-        </h3>
-        <dl class="space-y-1 text-sm">
-          <div class="flex justify-between">
-            <dt class="text-texte-2">{{ t('dashboard.fields.expenses') }}</dt>
-            <dd class="text-texte font-mono font-medium tabular-nums">
-              {{ formatMoney(summary.finance.expenses_total) }}
-            </dd>
-          </div>
-          <div class="flex justify-between">
-            <dt class="text-texte-2">{{ t('dashboard.fields.treasuryBalance') }}</dt>
-            <dd class="text-texte font-mono font-medium tabular-nums">
-              {{ formatMoney(summary.finance.treasury_balance) }}
-            </dd>
-          </div>
-        </dl>
-      </section>
+        <section class="border-ligne rounded-xl border bg-white p-4">
+          <h3 class="text-texte-2 mb-3 text-sm font-semibold uppercase">
+            {{ t('dashboard.sections.finance') }}
+          </h3>
+          <dl class="space-y-1 text-sm">
+            <div class="flex justify-between">
+              <dt class="text-texte-2">{{ t('dashboard.fields.expenses') }}</dt>
+              <dd class="text-texte font-medium">
+                <MonoValue v-bind="formatMoneyParts(summary.finance.expenses_total)" />
+              </dd>
+            </div>
+            <div class="flex justify-between">
+              <dt class="text-texte-2">{{ t('dashboard.fields.treasuryBalance') }}</dt>
+              <dd
+                class="font-medium"
+                :class="
+                  Number(summary.finance.treasury_balance) < 0 ? 'text-critique' : 'text-texte'
+                "
+              >
+                <MonoValue v-bind="formatMoneyParts(summary.finance.treasury_balance)" />
+              </dd>
+            </div>
+          </dl>
+        </section>
 
-      <section class="border-ligne rounded-xl border bg-white p-4">
-        <h3 class="text-texte-2 mb-3 text-sm font-semibold uppercase">
-          {{ t('dashboard.sections.profit') }}
-        </h3>
-        <dl class="space-y-1 text-sm">
-          <div class="flex justify-between">
-            <dt class="text-texte-2">{{ t('dashboard.fields.totalMargin') }}</dt>
-            <dd class="text-texte font-mono font-medium tabular-nums">
-              {{ formatMoney(summary.profit.total_margin) }}
-            </dd>
-          </div>
-        </dl>
-      </section>
+        <section class="border-ligne rounded-xl border bg-white p-4">
+          <h3 class="text-texte-2 mb-3 text-sm font-semibold uppercase">
+            {{ t('dashboard.sections.profit') }}
+          </h3>
+          <dl class="space-y-1 text-sm">
+            <div class="flex justify-between">
+              <dt class="text-texte-2">{{ t('dashboard.fields.totalMargin') }}</dt>
+              <dd
+                class="font-medium"
+                :class="Number(summary.profit.total_margin) < 0 ? 'text-critique' : 'text-texte'"
+              >
+                <MonoValue v-bind="formatMoneyParts(summary.profit.total_margin)" />
+              </dd>
+            </div>
+          </dl>
+        </section>
 
-      <!-- Point-in-time "currently outstanding" snapshots - not affected
+        <!-- Point-in-time "currently outstanding" snapshots - not affected
            by the DateRangeFilter above (see types.ts). -->
-      <section class="border-ligne rounded-xl border bg-white p-4">
-        <h3 class="text-texte-2 mb-1 text-sm font-semibold uppercase">
-          {{ t('dashboard.sections.debts') }}
-        </h3>
-        <p class="text-texte font-mono text-lg font-semibold tabular-nums">
-          {{ formatMoney(summary.debts.total) }}
-        </p>
-        <dl class="mt-2 space-y-1 text-sm">
-          <div class="flex justify-between">
-            <dt class="text-texte-2">{{ t('dashboard.fields.debtSuppliers') }}</dt>
-            <dd class="text-texte font-mono font-medium tabular-nums">
-              {{ formatMoney(summary.debts.suppliers.total) }}
-            </dd>
-          </div>
-          <div class="flex justify-between">
-            <dt class="text-texte-2">{{ t('dashboard.fields.debtTransporters') }}</dt>
-            <dd class="text-texte font-mono font-medium tabular-nums">
-              {{ formatMoney(summary.debts.transporters.total) }}
-            </dd>
-          </div>
-          <div class="flex justify-between">
-            <dt class="text-texte-2">{{ t('dashboard.fields.debtCustoms') }}</dt>
-            <dd class="text-texte font-mono font-medium tabular-nums">
-              {{ formatMoney(summary.debts.customs) }}
-            </dd>
-          </div>
-          <div class="flex justify-between">
-            <dt class="text-texte-2">{{ t('dashboard.fields.debtOther') }}</dt>
-            <dd class="text-texte font-mono font-medium tabular-nums">
-              {{ formatMoney(summary.debts.other) }}
-            </dd>
-          </div>
-        </dl>
-      </section>
+        <section class="border-ligne rounded-xl border bg-white p-4">
+          <h3 class="text-texte-2 mb-1 text-sm font-semibold uppercase">
+            {{ t('dashboard.sections.debts') }}
+          </h3>
+          <p class="text-texte text-lg font-semibold">
+            <MonoValue v-bind="formatMoneyParts(summary.debts.total)" />
+          </p>
+          <dl class="mt-2 space-y-1 text-sm">
+            <div class="flex justify-between">
+              <dt class="text-texte-2">{{ t('dashboard.fields.debtSuppliers') }}</dt>
+              <dd class="text-texte font-medium">
+                <MonoValue v-bind="formatMoneyParts(summary.debts.suppliers.total)" />
+              </dd>
+            </div>
+            <div class="flex justify-between">
+              <dt class="text-texte-2">{{ t('dashboard.fields.debtTransporters') }}</dt>
+              <dd class="text-texte font-medium">
+                <MonoValue v-bind="formatMoneyParts(summary.debts.transporters.total)" />
+              </dd>
+            </div>
+            <div class="flex justify-between">
+              <dt class="text-texte-2">{{ t('dashboard.fields.debtCustoms') }}</dt>
+              <dd class="text-texte font-medium">
+                <MonoValue v-bind="formatMoneyParts(summary.debts.customs)" />
+              </dd>
+            </div>
+            <div class="flex justify-between">
+              <dt class="text-texte-2">{{ t('dashboard.fields.debtOther') }}</dt>
+              <dd class="text-texte font-medium">
+                <MonoValue v-bind="formatMoneyParts(summary.debts.other)" />
+              </dd>
+            </div>
+          </dl>
+        </section>
 
-      <section class="border-ligne rounded-xl border bg-white p-4">
-        <h3 class="text-texte-2 mb-1 text-sm font-semibold uppercase">
-          {{ t('dashboard.sections.customerAmounts') }}
-        </h3>
-        <p class="text-texte font-mono text-lg font-semibold tabular-nums">
-          {{ formatMoney(summary.customer_amounts.total) }}
-        </p>
-        <ul
-          v-if="summary.customer_amounts.rows.length"
-          class="mt-2 max-h-40 space-y-1 overflow-y-auto text-sm"
-        >
-          <li
-            v-for="row in summary.customer_amounts.rows"
-            :key="row.customer"
-            class="flex justify-between"
+        <section class="border-ligne rounded-xl border bg-white p-4">
+          <h3 class="text-texte-2 mb-1 text-sm font-semibold uppercase">
+            {{ t('dashboard.sections.customerAmounts') }}
+          </h3>
+          <p class="text-texte text-lg font-semibold">
+            <MonoValue v-bind="formatMoneyParts(summary.customer_amounts.total)" />
+          </p>
+          <ul
+            v-if="summary.customer_amounts.rows.length"
+            class="mt-2 max-h-40 space-y-1 overflow-y-auto text-sm"
           >
-            <span class="text-texte-2">{{ row.customer }}</span>
-            <span class="text-texte font-mono font-medium tabular-nums">
-              {{ formatMoney(row.outstanding) }}
-            </span>
-          </li>
-        </ul>
-        <p v-else class="text-texte-3 mt-2 text-sm">{{ t('dashboard.noAmounts') }}</p>
-      </section>
+            <li
+              v-for="row in summary.customer_amounts.rows"
+              :key="row.customer"
+              class="flex justify-between"
+            >
+              <span class="text-texte-2">{{ row.customer }}</span>
+              <span class="text-texte font-medium">
+                <MonoValue v-bind="formatMoneyParts(row.outstanding)" />
+              </span>
+            </li>
+          </ul>
+          <p v-else class="text-texte-3 mt-2 text-sm">{{ t('dashboard.noAmounts') }}</p>
+        </section>
 
-      <section class="border-ligne rounded-xl border bg-white p-4">
-        <h3 class="text-texte-2 mb-1 text-sm font-semibold uppercase">
-          {{ t('dashboard.sections.bankAmounts') }}
-        </h3>
-        <p class="text-texte font-mono text-lg font-semibold tabular-nums">
-          {{ formatMoney(summary.bank_amounts.total) }}
-        </p>
-        <ul
-          v-if="summary.bank_amounts.rows.length"
-          class="mt-2 max-h-40 space-y-1 overflow-y-auto text-sm"
-        >
-          <li v-for="row in summary.bank_amounts.rows" :key="row.bank" class="flex justify-between">
-            <span class="text-texte-2">{{ row.bank }}</span>
-            <span class="text-texte font-mono font-medium tabular-nums">
-              {{ formatMoney(row.balance) }}
-            </span>
-          </li>
-        </ul>
-        <p v-else class="text-texte-3 mt-2 text-sm">{{ t('dashboard.noAmounts') }}</p>
-      </section>
-
-      <section class="border-ligne rounded-xl border bg-white p-4">
-        <h3 class="text-texte-2 mb-1 text-sm font-semibold uppercase">
-          {{ t('dashboard.sections.cashAmounts') }}
-        </h3>
-        <p class="text-texte font-mono text-lg font-semibold tabular-nums">
-          {{ formatMoney(summary.cash_amounts.total) }}
-        </p>
-        <ul
-          v-if="summary.cash_amounts.rows.length"
-          class="mt-2 max-h-40 space-y-1 overflow-y-auto text-sm"
-        >
-          <li
-            v-for="row in summary.cash_amounts.rows"
-            :key="row.cash_account"
-            class="flex justify-between"
+        <section class="border-ligne rounded-xl border bg-white p-4">
+          <h3 class="text-texte-2 mb-1 text-sm font-semibold uppercase">
+            {{ t('dashboard.sections.bankAmounts') }}
+          </h3>
+          <p class="text-texte text-lg font-semibold">
+            <MonoValue v-bind="formatMoneyParts(summary.bank_amounts.total)" />
+          </p>
+          <ul
+            v-if="summary.bank_amounts.rows.length"
+            class="mt-2 max-h-40 space-y-1 overflow-y-auto text-sm"
           >
-            <span class="text-texte-2">{{ row.cash_account }}</span>
-            <span class="text-texte font-mono font-medium tabular-nums">
-              {{ formatMoney(row.balance) }}
-            </span>
-          </li>
-        </ul>
-        <p v-else class="text-texte-3 mt-2 text-sm">{{ t('dashboard.noAmounts') }}</p>
-      </section>
+            <li
+              v-for="row in summary.bank_amounts.rows"
+              :key="row.bank"
+              class="flex justify-between"
+            >
+              <span class="text-texte-2">{{ row.bank }}</span>
+              <span class="text-texte font-medium">
+                <MonoValue v-bind="formatMoneyParts(row.balance)" />
+              </span>
+            </li>
+          </ul>
+          <p v-else class="text-texte-3 mt-2 text-sm">{{ t('dashboard.noAmounts') }}</p>
+        </section>
 
-      <!-- Summary only (design doc 2026-08-26-benefices-associes-
+        <section class="border-ligne rounded-xl border bg-white p-4">
+          <h3 class="text-texte-2 mb-1 text-sm font-semibold uppercase">
+            {{ t('dashboard.sections.cashAmounts') }}
+          </h3>
+          <p class="text-texte text-lg font-semibold">
+            <MonoValue v-bind="formatMoneyParts(summary.cash_amounts.total)" />
+          </p>
+          <ul
+            v-if="summary.cash_amounts.rows.length"
+            class="mt-2 max-h-40 space-y-1 overflow-y-auto text-sm"
+          >
+            <li
+              v-for="row in summary.cash_amounts.rows"
+              :key="row.cash_account"
+              class="flex justify-between"
+            >
+              <span class="text-texte-2">{{ row.cash_account }}</span>
+              <span class="text-texte font-medium">
+                <MonoValue v-bind="formatMoneyParts(row.balance)" />
+              </span>
+            </li>
+          </ul>
+          <p v-else class="text-texte-3 mt-2 text-sm">{{ t('dashboard.noAmounts') }}</p>
+        </section>
+
+        <!-- Summary only (design doc 2026-08-26-benefices-associes-
            refinement-design.md) - the Benefices page (/profit) stays the
            single detailed source, this never breaks it down per trip or
            per shareholder. Point-in-time, not scoped by the date range. -->
-      <section class="border-ligne rounded-xl border bg-white p-4">
-        <div class="mb-1 flex items-center justify-between">
-          <h3 class="text-texte-2 text-sm font-semibold uppercase">
-            {{ t('dashboard.sections.shareholders') }}
-          </h3>
-          <RouterLink :to="{ name: 'profit' }" class="text-bitume text-xs underline">
-            {{ t('dashboard.viewDetails') }}
-          </RouterLink>
-        </div>
-        <p class="text-texte font-mono text-lg font-semibold tabular-nums">
-          {{ formatMoney(summary.shareholders_summary.current_profit) }}
-        </p>
-        <dl class="mt-2 space-y-1 text-sm">
-          <div class="flex justify-between">
-            <dt class="text-texte-2">{{ t('dashboard.fields.shareholdersWithdrawn') }}</dt>
-            <dd class="text-texte font-mono font-medium tabular-nums">
-              {{ formatMoney(summary.shareholders_summary.total_withdrawn) }}
-            </dd>
+        <section class="border-ligne rounded-xl border bg-white p-4">
+          <div class="mb-1 flex items-center justify-between">
+            <h3 class="text-texte-2 text-sm font-semibold uppercase">
+              {{ t('dashboard.sections.shareholders') }}
+            </h3>
+            <RouterLink
+              :to="{ name: 'profit' }"
+              class="border-ligne-forte text-texte hover:bg-sable inline-flex h-7 shrink-0 items-center rounded-lg border px-2.5 text-xs font-medium transition"
+            >
+              {{ t('dashboard.viewDetails') }}
+            </RouterLink>
           </div>
-          <div class="flex justify-between">
-            <dt class="text-texte-2">{{ t('dashboard.fields.shareholdersRemaining') }}</dt>
-            <dd class="text-texte font-mono font-medium tabular-nums">
-              {{ formatMoney(summary.shareholders_summary.remaining_undistributed) }}
-            </dd>
-          </div>
-          <div class="flex justify-between">
-            <dt class="text-texte-2">{{ t('dashboard.fields.shareholdersOpenLoans') }}</dt>
-            <dd class="text-texte font-mono font-medium tabular-nums">
-              {{ formatMoney(summary.shareholders_summary.open_loans_total) }}
-            </dd>
-          </div>
-        </dl>
-      </section>
-    </div>
+          <p class="text-texte text-lg font-semibold">
+            <MonoValue v-bind="formatMoneyParts(summary.shareholders_summary.current_profit)" />
+          </p>
+          <dl class="mt-2 space-y-1 text-sm">
+            <div class="flex justify-between">
+              <dt class="text-texte-2">{{ t('dashboard.fields.shareholdersWithdrawn') }}</dt>
+              <dd class="text-texte font-medium">
+                <MonoValue
+                  v-bind="formatMoneyParts(summary.shareholders_summary.total_withdrawn)"
+                />
+              </dd>
+            </div>
+            <div class="flex justify-between">
+              <dt class="text-texte-2">{{ t('dashboard.fields.shareholdersRemaining') }}</dt>
+              <dd class="text-texte font-medium">
+                <MonoValue
+                  v-bind="formatMoneyParts(summary.shareholders_summary.remaining_undistributed)"
+                />
+              </dd>
+            </div>
+            <div class="flex justify-between">
+              <dt class="text-texte-2">{{ t('dashboard.fields.shareholdersOpenLoans') }}</dt>
+              <dd class="text-texte font-medium">
+                <MonoValue
+                  v-bind="formatMoneyParts(summary.shareholders_summary.open_loans_total)"
+                />
+              </dd>
+            </div>
+          </dl>
+        </section>
+      </div>
+    </details>
   </div>
 </template>
+
+<style scoped>
+.financial-kpi-card {
+  min-height: 112px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.financial-kpi-label {
+  min-height: 2rem;
+}
+
+.financial-kpi-amount {
+  min-height: 2rem;
+  display: flex;
+  align-items: baseline;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.treasury-card {
+  min-height: 168px;
+}
+
+.treasury-amount,
+.party-balance-amount {
+  display: flex;
+  align-items: baseline;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+  min-height: 2rem;
+  white-space: nowrap;
+}
+
+.party-balance-card {
+  min-height: 172px;
+  display: flex;
+  flex-direction: column;
+}
+
+.party-balance-card p:last-child {
+  margin-top: auto;
+}
+</style>

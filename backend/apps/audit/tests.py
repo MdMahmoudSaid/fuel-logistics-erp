@@ -5,10 +5,12 @@ from decimal import Decimal
 
 import pytest
 from django.contrib.contenttypes.models import ContentType
+from django.test import RequestFactory
 from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.accounts.models import Role, User
-from apps.audit.context import bind_current_request, clear_current_request
+from apps.audit.context import bind_current_request, clear_current_request, get_current_user
 from apps.audit.exceptions import HardDeleteBlocked
 from apps.audit.models import AuditLog
 from apps.audit.services import AuditLogService
@@ -228,6 +230,83 @@ def test_current_request_middleware_attributes_the_log_to_the_authenticated_user
 
     log = AuditLog.objects.get(
         content_type=ContentType.objects.get_for_model(SupplierOrder), object_id=response.data["id"]
+    )
+    assert log.action == AuditLog.Action.CREATE
+    assert log.user_id == admin_user.id
+
+
+@pytest.mark.django_db
+def test_get_current_user_falls_back_to_jwt_bearer_token():
+    """The "Utilisateur" column bug (UI pass 2026-08-27): this app
+    authenticates every API call via a JWT bearer token, never a session
+    cookie (REST_FRAMEWORK["DEFAULT_AUTHENTICATION_CLASSES"] in
+    config/settings/base.py), so `request.user` - Django's own
+    session-based attribute - is never populated. A RequestFactory request
+    reproduces that exactly: no middleware ran, so `request` doesn't even
+    have a `.user` attribute, only the Authorization header - the same
+    shape apps.audit.middleware.CurrentRequestMiddleware hands
+    get_current_user() on every real request in production.
+    """
+    admin_user = _make_admin("JWTFALLBACK")
+    access_token = str(RefreshToken.for_user(admin_user).access_token)
+    request = RequestFactory().get("/", HTTP_AUTHORIZATION=f"Bearer {access_token}")
+
+    bind_current_request(request)
+    try:
+        resolved = get_current_user()
+    finally:
+        clear_current_request()
+
+    assert resolved is not None
+    assert resolved.id == admin_user.id
+
+
+@pytest.mark.django_db
+def test_get_current_user_returns_none_for_missing_or_invalid_bearer_token():
+    request_no_auth = RequestFactory().get("/")
+    bind_current_request(request_no_auth)
+    try:
+        assert get_current_user() is None
+    finally:
+        clear_current_request()
+
+    request_bad_token = RequestFactory().get("/", HTTP_AUTHORIZATION="Bearer not-a-real-token")
+    bind_current_request(request_bad_token)
+    try:
+        assert get_current_user() is None
+    finally:
+        clear_current_request()
+
+
+@pytest.mark.django_db
+def test_expense_created_via_real_jwt_login_is_attributed_to_the_actor():
+    """End-to-end repro of the original bug via the real login flow (not
+    force_authenticate, which sets DRF's wrapped-request user directly and
+    never exercises this fallback) - logs in for a real access token, then
+    posts with only that Authorization header, exactly like the frontend
+    does."""
+    admin_user = _make_admin("REALJWT")
+
+    client = APIClient()
+    login = client.post(
+        "/api/auth/login/", {"phone": admin_user.phone, "pin": "1234"}, format="json"
+    )
+    assert login.status_code == 200, login.data
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {login.data['access']}")
+
+    response = client.post(
+        "/api/expenses/",
+        {
+            "category": "transport",
+            "amount": "50000.00",
+            "calculation_method": "FIXED",
+            "date": "2026-08-27",
+        },
+    )
+    assert response.status_code == 201, response.data
+
+    log = AuditLog.objects.get(
+        content_type=ContentType.objects.get_for_model(Expense), object_id=response.data["id"]
     )
     assert log.action == AuditLog.Action.CREATE
     assert log.user_id == admin_user.id

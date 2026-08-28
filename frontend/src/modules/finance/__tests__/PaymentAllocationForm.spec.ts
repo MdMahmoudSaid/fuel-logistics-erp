@@ -47,9 +47,7 @@ const fetchCustomerLedger = vi.fn(async (_id: number) => ({
 }))
 const createCustomerPayment = vi.fn(async (p: Record<string, unknown>) => ({ id: 1, ...p }))
 vi.mock('../api', () => ({
-  customerPaymentResource: {
-    create: (p: Record<string, unknown>) => createCustomerPayment(p),
-  },
+  createCustomerPaymentWithProof: (p: Record<string, unknown>) => createCustomerPayment(p),
   fetchCustomerLedger: (id: number) => fetchCustomerLedger(id),
   uploadCustomerPaymentProof: vi.fn(async () => undefined),
 }))
@@ -161,5 +159,22 @@ describe('PaymentAllocationForm FIFO auto-allocation', () => {
 
     expect(wrapper.text()).toContain('Le justificatif de paiement est obligatoire.')
     expect(createCustomerPayment).not.toHaveBeenCalled()
+  })
+
+  it('shows a clear payment proof picker and selected file name', async () => {
+    const wrapper = mount(PaymentAllocationForm)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Justificatif de paiement')
+    expect(wrapper.text()).toContain('Choisir un fichier')
+
+    const file = new File(['receipt'], 'recu-client.png', { type: 'image/png' })
+    Object.defineProperty(wrapper.find('#proof_file').element, 'files', {
+      value: [file],
+      configurable: true,
+    })
+    await wrapper.find('#proof_file').trigger('change')
+
+    expect(wrapper.text()).toContain('recu-client.png')
   })
 })

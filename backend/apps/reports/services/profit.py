@@ -11,7 +11,12 @@ from decimal import Decimal
 from django.contrib.contenttypes.models import ContentType
 from django.db.models import Sum
 
-from apps.finance.models import Expense, ExpenseAllocation, TransportPayment
+from apps.finance.models import (
+    Expense,
+    ExpenseAllocation,
+    TransportDeduction,
+    TransportPayment,
+)
 from apps.sales.models import ProductSellingPriceHistory
 from apps.trips.models import Trip
 from apps.trips.services import TripCostService
@@ -37,6 +42,24 @@ class TripProfitService:
             TransportPayment.objects.filter(trip=trip).aggregate(total=Sum("base_amount"))[
                 "total"
             ]
+            or ZERO
+        )
+
+    @staticmethod
+    def _transporter_loss_quantity(trip: Trip) -> Decimal:
+        return (
+            TransportDeduction.objects.filter(trip=trip)
+            .exclude(status=TransportDeduction.Status.CANCELLED)
+            .aggregate(total=Sum("chargeable_quantity"))["total"]
+            or ZERO
+        )
+
+    @staticmethod
+    def _transporter_loss_indemnity(trip: Trip) -> Decimal:
+        return (
+            TransportDeduction.objects.filter(trip=trip)
+            .exclude(status=TransportDeduction.Status.CANCELLED)
+            .aggregate(total=Sum("amount"))["total"]
             or ZERO
         )
 
@@ -89,19 +112,7 @@ class TripProfitService:
         """Based on the validated delivery and sale price (guide Section
         9.2). Requires a Sale - "Delivered Quantity is Commercial Truth"
         (guide Section 1.4), there is no current margin before that."""
-        sale = getattr(trip, "sale", None)
-        if sale is None:
-            raise ValueError(
-                f"Le trajet {trip.reference} n'a pas encore de vente ; impossible de "
-                "calculer sa marge actuelle."
-            )
-        revenue = sale.delivered_quantity * sale.unit_selling_price
-        return (
-            revenue
-            - cls._fuel_purchase_cost(trip)
-            - cls._transport_cost(trip)
-            - cls._total_allocated_expenses(trip)
-        ).quantize(Decimal("0.01"))
+        return cls.get_cost_breakdown(trip)["margin"]
 
     @classmethod
     def calculate_final_margin(cls, trip: Trip) -> Decimal:
@@ -136,15 +147,25 @@ class TripProfitService:
             )
         cost_basis = TripCostService.calculate_trip_cost_basis(trip)
         revenue = sale.delivered_quantity * sale.unit_selling_price
-        margin = (revenue - cost_basis["total_cost"]).quantize(Decimal("0.01"))
+        transporter_loss_quantity = cls._transporter_loss_quantity(trip)
+        transporter_loss_indemnity = cls._transporter_loss_indemnity(trip)
+        real_total_cost = cost_basis["total_cost"]
+        margin = (
+            revenue + transporter_loss_indemnity - real_total_cost
+        ).quantize(Decimal("0.01"))
         unit_cost = cost_basis["unit_cost"]
         unit_profit = sale.unit_selling_price - unit_cost
         return {
+            "quantity_loaded": trip.quantity_loaded,
+            "quantity_invoiced": sale.delivered_quantity,
+            "transporter_loss_quantity": transporter_loss_quantity,
+            "transporter_loss_indemnity": transporter_loss_indemnity,
             "revenue": revenue,
             "fuel_purchase_cost": cost_basis["fuel_purchase_cost"],
             "transport_cost": cost_basis["transport_cost"],
             "expenses_by_category": cost_basis["expenses_by_category"],
             "total_expenses": cost_basis["total_expenses"],
+            "real_total_cost": real_total_cost,
             "margin": margin,
             "unit_cost": unit_cost,
             "unit_profit": unit_profit,

@@ -9,6 +9,7 @@ from apps.core.serializers import ProductSerializer
 from apps.customers.models import Customer
 from apps.customers.serializers import CustomerSerializer
 from apps.documents.models import Document
+from apps.purchasing.serializers import CessionLetterSerializer
 from apps.purchasing.services import SupplierStockService
 from apps.suppliers.serializers import SupplierSerializer
 from apps.transport.serializers import DriverSerializer, TransporterSerializer, TruckSerializer
@@ -53,6 +54,7 @@ class TripSerializer(serializers.ModelSerializer):
     product_detail = ProductSerializer(source="product", read_only=True)
     client_detail = CustomerSerializer(source="client", read_only=True)
     created_by_detail = UserSerializer(source="created_by", read_only=True)
+    cession_letter_detail = CessionLetterSerializer(source="cession_letter", read_only=True)
     # Not a model field: lets an Admin bypass the active-truck lock (plan
     # §1.D). Always popped out of validated_data in validate() below.
     force = serializers.BooleanField(write_only=True, required=False, default=False)
@@ -76,6 +78,7 @@ class TripSerializer(serializers.ModelSerializer):
             "supplier_detail",
             "supplier_order",
             "cession_letter",
+            "cession_letter_detail",
             "product",
             "product_detail",
             "quantity_loaded",

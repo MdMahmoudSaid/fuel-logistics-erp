@@ -4,11 +4,12 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { fetchSupplierLedger } from '@/modules/purchasing/api'
 import type { SupplierLedger } from '@/modules/purchasing/types'
-import SupplierPaymentForm from '@/modules/finance/SupplierPaymentForm.vue'
+import DebtPaymentForm from '@/modules/finance/DebtPaymentForm.vue'
 import { formatMoney, formatQuantity } from '@/utils/currency'
 import Badge from '@/components/ui/Badge.vue'
 import Button from '@/components/ui/Button.vue'
 import Card from '@/components/ui/Card.vue'
+import Modal from '@/components/ui/Modal.vue'
 import MonoValue from '@/components/ui/MonoValue.vue'
 
 const route = useRoute()
@@ -19,6 +20,7 @@ const ledger = ref<SupplierLedger | null>(null)
 const loading = ref(true)
 const error = ref('')
 const showPaymentForm = ref(false)
+const previewUrl = ref<string | null>(null)
 
 const supplierId = computed(() => Number(route.params.id))
 
@@ -41,10 +43,26 @@ async function onPaymentSaved() {
 
 onMounted(load)
 
+const totalReliquat = computed(
+  () =>
+    ledger.value?.reliquat_summary.reduce(
+      (total, item) => total + Number(item.total_reliquat),
+      0,
+    ) ?? 0,
+)
+const lastPayment = computed(() => {
+  const payments = [...(ledger.value?.payments ?? [])]
+  return payments.sort((a, b) => b.payment_date.localeCompare(a.payment_date))[0] ?? null
+})
+
 function badgeVariant(status: string) {
   if (status === 'CONFIRMED') return 'livre' as const
   if (status === 'CANCELLED') return 'critique' as const
   return 'neutre' as const
+}
+
+function proofUrl(order: SupplierLedger['orders'][number]) {
+  return order.documents[0]?.file ?? null
 }
 </script>
 
@@ -68,32 +86,48 @@ function badgeVariant(status: string) {
     <p v-else-if="loading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
     <template v-else-if="ledger">
-      <section class="grid grid-cols-3 gap-4">
-        <div class="border-ligne rounded-xl border bg-white p-4">
-          <p class="text-texte-2 text-xs">{{ t('purchasing.supplierLedger.totalPurchased') }}</p>
+      <section class="grid gap-3 md:grid-cols-5">
+        <div class="border-ligne rounded-lg border bg-white p-4">
+          <p class="text-texte-2 text-xs font-semibold uppercase">
+            {{ t('purchasing.supplierLedger.totalPurchased') }}
+          </p>
           <MonoValue
-            class="text-lg font-semibold"
+            class="font-semibold"
             align="left"
             :value="formatMoney(ledger.total_purchased)"
           />
         </div>
-        <div class="border-ligne rounded-xl border bg-white p-4">
-          <p class="text-texte-2 text-xs">{{ t('purchasing.supplierLedger.totalPaid') }}</p>
-          <MonoValue
-            class="text-lg font-semibold"
-            align="left"
-            :value="formatMoney(ledger.total_paid)"
-          />
+        <div class="border-ligne rounded-lg border bg-white p-4">
+          <p class="text-texte-2 text-xs font-semibold uppercase">
+            {{ t('purchasing.supplierLedger.totalPaid') }}
+          </p>
+          <MonoValue class="font-semibold" align="left" :value="formatMoney(ledger.total_paid)" />
         </div>
-        <div class="border-ligne rounded-xl border bg-white p-4">
-          <p class="text-texte-2 text-xs">
+        <div class="border-ligne rounded-lg border bg-white p-4">
+          <p class="text-texte-2 text-xs font-semibold uppercase">
             {{ t('purchasing.supplierLedger.outstandingBalance') }}
           </p>
           <MonoValue
-            class="text-lg font-semibold"
+            class="font-semibold"
             align="left"
             :class="Number(ledger.outstanding_balance) > 0 ? 'text-ecart' : 'text-livre'"
             :value="formatMoney(ledger.outstanding_balance)"
+          />
+        </div>
+        <div class="border-ligne rounded-lg border bg-white p-4">
+          <p class="text-texte-2 text-xs font-semibold uppercase">
+            {{ t('purchasing.supplierLedger.totalReliquat') }}
+          </p>
+          <MonoValue class="font-semibold" align="left" :value="formatQuantity(totalReliquat)" />
+        </div>
+        <div class="border-ligne rounded-lg border bg-white p-4">
+          <p class="text-texte-2 text-xs font-semibold uppercase">
+            {{ t('purchasing.supplierLedger.lastPayment') }}
+          </p>
+          <MonoValue
+            class="font-semibold"
+            align="left"
+            :value="lastPayment ? formatMoney(lastPayment.amount) : '—'"
           />
         </div>
       </section>
@@ -153,6 +187,9 @@ function badgeVariant(status: string) {
               <th class="px-3 py-2.5 font-medium">
                 {{ t('purchasing.supplierLedger.table.status') }}
               </th>
+              <th class="px-3 py-2.5 font-medium">
+                {{ t('purchasing.supplierLedger.table.proof') }}
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -179,9 +216,20 @@ function badgeVariant(status: string) {
                   t(`supplierOrderStatus.${order.status}`)
                 }}</Badge>
               </td>
+              <td class="px-3 py-2.5">
+                <button
+                  v-if="proofUrl(order)"
+                  type="button"
+                  class="text-bitume underline"
+                  @click.stop="previewUrl = proofUrl(order)"
+                >
+                  {{ t('purchasing.supplierLedger.viewProof') }}
+                </button>
+                <span v-else class="text-texte-3">—</span>
+              </td>
             </tr>
             <tr v-if="ledger.orders.length === 0">
-              <td colspan="6" class="text-texte-3 px-3 py-8 text-center">
+              <td colspan="7" class="text-texte-3 px-3 py-8 text-center">
                 {{ t('purchasing.supplierLedger.noPurchaseHistory') }}
               </td>
             </tr>
@@ -236,19 +284,32 @@ function badgeVariant(status: string) {
       </Card>
     </template>
 
-    <div
+    <Modal
       v-if="showPaymentForm && ledger"
-      class="fixed inset-0 z-30 flex items-center justify-center bg-black/40"
+      :title="t('finance.debtPayment.title')"
+      max-width="max-w-2xl"
+      @close="showPaymentForm = false"
     >
-      <div class="w-full max-w-lg">
-        <SupplierPaymentForm
-          :supplier-id="ledger.supplier.id"
-          :supplier-name="ledger.supplier.name"
-          :outstanding-balance="ledger.outstanding_balance"
-          @success="onPaymentSaved"
-          @cancel="showPaymentForm = false"
-        />
+      <DebtPaymentForm
+        initial-debt-type="supplier"
+        :initial-debt-id="ledger.supplier.id"
+        lock-debt-type
+        lock-debt
+        @success="onPaymentSaved"
+      @cancel="showPaymentForm = false"
+      />
+    </Modal>
+
+    <Modal
+      v-if="previewUrl"
+      :title="t('purchasing.supplierLedger.table.proof')"
+      max-width="max-w-3xl"
+      @close="previewUrl = null"
+    >
+      <img :src="previewUrl" class="max-h-[80vh] w-full rounded-lg object-contain" />
+      <div class="mt-4 flex justify-end">
+        <Button variant="ghost" @click="previewUrl = null">{{ t('common.close') }}</Button>
       </div>
-    </div>
+    </Modal>
   </div>
 </template>

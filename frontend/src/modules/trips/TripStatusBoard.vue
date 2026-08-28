@@ -2,7 +2,7 @@
 // Vue hybride (docs/UI_REDESIGN_PLAN.md Etape 6.2) : tableau desktop
 // (>=768px, chiffres Mono alignés à droite) / liste de TripCard mobile
 // (<768px), avec puces de filtre statut à défilement horizontal.
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { tripResource } from './api'
@@ -27,22 +27,25 @@ const error = ref('')
 // Cette vue couvre les opérations "en cours d'exécution" (plan Etape 9) -
 // les trajets livrés/annulés ont leur propre historique (TripDetail, listes
 // camion/commande) plutôt que de s'accumuler ici indéfiniment.
-type BusinessFilter = 'all' | 'in-progress' | 'company-stock' | 'to-deliver' | 'to-control' | 'delivered'
+type BusinessFilter =
+  'all' | 'in-progress' | 'company-stock' | 'to-deliver' | 'to-control' | 'delivered'
 
 const BUSINESS_FILTERS: { key: BusinessFilter; label: string }[] = [
   { key: 'all', label: 'Tous' },
   { key: 'in-progress', label: 'En cours' },
-  { key: 'company-stock', label: "Stock entreprise" },
+  { key: 'company-stock', label: 'Stock entreprise' },
   { key: 'to-deliver', label: 'À livrer' },
   { key: 'to-control', label: 'À contrôler' },
   { key: 'delivered', label: 'Livrés' },
 ]
 
-const selectedFilter = ref<BusinessFilter>(
-  route.name === 'company-stock' || route.query.filter === 'company-stock'
+function filterFromRoute(): BusinessFilter {
+  return route.name === 'company-stock' || route.query.filter === 'company-stock'
     ? 'company-stock'
-    : 'all',
-)
+    : 'all'
+}
+
+const selectedFilter = ref<BusinessFilter>(filterFromRoute())
 
 async function load() {
   loading.value = true
@@ -62,26 +65,46 @@ async function load() {
 
 onMounted(load)
 
+watch(
+  () => [route.name, route.query.filter],
+  async () => {
+    selectedFilter.value = filterFromRoute()
+    await load()
+  },
+)
+
 const filteredTrips = computed(() => {
   if (selectedFilter.value === 'company-stock') {
+    // Only trips that have physically arrived at the depot - matches the
+    // dashboard's "Stock de l'entreprise" total (backend
+    // reports/views/dashboard.py). Earlier pipeline statuses (LOADING,
+    // IN_TRANSIT, GOING_TO_COMPANY_STOCK...) haven't arrived yet, and a trip
+    // un-assigned from a customer keeps its old status (QUANTITY_CONTROL,
+    // DELIVERED...) even once destination_type flips back to COMPANY_STOCK -
+    // counting either here would make this list disagree with the number
+    // the user came from.
     return trips.value.filter(
       (t) =>
         t.destination_type === 'COMPANY_STOCK' &&
-        t.status !== 'CANCELLED' &&
-        t.status !== 'COMPLETED',
+        (t.status === 'ARRIVED_AT_COMPANY_STOCK' || t.status === 'STOCKED'),
     )
   }
   if (selectedFilter.value === 'in-progress') {
     return trips.value.filter((t) =>
-      ['ASSIGNED', 'SENT_FOR_LOADING', 'LOADING', 'LOADED', 'IN_TRANSIT', 'BORDER', 'CUSTOMS'].includes(
-        t.status,
-      ),
+      [
+        'ASSIGNED',
+        'SENT_FOR_LOADING',
+        'LOADING',
+        'LOADED',
+        'ROAD_TRANSIT',
+        'IN_TRANSIT',
+        'BORDER',
+        'CUSTOMS',
+      ].includes(t.status),
     )
   }
   if (selectedFilter.value === 'to-deliver') {
-    return trips.value.filter((t) =>
-      ['GOING_TO_CLIENT', 'ARRIVED_AT_CLIENT'].includes(t.status),
-    )
+    return trips.value.filter((t) => ['GOING_TO_CLIENT', 'ARRIVED_AT_CLIENT'].includes(t.status))
   }
   if (selectedFilter.value === 'to-control') {
     return trips.value.filter((t) => t.status === 'QUANTITY_CONTROL' || t.status === 'BLOCKED')

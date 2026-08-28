@@ -22,7 +22,7 @@ const fetchReport = vi.fn(
 const downloadReportExport = vi.fn(
   async (
     reportType: string,
-    format: 'csv' | 'xlsx',
+    format: 'csv' | 'xlsx' | 'pdf',
     params: Record<string, string | undefined>,
   ) => {
     void reportType
@@ -36,7 +36,7 @@ vi.mock('../api', () => ({
     fetchReport(reportType, params),
   downloadReportExport: (
     reportType: string,
-    format: 'csv' | 'xlsx',
+    format: 'csv' | 'xlsx' | 'pdf',
     params: Record<string, string | undefined>,
   ) => downloadReportExport(reportType, format, params),
 }))
@@ -59,7 +59,7 @@ describe('ReportsView', () => {
     vi.clearAllMocks()
   })
 
-  it('runs the selected report and renders its rows', async () => {
+  it('runs the selected report and renders its rows with translated status', async () => {
     setAuthPermissions({ reports: ['view', 'export'] })
     const wrapper = mount(ReportsView)
 
@@ -68,32 +68,50 @@ describe('ReportsView', () => {
 
     expect(fetchReport).toHaveBeenCalled()
     expect(wrapper.text()).toContain('TRIP-1')
-    expect(wrapper.text()).toContain('DELIVERED')
+    // Raw DB enum values are translated (trips.status.DELIVERED -> "Livré"
+    // in the default fr locale), never shown as the bare "DELIVERED" string.
+    expect(wrapper.text()).toContain('Livré')
+    expect(wrapper.text()).not.toContain('DELIVERED')
   })
 
-  it('shows export buttons only when the role has export permission', async () => {
+  it('always shows Imprimer but hides Exporter PDF without export permission', async () => {
     setAuthPermissions({ reports: ['view'] })
     const wrapper = mount(ReportsView)
     await wrapper.find('button').trigger('click')
     await flushPromises()
 
-    expect(wrapper.text()).not.toContain('Exporter CSV')
+    expect(wrapper.text()).toContain('Imprimer')
+    expect(wrapper.text()).not.toContain('Exporter PDF')
   })
 
-  it('triggers a CSV export when the role has export permission', async () => {
+  it('triggers a PDF export when the role has export permission', async () => {
     setAuthPermissions({ reports: ['view', 'export'] })
     const wrapper = mount(ReportsView)
     await wrapper.find('select').setValue('trip-report')
     await wrapper.find('button').trigger('click')
     await flushPromises()
 
-    const exportButton = wrapper.findAll('button').find((b) => b.text() === 'Exporter CSV')
+    const exportButton = wrapper.findAll('button').find((b) => b.text() === 'Exporter PDF')
     expect(exportButton).toBeTruthy()
     await exportButton!.trigger('click')
     await flushPromises()
 
     // DateRangeFilter emits its default preset ("month") on mount, so that's
     // already folded into the params by the time "Run report" is clicked.
-    expect(downloadReportExport).toHaveBeenCalledWith('trip-report', 'csv', { range: 'month' })
+    expect(downloadReportExport).toHaveBeenCalledWith('trip-report', 'pdf', { range: 'month' })
+  })
+
+  it('calls window.print for the Imprimer button', async () => {
+    setAuthPermissions({ reports: ['view', 'export'] })
+    const printSpy = vi.spyOn(window, 'print').mockImplementation(() => {})
+    const wrapper = mount(ReportsView)
+    await wrapper.find('button').trigger('click')
+    await flushPromises()
+
+    const printButton = wrapper.findAll('button').find((b) => b.text() === 'Imprimer')
+    await printButton!.trigger('click')
+
+    expect(printSpy).toHaveBeenCalled()
+    printSpy.mockRestore()
   })
 })

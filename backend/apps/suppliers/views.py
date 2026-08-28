@@ -28,11 +28,12 @@ class SupplierViewSet(viewsets.ModelViewSet):
         from apps.purchasing.services import SupplierStockService
 
         orders = SupplierOrder.objects.filter(supplier=supplier)
+        confirmed_orders = orders.filter(status=SupplierOrder.Status.CONFIRMED)
         orders_serialized = SupplierOrderSerializer(orders, many=True).data
 
         # Agrégation du reliquat par produit
         product_reliquats = {}
-        for order in orders:
+        for order in confirmed_orders:
             product_id = order.product.id
             product_name = order.product.name
             reliquat = SupplierStockService.get_purchase_reliquat(order)
@@ -66,7 +67,7 @@ class SupplierViewSet(viewsets.ModelViewSet):
             "supplier_order", "bank_account", "cash_account", "recorded_by"
         )
         total_paid = sum((p.amount for p in payments), Decimal("0.00"))
-        total_purchased = sum((o.total_amount for o in orders), Decimal("0.00"))
+        total_purchased = sum((o.total_amount for o in confirmed_orders), Decimal("0.00"))
 
         return Response(
             {
@@ -84,4 +85,3 @@ class SupplierViewSet(viewsets.ModelViewSet):
                 "outstanding_balance": f"{total_purchased - total_paid:.2f}",
             }
         )
-

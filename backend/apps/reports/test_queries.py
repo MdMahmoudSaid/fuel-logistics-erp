@@ -15,18 +15,26 @@ from apps.finance.models import (
     Expense,
     ExpenseAllocation,
     Shareholder,
+    ShareholderLoan,
     ShareholderProfitDistribution,
+    ShareholderProfitShare,
     SupplierPayment,
     TransportDeduction,
     TransportPayment,
     TreasuryTransaction,
 )
-from apps.finance.services import ShareholderDistributionService, ShareholderProfitPreviewService
+from apps.finance.services import (
+    ShareholderDistributionService,
+    ShareholderLedgerService,
+    ShareholderProfitPreviewService,
+    ShareholderWithdrawalService,
+)
 from apps.purchasing.models import CessionLetter, SupplierOrder
 from apps.reports.queries.customer_statement import CustomerStatementQuery
 from apps.reports.queries.fuel_stock_report import FuelStockReportQuery
 from apps.reports.queries.loss_report import LossReportQuery
 from apps.reports.queries.margin_report import MarginReportQuery
+from apps.reports.queries.shareholder_statement import ShareholderStatementQuery
 from apps.reports.queries.supplier_statement import SupplierStatementQuery
 from apps.reports.queries.transporter_statement import TransporterStatementQuery
 from apps.reports.queries.treasury_statement import TreasuryStatementQuery
@@ -526,3 +534,50 @@ def test_treasury_statement_excludes_transfer_legs_but_keeps_correct_balance():
 
     assert len(rows) == 2  # the transfer leg is excluded from the listed rows
     assert rows[-1]["balance"] == Decimal("650000.00")  # 1,000,000 - 200,000 - 150,000
+
+
+# ---------------------------------------------------------------------------
+# ShareholderStatementQuery
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_shareholder_statement_lists_profit_shares_withdrawals_and_loans():
+    admin_user = _make_admin("SHRSTMT")
+    shareholder = Shareholder.objects.create(name="Assoc SHRSTMT", participation_percent=Decimal("100"))
+    other = Shareholder.objects.create(name="Assoc SHRSTMT2", participation_percent=Decimal("0"))
+    cash_account = CashAccount.objects.create(
+        name="Cash SHRSTMT", opening_balance=Decimal("1000000.00")
+    )
+
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("1000000.00"),
+        actor=admin_user,
+    )
+    share = ShareholderProfitShare.objects.get(distribution=distribution, shareholder=shareholder)
+    # Goes through the service (not a raw ShareholderWithdrawal.objects.create)
+    # so amount_withdrawn actually syncs onto `share` - that field is only
+    # ever written by sync_amount_withdrawn(), which the service calls.
+    ShareholderWithdrawalService.record_withdrawal(
+        shareholder_id=shareholder.id,
+        profit_share_id=share.id,
+        amount=Decimal("300000.00"),
+        date="2026-08-01",
+        cash_account_id=cash_account.id,
+        actor=admin_user,
+    )
+    loan_given = ShareholderLoan.objects.create(
+        lender=shareholder, borrower=other, amount=Decimal("50000.00"), date="2026-08-02"
+    )
+    loan_given.amount_repaid = Decimal("20000.00")
+    loan_given.save()
+
+    rows = ShareholderStatementQuery.run(shareholder_id=shareholder.id)
+
+    assert [r["type"] for r in rows] == ["PROFIT_SHARE", "WITHDRAWAL", "LOAN_GIVEN"]
+    assert rows[0]["credit"] == Decimal("1000000.00")
+    assert rows[1]["debit"] == Decimal("300000.00")
+    assert rows[2]["credit"] == Decimal("30000.00")  # 50,000 - 20,000 repaid = remaining_amount
+    assert rows[-1]["balance"] == ShareholderLedgerService.get_available_balance(shareholder.id)

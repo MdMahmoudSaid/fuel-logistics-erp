@@ -18,6 +18,7 @@ vi.mock('@/api/resource', () => ({
 }))
 
 const create = vi.fn()
+const uploadDocument = vi.fn()
 const fetchNextSupplierOrderReference = vi.fn(async () => 'ACH-202608-0007')
 vi.mock('../api', () => ({
   supplierOrderResource: {
@@ -25,7 +26,7 @@ vi.mock('../api', () => ({
     create: (payload: Record<string, unknown>) => create(payload),
     update: vi.fn(),
   },
-  uploadDocument: vi.fn(),
+  uploadDocument: (payload: Record<string, unknown>) => uploadDocument(payload),
   fetchNextSupplierOrderReference: () => fetchNextSupplierOrderReference(),
 }))
 
@@ -79,5 +80,102 @@ describe('SupplierOrderForm', () => {
 
     expect(wrapper.text()).toContain('Cette référence existe déjà.')
     expect(wrapper.text()).not.toContain("Impossible d'enregistrer")
+  })
+
+  it('shows creation documents and live calculated totals before first save', async () => {
+    const router = makeRouter()
+    await router.isReady()
+    const wrapper = mount(SupplierOrderForm, { global: { plugins: [router] } })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Justificatifs')
+    expect(wrapper.text()).not.toContain('Lettres de cession')
+
+    await wrapper.find('#quantity_litres').setValue('100000')
+    await wrapper.find('#unit_price').setValue('500')
+
+    expect(wrapper.text()).toContain('50 000 000 XOF')
+    expect(wrapper.text()).toContain('100 000 L')
+  })
+
+  it('uploads every selected image automatically after creating the supplier order', async () => {
+    create.mockResolvedValueOnce({ id: 77 })
+    uploadDocument.mockResolvedValue(undefined)
+    const router = makeRouter()
+    await router.isReady()
+    const wrapper = mount(SupplierOrderForm, { global: { plugins: [router] } })
+    await flushPromises()
+
+    const input = wrapper.find<HTMLInputElement>('input[type="file"]')
+    const files = [
+      new File(['png'], 'contrat.png', { type: 'image/png' }),
+      new File(['jpg'], 'recu.jpg', { type: 'image/jpeg' }),
+    ]
+    Object.defineProperty(input.element, 'files', { value: files, configurable: true })
+    await input.trigger('change')
+
+    await wrapper.find('#supplier').setValue('1')
+    await wrapper.find('#product').setValue('1')
+    await wrapper.find('#purchase_date').setValue('2026-08-20')
+    await wrapper.find('#quantity_litres').setValue('100000')
+    await wrapper.find('#unit_price').setValue('500')
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(create).toHaveBeenCalled()
+    expect(uploadDocument).toHaveBeenCalledTimes(2)
+    expect(uploadDocument).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ file: files[0], contentTypeName: 'supplierorder', objectId: 77 }),
+    )
+    expect(uploadDocument).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ file: files[1], contentTypeName: 'supplierorder', objectId: 77 }),
+    )
+    expect(router.currentRoute.value.name).toBe('supplier-order-detail')
+    expect(router.currentRoute.value.params.id).toBe('77')
+  })
+
+  it('keeps the created order accessible and shows a clear message when a post-create upload fails', async () => {
+    create.mockResolvedValueOnce({ id: 88 })
+    uploadDocument.mockRejectedValueOnce(new Error('upload failed'))
+    const router = makeRouter()
+    await router.isReady()
+    const wrapper = mount(SupplierOrderForm, { global: { plugins: [router] } })
+    await flushPromises()
+
+    const input = wrapper.find<HTMLInputElement>('input[type="file"]')
+    const file = new File(['png'], 'contrat.png', { type: 'image/png' })
+    Object.defineProperty(input.element, 'files', { value: [file], configurable: true })
+    await input.trigger('change')
+
+    await wrapper.find('#supplier').setValue('1')
+    await wrapper.find('#product').setValue('1')
+    await wrapper.find('#purchase_date').setValue('2026-08-20')
+    await wrapper.find('#quantity_litres').setValue('100000')
+    await wrapper.find('#unit_price').setValue('500')
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Commande créée, mais certains documents')
+    expect(router.currentRoute.value.name).toBe('supplier-order-detail')
+    expect(router.currentRoute.value.params.id).toBe('88')
+  })
+
+  it('rejects a non-image file before uploading it', async () => {
+    const router = makeRouter()
+    await router.isReady()
+    const wrapper = mount(SupplierOrderForm, { global: { plugins: [router] } })
+    await flushPromises()
+
+    const input = wrapper.find<HTMLInputElement>('input[type="file"]')
+    Object.defineProperty(input.element, 'files', {
+      value: [new File(['pdf'], 'contrat.pdf', { type: 'application/pdf' })],
+      configurable: true,
+    })
+    await input.trigger('change')
+
+    expect(wrapper.text()).toContain('Seules les images JPG, JPEG, PNG ou WEBP sont autorisées.')
+    expect(uploadDocument).not.toHaveBeenCalled()
   })
 })

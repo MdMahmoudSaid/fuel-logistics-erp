@@ -18,6 +18,7 @@ import { fetchShareholderProfitPreview } from './api'
 import type { ShareholderProfitPreview } from './types'
 import Badge from '@/components/ui/Badge.vue'
 import Card from '@/components/ui/Card.vue'
+import Icon from '@/components/ui/Icon.vue'
 import MonoValue from '@/components/ui/MonoValue.vue'
 import { formatMoney, formatQuantity, formatUnitMoney } from '@/utils/currency'
 
@@ -28,6 +29,10 @@ interface MarginRow {
   client: string
   product: string
   quantity: string
+  quantity_loaded: string
+  quantity_invoiced: string
+  transporter_loss_quantity: string
+  transporter_loss_indemnity: string
   supplier_unit_price: string
   transport_cost: string
   customs_cost: string
@@ -35,6 +40,7 @@ interface MarginRow {
   border_cost: string
   loading_cost: string
   additional_costs: string
+  real_total_cost: string
   unit_cost: string
   unit_selling_price: string
   unit_profit: string
@@ -53,10 +59,13 @@ function num(value: string): number {
 
 const periodProfit = computed(() => rows.value.reduce((sum, r) => sum + num(r.current_margin), 0))
 const revenue = computed(() =>
-  rows.value.reduce((sum, r) => sum + num(r.quantity) * num(r.unit_selling_price), 0),
+  rows.value.reduce((sum, r) => sum + num(r.quantity_invoiced) * num(r.unit_selling_price), 0),
 )
 const supplierCost = computed(() =>
-  rows.value.reduce((sum, r) => sum + num(r.quantity) * num(r.supplier_unit_price), 0),
+  rows.value.reduce((sum, r) => sum + num(r.quantity_loaded) * num(r.supplier_unit_price), 0),
+)
+const lossIndemnity = computed(() =>
+  rows.value.reduce((sum, r) => sum + num(r.transporter_loss_indemnity), 0),
 )
 const transportCost = computed(() => rows.value.reduce((sum, r) => sum + num(r.transport_cost), 0))
 const customsCost = computed(() => rows.value.reduce((sum, r) => sum + num(r.customs_cost), 0))
@@ -64,6 +73,16 @@ const transitCost = computed(() => rows.value.reduce((sum, r) => sum + num(r.tra
 const borderCost = computed(() => rows.value.reduce((sum, r) => sum + num(r.border_cost), 0))
 const loadingCost = computed(() => rows.value.reduce((sum, r) => sum + num(r.loading_cost), 0))
 const otherCosts = computed(() => rows.value.reduce((sum, r) => sum + num(r.additional_costs), 0))
+const costs = computed(() => [
+  { key: 'supplierCost', value: supplierCost.value, icon: 'droplet' as const },
+  { key: 'transportCost', value: transportCost.value, icon: 'truck' as const },
+  { key: 'lossIndemnity', value: lossIndemnity.value, icon: 'coins' as const },
+  { key: 'customsCost', value: customsCost.value, icon: 'landmark' as const },
+  { key: 'transitCost', value: transitCost.value, icon: 'route' as const },
+  { key: 'borderCost', value: borderCost.value, icon: 'shield' as const },
+  { key: 'loadingCost', value: loadingCost.value, icon: 'package' as const },
+  { key: 'otherCosts', value: otherCosts.value, icon: 'receipt' as const },
+])
 
 async function loadRows() {
   loading.value = true
@@ -127,82 +146,76 @@ onMounted(() => {
     <p v-else-if="loading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
     <template v-else>
-      <p class="text-texte-2 border-ligne rounded-xl border border-dashed bg-white px-4 py-2.5 text-sm">
-        {{ t('finance.profit.costDisclaimer') }}
+      <section class="grid gap-3 lg:grid-cols-3">
+        <div class="border-ligne rounded-lg border bg-white p-4 lg:col-span-2">
+          <div class="flex items-start justify-between gap-4">
+            <div class="space-y-1">
+              <div class="text-bitume flex items-center gap-2">
+                <Icon name="trending-up" :size="18" />
+                <p class="text-sm font-semibold">{{ t('finance.profit.accountingProfit') }}</p>
+              </div>
+              <p class="text-texte-2 max-w-2xl text-sm">
+                {{ t('finance.profit.accountingProfitHelp') }}
+              </p>
+            </div>
+            <MonoValue
+              class="text-2xl font-semibold"
+              :value="formatMoney(periodProfit)"
+            />
+          </div>
+          <div class="border-ligne mt-4 grid gap-3 border-t pt-4 sm:grid-cols-2">
+            <div>
+              <p class="text-texte-2 text-xs font-semibold uppercase">
+                {{ t('finance.profit.revenue') }}
+              </p>
+              <MonoValue class="font-semibold" align="left" :value="formatMoney(revenue)" />
+            </div>
+            <div>
+              <p class="text-texte-2 text-xs font-semibold uppercase">
+                {{ t('finance.profit.tripsCount') }}
+              </p>
+              <MonoValue class="font-semibold" align="left" :value="String(rows.length)" />
+            </div>
+          </div>
+        </div>
+
+        <div class="grid gap-3">
+          <div class="border-ligne rounded-lg border bg-white p-4">
+            <div class="text-texte flex items-center gap-2">
+              <Icon name="wallet" :size="17" />
+              <p class="text-sm font-semibold">{{ t('finance.profit.receivedProfit') }}</p>
+            </div>
+            <p class="text-texte-2 mt-1 text-sm">{{ t('finance.profit.receivedProfitHelp') }}</p>
+          </div>
+          <div class="border-ligne rounded-lg border bg-white p-4">
+            <div class="text-texte flex items-center gap-2">
+              <Icon name="users" :size="17" />
+              <p class="text-sm font-semibold">{{ t('finance.profit.distributableProfit') }}</p>
+            </div>
+            <p class="text-texte-2 mt-1 text-sm">
+              {{ t('finance.profit.distributableProfitHelp') }}
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <p class="border-ligne bg-sable text-texte rounded-lg border px-4 py-3 text-sm">
+        {{ t('finance.profit.distributionNote') }}
       </p>
 
-      <section class="grid grid-cols-3 gap-4 lg:grid-cols-5">
-        <Card>
-          <p class="text-texte-2 text-xs">{{ t('finance.profit.periodProfit') }}</p>
-          <MonoValue
-            class="text-lg font-semibold"
-            align="left"
-            :value="formatMoney(periodProfit)"
-          />
-        </Card>
-        <Card>
-          <p class="text-texte-2 text-xs">{{ t('finance.profit.tripsCount') }}</p>
-          <MonoValue class="text-lg font-semibold" align="left" :value="String(rows.length)" />
-        </Card>
-        <Card>
-          <p class="text-texte-2 text-xs">{{ t('finance.profit.revenue') }}</p>
-          <MonoValue class="text-lg font-semibold" align="left" :value="formatMoney(revenue)" />
-        </Card>
-        <Card>
-          <p class="text-texte-2 text-xs">{{ t('finance.profit.supplierCost') }}</p>
-          <MonoValue
-            class="text-lg font-semibold"
-            align="left"
-            :value="formatMoney(supplierCost)"
-          />
-        </Card>
-        <Card>
-          <p class="text-texte-2 text-xs">{{ t('finance.profit.transportCost') }}</p>
-          <MonoValue
-            class="text-lg font-semibold"
-            align="left"
-            :value="formatMoney(transportCost)"
-          />
-        </Card>
-        <Card>
-          <p class="text-texte-2 text-xs">{{ t('finance.profit.customsCost') }}</p>
-          <MonoValue
-            class="text-lg font-semibold"
-            align="left"
-            :value="formatMoney(customsCost)"
-          />
-        </Card>
-        <Card>
-          <p class="text-texte-2 text-xs">{{ t('finance.profit.transitCost') }}</p>
-          <MonoValue
-            class="text-lg font-semibold"
-            align="left"
-            :value="formatMoney(transitCost)"
-          />
-        </Card>
-        <Card>
-          <p class="text-texte-2 text-xs">{{ t('finance.profit.borderCost') }}</p>
-          <MonoValue
-            class="text-lg font-semibold"
-            align="left"
-            :value="formatMoney(borderCost)"
-          />
-        </Card>
-        <Card>
-          <p class="text-texte-2 text-xs">{{ t('finance.profit.loadingCost') }}</p>
-          <MonoValue
-            class="text-lg font-semibold"
-            align="left"
-            :value="formatMoney(loadingCost)"
-          />
-        </Card>
-        <Card>
-          <p class="text-texte-2 text-xs">{{ t('finance.profit.otherCosts') }}</p>
-          <MonoValue
-            class="text-lg font-semibold"
-            align="left"
-            :value="formatMoney(otherCosts)"
-          />
+      <section class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Card v-for="cost in costs" :key="cost.key">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="text-texte-2 text-xs">{{ t(`finance.profit.${cost.key}`) }}</p>
+              <MonoValue
+                class="text-base font-semibold"
+                align="left"
+                :value="formatMoney(cost.value)"
+              />
+            </div>
+            <Icon :name="cost.icon" :size="18" class="text-texte-3" />
+          </div>
         </Card>
       </section>
 
@@ -214,13 +227,22 @@ onMounted(() => {
               <th class="px-3 py-2.5 font-medium">{{ t('finance.profit.table.client') }}</th>
               <th class="px-3 py-2.5 font-medium">{{ t('finance.profit.table.product') }}</th>
               <th class="px-3 py-2.5 text-end font-medium">
-                {{ t('finance.profit.table.quantity') }}
+                {{ t('finance.profit.table.quantityLoaded') }}
+              </th>
+              <th class="px-3 py-2.5 text-end font-medium">
+                {{ t('finance.profit.table.quantityInvoiced') }}
+              </th>
+              <th class="px-3 py-2.5 text-end font-medium">
+                {{ t('finance.profit.table.transporterLossQuantity') }}
+              </th>
+              <th class="px-3 py-2.5 text-end font-medium">
+                {{ t('finance.profit.table.transporterLossIndemnity') }}
               </th>
               <th class="px-3 py-2.5 text-end font-medium">
                 {{ t('finance.profit.table.supplierUnitPrice') }}
               </th>
               <th class="px-3 py-2.5 text-end font-medium">
-                {{ t('finance.profit.table.unitCost') }}
+                {{ t('finance.profit.table.realTotalCost') }}
               </th>
               <th class="px-3 py-2.5 text-end font-medium">
                 {{ t('finance.profit.table.unitSellingPrice') }}
@@ -243,13 +265,22 @@ onMounted(() => {
               <td class="px-3 py-2.5">{{ row.client || '—' }}</td>
               <td class="px-3 py-2.5">{{ row.product }}</td>
               <td class="px-3 py-2.5 text-end">
-                <MonoValue :value="formatQuantity(num(row.quantity))" />
+                <MonoValue :value="formatQuantity(num(row.quantity_loaded))" />
+              </td>
+              <td class="px-3 py-2.5 text-end">
+                <MonoValue :value="formatQuantity(num(row.quantity_invoiced))" />
+              </td>
+              <td class="px-3 py-2.5 text-end">
+                <MonoValue :value="formatQuantity(num(row.transporter_loss_quantity))" />
+              </td>
+              <td class="px-3 py-2.5 text-end">
+                <MonoValue :value="formatMoney(num(row.transporter_loss_indemnity))" />
               </td>
               <td class="px-3 py-2.5 text-end">
                 <MonoValue :value="formatUnitMoney(num(row.supplier_unit_price))" />
               </td>
               <td class="px-3 py-2.5 text-end">
-                <MonoValue :value="formatUnitMoney(num(row.unit_cost))" />
+                <MonoValue :value="formatMoney(num(row.real_total_cost))" />
               </td>
               <td class="px-3 py-2.5 text-end">
                 <MonoValue :value="formatUnitMoney(num(row.unit_selling_price))" />
@@ -268,7 +299,7 @@ onMounted(() => {
               </td>
             </tr>
             <tr v-if="rows.length === 0">
-              <td colspan="9" class="text-texte-3 px-3 py-8 text-center">
+              <td colspan="12" class="text-texte-3 px-3 py-8 text-center">
                 {{ t('masterData.noRecords') }}
               </td>
             </tr>

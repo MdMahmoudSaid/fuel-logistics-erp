@@ -1,3 +1,4 @@
+import json
 from decimal import Decimal
 
 import pytest
@@ -47,6 +48,10 @@ from apps.finance.services import (
     TreasuryService,
     TreasuryTransferError,
 )
+
+
+def _proof_file(name="proof.jpg"):
+    return SimpleUploadedFile(name, b"fake-proof-bytes", content_type="image/jpeg")
 from apps.purchasing.models import CessionLetter, SupplierOrder
 from apps.sales.models import Invoice, Sale
 from apps.suppliers.models import Supplier
@@ -191,6 +196,7 @@ def _make_trip_for_deduction(suffix):
         purchase_date="2026-08-18",
         quantity_litres=Decimal("500000.00"),
         unit_price=Decimal("600.0000"),
+        status=SupplierOrder.Status.CONFIRMED,
         created_by=admin_user,
     )
     cession = CessionLetter.objects.create(
@@ -277,6 +283,7 @@ def _make_invoice_for_payment(suffix, total_amount=None, customer=None):
         purchase_date="2026-08-18",
         quantity_litres=Decimal("500000.00"),
         unit_price=Decimal("600.0000"),
+        status=SupplierOrder.Status.CONFIRMED,
         created_by=admin_user,
     )
     cession = CessionLetter.objects.create(
@@ -567,6 +574,7 @@ def _make_supplier_order(suffix):
         purchase_date="2026-08-18",
         quantity_litres=Decimal("500000.00"),
         unit_price=Decimal("600.0000"),
+        status=SupplierOrder.Status.CONFIRMED,
         created_by=admin_user,
     )
     return admin_user, supplier, supplier_order
@@ -1284,6 +1292,7 @@ def test_payable_supplier_debts_are_grouped_by_supplier(treasury_user):
         purchase_date="2026-08-19",
         quantity_litres=Decimal("10.00"),
         unit_price=Decimal("100.0000"),
+        status=SupplierOrder.Status.CONFIRMED,
         created_by=admin_user,
     )
     other_supplier = Supplier.objects.create(name="Other Supplier", country="Senegal")
@@ -1294,6 +1303,7 @@ def test_payable_supplier_debts_are_grouped_by_supplier(treasury_user):
         purchase_date="2026-08-20",
         quantity_litres=Decimal("5.00"),
         unit_price=Decimal("100.0000"),
+        status=SupplierOrder.Status.CONFIRMED,
         created_by=admin_user,
     )
 
@@ -1308,6 +1318,39 @@ def test_payable_supplier_debts_are_grouped_by_supplier(treasury_user):
 
 
 @pytest.mark.django_db
+def test_payable_supplier_debts_only_count_confirmed_orders(treasury_user):
+    admin_user, supplier, confirmed_order = _make_supplier_order("CTRL-SUP-CONF-ONLY")
+    product = Product.objects.get(code="gasoil")
+    SupplierOrder.objects.create(
+        reference="SO-SUPPAY-CTRL-SUP-CANCELLED",
+        supplier=supplier,
+        product=product,
+        purchase_date="2026-08-19",
+        quantity_litres=Decimal("100000.00"),
+        unit_price=Decimal("500.0000"),
+        status=SupplierOrder.Status.CANCELLED,
+        created_by=admin_user,
+    )
+    SupplierOrder.objects.create(
+        reference="SO-SUPPAY-CTRL-SUP-DRAFT",
+        supplier=supplier,
+        product=product,
+        purchase_date="2026-08-20",
+        quantity_litres=Decimal("100000.00"),
+        unit_price=Decimal("500.0000"),
+        status=SupplierOrder.Status.DRAFT,
+        created_by=admin_user,
+    )
+
+    supplier_row = ControlledDebtPaymentService.describe_supplier(supplier)
+
+    assert supplier_row["total_amount"] == confirmed_order.total_amount
+    assert supplier_row["paid_amount"] == Decimal("0.00")
+    assert supplier_row["remaining_amount"] == confirmed_order.total_amount
+    assert [line["id"] for line in supplier_row["lines"]] == [confirmed_order.id]
+
+
+@pytest.mark.django_db
 def test_controlled_supplier_payment_allocates_to_oldest_orders_first(treasury_user):
     admin_user, supplier, old_order = _make_supplier_order("CTRL-SUP-FIFO-A")
     product = Product.objects.get(code="gasoil")
@@ -1318,6 +1361,7 @@ def test_controlled_supplier_payment_allocates_to_oldest_orders_first(treasury_u
         purchase_date="2026-08-19",
         quantity_litres=Decimal("1000.00"),
         unit_price=Decimal("600.0000"),
+        status=SupplierOrder.Status.CONFIRMED,
         created_by=admin_user,
     )
     bank_account = BankAccount.objects.create(
@@ -1575,7 +1619,7 @@ def test_controlled_debt_payment_attaches_uploaded_proof_to_the_transaction(trea
     bank_account = BankAccount.objects.create(
         name="Main BOA Account ATTACH-SVC", opening_balance=Decimal("1000000.00")
     )
-    proof = SimpleUploadedFile("recu.pdf", b"%PDF-1.4 fake receipt", content_type="application/pdf")
+    proof = SimpleUploadedFile("recu.jpg", b"fake jpeg receipt", content_type="image/jpeg")
 
     result = ControlledDebtPaymentService.record_payment(
         debt_type=ControlledDebtPaymentService.SUPPLIER,
@@ -1601,7 +1645,7 @@ def test_controlled_debt_payment_api_accepts_multipart_note_and_attachment(finan
     bank_account = BankAccount.objects.create(
         name="Main BOA Account NOTE-API", opening_balance=Decimal("1000000.00")
     )
-    proof = SimpleUploadedFile("recu.pdf", b"%PDF-1.4 fake receipt", content_type="application/pdf")
+    proof = SimpleUploadedFile("recu.jpg", b"fake jpeg receipt", content_type="image/jpeg")
 
     response = finance_client.post(
         "/api/treasury-transactions/record-debt-payment/",
@@ -1625,6 +1669,34 @@ def test_controlled_debt_payment_api_accepts_multipart_note_and_attachment(finan
     # Host header (unreachable from the browser behind the dev proxy - see
     # docs/edit.md UI pass 2026-08-26, "Justificatif" fix).
     assert response.data["transaction"]["document_url"].startswith("/media/")
+
+
+@pytest.mark.django_db
+def test_controlled_debt_payment_api_rejects_non_image_attachment(finance_client):
+    _admin_user, supplier, _order = _make_supplier_order("NOTE-API-PDF")
+    bank_account = BankAccount.objects.create(
+        name="Main BOA Account NOTE-API-PDF", opening_balance=Decimal("1000000.00")
+    )
+    proof = SimpleUploadedFile("recu.pdf", b"%PDF-1.4 fake receipt", content_type="application/pdf")
+
+    response = finance_client.post(
+        "/api/treasury-transactions/record-debt-payment/",
+        {
+            "debt_type": "supplier",
+            "debt_id": supplier.id,
+            "bank_account": bank_account.id,
+            "amount": "100000.00",
+            "date": "2026-08-18",
+            "reference": "PAY-NOTE-API-PDF",
+            "note": "Paiement confirme par SMS.",
+            "attachment": proof,
+        },
+        format="multipart",
+    )
+
+    assert response.status_code == 400, response.data
+    assert response.data["attachment"][0] == "Seules les images JPG, JPEG, PNG ou WEBP sont autorisées."
+    assert TreasuryTransaction.objects.count() == 0
 
 
 @pytest.mark.django_db
@@ -1922,9 +1994,10 @@ def test_customer_payment_with_nested_allocations_via_api(finance_client):
             "payment_date": "2026-08-18",
             "method": CustomerPayment.Method.CASH,
             "cash_account": cash_account.id,
-            "allocations": [{"invoice": invoice.id, "amount": "8000000.00"}],
+            "allocations": json.dumps([{"invoice": invoice.id, "amount": "8000000.00"}]),
+            "proof": _proof_file(),
         },
-        format="json",
+        format="multipart",
     )
 
     assert response.status_code == 201, response.data
@@ -2007,6 +2080,12 @@ def test_transporter_ledger_endpoint_reports_net_outstanding(finance_client):
     advance = TransporterAdvance.objects.create(
         transporter=transporter, amount=Decimal("100000.00"), date="2026-08-18"
     )
+    TransportDeduction.objects.create(
+        trip=trip,
+        transporter=transporter,
+        chargeable_quantity=Decimal("50.00"),
+        unit_price=Decimal("850.0000"),
+    )
     TransportPayment.objects.create(
         trip=trip, transporter=transporter,
         calculation_method=TransportPayment.CalculationMethod.FIXED,
@@ -2018,6 +2097,41 @@ def test_transporter_ledger_endpoint_reports_net_outstanding(finance_client):
 
     assert response.status_code == 200
     assert response.data["net_outstanding"] == "557500.00"
+    assert response.data["payments"][0]["deduction_label"] == (
+        f"Manque quantite - {trip.reference} - 50.00 L x 850.0000 XOF/L"
+    )
+
+
+@pytest.mark.django_db
+def test_transporter_ledger_endpoint_counts_partial_treasury_settlements(
+    finance_client, treasury_user
+):
+    trip, transporter = _make_trip_for_deduction("API-TRP-PART")
+    payment = TransportPayment.objects.create(
+        trip=trip,
+        transporter=transporter,
+        calculation_method=TransportPayment.CalculationMethod.FIXED,
+        base_amount=Decimal("700000.00"),
+        status=TransportPayment.Status.PAYABLE,
+    )
+    bank_account = BankAccount.objects.create(
+        name="Main BOA Account", opening_balance=Decimal("1000000.00")
+    )
+    ControlledDebtPaymentService.record_payment(
+        debt_type="transporter",
+        debt_id=transporter.id,
+        bank_account_id=bank_account.id,
+        amount=Decimal("300000.00"),
+        date="2026-08-18",
+        reference="PAY-TRP-PART",
+        actor=treasury_user,
+    )
+
+    response = finance_client.get(f"/api/transporters/{transporter.id}/ledger/")
+
+    assert response.status_code == 200
+    assert response.data["settled"] == "300000.00"
+    assert response.data["net_outstanding"] == "400000.00"
 
 
 # ---------------------------------------------------------------------------
@@ -2041,14 +2155,106 @@ def test_customer_payment_serializer_exposes_note_and_destination(finance_client
             "destination": CustomerPayment.Destination.CASH,
             "cash_account": cash_account.id,
             "note": "Paiement remis par le chauffeur",
+            "proof": _proof_file(),
         },
-        format="json",
+        format="multipart",
     )
 
     assert response.status_code == 201, response.data
     assert response.data["destination"] == CustomerPayment.Destination.CASH
     assert response.data["note"] == "Paiement remis par le chauffeur"
     assert response.data["is_indirect"] is False
+
+
+@pytest.mark.django_db
+def test_customer_payment_api_requires_payment_proof(finance_client):
+    _admin_user, customer, _invoice = _make_invoice_for_payment("API-PROOF-REQ")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+
+    response = finance_client.post(
+        "/api/customer-payments/",
+        {
+            "customer": customer.id,
+            "amount": "150000.00",
+            "payment_date": "2026-08-18",
+            "method": CustomerPayment.Method.CASH,
+            "destination": CustomerPayment.Destination.CASH,
+            "cash_account": cash_account.id,
+        },
+        format="json",
+    )
+
+    assert response.status_code == 400, response.data
+    assert response.data["proof"][0] == "Le justificatif de paiement est obligatoire."
+    assert CustomerPayment.objects.count() == 0
+    assert TreasuryTransaction.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_customer_payment_api_rejects_non_image_proof(finance_client):
+    _admin_user, customer, _invoice = _make_invoice_for_payment("API-PROOF-PDF")
+    cash_account = CashAccount.objects.create(name="Main Cash PDF")
+    proof = SimpleUploadedFile("recu.pdf", b"%PDF-1.4 fake receipt", content_type="application/pdf")
+
+    response = finance_client.post(
+        "/api/customer-payments/",
+        {
+            "customer": customer.id,
+            "amount": "150000.00",
+            "payment_date": "2026-08-18",
+            "method": CustomerPayment.Method.CASH,
+            "destination": CustomerPayment.Destination.CASH,
+            "cash_account": cash_account.id,
+            "proof": proof,
+        },
+        format="multipart",
+    )
+
+    assert response.status_code == 400, response.data
+    assert response.data["proof"][0] == "Seules les images JPG, JPEG, PNG ou WEBP sont autorisées."
+    assert CustomerPayment.objects.count() == 0
+    assert TreasuryTransaction.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_customer_payment_api_creates_payment_proof_and_treasury_document(
+    finance_client, settings, tmp_path
+):
+    settings.MEDIA_ROOT = str(tmp_path)
+    _admin_user, customer, _invoice = _make_invoice_for_payment("API-PROOF-OK")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+    proof = SimpleUploadedFile("recu.jpg", b"fake-image-bytes", content_type="image/jpeg")
+
+    response = finance_client.post(
+        "/api/customer-payments/",
+        {
+            "customer": customer.id,
+            "amount": "150000.00",
+            "payment_date": "2026-08-18",
+            "method": CustomerPayment.Method.CASH,
+            "destination": CustomerPayment.Destination.CASH,
+            "cash_account": str(cash_account.id),
+            "proof": proof,
+        },
+        format="multipart",
+    )
+
+    assert response.status_code == 201, response.data
+    assert response.data["proof_url"]
+
+    payment = CustomerPayment.objects.get(pk=response.data["id"])
+    document = Document.objects.get(
+        content_type=ContentType.objects.get_for_model(CustomerPayment),
+        object_id=payment.id,
+        document_type="customer_payment_proof",
+    )
+    txn = TreasuryTransaction.objects.get(
+        source_content_type=ContentType.objects.get_for_model(CustomerPayment),
+        source_object_id=payment.id,
+    )
+
+    assert txn.document_id == document.id
+    assert document.uploaded_by_id == payment.recorded_by_id
 
 
 @pytest.mark.django_db
@@ -2063,8 +2269,9 @@ def test_customer_payment_destination_vers_moi_accepted_via_api(finance_client):
             "payment_date": "2026-08-18",
             "method": CustomerPayment.Method.CASH,
             "destination": CustomerPayment.Destination.VERS_MOI,
+            "proof": _proof_file(),
         },
-        format="json",
+        format="multipart",
     )
 
     assert response.status_code == 201, response.data
@@ -2093,8 +2300,9 @@ def test_direct_bank_customer_payment_creates_linked_treasury_transaction(financ
             "method": CustomerPayment.Method.BANK_TRANSFER,
             "destination": CustomerPayment.Destination.BANK,
             "bank_account": bank_account.id,
+            "proof": _proof_file(),
         },
-        format="json",
+        format="multipart",
     )
 
     assert response.status_code == 201, response.data
@@ -2124,8 +2332,9 @@ def test_direct_cash_customer_payment_creates_linked_treasury_transaction(financ
             "method": CustomerPayment.Method.CASH,
             "destination": CustomerPayment.Destination.CASH,
             "cash_account": cash_account.id,
+            "proof": _proof_file(),
         },
-        format="json",
+        format="multipart",
     )
 
     assert response.status_code == 201, response.data
@@ -2153,8 +2362,9 @@ def test_indirect_customer_payment_via_api_still_creates_no_treasury_transaction
             "payment_date": "2026-08-18",
             "method": CustomerPayment.Method.OTHER,
             "destination": CustomerPayment.Destination.INDIRECT,
+            "proof": _proof_file(),
         },
-        format="json",
+        format="multipart",
     )
 
     assert response.status_code == 201, response.data
@@ -2200,6 +2410,86 @@ def test_documents_endpoint_accepts_customer_payment_proof_upload(finance_client
     assert document.content_type == ContentType.objects.get_for_model(CustomerPayment)
     assert document.object_id == payment.id
     assert document.document_type == "customer_payment_proof"
+
+
+@pytest.mark.django_db
+def test_documents_endpoint_accepts_supplier_order_png_upload(settings, tmp_path):
+    settings.MEDIA_ROOT = str(tmp_path)
+    admin_role = Role.objects.get(name=Role.NAME_ADMIN)
+    admin_user = User.objects.create_user(
+        phone="+222DOCIMG", pin="1234", role=admin_role
+    )
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    product = Product.objects.get(code="gasoil")
+    supplier = Supplier.objects.create(name="Doc Image Supplier")
+    order = SupplierOrder.objects.create(
+        reference="SO-DOC-IMAGE",
+        supplier=supplier,
+        product=product,
+        purchase_date="2026-08-18",
+        quantity_litres=Decimal("1000.00"),
+        unit_price=Decimal("500.0000"),
+        created_by=admin_user,
+    )
+    image = SimpleUploadedFile("contract.png", b"fake-png", content_type="image/png")
+
+    response = client.post(
+        "/api/documents/",
+        {
+            "file": image,
+            "document_type": "purchase_contract",
+            "content_type_name": "supplierorder",
+            "object_id": str(order.id),
+        },
+        format="multipart",
+    )
+
+    assert response.status_code == 201, response.data
+    document = Document.objects.get(pk=response.data["id"])
+    assert document.file.name.endswith(".png")
+    assert document.content_type == ContentType.objects.get_for_model(SupplierOrder)
+    assert document.object_id == order.id
+
+
+@pytest.mark.django_db
+def test_documents_endpoint_rejects_non_image_upload(settings, tmp_path):
+    settings.MEDIA_ROOT = str(tmp_path)
+    admin_role = Role.objects.get(name=Role.NAME_ADMIN)
+    admin_user = User.objects.create_user(
+        phone="+222DOCPDF", pin="1234", role=admin_role
+    )
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    product = Product.objects.get(code="gasoil")
+    supplier = Supplier.objects.create(name="Doc PDF Supplier")
+    order = SupplierOrder.objects.create(
+        reference="SO-DOC-PDF",
+        supplier=supplier,
+        product=product,
+        purchase_date="2026-08-18",
+        quantity_litres=Decimal("1000.00"),
+        unit_price=Decimal("500.0000"),
+        created_by=admin_user,
+    )
+    pdf = SimpleUploadedFile(
+        "contract.pdf", b"%PDF-1.4\n", content_type="application/pdf"
+    )
+
+    response = client.post(
+        "/api/documents/",
+        {
+            "file": pdf,
+            "document_type": "purchase_contract",
+            "content_type_name": "supplierorder",
+            "object_id": str(order.id),
+        },
+        format="multipart",
+    )
+
+    assert response.status_code == 400
+    assert response.data["file"][0] == "Seules les images JPG, JPEG, PNG ou WEBP sont autorisées."
+    assert not Document.objects.filter(content_type=ContentType.objects.get_for_model(SupplierOrder), object_id=order.id).exists()
 
 
 @pytest.fixture
@@ -2377,15 +2667,23 @@ def test_active_shareholder_percentages_check_excludes_self_on_update():
 def test_shareholder_crud_via_admin_api(admin_client):
     created = admin_client.post(
         "/api/shareholders/",
-        {"name": "Amadou Diallo", "participation_percent": "50.00", "phone": "+22212345678"},
+        {
+            "name": "Amadou Diallo",
+            "participation_percent": "50.00",
+            "contribution": "1000000.00",
+            "phone": "+22212345678",
+        },
     )
     assert created.status_code == 201, created.data
+    assert created.data["contribution"] == "1000000.00"
 
     updated = admin_client.patch(
-        f"/api/shareholders/{created.data['id']}/", {"participation_percent": "55.00"}
+        f"/api/shareholders/{created.data['id']}/",
+        {"participation_percent": "55.00", "contribution": "1250000.00"},
     )
     assert updated.status_code == 200, updated.data
     assert updated.data["participation_percent"] == "55.00"
+    assert updated.data["contribution"] == "1250000.00"
 
 
 @pytest.mark.django_db

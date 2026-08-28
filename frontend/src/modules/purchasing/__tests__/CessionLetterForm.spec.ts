@@ -36,6 +36,7 @@ const ORDER: SupplierOrder = {
 }
 
 const create = vi.fn()
+const uploadDocument = vi.fn()
 const fetchNextCessionLetterReference = vi.fn(async () => 'CES-202608-0003')
 vi.mock('../api', () => ({
   supplierOrderResource: {
@@ -48,7 +49,7 @@ vi.mock('../api', () => ({
     update: vi.fn(),
     list: vi.fn(),
   },
-  uploadDocument: vi.fn(),
+  uploadDocument: (payload: Record<string, unknown>) => uploadDocument(payload),
   fetchNextCessionLetterReference: () => fetchNextCessionLetterReference(),
 }))
 
@@ -97,6 +98,74 @@ describe('CessionLetterForm', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('Ce champ est requis.')
+  })
+
+  it('shows allocation details, default status and proof upload before first save', async () => {
+    const router = makeRouter({ supplier_order: '5' })
+    await router.isReady()
+    const wrapper = mount(CessionLetterForm, { global: { plugins: [router] } })
+    await flushPromises()
+
+    await wrapper.find('#authorized_quantity').setValue('30000')
+    await flushPromises()
+
+    const text = wrapper.text().replace(/[⁦⁩]/g, '')
+    expect(text).toContain('Contre la commande')
+    expect(text).toContain('SO-005')
+    expect(text).toContain('Acheté : 100 000 L')
+    expect(text).toContain('Déjà alloué : 60 000 L')
+    expect(text).toContain('Demandé : 30 000 L')
+    expect(text).toContain('10 000 L resteraient disponibles')
+    expect(text).toContain('Statut')
+    expect(text).toContain('Active')
+    expect(text).toContain('Justificatif')
+    expect(wrapper.find('input[type="file"]').exists()).toBe(true)
+  })
+
+  it('uploads a selected image automatically after creating the cession letter', async () => {
+    create.mockResolvedValueOnce({ id: 17 })
+    uploadDocument.mockResolvedValueOnce(undefined)
+    const router = makeRouter({ supplier_order: '5' })
+    await router.isReady()
+    const wrapper = mount(CessionLetterForm, { global: { plugins: [router] } })
+    await flushPromises()
+
+    const file = new File(['jpg'], 'cession.jpg', { type: 'image/jpeg' })
+    const input = wrapper.find<HTMLInputElement>('input[type="file"]')
+    Object.defineProperty(input.element, 'files', { value: [file], configurable: true })
+    await input.trigger('change')
+
+    await wrapper.find('#authorized_quantity').setValue('30000')
+    await wrapper.find('#issue_date').setValue('2026-08-20')
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(create).toHaveBeenCalled()
+    expect(uploadDocument).toHaveBeenCalledWith(
+      expect.objectContaining({
+        file,
+        documentType: 'cession_proof',
+        contentTypeName: 'cessionletter',
+        objectId: 17,
+      }),
+    )
+  })
+
+  it('rejects a PDF proof before calling the API', async () => {
+    const router = makeRouter({ supplier_order: '5' })
+    await router.isReady()
+    const wrapper = mount(CessionLetterForm, { global: { plugins: [router] } })
+    await flushPromises()
+
+    const input = wrapper.find<HTMLInputElement>('input[type="file"]')
+    Object.defineProperty(input.element, 'files', {
+      value: [new File(['pdf'], 'cession.pdf', { type: 'application/pdf' })],
+      configurable: true,
+    })
+    await input.trigger('change')
+
+    expect(wrapper.text()).toContain('Seules les images JPG, JPEG, PNG ou WEBP sont autorisées.')
+    expect(uploadDocument).not.toHaveBeenCalled()
   })
 })
 

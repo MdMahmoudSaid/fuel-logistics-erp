@@ -93,6 +93,14 @@
     },
     "enRouteNow": "في الطريق الآن ({count})",
     "noTripsEnRoute": "لا توجد رحلات في الطريق حاليًا.",
+    "quickActions": {
+      "title": "إجراءات سريعة",
+      "newSupplierOrder": "طلب شراء جديد",
+      "newCessionLetter": "خطاب تنازل جديد",
+      "newTrip": "رحلة جديدة (تحميل)",
+      "newCustomerPayment": "دفعة عميل جديدة",
+      "newPayment": "دفعة جديدة"
+    },
     "volumeTrend": "الكميات المسلَّمة — آخر 14 يومًا",
     "toTreat": "بحاجة إلى معالجة",
     "unjustifiedLosses": "فروقات غير مبررة",
@@ -101,6 +109,36 @@
     "noUrgentTrips": "لا توجد حالات عاجلة.",
     "periodDetail": "تفاصيل الفترة",
     "noAmounts": "لا توجد مبالغ.",
+    "final": {
+      "periodFilterHelp": "تقوم الفترة بتصفية المبيعات والتحصيلات والمصروفات والكميات والأرباح.",
+      "periodRevenue": "إيرادات الفترة",
+      "periodCollections": "تحصيلات الفترة",
+      "periodPaidExpenses": "المصروفات المدفوعة للفترة",
+      "periodAccountingProfit": "الربح المحاسبي للفترة",
+      "currentTreasuryBalance": "رصيد الخزينة الحالي",
+      "availableTreasury": "الخزينة المتاحة",
+      "banks": "البنوك",
+      "cashAccounts": "الصناديق",
+      "partyBalances": "الأرصدة حسب الطرف",
+      "customers": "العملاء",
+      "suppliers": "الموردون",
+      "transporters": "الناقلون",
+      "shareholders": "المساهمون / الشركاء",
+      "customsAndOther": "الجمارك / العبور / رسوم أخرى",
+      "companyStock": "مخزون الشركة",
+      "companyStockTrips": "{count} رحلة في المخزون حاليًا",
+      "openCustomers": "{count} عميل لديه رصيد مفتوح",
+      "openSuppliers": "{count} مورد لديه دين",
+      "openTransporters": "{count} ناقل لديه رصيد مفتوح",
+      "largestCustomerDebt": "أكبر رصيد عميل: {name}",
+      "largestSupplierDebt": "أكبر مبلغ غير مدفوع لمورد: {name}",
+      "largestTransporterBalance": "أكبر رصيد ناقل: {name}",
+      "nothingToSettle": "لا شيء للتسوية",
+      "withdrawn": "المسحوب: {amount}",
+      "openLoans": "السلف المفتوحة: {amount}",
+      "customs": "الجمارك: {amount}",
+      "otherFees": "رسوم أخرى: {amount}"
+    },
     "sections": {
       "operations": "العمليات",
       "fuel": "الوقود",
@@ -135,7 +173,8 @@
       "shareholdersRemaining": "الربح المتبقي غير الموزع",
       "shareholdersOpenLoans": "السلف المفتوحة"
     },
-    "viewDetails": "عرض التفاصيل"
+    "viewDetails": "عرض التفاصيل",
+    "viewAll": "عرض الكل"
   },
   "masterData": {
     "add": "إضافة",
@@ -192,7 +231,8 @@
       "ownership": "نوع الملكية",
       "ownerTransporterId": "معرّف الناقل المالك",
       "defaultDriverId": "معرّف السائق الافتراضي",
-      "participationPercent": "نسبة المشاركة"
+      "participationPercent": "نسبة المشاركة",
+      "contribution": "المساهمة"
     },
     "ownershipOptions": {
       "companyOwned": "ملك الشركة",
@@ -219,6 +259,7 @@
       "SENT_FOR_LOADING": "أُرسل للتحميل",
       "LOADING": "التحميل جارٍ",
       "LOADED": "محمَّل",
+      "ROAD_TRANSIT": "عبور بري",
       "IN_TRANSIT": "في الطريق",
       "BORDER": "الحدود",
       "CUSTOMS": "الجمارك",
@@ -246,6 +287,8 @@
       "quantityLoaded": "الكمية المحمَّلة",
       "loadingDate": "تاريخ التحميل",
       "blReference": "مرجع بوليصة الشحن",
+      "proof": "إثبات",
+      "viewProof": "عرض الإثبات",
       "client": "العميل",
       "companyStock": "مخزون الشركة",
       "assignCustomer": "تعيين عميل",
@@ -284,11 +327,16 @@
       "margin": "ربحية الرحلة",
       "marginUnavailable": "متاحة بعد تأكيد التسليم.",
       "marginLoadError": "تعذر تحميل ربحية هذه الرحلة.",
+      "quantityLoaded": "الكمية المحمّلة",
+      "quantityInvoiced": "الكمية المستلمة/المفوترة",
       "revenue": "رقم الأعمال",
+      "transporterLossQuantity": "فاقد الناقل",
+      "transporterLossIndemnity": "تعويض فاقد الناقل",
       "fuelPurchaseCost": "شراء الوقود",
       "transportCost": "تكلفة الناقل",
       "totalExpenses": "مصاريف إضافية",
       "unitCost": "تكلفة الوحدة",
+      "realTotalCost": "التكلفة الفعلية الإجمالية",
       "unitProfit": "ربح الوحدة",
       "netMargin": "الهامش الصافي"
     },
@@ -402,6 +450,26 @@
     "PER_TRUCK": "لكل شاحنة",
     "MANUAL": "يدوي"
   },
+  "purchaseOrderStatus": {
+    "DRAFT": "مسودة",
+    "CONFIRMED": "مؤكد",
+    "CANCELLED": "ملغى"
+  },
+  "expenseStatus": {
+    "UNPAID": "غير مدفوع",
+    "PARTIALLY_PAID": "مدفوع جزئيًا",
+    "PAID": "مدفوع",
+    "CANCELLED": "ملغى"
+  },
+  "statementType": {
+    "INVOICE": "فاتورة",
+    "PURCHASE": "شراء",
+    "PAYMENT": "دفعة",
+    "PROFIT_SHARE": "حصة أرباح",
+    "WITHDRAWAL": "سحب",
+    "LOAN_GIVEN": "سلفة ممنوحة",
+    "LOAN_RECEIVED": "سلفة مستلمة"
+  },
   "expenseCategory": {
     "customs": "الجمارك",
     "import_intention": "نية الاستيراد",
@@ -497,7 +565,11 @@
       "destinationIndirect": "غير مباشر (بدون حركة خزينة)",
       "note": "ملاحظة",
       "proofImage": "صورة الإثبات",
+      "proofLabel": "إثبات الدفع",
+      "chooseFile": "اختيار ملف",
+      "noFileSelected": "لم يتم اختيار ملف",
       "proofRequired": "إثبات الدفع إلزامي.",
+      "imageOnlyError": "يُسمح فقط بصور JPG أو JPEG أو PNG أو WEBP.",
       "proofUploadError": "تم تسجيل الدفعة، لكن تعذر رفع صورة الإثبات.",
       "outstandingBalance": "إجمالي دين العميل",
       "allocateToInvoices": "توزيع على الفواتير",
@@ -534,7 +606,11 @@
       "newPayment": "دفعة جديدة",
       "back": "رجوع",
       "loadError": "تعذر تحميل دفتر أستاذ العميل.",
+      "totalInvoiced": "إجمالي الفواتير",
+      "totalReceived": "إجمالي المقبوض",
       "outstandingBalance": "الرصيد المستحق",
+      "openInvoices": "الفواتير المفتوحة",
+      "lastPayment": "آخر دفعة",
       "invoices": "الفواتير",
       "table": {
         "invoice": "الفاتورة",
@@ -550,12 +626,15 @@
         "method": "الطريقة",
         "indirect": "غير مباشر",
         "reference": "المرجع",
-        "amount": "المبلغ"
+        "amount": "المبلغ",
+        "proof": "الإثبات"
       },
-      "noPayments": "لا توجد دفعات."
+      "noPayments": "لا توجد دفعات.",
+      "downloadProof": "تنزيل الإثبات"
     },
     "transporterLedger": {
       "title": "دفتر أستاذ الناقل — {name}",
+      "newPayment": "تسجيل دفعة",
       "back": "رجوع",
       "loadError": "تعذر تحميل دفتر أستاذ الناقل.",
       "grossEarned": "الإجمالي المكتسب",
@@ -617,6 +696,7 @@
       "reference": "المرجع",
       "note": "ملاحظة",
       "attachment": "مرفق / إثبات الدفع",
+      "imageOnlyError": "يُسمح فقط بصور JPG أو JPEG أو PNG أو WEBP.",
       "submit": "تسجيل الدفع",
       "loadError": "تعذر تحميل الديون القابلة للدفع.",
       "saveError": "تعذر تسجيل هذه الدفعة.",
@@ -634,7 +714,8 @@
         "bankRequired": "اختر بنكًا.",
         "positiveAmount": "يجب أن يكون المبلغ أكبر من صفر.",
         "aboveRemaining": "المبلغ يتجاوز المتبقي للدفع.",
-        "insufficientBank": "الرصيد البنكي غير كافٍ لإجراء هذا الدفع."
+        "insufficientBank": "الرصيد البنكي غير كافٍ لإجراء هذا الدفع.",
+        "debtNotFound": "لم يتم العثور على دين قابل للدفع لهذه الجهة."
       }
     },
     "shareholder": {
@@ -713,6 +794,13 @@
       "loadError": "تعذر تحميل تقرير الأرباح.",
       "currentProfit": "الربح الحالي الإرشادي (غير موزع)",
       "periodProfit": "ربح الفترة",
+      "accountingProfit": "الربح المحاسبي",
+      "accountingProfitHelp": "ربح محسوب من المبيعات - التكاليف المسجلة للفترة.",
+      "receivedProfit": "الربح المحصّل",
+      "receivedProfitHelp": "الجزء المحصل فعلياً عند توفر بيانات التحصيل.",
+      "distributableProfit": "الربح القابل للتوزيع",
+      "distributableProfitHelp": "ربح تم اعتماده للتوزيع على المساهمين.",
+      "distributionNote": "الربح المحاسبي لا يصبح قابلاً للتوزيع تلقائياً. يجب اعتماد التوزيع على الشركاء بشكل منفصل.",
       "tripsCount": "عدد الرحلات المحتسبة",
       "revenue": "رقم الأعمال",
       "costDisclaimer": "هذه المبالغ هي التكاليف المحتسبة في سعر التكلفة. لا تمثل بالضرورة المدفوعات التي تمت بالفعل.",
@@ -723,13 +811,18 @@
       "borderCost": "رسوم الحدود المحتسبة",
       "loadingCost": "رسوم التحميل المحتسبة",
       "otherCosts": "رسوم أخرى محتسبة",
+      "lossIndemnity": "تعويض فاقد الناقل",
       "table": {
         "tripReference": "مرجع الرحلة",
         "client": "العميل",
         "product": "المنتج",
         "quantity": "الكمية",
+        "quantityLoaded": "المحمّلة",
+        "quantityInvoiced": "المستلمة/المفوترة",
+        "transporterLossQuantity": "فاقد الناقل",
+        "transporterLossIndemnity": "تعويض الفاقد",
         "supplierUnitPrice": "سعر المورد/لتر",
-        "unitCost": "سعر التكلفة/لتر",
+        "realTotalCost": "التكلفة الفعلية الإجمالية",
         "unitSellingPrice": "سعر البيع/لتر",
         "unitProfit": "الربح/لتر",
         "totalProfit": "إجمالي الربح"
@@ -773,11 +866,12 @@
       "saving": "جارٍ الحفظ…",
       "save": "حفظ",
       "saveError": "تعذر الحفظ — تحقق من الحقول وصلاحياتك.",
-      "document": "وثيقة التنازل",
-      "noDocument": "لا توجد وثيقة مرفقة.",
+      "document": "إثبات",
+      "noDocument": "لا يوجد إثبات مرفق.",
       "uploading": "جارٍ الرفع…",
       "upload": "رفع",
-      "uploadError": "تعذر رفع الوثيقة."
+      "uploadError": "تعذر رفع الوثيقة.",
+      "imageOnlyError": "يُسمح فقط بصور JPG أو JPEG أو PNG أو WEBP."
     },
     "cessionList": {
       "title": "خطابات التنازل",
@@ -788,8 +882,10 @@
         "authorized": "المصرَّح به (لتر)",
         "remaining": "المتبقي (لتر)",
         "issueDate": "تاريخ الإصدار",
-        "status": "الحالة"
+        "status": "الحالة",
+        "proof": "إثبات"
       },
+      "viewProof": "عرض الإثبات",
       "noCessions": "لا توجد خطابات تنازل.",
       "loadError": "تعذر تحميل خطابات التنازل."
     },
@@ -814,8 +910,8 @@
       "saving": "جارٍ الحفظ…",
       "save": "حفظ",
       "saveError": "تعذر الحفظ — تحقق من الحقول وصلاحياتك.",
-      "documents": "الوثائق",
-      "noDocuments": "لا توجد وثائق مرفقة.",
+      "documents": "إثباتات",
+      "noDocuments": "لا يوجد إثبات مرفق.",
       "documentTypes": {
         "purchase_contract": "عقد شراء",
         "receipt": "إيصال",
@@ -824,6 +920,8 @@
       "uploading": "جارٍ الرفع…",
       "upload": "رفع",
       "uploadError": "تعذر رفع الوثيقة.",
+      "uploadAfterCreateError": "تم إنشاء الطلب، لكن تعذر رفع بعض الوثائق.",
+      "imageOnlyError": "يُسمح فقط بصور JPG أو JPEG أو PNG أو WEBP.",
       "cessionLetters": "خطابات التنازل",
       "newCession": "تنازل جديد",
       "table": {
@@ -841,18 +939,21 @@
       "totalPurchased": "إجمالي المشتريات",
       "totalPaid": "إجمالي المدفوع",
       "outstandingBalance": "الرصيد المستحق",
+      "lastPayment": "آخر دفعة",
       "reliquatByProduct": "الرصيد المتبقي حسب المنتج",
       "product": "المنتج",
       "totalReliquat": "إجمالي الرصيد المتبقي (لتر)",
       "noPurchaseHistory": "لا يوجد سجل مشتريات.",
       "purchaseHistory": "سجل المشتريات",
+      "viewProof": "عرض الإثبات",
       "table": {
         "reference": "المرجع",
         "product": "المنتج",
         "date": "التاريخ",
         "purchased": "المشترى (لتر)",
         "reliquat": "الرصيد المتبقي (لتر)",
-        "status": "الحالة"
+        "status": "الحالة",
+        "proof": "إثبات"
       },
       "paymentsAndAdvances": "الدفعات والسلف",
       "paymentsTable": {
@@ -986,7 +1087,16 @@
       "applyCorrection": "تطبيق التصحيح",
       "correctionError": "تعذر تطبيق هذا التصحيح.",
       "correctionAuditTrail": "سجل التصحيحات",
-      "noCorrections": "لا توجد تصحيحات."
+      "noCorrections": "لا توجد تصحيحات.",
+      "payments": "دفعات الفاتورة",
+      "paymentDate": "التاريخ",
+      "method": "الطريقة",
+      "reference": "المرجع",
+      "amount": "المبلغ",
+      "proof": "الإثبات",
+      "viewProof": "عرض الإثبات",
+      "downloadProof": "تنزيل الإثبات",
+      "noPayments": "لا توجد دفعات مخصصة."
     },
     "saleList": {
       "title": "المبيعات",
@@ -1034,8 +1144,8 @@
     "title": "التقارير",
     "reportType": "نوع التقرير",
     "runReport": "تشغيل التقرير",
-    "exportCsv": "تصدير CSV",
-    "exportExcel": "تصدير Excel",
+    "print": "طباعة",
+    "exportPdf": "تصدير PDF",
     "loadError": "تعذر تحميل هذا التقرير.",
     "exportError": "تعذر تصدير هذا التقرير.",
     "noData": "لا توجد بيانات لهذا الاختيار.",
@@ -1093,6 +1203,10 @@
       "cash-statement": {
         "label": "كشف حساب الصندوق",
         "idLabel": "معرّف حساب الصندوق"
+      },
+      "shareholder-statement": {
+        "label": "كشف حساب المساهم",
+        "idLabel": "معرّف المساهم"
       }
     },
     "fields": {
@@ -1110,6 +1224,10 @@
       "status": "الحالة",
       "component": "المكوّن",
       "quantity": "الكمية",
+      "quantity_loaded": "الكمية المحمّلة",
+      "quantity_invoiced": "الكمية المستلمة/المفوترة",
+      "transporter_loss_quantity": "فاقد الناقل",
+      "transporter_loss_indemnity": "تعويض فاقد الناقل",
       "trip_reference": "مرجع الرحلة",
       "control_date": "تاريخ المراقبة",
       "loaded_quantity": "الكمية المحمَّلة",
@@ -1126,6 +1244,7 @@
       "border_cost": "رسوم الحدود",
       "loading_cost": "رسوم التحميل",
       "additional_costs": "تكاليف إضافية",
+      "real_total_cost": "التكلفة الفعلية الإجمالية",
       "unit_cost": "تكلفة الوحدة",
       "unit_profit": "ربح الوحدة",
       "current_margin": "الهامش الحالي",

@@ -3,6 +3,7 @@ from decimal import Decimal
 
 import pytest
 from django.contrib.contenttypes.models import ContentType
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import IntegrityError, transaction
 from django.urls import resolve
 from django.utils import timezone
@@ -12,6 +13,7 @@ from rest_framework.test import APIClient
 from apps.accounts.models import Role, User
 from apps.core.models import LossToleranceConfig, Product
 from apps.customers.models import Customer
+from apps.documents.models import Document
 from apps.finance.models import (
     Expense,
     ExpenseAllocation,
@@ -51,6 +53,7 @@ FULL_SEQUENCE_AFTER_ASSIGNED = [
     Trip.Status.SENT_FOR_LOADING,
     Trip.Status.LOADING,
     Trip.Status.LOADED,
+    Trip.Status.ROAD_TRANSIT,
     Trip.Status.IN_TRANSIT,
     Trip.Status.BORDER,
     Trip.Status.CUSTOMS,
@@ -137,6 +140,31 @@ def _make_trip(
         status=status,
         created_by=fx["admin_user"],
     )
+
+
+@pytest.mark.django_db
+def test_trip_serializer_includes_cession_letter_proof_documents():
+    fx = _setup_fixtures("PROOF")
+    truck = _make_truck("TRK-PROOF")
+    trip = _make_trip(fx, truck, "TRIP-PROOF-001")
+    Document.objects.create(
+        file=SimpleUploadedFile(
+            "cession-proof.jpg", b"fake-proof-bytes", content_type="image/jpeg"
+        ),
+        document_type="cession_proof",
+        uploaded_by=fx["admin_user"],
+        content_type=ContentType.objects.get_for_model(CessionLetter),
+        object_id=fx["cession"].id,
+    )
+
+    data = TripSerializer(trip).data
+
+    assert data["cession_letter_detail"]["reference"] == fx["cession"].reference
+    proof_file = data["cession_letter_detail"]["documents"][0]["file"]
+    # Storage appends a random suffix when a same-named file from an earlier
+    # test run is still on disk (media/ isn't wiped between runs) - assert on
+    # the stem rather than an exact filename match.
+    assert "cession-proof" in proof_file and proof_file.endswith(".jpg")
 
 
 def _advance_to_completed(trip, actor):
@@ -231,6 +259,30 @@ def test_trip_status_history_is_immutable():
 
     # Confirm nothing was actually persisted despite the attempted edit.
     assert TripStatusHistory.objects.get(pk=entry.pk).notes == "go"
+
+
+@pytest.mark.django_db
+def test_trip_workflow_requires_road_transit_before_transit():
+    fx = _setup_fixtures("ROAD")
+    truck = _make_truck("TRK-ROAD")
+    trip = _make_trip(fx, truck, "TRIP-ROAD-001", status=Trip.Status.LOADED)
+
+    allowed = TripWorkflowService.get_allowed_targets(trip)
+
+    assert allowed == {Trip.Status.ROAD_TRANSIT, Trip.Status.CANCELLED, Trip.Status.BLOCKED}
+
+    with pytest.raises(InvalidTripTransition):
+        TripWorkflowService.transition_trip(trip.id, Trip.Status.IN_TRANSIT, fx["admin_user"])
+
+    TripWorkflowService.transition_trip(trip.id, Trip.Status.ROAD_TRANSIT, fx["admin_user"])
+    trip.refresh_from_db()
+
+    assert trip.status == Trip.Status.ROAD_TRANSIT
+    assert TripWorkflowService.get_allowed_targets(trip) == {
+        Trip.Status.IN_TRANSIT,
+        Trip.Status.CANCELLED,
+        Trip.Status.BLOCKED,
+    }
 
 
 @pytest.mark.django_db
@@ -376,6 +428,7 @@ def test_workflow_blocks_client_statuses_without_customer_and_routes_to_company_
         Trip.Status.SENT_FOR_LOADING,
         Trip.Status.LOADING,
         Trip.Status.LOADED,
+        Trip.Status.ROAD_TRANSIT,
         Trip.Status.IN_TRANSIT,
         Trip.Status.BORDER,
         Trip.Status.CUSTOMS,
@@ -416,6 +469,7 @@ def test_workflow_allows_client_statuses_after_customer_assignment():
         Trip.Status.SENT_FOR_LOADING,
         Trip.Status.LOADING,
         Trip.Status.LOADED,
+        Trip.Status.ROAD_TRANSIT,
         Trip.Status.IN_TRANSIT,
         Trip.Status.BORDER,
         Trip.Status.CUSTOMS,
@@ -771,6 +825,7 @@ _FORWARD_SEQUENCE_STATUS_NAMES = [
     "SENT_FOR_LOADING",
     "LOADING",
     "LOADED",
+    "ROAD_TRANSIT",
     "IN_TRANSIT",
     "BORDER",
     "CUSTOMS",
@@ -1148,8 +1203,9 @@ def test_delivery_service_unit_selling_price_override_matching_existing_skips_du
 
 @pytest.mark.django_db
 def test_delivery_service_happy_path_creates_deduction_sale_and_invoice():
-    # Mandatory recette scenario (plan Section 4 / Etape 7): 45,000 L loaded,
-    # 44,850 L received, 100 L tolerance -> 150 L loss, 50 L chargeable.
+    # Client adjustment: any missing quantity is deducted from the transporter
+    # at the trip selling price, regardless of the historic tolerance used for
+    # the loss report.
     fx = _fixtures_with_customer("DS-HAPPY")
     trip = _deliverable_trip(fx, "TRIP-DS-HAPPY-001")
     ProductSellingPriceHistory.objects.create(
@@ -1181,9 +1237,9 @@ def test_delivery_service_happy_path_creates_deduction_sale_and_invoice():
 
     deduction = TransportDeduction.objects.get(trip=trip)
     assert deduction.transporter_id == fx["transporter"].id
-    assert deduction.chargeable_quantity == Decimal("50.00")
-    assert deduction.unit_price == Decimal("600.0000")  # supplier purchase price
-    assert deduction.amount == Decimal("30000.00")
+    assert deduction.chargeable_quantity == Decimal("150.00")
+    assert deduction.unit_price == Decimal("650.0000")
+    assert deduction.amount == Decimal("97500.00")
     assert deduction.status == TransportDeduction.Status.DRAFT
 
     sale = trip.sale
@@ -1196,6 +1252,50 @@ def test_delivery_service_happy_path_creates_deduction_sale_and_invoice():
     assert invoice.status == "DRAFT"
     assert invoice.total_amount == sale.subtotal
     assert invoice.issued_date.isoformat() == "2026-08-18"
+
+
+@pytest.mark.django_db
+def test_delivery_service_syncs_transport_deduction_without_duplicates():
+    fx = _fixtures_with_customer("DS-DEDUCT-SYNC")
+    trip = _deliverable_trip(fx, "TRIP-DS-DEDUCT-SYNC-001")
+    payment = TransportPayment.objects.create(
+        trip=trip,
+        transporter=fx["transporter"],
+        calculation_method=TransportPayment.CalculationMethod.FIXED,
+        base_amount=Decimal("700000.00"),
+    )
+
+    DeliveryService.sync_transport_shortage_deduction(
+        trip=trip,
+        received_qty=Decimal("44900.00"),
+        unit_selling_price=Decimal("600.0000"),
+    )
+    DeliveryService.sync_transport_shortage_deduction(
+        trip=trip,
+        received_qty=Decimal("44800.00"),
+        unit_selling_price=Decimal("610.0000"),
+    )
+
+    assert TransportDeduction.objects.filter(trip=trip).count() == 1
+    deduction = TransportDeduction.objects.get(trip=trip)
+    assert deduction.chargeable_quantity == Decimal("200.00")
+    assert deduction.unit_price == Decimal("610.0000")
+    assert deduction.amount == Decimal("122000.00")
+
+    payment.refresh_from_db()
+    assert payment.deduction_amount == Decimal("122000.00")
+    assert payment.net_amount == Decimal("578000.00")
+
+    DeliveryService.sync_transport_shortage_deduction(
+        trip=trip,
+        received_qty=Decimal("45000.00"),
+        unit_selling_price=Decimal("610.0000"),
+    )
+
+    assert not TransportDeduction.objects.filter(trip=trip).exists()
+    payment.refresh_from_db()
+    assert payment.deduction_amount == Decimal("0.00")
+    assert payment.net_amount == Decimal("700000.00")
 
 
 @pytest.mark.django_db
@@ -1222,7 +1322,7 @@ def test_delivery_confirmation_generates_fac_invoice_number():
 
 
 @pytest.mark.django_db
-def test_delivery_service_no_deduction_when_loss_within_tolerance():
+def test_delivery_service_deducts_missing_quantity_even_within_tolerance():
     fx = _fixtures_with_customer("DS-INTOL")
     trip = _deliverable_trip(fx, "TRIP-DS-INTOL-001")
     ProductSellingPriceHistory.objects.create(
@@ -1238,7 +1338,10 @@ def test_delivery_service_no_deduction_when_loss_within_tolerance():
         controller=fx["admin_user"],
     )
 
-    assert not TransportDeduction.objects.filter(trip=trip).exists()
+    deduction = TransportDeduction.objects.get(trip=trip)
+    assert deduction.chargeable_quantity == Decimal("50.00")
+    assert deduction.unit_price == Decimal("650.0000")
+    assert deduction.amount == Decimal("32500.00")
 
 
 @pytest.mark.django_db
@@ -1745,7 +1848,8 @@ def test_api_trip_margin_unavailable_before_sale():
 def test_api_trip_margin_breakdown_after_delivery():
     """Guide Section 9.1's cost breakdown, end-to-end through the API:
     45,000 L @ 600 fuel cost, no transport payment or expenses recorded,
-    44,850 L delivered @ 650 -> margin = revenue - fuel cost."""
+    44,850 L delivered @ 650, 150 L charged back to the transporter at
+    selling price -> margin = revenue + loss indemnity - real loaded cost."""
     fx = _fixtures_with_customer("API-MARGIN-OK")
     trip = _deliverable_trip(fx, "TRIP-API-MARGIN-OK-001")
     ProductSellingPriceHistory.objects.create(
@@ -1769,10 +1873,15 @@ def test_api_trip_margin_breakdown_after_delivery():
     # revenue/fuel_purchase_cost aren't quantized in TripProfitService (they
     # multiply a 2dp quantity by a 4dp unit price) - only margin is.
     assert response.data["revenue"] == "29152500.000000"
+    assert response.data["quantity_loaded"] == "45000.00"
+    assert response.data["quantity_invoiced"] == "44850.00"
+    assert response.data["transporter_loss_quantity"] == "150.00"
+    assert response.data["transporter_loss_indemnity"] == "97500.00"
     assert response.data["fuel_purchase_cost"] == "27000000.000000"
     assert response.data["transport_cost"] == "0.00"
     assert response.data["total_expenses"] == "0.00"
-    assert response.data["margin"] == "2152500.00"
+    assert response.data["real_total_cost"] == "27000000.000000"
+    assert response.data["margin"] == "2250000.00"
 
 
 # ---------------------------------------------------------------------------

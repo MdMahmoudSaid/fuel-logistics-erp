@@ -7,11 +7,27 @@ import MonoValue from '@/components/ui/MonoValue.vue'
 import { fetchPayableDebts, recordDebtPayment } from './api'
 import type { DebtPaymentType, PayableDebt } from './types'
 import { formatMoney } from '@/utils/currency'
+import { IMAGE_UPLOAD_ACCEPT, isAllowedImageFile } from '@/utils/imageUpload'
 
 const emit = defineEmits<{
   success: []
   cancel: []
 }>()
+
+const props = withDefaults(
+  defineProps<{
+    initialDebtType?: DebtPaymentType
+    initialDebtId?: number | null
+    lockDebtType?: boolean
+    lockDebt?: boolean
+  }>(),
+  {
+    initialDebtType: 'supplier',
+    initialDebtId: null,
+    lockDebtType: false,
+    lockDebt: false,
+  },
+)
 
 const { t } = useI18n()
 
@@ -33,17 +49,27 @@ const DEBT_TYPES: { value: DebtPaymentType; labelKey: string }[] = [
 
 const bankAccountResource = createResourceApi<BankOption>('/bank-accounts/')
 
-const debtType = ref<DebtPaymentType>('supplier')
+const debtType = ref<DebtPaymentType>(props.initialDebtType)
 const debtId = ref('')
 const bankAccountId = ref('')
 const amount = ref('')
 const reference = ref('')
 const note = ref('')
 const attachment = ref<File | null>(null)
+const attachmentError = ref('')
 const date = ref(new Date().toISOString().slice(0, 10))
 
 function onAttachmentChange(event: Event) {
-  attachment.value = (event.target as HTMLInputElement).files?.[0] ?? null
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0] ?? null
+  if (file && !isAllowedImageFile(file)) {
+    attachment.value = null
+    input.value = ''
+    attachmentError.value = t('finance.debtPayment.imageOnlyError')
+    return
+  }
+  attachment.value = file
+  attachmentError.value = ''
 }
 const debts = ref<PayableDebt[]>([])
 const banks = ref<BankOption[]>([])
@@ -68,8 +94,26 @@ async function loadDebts() {
   debtLoading.value = true
   error.value = ''
   try {
-    debts.value = await fetchPayableDebts(debtType.value)
-    debtId.value = debts.value[0]?.id ? String(debts.value[0].id) : ''
+    const fetched = await fetchPayableDebts(debtType.value)
+    if (props.lockDebt) {
+      // Locked to a specific entity (e.g. opened from a transporter's own
+      // ledger page): never let a missing match silently fall back to
+      // another entity's debt, and never expose other entities in the list.
+      const lockedDebt = fetched.find((debt) => debt.id === props.initialDebtId)
+      debts.value = lockedDebt ? [lockedDebt] : []
+      debtId.value = lockedDebt ? String(lockedDebt.id) : ''
+      if (!lockedDebt) {
+        error.value = t('finance.debtPayment.errors.debtNotFound')
+      }
+    } else {
+      debts.value = fetched
+      const initialDebt = debts.value.find((debt) => debt.id === props.initialDebtId)
+      debtId.value = initialDebt?.id
+        ? String(initialDebt.id)
+        : debts.value[0]?.id
+          ? String(debts.value[0].id)
+          : ''
+    }
   } catch {
     debts.value = []
     debtId.value = ''
@@ -153,7 +197,11 @@ onMounted(load)
       <div class="grid gap-4 sm:grid-cols-2">
         <label class="space-y-1.5">
           <span class="text-texte-2 text-sm font-medium">{{ t('finance.debtPayment.type') }}</span>
-          <select v-model="debtType" class="border-ligne h-11 w-full rounded-lg border px-3 text-sm">
+          <select
+            v-model="debtType"
+            class="border-ligne h-11 w-full rounded-lg border px-3 text-sm"
+            :disabled="lockDebtType"
+          >
             <option v-for="type in DEBT_TYPES" :key="type.value" :value="type.value">
               {{ t(type.labelKey) }}
             </option>
@@ -166,7 +214,7 @@ onMounted(load)
             id="debt"
             v-model="debtId"
             class="border-ligne h-11 w-full rounded-lg border px-3 text-sm"
-            :disabled="debtLoading || debts.length === 0"
+            :disabled="debtLoading || debts.length === 0 || lockDebt"
           >
             <option v-for="debt in debts" :key="debt.id" :value="String(debt.id)">
               {{ debt.label }}
@@ -199,10 +247,7 @@ onMounted(load)
         </div>
       </div>
 
-      <div
-        v-if="selectedDebt?.lines?.length"
-        class="border-ligne rounded-lg border bg-white p-3"
-      >
+      <div v-if="selectedDebt?.lines?.length" class="border-ligne rounded-lg border bg-white p-3">
         <p class="text-texte-3 mb-2 text-xs font-medium uppercase">
           {{ t('finance.debtPayment.lineDetails') }}
         </p>
@@ -243,7 +288,9 @@ onMounted(load)
         </label>
 
         <label class="space-y-1.5">
-          <span class="text-texte-2 text-sm font-medium">{{ t('finance.debtPayment.amount') }}</span>
+          <span class="text-texte-2 text-sm font-medium">{{
+            t('finance.debtPayment.amount')
+          }}</span>
           <input
             id="amount"
             v-model="amount"
@@ -268,7 +315,10 @@ onMounted(load)
           <span class="text-texte-2 text-sm font-medium">
             {{ t('finance.debtPayment.reference') }}
           </span>
-          <input v-model="reference" class="border-ligne h-11 w-full rounded-lg border px-3 text-sm" />
+          <input
+            v-model="reference"
+            class="border-ligne h-11 w-full rounded-lg border px-3 text-sm"
+          />
         </label>
       </div>
 
@@ -287,11 +337,14 @@ onMounted(load)
           </span>
           <input
             type="file"
-            accept="image/*,application/pdf"
+            :accept="IMAGE_UPLOAD_ACCEPT"
             class="border-ligne w-full rounded-lg border px-3 py-2 text-sm"
             @change="onAttachmentChange"
           />
           <span v-if="attachment" class="text-texte-2 block text-xs">{{ attachment.name }}</span>
+          <span v-if="attachmentError" class="text-critique block text-xs">{{
+            attachmentError
+          }}</span>
         </label>
       </div>
 
@@ -324,7 +377,9 @@ onMounted(load)
       </div>
 
       <div class="flex justify-end gap-2">
-        <Button variant="ghost" type="button" @click="emit('cancel')">{{ t('common.cancel') }}</Button>
+        <Button variant="ghost" type="button" @click="emit('cancel')">{{
+          t('common.cancel')
+        }}</Button>
         <Button variant="primary" type="submit" :loading="saving">
           {{ t('finance.debtPayment.submit') }}
         </Button>

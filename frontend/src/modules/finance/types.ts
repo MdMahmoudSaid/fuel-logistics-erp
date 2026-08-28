@@ -124,6 +124,7 @@ export interface TransportPayment {
   // finance/serializers.py TransportPaymentSerializer.validate()).
   unit_price_per_litre: string | null
   deduction_amount: string
+  deduction_label?: string
   advance_applied: number | null
   net_amount: string
   status: TransportPaymentStatus
@@ -310,12 +311,14 @@ export interface ShareholderBrief {
   id: number
   name: string
   participation_percent: string
+  contribution: string
 }
 
 export interface Shareholder {
   id: number
   name: string
   participation_percent: string
+  contribution: string
   phone: string
   notes: string
   is_active: boolean
@@ -424,7 +427,13 @@ export interface ShareholderLedgerWithdrawal {
 }
 
 export interface ShareholderLedger {
-  shareholder: { id: number; name: string; participation_percent: string; is_active: boolean }
+  shareholder: {
+    id: number
+    name: string
+    participation_percent: string
+    contribution?: string
+    is_active: boolean
+  }
   total_amount_due: string
   total_withdrawn: string
   remaining_due: string

@@ -123,6 +123,12 @@ const shareholderFields = computed<FieldSchema[]>(() => [
     type: 'number',
     required: true,
   },
+  {
+    key: 'contribution',
+    label: t('masterData.fields.contribution'),
+    type: 'number',
+    required: true,
+  },
   { key: 'phone', label: t('masterData.fields.phone'), type: 'phone' },
   { key: 'notes', label: t('masterData.fields.notes'), type: 'textarea' },
   { key: 'is_active', label: t('masterData.fields.active'), type: 'checkbox' },
@@ -130,7 +136,7 @@ const shareholderFields = computed<FieldSchema[]>(() => [
 
 function openCreateShareholder() {
   editingShareholderId.value = null
-  shareholderFormValue.value = { is_active: true }
+  shareholderFormValue.value = { is_active: true, contribution: '0.00' }
   shareholderError.value = ''
   showShareholderForm.value = true
 }
@@ -423,6 +429,9 @@ async function onViewLedger() {
             <th class="px-3 py-2.5 text-end font-medium">
               {{ t('masterData.fields.participationPercent') }}
             </th>
+            <th class="px-3 py-2.5 text-end font-medium">
+              {{ t('masterData.fields.contribution') }}
+            </th>
             <th class="px-3 py-2.5 font-medium">{{ t('masterData.fields.phone') }}</th>
             <th class="px-3 py-2.5 font-medium">{{ t('masterData.fields.active') }}</th>
             <th class="px-3 py-2.5"></th>
@@ -433,6 +442,9 @@ async function onViewLedger() {
             <td class="px-3 py-2.5">{{ s.name }}</td>
             <td class="px-3 py-2.5 text-end">
               <MonoValue :value="`${s.participation_percent}%`" />
+            </td>
+            <td class="px-3 py-2.5 text-end">
+              <MonoValue :value="formatMoney(s.contribution)" />
             </td>
             <td class="px-3 py-2.5">{{ s.phone || '—' }}</td>
             <td class="px-3 py-2.5">
@@ -447,7 +459,7 @@ async function onViewLedger() {
             </td>
           </tr>
           <tr v-if="shareholders.length === 0">
-            <td colspan="5" class="text-texte-3 px-3 py-8 text-center">
+            <td colspan="6" class="text-texte-3 px-3 py-8 text-center">
               {{ t('masterData.noRecords') }}
             </td>
           </tr>

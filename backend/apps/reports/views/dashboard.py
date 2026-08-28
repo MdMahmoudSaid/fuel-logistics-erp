@@ -253,12 +253,17 @@ class DashboardViewSet(viewsets.ViewSet):
             },
         }
 
+        # Only trips that have physically arrived at the depot count as stock -
+        # destination_type alone isn't enough: GOING_TO_COMPANY_STOCK/earlier
+        # pipeline statuses haven't arrived yet, and a trip un-assigned from a
+        # customer keeps its old status (QUANTITY_CONTROL, DELIVERED, ...) - see
+        # trips/serializers.py _normalize_destination_type.
         stock_trips = (
             Trip.objects.filter(
                 sale__isnull=True,
                 destination_type=Trip.DestinationType.COMPANY_STOCK,
+                status__in=[Trip.Status.ARRIVED_AT_COMPANY_STOCK, Trip.Status.STOCKED],
             )
-            .exclude(status=Trip.Status.CANCELLED)
             .select_related("truck", "supplier", "transporter", "product")
             .order_by("-loading_date", "-id")
         )

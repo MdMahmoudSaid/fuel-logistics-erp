@@ -21,3 +21,6 @@ frontend/.vite/
 .vscode/
 .idea/
 .DS_Store
+
+# Local worktrees
+.worktrees/

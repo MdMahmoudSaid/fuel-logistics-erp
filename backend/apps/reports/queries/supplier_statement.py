@@ -1,7 +1,7 @@
 # SupplierStatementQuery (docs/PHASE_6_PLAN.md Etape 4;
 # ERP_Implementation_Experience_Guide.md Section 9.7).
 #
-# Mirrors CustomerStatementQuery on the purchasing side: non-cancelled
+# Mirrors CustomerStatementQuery on the purchasing side: confirmed
 # SupplierOrder rows (debit, what the company owes) merged chronologically
 # with SupplierPayment rows (credit, what has been paid) into one running
 # balance.
@@ -17,8 +17,9 @@ class SupplierStatementQuery:
 
     @classmethod
     def run(cls, *, supplier_id, date_from=None, date_to=None) -> list[dict]:
-        orders = SupplierOrder.objects.filter(supplier_id=supplier_id).exclude(
-            status=SupplierOrder.Status.CANCELLED
+        orders = SupplierOrder.objects.filter(
+            supplier_id=supplier_id,
+            status=SupplierOrder.Status.CONFIRMED,
         )
         payments = SupplierPayment.objects.filter(supplier_id=supplier_id)
         if date_from:

@@ -155,7 +155,11 @@ const filteredTransactions = computed(() =>
       </div>
       <div class="border-ligne rounded-lg border bg-white p-4">
         <p class="text-texte-2 text-xs font-semibold uppercase">Entrées / sorties</p>
-        <p class="font-mono text-sm">{{ formatMoney(periodIn) }} / {{ formatMoney(periodOut) }}</p>
+        <p class="flex flex-wrap items-baseline gap-x-1.5 font-mono text-sm">
+          <span class="whitespace-nowrap">{{ formatMoney(periodIn) }}</span>
+          <span class="text-texte-3">/</span>
+          <span class="whitespace-nowrap">{{ formatMoney(periodOut) }}</span>
+        </p>
       </div>
     </div>
 
@@ -283,7 +287,15 @@ const filteredTransactions = computed(() =>
         :src="previewUrl"
         class="max-h-[80vh] w-full rounded-lg object-contain"
       />
-      <iframe v-else :src="previewUrl" class="h-[80vh] w-full rounded-lg" />
+      <div v-else class="space-y-3">
+        <iframe :src="previewUrl" class="h-[80vh] w-full rounded-lg" />
+        <a :href="previewUrl" download class="text-bitume underline">
+          {{ t('finance.customerLedger.downloadProof') }}
+        </a>
+      </div>
+      <div class="mt-4 flex justify-end">
+        <Button variant="ghost" @click="previewUrl = null">{{ t('common.close') }}</Button>
+      </div>
     </Modal>
   </div>
 </template>

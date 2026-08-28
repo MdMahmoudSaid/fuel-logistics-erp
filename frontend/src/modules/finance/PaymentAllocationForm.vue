@@ -8,7 +8,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { createResourceApi } from '@/api/resource'
 import { translateApiError } from '@/i18n/apiErrors'
-import { customerPaymentResource, fetchCustomerLedger, uploadCustomerPaymentProof } from './api'
+import { createCustomerPaymentWithProof, fetchCustomerLedger } from './api'
 import type {
   CustomerBrief,
   CustomerLedgerInvoice,
@@ -18,6 +18,7 @@ import type {
 } from './types'
 import Button from '@/components/ui/Button.vue'
 import { formatMoney } from '@/utils/currency'
+import { IMAGE_UPLOAD_ACCEPT, isAllowedImageFile } from '@/utils/imageUpload'
 
 // Dedicated cash account name FinancePostingService owns server-side
 // (backend/apps/finance/services.py FinancePostingService.VERS_MOI_ACCOUNT_NAME)
@@ -49,11 +50,19 @@ const form = ref({
 })
 
 const proofFile = ref<File | null>(null)
-const proofUploadError = ref('')
+const proofError = ref('')
 
 function onProofFileChange(event: Event) {
   const input = event.target as HTMLInputElement
-  proofFile.value = input.files?.[0] ?? null
+  const file = input.files?.[0] ?? null
+  if (file && !isAllowedImageFile(file)) {
+    proofFile.value = null
+    input.value = ''
+    proofError.value = t('finance.payment.imageOnlyError')
+    return
+  }
+  proofFile.value = file
+  proofError.value = ''
 }
 
 const bankAccountResource = createResourceApi<{ id: number; name: string }>('/bank-accounts/')
@@ -181,10 +190,10 @@ const unallocatedRemainder = computed(() => (Number(form.value.amount) || 0) - a
 async function onSubmit() {
   saving.value = true
   error.value = ''
-  proofUploadError.value = ''
+  proofError.value = ''
   try {
     if (!proofFile.value) {
-      error.value = t('finance.payment.proofRequired')
+      proofError.value = t('finance.payment.proofRequired')
       return
     }
 
@@ -214,17 +223,7 @@ async function onSubmit() {
       payload.cash_account = Number(form.value.cash_account)
     }
 
-    const created = await customerPaymentResource.create(payload)
-
-    if (proofFile.value) {
-      try {
-        await uploadCustomerPaymentProof({ file: proofFile.value, objectId: created.id })
-      } catch {
-        // The payment itself is already saved - a failed proof upload is a
-        // soft warning, not a reason to make the user redo the payment.
-        proofUploadError.value = t('finance.payment.proofUploadError')
-      }
-    }
+    const created = await createCustomerPaymentWithProof(payload, proofFile.value)
 
     emit('success', Number(created.customer))
   } catch (e) {
@@ -382,17 +381,28 @@ async function onSubmit() {
 
       <div class="border-ligne space-y-1.5 border-t pt-4">
         <label class="text-texte-2 text-sm font-medium" for="proof_file">{{
-          t('finance.payment.proofImage')
+          t('finance.payment.proofLabel')
         }}</label>
+        <div class="flex flex-wrap items-center gap-3">
+          <label
+            for="proof_file"
+            class="border-ligne-forte text-texte hover:bg-sable inline-flex h-11 cursor-pointer items-center rounded-lg border bg-white px-3 text-sm font-medium transition"
+          >
+            {{ t('finance.payment.chooseFile') }}
+          </label>
+          <span class="text-texte-2 text-sm">
+            {{ proofFile?.name || t('finance.payment.noFileSelected') }}
+          </span>
+        </div>
         <input
           id="proof_file"
           type="file"
           required
-          accept="image/*,application/pdf"
-          class="text-texte-2 text-sm"
+          :accept="IMAGE_UPLOAD_ACCEPT"
+          class="sr-only"
           @change="onProofFileChange"
         />
-        <p v-if="proofUploadError" class="text-critique text-xs">{{ proofUploadError }}</p>
+        <p v-if="proofError" class="text-critique text-xs">{{ proofError }}</p>
       </div>
 
       <div v-if="outstandingBalance !== null" class="border-ligne border-t pt-4">

@@ -8,7 +8,7 @@ from rest_framework.response import Response
 
 from apps.accounts.permissions import HasModulePermission
 from apps.reports.date_range import resolve_date_range
-from apps.reports.export import rows_to_csv, rows_to_xlsx
+from apps.reports.export import rows_to_csv, rows_to_pdf, rows_to_xlsx
 from apps.reports.queries.customer_outstanding_report import CustomerOutstandingReportQuery
 from apps.reports.queries.customer_statement import CustomerStatementQuery
 from apps.reports.queries.expense_report import ExpenseReportQuery
@@ -17,6 +17,7 @@ from apps.reports.queries.loss_report import LossReportQuery
 from apps.reports.queries.margin_report import MarginReportQuery
 from apps.reports.queries.purchase_report import PurchaseReportQuery
 from apps.reports.queries.sales_report import SalesReportQuery
+from apps.reports.queries.shareholder_statement import ShareholderStatementQuery
 from apps.reports.queries.supplier_outstanding_report import SupplierOutstandingReportQuery
 from apps.reports.queries.supplier_statement import SupplierStatementQuery
 from apps.reports.queries.transporter_outstanding_report import TransporterOutstandingReportQuery
@@ -47,11 +48,13 @@ REPORT_REGISTRY = {
     "margin-report": MarginReportQuery,
     "bank-statement": TreasuryStatementQuery,
     "cash-statement": TreasuryStatementQuery,
+    "shareholder-statement": ShareholderStatementQuery,
 }
 
 _EXPORT_CONTENT_TYPES = {
     "csv": "text/csv",
     "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "pdf": "application/pdf",
 }
 
 
@@ -106,11 +109,12 @@ class ReportViewSet(viewsets.ViewSet):
         if export_format not in _EXPORT_CONTENT_TYPES:
             raise NotFound(f"Format d'export inconnu : '{export_format}'.")
 
-        content = (
-            rows_to_csv(query_class.FIELDS, rows)
-            if export_format == "csv"
-            else rows_to_xlsx(query_class.FIELDS, rows)
-        )
+        if export_format == "csv":
+            content = rows_to_csv(query_class.FIELDS, rows)
+        elif export_format == "xlsx":
+            content = rows_to_xlsx(query_class.FIELDS, rows)
+        else:
+            content = rows_to_pdf(query_class.FIELDS, rows, title=report_type)
         response = HttpResponse(content, content_type=_EXPORT_CONTENT_TYPES[export_format])
         response["Content-Disposition"] = f'attachment; filename="{report_type}.{export_format}"'
         return response

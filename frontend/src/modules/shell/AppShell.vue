@@ -31,7 +31,6 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: 'trips', labelKey: 'navigation.trips', module: 'operations' },
       { to: 'company-stock', labelKey: 'navigation.companyStock', module: 'operations' },
-      { to: 'loss-report', labelKey: 'navigation.lossesToReview', module: 'reports' },
     ],
   },
   {

@@ -578,6 +578,7 @@ class Shareholder(TimeStampedModel):
 
     name = models.CharField(max_length=150)
     participation_percent = models.DecimalField(max_digits=5, decimal_places=2)
+    contribution = models.DecimalField(max_digits=18, decimal_places=2, default=0)
     phone = models.CharField(max_length=20, blank=True)
     notes = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)

@@ -16,7 +16,7 @@ from rest_framework.test import APIClient
 from apps.accounts.models import Role, User
 from apps.core.models import Product
 from apps.customers.models import Customer
-from apps.finance.models import BankAccount, CashAccount
+from apps.finance.models import BankAccount, CashAccount, Shareholder
 from apps.purchasing.models import CessionLetter, SupplierOrder
 from apps.reports.services.profit import TripProfitService
 from apps.reports.views.reports import REPORT_REGISTRY
@@ -139,9 +139,11 @@ def test_financial_coherence_profit_by_customer_truck_and_order_matches_individu
 
 
 @pytest.mark.django_db
-def test_all_16_v1_report_types_return_valid_structured_data_via_the_api():
-    """Spec Section 37 lists 16 V1 report types; walk every one through the
-    live API and check it returns a well-formed {fields, rows} payload."""
+def test_all_report_types_return_valid_structured_data_via_the_api():
+    """Spec Section 37 lists 16 V1 report types, plus shareholder-statement
+    (UI pass 2026-08-27: Reports page needed a report for
+    Actionnaires/Associes); walk every one through the live API and check
+    it returns a well-formed {fields, rows} payload."""
     admin_user = _make_admin("SIXTEEN")
     customer = Customer.objects.create(name="Client SIXTEEN")
     truck = Truck.objects.create(
@@ -161,6 +163,7 @@ def test_all_16_v1_report_types_return_valid_structured_data_via_the_api():
     )
     bank_account = BankAccount.objects.create(name="Bank SIXTEEN")
     cash_account = CashAccount.objects.create(name="Cash SIXTEEN")
+    shareholder = Shareholder.objects.create(name="Assoc SIXTEEN", participation_percent=Decimal("100"))
 
     params_by_report_type = {
         "customer-statement": {"customer_id": customer.id},
@@ -179,6 +182,7 @@ def test_all_16_v1_report_types_return_valid_structured_data_via_the_api():
         "margin-report": {},
         "bank-statement": {"bank_account_id": bank_account.id},
         "cash-statement": {"cash_account_id": cash_account.id},
+        "shareholder-statement": {"shareholder_id": shareholder.id},
     }
 
     assert set(params_by_report_type) == set(REPORT_REGISTRY)

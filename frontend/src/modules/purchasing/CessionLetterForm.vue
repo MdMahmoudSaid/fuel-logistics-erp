@@ -10,6 +10,7 @@ import {
 } from './api'
 import { translateApiError, extractFieldErrors } from '@/i18n/apiErrors'
 import { formatQuantity } from '@/utils/currency'
+import { IMAGE_UPLOAD_ACCEPT, isAllowedImageFile } from '@/utils/imageUpload'
 import Button from '@/components/ui/Button.vue'
 import type { CessionLetter, CessionLetterStatus, SupplierOrder } from './types'
 
@@ -114,6 +115,7 @@ async function onSubmit() {
   try {
     if (isNew.value) {
       const created = await cessionLetterResource.create(payload)
+      await uploadSelectedDocument(created.id)
       router.replace({ name: 'cession-letter-detail', params: { id: created.id } })
     } else {
       cession.value = await cessionLetterResource.update(cessionId.value!, payload)
@@ -143,27 +145,40 @@ const uploadError = ref('')
 
 function onFileChange(event: Event) {
   const input = event.target as HTMLInputElement
-  documentFile.value = input.files?.[0] ?? null
+  const file = input.files?.[0] ?? null
+  if (file && !isAllowedImageFile(file)) {
+    documentFile.value = null
+    input.value = ''
+    uploadError.value = t('purchasing.cessionForm.imageOnlyError')
+    return
+  }
+  documentFile.value = file
+  uploadError.value = ''
 }
 
-async function onUploadDocument() {
-  if (!documentFile.value || cessionId.value === null) return
+async function uploadSelectedDocument(objectId: number) {
+  if (!documentFile.value) return
   uploadingDoc.value = true
   uploadError.value = ''
   try {
     await uploadDocument({
       file: documentFile.value,
-      documentType: 'cession_pdf',
+      documentType: 'cession_proof',
       contentTypeName: 'cessionletter',
-      objectId: cessionId.value,
+      objectId,
     })
     documentFile.value = null
-    cession.value = await cessionLetterResource.get!(cessionId.value)
   } catch {
     uploadError.value = t('purchasing.cessionForm.uploadError')
   } finally {
     uploadingDoc.value = false
   }
+}
+
+async function onUploadDocument() {
+  if (!documentFile.value || cessionId.value === null) return
+  await uploadSelectedDocument(cessionId.value)
+  cession.value = await cessionLetterResource.get!(cessionId.value)
 }
 </script>
 
@@ -314,6 +329,14 @@ async function onUploadDocument() {
           </select>
           <p v-if="fieldErrors.status" class="text-critique text-xs">{{ fieldErrors.status }}</p>
         </div>
+        <div v-else class="space-y-1.5">
+          <span class="text-texte-2 text-sm font-medium">
+            {{ t('purchasing.cessionForm.status') }}
+          </span>
+          <p class="border-ligne-forte rounded-lg border bg-sable px-3.5 py-3 text-sm font-medium">
+            {{ t(`cessionStatus.${form.status}`) }}
+          </p>
+        </div>
       </div>
 
       <div class="space-y-1.5">
@@ -339,7 +362,7 @@ async function onUploadDocument() {
       </div>
     </form>
 
-    <section v-if="!isNew" class="border-ligne space-y-3 rounded-xl border bg-surface p-6">
+    <section class="border-ligne space-y-3 rounded-xl border bg-surface p-6">
       <h2 class="font-display text-lg leading-none font-semibold uppercase">
         {{ t('purchasing.cessionForm.document') }}
       </h2>
@@ -351,7 +374,10 @@ async function onUploadDocument() {
             {{ doc.reference || doc.document_type }}
           </a>
         </li>
-        <li v-if="!cession?.documents?.length" class="text-texte-3 text-sm">
+        <li v-if="documentFile" class="text-sm">
+          {{ documentFile.name }}
+        </li>
+        <li v-if="!cession?.documents?.length && !documentFile" class="text-texte-3 text-sm">
           {{ t('purchasing.cessionForm.noDocument') }}
         </li>
       </ul>
@@ -359,11 +385,12 @@ async function onUploadDocument() {
       <div class="flex flex-wrap items-center gap-2 pt-2">
         <input
           type="file"
-          accept="application/pdf,image/*"
+          :accept="IMAGE_UPLOAD_ACCEPT"
           class="text-texte-2 text-sm"
           @change="onFileChange"
         />
         <Button
+          v-if="!isNew"
           type="button"
           variant="primary"
           :disabled="!documentFile || uploadingDoc"

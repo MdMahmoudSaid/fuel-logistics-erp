@@ -13,7 +13,7 @@ export function fetchReport(
 // binary response, same technique every browser file-download flow uses.
 export async function downloadReportExport(
   reportType: string,
-  format: 'csv' | 'xlsx',
+  format: 'csv' | 'xlsx' | 'pdf',
   params: Record<string, string | undefined>,
 ): Promise<void> {
   const response = await apiClient.get(`/reports/${reportType}/`, {

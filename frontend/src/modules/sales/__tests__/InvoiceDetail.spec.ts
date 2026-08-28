@@ -32,6 +32,7 @@ function makeInvoice(overrides: Partial<Invoice> = {}): Invoice {
     outstanding_amount: '29152500.00',
     issued_date: '2026-08-18',
     corrections: [],
+    payments: [],
     created_at: '',
     updated_at: '',
     ...overrides,

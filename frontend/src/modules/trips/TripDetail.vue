@@ -20,6 +20,7 @@ import MonoValue from '@/components/ui/MonoValue.vue'
 import Badge from '@/components/ui/Badge.vue'
 import Button from '@/components/ui/Button.vue'
 import Card from '@/components/ui/Card.vue'
+import Modal from '@/components/ui/Modal.vue'
 import { useTripStatusLabel } from './tripStatusLabels'
 import { expenseResource } from '@/modules/finance/api'
 import { transportPaymentResource } from '@/modules/finance/api'
@@ -42,6 +43,7 @@ const trip = ref<Trip | null>(null)
 const history = ref<TripStatusHistoryEntry[]>([])
 const loading = ref(true)
 const error = ref('')
+const previewUrl = ref<string | null>(null)
 
 async function load() {
   loading.value = true
@@ -309,6 +311,8 @@ function transportPaymentUnitPrice(payment: TransportPayment) {
   const quantity = Number(trip.value?.quantity_loaded ?? 0)
   return quantity ? Number(payment.base_amount) / quantity : 0
 }
+
+const cessionProofUrl = computed(() => trip.value?.cession_letter_detail?.documents[0]?.file ?? null)
 </script>
 
 <template>
@@ -377,6 +381,20 @@ function transportPaymentUnitPrice(payment: TransportPayment) {
         <div>
           <span class="text-texte-2">{{ t('trips.detail.blReference') }}</span>
           <p><MonoValue :value="trip.bl_reference" align="left" class="font-medium" /></p>
+        </div>
+        <div>
+          <span class="text-texte-2">{{ t('trips.detail.proof') }}</span>
+          <p>
+            <button
+              v-if="cessionProofUrl"
+              type="button"
+              class="text-bitume underline"
+              @click="previewUrl = cessionProofUrl"
+            >
+              {{ t('trips.detail.viewProof') }}
+            </button>
+            <span v-else class="text-texte-3">—</span>
+          </p>
         </div>
         <div>
           <span class="text-texte-2">{{ t('trips.detail.client') }}</span>
@@ -579,8 +597,24 @@ function transportPaymentUnitPrice(payment: TransportPayment) {
         </p>
         <dl v-else class="divide-ligne divide-y text-sm">
           <div class="flex items-center justify-between py-2">
+            <dt class="text-texte-2">{{ t('trips.detail.quantityLoaded') }}</dt>
+            <dd><MonoValue :value="formatQuantity(margin.quantity_loaded)" align="left" /></dd>
+          </div>
+          <div class="flex items-center justify-between py-2">
+            <dt class="text-texte-2">{{ t('trips.detail.quantityInvoiced') }}</dt>
+            <dd><MonoValue :value="formatQuantity(margin.quantity_invoiced)" align="left" /></dd>
+          </div>
+          <div class="flex items-center justify-between py-2">
             <dt class="text-texte-2">{{ t('trips.detail.revenue') }}</dt>
             <dd><MonoValue :value="formatMoney(margin.revenue)" align="left" /></dd>
+          </div>
+          <div class="flex items-center justify-between py-2">
+            <dt class="text-texte-2">{{ t('trips.detail.transporterLossQuantity') }}</dt>
+            <dd><MonoValue :value="formatQuantity(margin.transporter_loss_quantity)" align="left" /></dd>
+          </div>
+          <div class="flex items-center justify-between py-2">
+            <dt class="text-texte-2">{{ t('trips.detail.transporterLossIndemnity') }}</dt>
+            <dd><MonoValue :value="formatMoney(margin.transporter_loss_indemnity)" align="left" /></dd>
           </div>
           <div class="flex items-center justify-between py-2">
             <dt class="text-texte-2">{{ t('trips.detail.fuelPurchaseCost') }}</dt>
@@ -605,6 +639,10 @@ function transportPaymentUnitPrice(payment: TransportPayment) {
           <div class="flex items-center justify-between py-2">
             <dt class="text-texte-2">{{ t('trips.detail.unitCost') }}</dt>
             <dd><MonoValue :value="formatUnitMoney(margin.unit_cost)" align="left" /></dd>
+          </div>
+          <div class="flex items-center justify-between py-2">
+            <dt class="text-texte-2">{{ t('trips.detail.realTotalCost') }}</dt>
+            <dd><MonoValue :value="formatMoney(margin.real_total_cost)" align="left" /></dd>
           </div>
           <div class="flex items-center justify-between py-2">
             <dt class="text-texte-2">{{ t('trips.detail.unitProfit') }}</dt>
@@ -678,6 +716,18 @@ function transportPaymentUnitPrice(payment: TransportPayment) {
           />
         </div>
       </div>
+
+      <Modal
+        v-if="previewUrl"
+        :title="t('trips.detail.proof')"
+        max-width="max-w-3xl"
+        @close="previewUrl = null"
+      >
+        <img :src="previewUrl" class="max-h-[80vh] w-full rounded-lg object-contain" />
+        <div class="mt-4 flex justify-end">
+          <Button variant="ghost" @click="previewUrl = null">{{ t('common.close') }}</Button>
+        </div>
+      </Modal>
     </template>
   </div>
 </template>

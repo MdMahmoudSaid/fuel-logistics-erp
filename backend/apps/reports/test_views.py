@@ -472,6 +472,21 @@ def test_report_endpoint_export_xlsx_returns_a_valid_workbook():
 
 
 @pytest.mark.django_db
+def test_report_endpoint_export_pdf_returns_a_pdf_attachment():
+    admin_user = _make_admin("REPPDF")
+    _make_full_trip("REPPDF", admin_user)
+
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    response = client.get("/api/reports/trip-report/", {"export": "pdf"})
+
+    assert response.status_code == 200
+    assert response["Content-Type"] == "application/pdf"
+    assert "attachment" in response["Content-Disposition"]
+    assert response.content.startswith(b"%PDF-")
+
+
+@pytest.mark.django_db
 def test_report_export_requires_export_permission_not_just_view():
     role = Role.objects.create(name="ViewOnlyReports", permissions={"reports": ["view"]})
     user = User.objects.create_user(phone="+2220000014", pin="1234", role=role)

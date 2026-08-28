@@ -1,6 +1,7 @@
 // Mirrors backend/apps/trips/serializers.py. DRF DecimalField quantities are
 // serialized as strings (never float) — convert with Number(...) only where
 // arithmetic is needed.
+import type { CessionLetter } from '@/modules/purchasing/types'
 
 // The 14 statuses from spec §13 / backend/apps/trips/models.py Trip.Status.
 // Valid next-transitions are decided exclusively by TripWorkflowService on
@@ -12,6 +13,7 @@ export type TripStatus =
   | 'SENT_FOR_LOADING'
   | 'LOADING'
   | 'LOADED'
+  | 'ROAD_TRANSIT'
   | 'IN_TRANSIT'
   | 'BORDER'
   | 'CUSTOMS'
@@ -31,6 +33,7 @@ export const TRIP_STATUSES: TripStatus[] = [
   'SENT_FOR_LOADING',
   'LOADING',
   'LOADED',
+  'ROAD_TRANSIT',
   'IN_TRANSIT',
   'BORDER',
   'CUSTOMS',
@@ -54,6 +57,7 @@ export const TRIP_PIPELINE_STATUSES: TripStatus[] = [
   'SENT_FOR_LOADING',
   'LOADING',
   'LOADED',
+  'ROAD_TRANSIT',
   'IN_TRANSIT',
   'BORDER',
   'CUSTOMS',
@@ -136,6 +140,7 @@ export interface Trip {
   supplier_detail: SupplierBrief | null
   supplier_order: number
   cession_letter: number
+  cession_letter_detail?: CessionLetter | null
   product: number
   product_detail: ProductBrief | null
   quantity_loaded: string
@@ -173,11 +178,16 @@ export interface TripStatusHistoryEntry {
 // only available once the trip has a Sale (delivery confirmed).
 export interface TripMarginBreakdown {
   available: true
+  quantity_loaded: string
+  quantity_invoiced: string
+  transporter_loss_quantity: string
+  transporter_loss_indemnity: string
   revenue: string
   fuel_purchase_cost: string
   transport_cost: string
   expenses_by_category: Record<string, string>
   total_expenses: string
+  real_total_cost: string
   margin: string
   // Client modifications Task 3.
   unit_cost: string

@@ -27,6 +27,7 @@ vi.mock('../api', () => ({
           id: 1,
           name: 'Ahmed',
           participation_percent: '100.00',
+          contribution: '1000000.00',
           phone: '',
           notes: '',
           is_active: true,
@@ -119,5 +120,21 @@ describe('ShareholderView', () => {
     // and net_loan_balance (15000) alone - proves the combined figure
     // renders, not just its two components separately.
     expect(wrapper.text()).toContain('615 000 XOF')
+  })
+
+  it('shows shareholder contribution in the associates table and form', async () => {
+    const wrapper = mount(ShareholderView)
+    await flushPromises()
+
+    await wrapper.findAll('button').find((b) => b.text() === 'Associés')!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Contribution')
+    expect(wrapper.text()).toContain('1 000 000 XOF')
+
+    await wrapper.findAll('button').find((b) => b.text() === 'Ajouter')!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('#contribution').exists()).toBe(true)
   })
 })

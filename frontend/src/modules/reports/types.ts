@@ -51,6 +51,12 @@ export const REPORT_TYPES: ReportTypeOption[] = [
     idParam: 'cash_account_id',
     idLabel: 'Cash account ID',
   },
+  {
+    value: 'shareholder-statement',
+    label: 'Shareholder statement',
+    idParam: 'shareholder_id',
+    idLabel: 'Shareholder ID',
+  },
 ]
 
 export interface ReportResponse {

@@ -23,3 +23,22 @@
     font-size: 16px;
   }
 }
+
+/* Bouton "Imprimer" (Rapports) : window.print() imprime toute la page par
+   défaut - on masque la coquille de l'appli (sidebar, topbar) et tout
+   élément marqué .no-print (filtres, boutons d'action) pour ne laisser que
+   le contenu utile. */
+@media print {
+  aside,
+  header {
+    display: none !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  main {
+    padding: 0 !important;
+  }
+}

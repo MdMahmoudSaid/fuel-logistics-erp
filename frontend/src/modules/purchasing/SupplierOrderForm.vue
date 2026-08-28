@@ -5,6 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { createResourceApi } from '@/api/resource'
 import { translateApiError, extractFieldErrors } from '@/i18n/apiErrors'
 import { formatMoney, formatQuantity } from '@/utils/currency'
+import { IMAGE_UPLOAD_ACCEPT, isAllowedImageFile } from '@/utils/imageUpload'
 import { supplierOrderResource, uploadDocument, fetchNextSupplierOrderReference } from './api'
 import Button from '@/components/ui/Button.vue'
 import type { SupplierOrder, SupplierOrderStatus, SupplierBrief, ProductBrief } from './types'
@@ -36,6 +37,28 @@ const form = ref({
 const saving = ref(false)
 const error = ref('')
 const fieldErrors = ref<Record<string, string>>({})
+
+function toAmount(value: string) {
+  const amount = Number(value || 0)
+  return Number.isFinite(amount) ? amount : 0
+}
+
+const previewTotalAmount = computed(() => {
+  return (
+    toAmount(form.value.quantity_litres) * toAmount(form.value.unit_price) +
+    toAmount(form.value.optional_costs)
+  )
+})
+
+const displayedTotalAmount = computed(() => {
+  if (!isNew.value && order.value) return order.value.total_amount
+  return previewTotalAmount.value
+})
+
+const displayedReliquat = computed(() => {
+  if (!isNew.value && order.value) return order.value.reliquat
+  return toAmount(form.value.quantity_litres)
+})
 
 const supplierResource = createResourceApi<SupplierBrief>('/suppliers/')
 const productResource = createResourceApi<ProductBrief>('/products/')
@@ -88,8 +111,11 @@ async function onSubmit() {
   try {
     if (isNew.value) {
       const created = await supplierOrderResource.create(payload)
-      // Redirect into edit mode: document upload and the nested cession
-      // list both need a real object_id/supplier_order to attach to.
+      order.value = created
+      const uploadFailed = await uploadSelectedDocuments(created.id)
+      if (uploadFailed) {
+        uploadError.value = t('purchasing.orderForm.uploadAfterCreateError')
+      }
       router.replace({ name: 'supplier-order-detail', params: { id: created.id } })
     } else {
       order.value = await supplierOrderResource.update(orderId.value!, payload)
@@ -114,33 +140,57 @@ async function onSubmit() {
 }
 
 // --- Documents ---
-const documentFile = ref<File | null>(null)
+const documentFiles = ref<File[]>([])
 const documentType = ref('purchase_contract')
 const uploadingDoc = ref(false)
 const uploadError = ref('')
 
 function onFileChange(event: Event) {
   const input = event.target as HTMLInputElement
-  documentFile.value = input.files?.[0] ?? null
+  const files = Array.from(input.files ?? [])
+  if (files.some((file) => !isAllowedImageFile(file))) {
+    documentFiles.value = []
+    input.value = ''
+    uploadError.value = t('purchasing.orderForm.imageOnlyError')
+    return
+  }
+  documentFiles.value = files
+  uploadError.value = ''
+}
+
+async function uploadSelectedDocuments(objectId: number) {
+  if (!documentFiles.value.length) return false
+  uploadingDoc.value = true
+  uploadError.value = ''
+  const results = await Promise.allSettled(
+    documentFiles.value.map((file) =>
+      uploadDocument({
+        file,
+        documentType: documentType.value,
+        contentTypeName: 'supplierorder',
+        objectId,
+      }),
+    ),
+  )
+  const hasFailure = results.some((result) => result.status === 'rejected')
+  if (!hasFailure) {
+    documentFiles.value = []
+  }
+  uploadingDoc.value = false
+  return hasFailure
 }
 
 async function onUploadDocument() {
-  if (!documentFile.value || orderId.value === null) return
-  uploadingDoc.value = true
-  uploadError.value = ''
+  if (!documentFiles.value.length || orderId.value === null) return
   try {
-    await uploadDocument({
-      file: documentFile.value,
-      documentType: documentType.value,
-      contentTypeName: 'supplierorder',
-      objectId: orderId.value,
-    })
-    documentFile.value = null
+    const uploadFailed = await uploadSelectedDocuments(orderId.value)
+    if (uploadFailed) {
+      uploadError.value = t('purchasing.orderForm.uploadError')
+      return
+    }
     await loadOrder()
   } catch {
     uploadError.value = t('purchasing.orderForm.uploadError')
-  } finally {
-    uploadingDoc.value = false
   }
 }
 
@@ -313,26 +363,26 @@ function goToNewCession() {
         </p>
       </div>
 
-      <div v-if="order" class="space-y-1.5">
+      <div class="space-y-1.5">
         <span class="text-texte-2 text-sm font-medium">{{
           t('purchasing.orderForm.totalAmount')
         }}</span>
         <p
           class="text-texte rounded-lg border border-transparent px-3.5 py-2.5 text-sm font-semibold"
         >
-          {{ formatMoney(order.total_amount) }}
+          {{ formatMoney(displayedTotalAmount) }}
         </p>
       </div>
 
-      <div v-if="order" class="space-y-1.5">
+      <div class="space-y-1.5">
         <span class="text-texte-2 text-sm font-medium">{{
           t('purchasing.orderForm.reliquat')
         }}</span>
         <p
           class="rounded-lg border border-transparent px-3.5 py-2.5 text-sm font-semibold"
-          :class="Number(order.reliquat) <= 0 ? 'text-critique' : 'text-livre-texte'"
+          :class="Number(displayedReliquat) <= 0 ? 'text-critique' : 'text-livre-texte'"
         >
-          {{ formatQuantity(order.reliquat) }}
+          {{ formatQuantity(displayedReliquat) }}
         </p>
       </div>
 
@@ -359,7 +409,7 @@ function goToNewCession() {
       </div>
     </form>
 
-    <section v-if="!isNew" class="border-ligne space-y-3 rounded-xl border bg-surface p-6">
+    <section class="border-ligne space-y-3 rounded-xl border bg-surface p-6">
       <h2 class="font-display text-lg leading-none font-semibold uppercase">
         {{ t('purchasing.orderForm.documents') }}
       </h2>
@@ -372,8 +422,11 @@ function goToNewCession() {
           </a>
           <span class="text-texte-3"> — {{ doc.document_type }}</span>
         </li>
-        <li v-if="!order?.documents?.length" class="text-texte-3 text-sm">
+        <li v-if="!order?.documents?.length && !documentFiles.length" class="text-texte-3 text-sm">
           {{ t('purchasing.orderForm.noDocuments') }}
+        </li>
+        <li v-for="file in documentFiles" :key="file.name" class="text-sm">
+          {{ file.name }}
         </li>
       </ul>
 
@@ -390,14 +443,16 @@ function goToNewCession() {
         </select>
         <input
           type="file"
-          accept="application/pdf,image/*"
+          multiple
+          :accept="IMAGE_UPLOAD_ACCEPT"
           class="text-texte-2 text-sm"
           @change="onFileChange"
         />
         <Button
+          v-if="!isNew"
           type="button"
           variant="primary"
-          :disabled="!documentFile || uploadingDoc"
+          :disabled="!documentFiles.length || uploadingDoc"
           @click="onUploadDocument"
         >
           {{

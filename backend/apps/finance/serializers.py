@@ -1,3 +1,4 @@
+import json
 from decimal import Decimal
 
 from django.contrib.contenttypes.models import ContentType
@@ -7,6 +8,7 @@ from rest_framework import serializers
 from apps.accounts.serializers import UserSerializer
 from apps.customers.serializers import CustomerSerializer
 from apps.documents.models import Document
+from apps.documents.validators import validate_image_upload
 from apps.finance.labels import describe_treasury_transaction
 from apps.suppliers.serializers import SupplierSerializer
 from apps.transport.serializers import TransporterSerializer
@@ -104,6 +106,25 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
     allocations_detail = PaymentAllocationSerializer(source="allocations", many=True, read_only=True)
     allocations = InvoiceAllocationInputSerializer(many=True, write_only=True, required=False)
     proof_url = serializers.SerializerMethodField()
+    proof = serializers.FileField(write_only=True, required=False, allow_null=True)
+
+    def to_internal_value(self, data):
+        if hasattr(data, "lists"):
+            data = {
+                key: values[-1] if len(values) == 1 else values
+                for key, values in data.lists()
+            }
+        elif hasattr(data, "copy"):
+            data = data.copy()
+        allocations = data.get("allocations") if hasattr(data, "get") else None
+        if isinstance(allocations, str):
+            try:
+                data["allocations"] = json.loads(allocations)
+            except json.JSONDecodeError:
+                raise serializers.ValidationError(
+                    {"allocations": "Format de repartition invalide."}
+                )
+        return super().to_internal_value(data)
 
     class Meta:
         model = CustomerPayment
@@ -111,7 +132,7 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
             "id", "customer", "customer_detail", "amount", "payment_date", "method",
             "bank_account", "cash_account", "reference", "is_indirect", "destination", "note",
             "recorded_by", "recorded_by_detail",
-            "allocations", "allocations_detail", "proof_url",
+            "allocations", "allocations_detail", "proof", "proof_url",
             "created_at", "updated_at",
         ]
         read_only_fields = ["id", "recorded_by", "created_at", "updated_at"]
@@ -130,6 +151,11 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
         if not document or not document.file:
             return None
         return document.file.url
+
+    def validate_proof(self, value):
+        if value is None:
+            return value
+        return validate_image_upload(value)
 
     def validate(self, data):
         """`destination` is the single source of truth for is_indirect/
@@ -178,20 +204,34 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"destination": "Destination inconnue."})
 
         data["destination"] = destination
+        if self.instance is None and not data.get("proof"):
+            raise serializers.ValidationError(
+                {"proof": "Le justificatif de paiement est obligatoire."}
+            )
         return data
 
     def create(self, validated_data):
         allocations = validated_data.pop("allocations", [])
+        proof = validated_data.pop("proof", None)
         with transaction.atomic():
             payment = CustomerPayment.objects.create(**validated_data)
+            content_type = ContentType.objects.get_for_model(CustomerPayment)
+            document = Document.objects.create(
+                file=proof,
+                document_type="customer_payment_proof",
+                uploaded_by=payment.recorded_by,
+                content_type=content_type,
+                object_id=payment.id,
+            )
             if allocations:
                 PaymentAllocationService.allocate_payment(payment.id, allocations)
-            FinancePostingService.record_customer_payment_treasury(payment)
+            FinancePostingService.record_customer_payment_treasury(payment, document=document)
         payment.refresh_from_db()
         return payment
 
     def update(self, instance, validated_data):
         allocations = validated_data.pop("allocations", [])
+        validated_data.pop("proof", None)
         payment = super().update(instance, validated_data)
         if allocations:
             PaymentAllocationService.allocate_payment(payment.id, allocations)
@@ -301,13 +341,14 @@ class TransportPaymentSerializer(serializers.ModelSerializer):
     transporter_detail = TransporterSerializer(source="transporter", read_only=True)
     trip_reference = serializers.CharField(source="trip.reference", read_only=True)
     net_amount = serializers.DecimalField(max_digits=16, decimal_places=2, read_only=True)
+    deduction_label = serializers.SerializerMethodField()
 
     class Meta:
         model = TransportPayment
         fields = [
             "id", "trip", "trip_reference", "transporter", "transporter_detail",
             "calculation_method", "base_amount", "unit_price_per_litre", "deduction_amount",
-            "advance_applied", "net_amount", "status", "created_at", "updated_at",
+            "deduction_label", "advance_applied", "net_amount", "status", "created_at", "updated_at",
         ]
         read_only_fields = ["id", "net_amount", "created_at", "updated_at"]
         extra_kwargs = {"base_amount": {"required": False}}
@@ -354,6 +395,15 @@ class TransportPaymentSerializer(serializers.ModelSerializer):
             )
 
         return data
+
+    def get_deduction_label(self, obj) -> str:
+        deduction = obj.trip.transport_deductions.order_by("-created_at", "-id").first()
+        if deduction is None:
+            return ""
+        return (
+            f"Manque quantite - {obj.trip.reference} - "
+            f"{deduction.chargeable_quantity} L x {deduction.unit_price} XOF/L"
+        )
 
 
 class ExpenseAllocationSerializer(serializers.ModelSerializer):
@@ -539,6 +589,11 @@ class ControlledDebtPaymentRequestSerializer(serializers.Serializer):
     note = serializers.CharField(required=False, allow_blank=True, default="")
     attachment = serializers.FileField(required=False, allow_null=True, default=None)
 
+    def validate_attachment(self, value):
+        if value is None:
+            return value
+        return validate_image_upload(value)
+
 
 # ---------------------------------------------------------------------------
 # Task 7 (client modifications plan): Shareholders / Associates domain
@@ -552,14 +607,14 @@ class ShareholderBriefSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Shareholder
-        fields = ["id", "name", "participation_percent"]
+        fields = ["id", "name", "participation_percent", "contribution"]
 
 
 class ShareholderSerializer(serializers.ModelSerializer):
     class Meta:
         model = Shareholder
         fields = [
-            "id", "name", "participation_percent", "phone", "notes", "is_active",
+            "id", "name", "participation_percent", "contribution", "phone", "notes", "is_active",
             "created_at", "updated_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]

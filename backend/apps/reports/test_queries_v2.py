@@ -186,6 +186,48 @@ def test_supplier_outstanding_report_matches_purchases_minus_payments():
 
 
 @pytest.mark.django_db
+def test_supplier_outstanding_report_only_counts_confirmed_orders():
+    admin_user = _make_admin("SUPCONFONLY")
+    supplier = Supplier.objects.create(name="Supplier Report Confirmed Only")
+    product = Product.objects.get(code="gasoil")
+    confirmed_order = SupplierOrder.objects.create(
+        reference="SO-QUERY2-SUPCONFONLY-A",
+        supplier=supplier,
+        product=product,
+        purchase_date="2026-08-18",
+        quantity_litres=Decimal("100000.00"),
+        unit_price=Decimal("500.0000"),
+        status=SupplierOrder.Status.CONFIRMED,
+        created_by=admin_user,
+    )
+    SupplierOrder.objects.create(
+        reference="SO-QUERY2-SUPCONFONLY-B",
+        supplier=supplier,
+        product=product,
+        purchase_date="2026-08-19",
+        quantity_litres=Decimal("100000.00"),
+        unit_price=Decimal("500.0000"),
+        status=SupplierOrder.Status.CANCELLED,
+        created_by=admin_user,
+    )
+    SupplierOrder.objects.create(
+        reference="SO-QUERY2-SUPCONFONLY-C",
+        supplier=supplier,
+        product=product,
+        purchase_date="2026-08-20",
+        quantity_litres=Decimal("100000.00"),
+        unit_price=Decimal("500.0000"),
+        status=SupplierOrder.Status.DRAFT,
+        created_by=admin_user,
+    )
+
+    rows = SupplierOutstandingReportQuery.run()
+    row = next(r for r in rows if r["supplier"] == supplier.name)
+
+    assert row["outstanding"] == confirmed_order.total_amount
+
+
+@pytest.mark.django_db
 def test_transporter_outstanding_report_sums_unpaid_settlements():
     admin_user = _make_admin("TRANSOUT")
     fx = _make_full_trip("TRANSOUT", admin_user)

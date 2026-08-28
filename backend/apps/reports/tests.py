@@ -9,7 +9,12 @@ from django.contrib.contenttypes.models import ContentType
 from apps.accounts.models import Role, User
 from apps.core.models import Product
 from apps.customers.models import Customer
-from apps.finance.models import Expense, ExpenseAllocation, TransportPayment
+from apps.finance.models import (
+    Expense,
+    ExpenseAllocation,
+    TransportDeduction,
+    TransportPayment,
+)
 from apps.purchasing.models import CessionLetter, SupplierOrder
 from apps.reports.services.profit import TripProfitService
 from apps.sales.models import CustomerOrder, Sale
@@ -19,13 +24,19 @@ from apps.trips.models import Trip
 
 
 def _make_trip(suffix, customer_order=None, status=Trip.Status.DELIVERED):
-    admin_role = Role.objects.get(name=Role.NAME_ADMIN)
+    admin_role, _ = Role.objects.get_or_create(
+        name=Role.NAME_ADMIN,
+        defaults={"permissions": {module: Role.ACTIONS for module in Role.MODULES}},
+    )
     admin_user = User.objects.create_user(
         phone=(f"+222{suffix}")[:20],
         pin="1234",
         role=admin_role,
     )
-    product = Product.objects.get(code="gasoil")
+    product, _ = Product.objects.get_or_create(
+        code="gasoil",
+        defaults={"name": "Gasoil"},
+    )
     supplier = Supplier.objects.create(name="Total", country="Senegal")
     transporter = Transporter.objects.create(name="Trans SA")
     supplier_order = SupplierOrder.objects.create(
@@ -208,6 +219,71 @@ def test_get_cost_breakdown_returns_unit_cost_and_unit_profit_with_fuel_transpor
     expected_unit_cost = Decimal("28550000.000000") / Decimal("45000.00")
     assert breakdown["unit_cost"] == expected_unit_cost
     assert breakdown["unit_profit"] == Decimal("650.0000") - expected_unit_cost
+
+
+@pytest.mark.django_db
+def test_current_margin_includes_transporter_loss_indemnity():
+    """A missing quantity charged back to the transporter is company income:
+    customer invoice + transporter indemnity - real loaded-trip cost."""
+    trip, transporter, _admin_user = _make_trip("LOSSINDEMNITY")
+    trip.supplier_order.unit_price = Decimal("500.0000")
+    trip.supplier_order.save(update_fields=["unit_price"])
+    customer = Customer.objects.create(name="Client LOSSINDEMNITY")
+    Sale.objects.create(
+        trip=trip,
+        customer=customer,
+        product=trip.product,
+        delivered_quantity=Decimal("44900.00"),
+        unit_selling_price=Decimal("900.0000"),
+    )
+    TransportPayment.objects.create(
+        trip=trip,
+        transporter=transporter,
+        calculation_method=TransportPayment.CalculationMethod.PER_LITRE,
+        unit_price_per_litre=Decimal("65.0000"),
+        base_amount=Decimal("2925000.00"),
+    )
+    customs = Expense.objects.create(
+        category=Expense.Category.CUSTOMS,
+        amount=Decimal("10125000.00"),
+        calculation_method=Expense.CalculationMethod.PER_LITRE,
+        date="2026-08-18",
+    )
+    ExpenseAllocation.objects.create(
+        expense=customs,
+        content_type=ContentType.objects.get_for_model(Trip),
+        object_id=trip.id,
+        allocated_amount=Decimal("10125000.00"),
+    )
+    transit = Expense.objects.create(
+        category=Expense.Category.IMPORT_INTENTION,
+        amount=Decimal("450000.00"),
+        calculation_method=Expense.CalculationMethod.PER_LITRE,
+        date="2026-08-18",
+    )
+    ExpenseAllocation.objects.create(
+        expense=transit,
+        content_type=ContentType.objects.get_for_model(Trip),
+        object_id=trip.id,
+        allocated_amount=Decimal("450000.00"),
+    )
+    TransportDeduction.objects.create(
+        trip=trip,
+        transporter=transporter,
+        chargeable_quantity=Decimal("100.00"),
+        unit_price=Decimal("900.0000"),
+    )
+
+    breakdown = TripProfitService.get_cost_breakdown(trip)
+
+    assert breakdown["quantity_loaded"] == Decimal("45000.00")
+    assert breakdown["quantity_invoiced"] == Decimal("44900.00")
+    assert breakdown["transporter_loss_quantity"] == Decimal("100.00")
+    assert breakdown["transporter_loss_indemnity"] == Decimal("90000.00")
+    assert breakdown["real_total_cost"] == Decimal("36000000.000000")
+    assert breakdown["revenue"] == Decimal("40410000.000000")
+    assert breakdown["margin"] == Decimal("4500000.00")
+    assert TripProfitService.calculate_current_margin(trip) == Decimal("4500000.00")
 
 
 @pytest.mark.django_db

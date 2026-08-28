@@ -6,6 +6,7 @@ import type { DashboardSummary } from '../types'
 import type { Trip } from '@/modules/trips/types'
 import type { CustomerPayment } from '@/modules/finance/types'
 import type { ReportResponse } from '@/modules/reports/types'
+import { i18n } from '@/i18n'
 
 const todayIso = new Date().toISOString().slice(0, 10)
 
@@ -255,6 +256,7 @@ function makeRouter() {
       { path: '/', component: { template: '<div />' } },
       { path: '/trips/:id', name: 'trip-detail', component: { template: '<div />' } },
       { path: '/trips', name: 'trips', component: { template: '<div />' } },
+      { path: '/company-stock', name: 'company-stock', component: { template: '<div />' } },
       { path: '/customers', name: 'customers', component: { template: '<div />' } },
       { path: '/suppliers', name: 'suppliers', component: { template: '<div />' } },
       { path: '/transporters', name: 'transporters', component: { template: '<div />' } },
@@ -265,6 +267,18 @@ function makeRouter() {
         component: { template: '<div />' },
       },
       { path: '/profit', name: 'profit', component: { template: '<div />' } },
+      {
+        path: '/supplier-orders/new',
+        name: 'supplier-order-new',
+        component: { template: '<div />' },
+      },
+      {
+        path: '/cession-letters/new',
+        name: 'cession-letter-new',
+        component: { template: '<div />' },
+      },
+      { path: '/trips/new', name: 'trip-new', component: { template: '<div />' } },
+      { path: '/invoices', name: 'invoices', component: { template: '<div />' } },
     ],
   })
 }
@@ -272,6 +286,7 @@ function makeRouter() {
 describe('DashboardView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    i18n.global.locale.value = 'fr'
     fetchDashboardSummary.mockImplementation(async () => summary)
     fetchReport.mockImplementation(async () => ({
       report_type: 'loss-report',
@@ -345,18 +360,125 @@ describe('DashboardView', () => {
     expect(wrapper.text()).toContain('Impossible de charger le tableau de bord.')
   })
 
-  it('renders the 4 strategic KPIs, "En route maintenant" and "À traiter" from live-ops data', async () => {
+  it('renders the 4 strategic KPIs and "En route maintenant" from live-ops data', async () => {
     const wrapper = mount(DashboardView, { global: { plugins: [makeRouter()] } })
     await flushPromises()
 
     // KPI: volume delivered today = 9950 + 7700 = 17650
     expect(wrapper.text()).toContain('17 650 L')
-    // "En route maintenant": only the IN_TRANSIT trip qualifies (BLOCKED goes to "Urgences")
+    // "En route maintenant": only the IN_TRANSIT trip qualifies
     expect(wrapper.text()).toContain('En route maintenant (1)')
     expect(wrapper.text()).toContain('TRIP-000042')
-    // "À traiter": the row with a chargeable loss
-    expect(wrapper.text()).toContain('TRIP-000043')
-    // "Urgences": the blocked trip
-    expect(wrapper.text()).toContain('TRIP-000044')
+  })
+
+  it('renders translated final dashboard cards and routes company stock details to the official page', async () => {
+    const router = makeRouter()
+    const wrapper = mount(DashboardView, { global: { plugins: [router] } })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain("Chiffre d'affaires de la période")
+    expect(wrapper.text()).toContain('Encaissements de la période')
+    expect(wrapper.text()).toContain('Dépenses payées de la période')
+    expect(wrapper.text()).toContain('Bénéfice comptable de la période')
+    expect(wrapper.text()).not.toContain(
+      'La période filtre les ventes, encaissements, dépenses, volumes et bénéfices.',
+    )
+    expect(wrapper.findAll('[data-test="financial-kpi-card"]')).toHaveLength(4)
+    expect(wrapper.text()).toContain('Trésorerie disponible')
+    expect(wrapper.text()).toContain('Banques')
+    expect(wrapper.text()).toContain('Caisses')
+    expect(wrapper.text()).toContain('Soldes par partie')
+    expect(wrapper.text()).toContain("Stock de l'entreprise")
+    expect(wrapper.text()).toContain('2 trajet(s) actuellement en stock')
+
+    const partyLinks = wrapper.findAll('[data-test="party-balance-card"]')
+    expect(partyLinks).toHaveLength(5)
+    expect(partyLinks.map((link) => link.text())).toEqual([
+      expect.stringContaining('Clients'),
+      expect.stringContaining('Fournisseurs'),
+      expect.stringContaining('Transporteurs'),
+      expect.stringContaining('Actionnaires / Associés'),
+      expect.stringContaining('Douane / Transit / Autres frais'),
+    ])
+    const partyRouterLinks = wrapper
+      .findAllComponents({ name: 'RouterLink' })
+      .filter((link) => link.attributes('data-test') === 'party-balance-card')
+    expect(partyRouterLinks.map((link) => link.props('to'))).toEqual([
+      { name: 'customers' },
+      { name: 'suppliers' },
+      { name: 'transporters' },
+      { name: 'shareholders' },
+      { name: 'treasury-transactions' },
+    ])
+
+    const stockLink = wrapper
+      .findAllComponents({ name: 'RouterLink' })
+      .find((link) => link.text() === 'Voir le détail')
+    expect(stockLink?.props('to')).toEqual({ name: 'company-stock' })
+  })
+
+  it('keeps action work prominent, live trips compact, and period detail collapsed', async () => {
+    const wrapper = mount(DashboardView, { global: { plugins: [makeRouter()] } })
+    await flushPromises()
+
+    const actionSection = wrapper.find('[data-test="action-items"]')
+    expect(actionSection.exists()).toBe(true)
+    expect(actionSection.text()).toContain('À traiter')
+    expect(actionSection.text()).toContain('TRIP-000042')
+    expect(actionSection.classes()).toContain('bg-white')
+    expect(actionSection.classes()).toContain('border-ligne')
+    expect(actionSection.classes()).not.toContain('bg-orange-tint/40')
+    expect(actionSection.find('[data-test="action-count-badge"]').classes()).toContain(
+      'bg-orange-tint',
+    )
+
+    const actionLink = actionSection.findComponent({ name: 'RouterLink' })
+    expect(actionLink.classes()).toContain('bg-sable')
+    expect(actionLink.classes()).not.toContain('bg-critique-tint')
+    expect(actionLink.classes()).not.toContain('text-critique-texte')
+
+    const normalDebtAmounts = wrapper.findAll('[data-test="party-balance-amount"]')
+    expect(normalDebtAmounts.some((amount) => amount.text().includes('-2 000 000 XOF'))).toBe(true)
+    expect(
+      normalDebtAmounts
+        .filter((amount) => amount.text().startsWith('-'))
+        .every((amount) => amount.classes().includes('text-texte')),
+    ).toBe(true)
+
+    const liveTripsSection = wrapper.find('[data-test="en-route-compact"]')
+    expect(liveTripsSection.exists()).toBe(true)
+    expect(liveTripsSection.text()).toContain('En route maintenant (1)')
+    expect(liveTripsSection.text()).toContain('Voir tous')
+    expect(liveTripsSection.findComponent({ name: 'TripCard' }).exists()).toBe(false)
+    expect(
+      wrapper.findAllComponents({ name: 'RouterLink' }).some((link) => {
+        return (
+          link.text() === 'Voir tous' && JSON.stringify(link.props('to')) === '{"name":"trips"}'
+        )
+      }),
+    ).toBe(true)
+
+    const periodDetail = wrapper.find('[data-test="period-detail"]')
+    expect(periodDetail.element.tagName).toBe('DETAILS')
+    expect((periodDetail.element as HTMLDetailsElement).open).toBe(false)
+  })
+
+  it('uses Arabic translations for the final dashboard cards', async () => {
+    i18n.global.locale.value = 'ar'
+    const wrapper = mount(DashboardView, { global: { plugins: [makeRouter()] } })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('إيرادات الفترة')
+    expect(wrapper.text()).toContain('تحصيلات الفترة')
+    expect(wrapper.text()).toContain('المصروفات المدفوعة للفترة')
+    expect(wrapper.text()).toContain('الربح المحاسبي للفترة')
+    expect(wrapper.text()).toContain('الخزينة المتاحة')
+    expect(wrapper.text()).toContain('البنوك')
+    expect(wrapper.text()).toContain('الصناديق')
+    expect(wrapper.text()).toContain('الأرصدة حسب الطرف')
+    expect(wrapper.text()).toContain('مخزون الشركة')
+    expect(wrapper.text()).toContain('2 رحلة في المخزون حاليًا')
+    expect(wrapper.text()).not.toContain("Chiffre d'affaires de la période")
+    expect(wrapper.text()).not.toContain('Soldes par partie')
   })
 })

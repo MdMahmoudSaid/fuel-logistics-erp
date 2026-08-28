@@ -1,9 +1,12 @@
 from django.db.models import Sum
+from django.contrib.contenttypes.models import ContentType
 from rest_framework import serializers
 
 from apps.accounts.serializers import UserSerializer
 from apps.core.serializers import ProductSerializer
 from apps.customers.serializers import CustomerSerializer
+from apps.documents.models import Document
+from apps.finance.models import CustomerPayment
 from apps.sales.models import CustomerOrder, Invoice, InvoiceCorrection, Sale
 from apps.sales.services import CustomerOrderService
 
@@ -149,6 +152,7 @@ class InvoiceSerializer(serializers.ModelSerializer):
     corrections = InvoiceCorrectionSerializer(many=True, read_only=True)
     paid_amount = serializers.SerializerMethodField()
     outstanding_amount = serializers.SerializerMethodField()
+    payments = serializers.SerializerMethodField()
 
     class Meta:
         model = Invoice
@@ -163,6 +167,7 @@ class InvoiceSerializer(serializers.ModelSerializer):
             "outstanding_amount",
             "issued_date",
             "corrections",
+            "payments",
             "created_at",
             "updated_at",
         ]
@@ -175,6 +180,7 @@ class InvoiceSerializer(serializers.ModelSerializer):
             "paid_amount",
             "outstanding_amount",
             "corrections",
+            "payments",
             "created_at",
             "updated_at",
         ]
@@ -186,6 +192,35 @@ class InvoiceSerializer(serializers.ModelSerializer):
     def get_outstanding_amount(self, obj) -> str:
         paid = obj.allocations.aggregate(total=Sum("amount"))["total"] or 0
         return f"{max(obj.total_amount - paid, 0):.2f}"
+
+    def get_payments(self, obj) -> list[dict]:
+        content_type = ContentType.objects.get_for_model(CustomerPayment)
+        rows = []
+        allocations = obj.allocations.select_related("payment").order_by(
+            "-payment__payment_date", "-payment_id"
+        )
+        for allocation in allocations:
+            payment = allocation.payment
+            document = (
+                Document.objects.filter(
+                    content_type=content_type,
+                    object_id=payment.id,
+                    document_type="customer_payment_proof",
+                )
+                .order_by("-created_at", "-id")
+                .first()
+            )
+            rows.append(
+                {
+                    "id": payment.id,
+                    "payment_date": payment.payment_date.isoformat(),
+                    "method": payment.method,
+                    "reference": payment.reference,
+                    "amount": f"{allocation.amount:.2f}",
+                    "proof_url": document.file.url if document and document.file else None,
+                }
+            )
+        return rows
 
     def validate(self, data):
         if (

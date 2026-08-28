@@ -1,6 +1,8 @@
 from decimal import Decimal
 
+from django.contrib.contenttypes.models import ContentType
 from django.db import IntegrityError, transaction
+from django.db.models import Sum
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -64,7 +66,7 @@ class TransporterViewSet(viewsets.ModelViewSet):
         # Imported lazily: apps.transport sits below apps.finance in the app
         # dependency graph (apps.finance.models references
         # "transport.Transporter" only via string FK).
-        from apps.finance.models import TransportPayment
+        from apps.finance.models import TransportPayment, TreasuryTransaction
         from apps.finance.serializers import (
             TransporterAdvanceSerializer,
             TransportPaymentSerializer,
@@ -83,9 +85,27 @@ class TransporterViewSet(viewsets.ModelViewSet):
             Decimal("0.00"),
         )
         net_amount = sum((p.net_amount for p in payments), Decimal("0.00"))
+        payment_ids = [payment.id for payment in payments]
+        transport_payment_type = ContentType.objects.get_for_model(TransportPayment)
+        paid_by_payment = {
+            row["source_object_id"]: row["total"] or Decimal("0.00")
+            for row in TreasuryTransaction.objects.filter(
+                source_content_type=transport_payment_type,
+                source_object_id__in=payment_ids,
+                type=TreasuryTransaction.Type.MONEY_OUT,
+            )
+            .values("source_object_id")
+            .annotate(total=Sum("amount"))
+        }
         settled = sum(
-            (p.net_amount for p in payments if p.status == TransportPayment.Status.PAID),
-            Decimal("0.00"),
+            (
+                paid_by_payment.get(payment.id)
+                if payment.id in paid_by_payment
+                else payment.net_amount
+                if payment.status == TransportPayment.Status.PAID
+                else Decimal("0.00")
+            )
+            for payment in payments
         )
         unsettled_advances = sum(
             (a.amount for a in advances if not a.settled), Decimal("0.00")

@@ -2,7 +2,7 @@
 # (ERP_Specification.md Section 37; docs/PHASE_6_PLAN.md Etape 4/6).
 #
 # Mirrors CustomerOutstandingReportQuery on the purchasing side: total of
-# non-cancelled SupplierOrder.total_amount minus total SupplierPayment for
+# confirmed SupplierOrder.total_amount minus total SupplierPayment for
 # each supplier with at least one order.
 
 from decimal import Decimal
@@ -23,15 +23,17 @@ class SupplierOutstandingReportQuery:
     @classmethod
     def run(cls) -> list[dict]:
         supplier_ids = (
-            SupplierOrder.objects.exclude(status=SupplierOrder.Status.CANCELLED)
+            SupplierOrder.objects.filter(status=SupplierOrder.Status.CONFIRMED)
             .values_list("supplier_id", flat=True)
             .distinct()
         )
         rows = []
         for supplier in Supplier.objects.filter(id__in=supplier_ids):
             total_purchased = (
-                SupplierOrder.objects.filter(supplier=supplier)
-                .exclude(status=SupplierOrder.Status.CANCELLED)
+                SupplierOrder.objects.filter(
+                    supplier=supplier,
+                    status=SupplierOrder.Status.CONFIRMED,
+                )
                 .aggregate(total=Sum("total_amount"))["total"]
                 or ZERO
             )
