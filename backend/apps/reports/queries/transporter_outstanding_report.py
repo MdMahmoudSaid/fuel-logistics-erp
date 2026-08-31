@@ -1,17 +1,17 @@
 # TransporterOutstandingReportQuery - "transporter outstanding report"
 # (ERP_Specification.md Section 37; docs/PHASE_6_PLAN.md Etape 4/6).
 #
-# Unlike customer/supplier outstanding, there is no separate "amount
-# actually disbursed" ledger for transporters - TransportPayment.net_amount
-# already is the final computed liability per settlement, and its `status`
-# tracks payment progress (guide Section 1.5/8.6). So "outstanding" here is
-# the sum of net_amount on settlements not yet fully PAID, per transporter.
+# "Outstanding" per transporter is net_amount minus whatever has actually
+# been disbursed against each settlement via the TreasuryTransaction ledger
+# (ControlledDebtPaymentService._paid_for_source) - the same reste-a-payer
+# figure shown on the "Nouveau paiement" screen
+# (ControlledDebtPaymentService.describe_transporter), so this report and
+# the payment screen never disagree.
 
 from decimal import Decimal
 
-from django.db.models import Sum
-
 from apps.finance.models import TransportPayment
+from apps.finance.services import ControlledDebtPaymentService
 from apps.transport.models import Transporter
 
 FIELDS = ["transporter", "outstanding"]
@@ -30,11 +30,9 @@ class TransporterOutstandingReportQuery:
         )
         rows = []
         for transporter in Transporter.objects.filter(id__in=transporter_ids):
-            outstanding = (
-                TransportPayment.objects.filter(transporter=transporter)
-                .exclude(status=TransportPayment.Status.PAID)
-                .aggregate(total=Sum("net_amount"))["total"]
-                or ZERO
-            )
-            rows.append({"transporter": transporter.name, "outstanding": outstanding})
+            outstanding = ControlledDebtPaymentService.describe_transporter(transporter)[
+                "remaining_amount"
+            ]
+            if outstanding > ZERO:
+                rows.append({"transporter": transporter.name, "outstanding": outstanding})
         return rows

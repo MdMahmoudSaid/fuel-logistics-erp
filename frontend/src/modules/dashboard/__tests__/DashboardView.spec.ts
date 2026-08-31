@@ -356,6 +356,40 @@ describe('DashboardView', () => {
     expect(wrapper.text()).toContain('Caisse 1')
   })
 
+  it('refetches fresh balances when the dashboard is re-entered after a payment', async () => {
+    // Simulates: user records a payment in Journal de tresorerie > Nouveau
+    // paiement (a separate route, so this DashboardView instance unmounts),
+    // then navigates back to the Dashboard. There is no shared cache/store
+    // for the summary, so the freshly-mounted instance must issue its own
+    // fetch and render the updated party_balances - not the stale numbers
+    // from the previous mount.
+    const router = makeRouter()
+    const firstMount = mount(DashboardView, { global: { plugins: [router] } })
+    await flushPromises()
+    expect(firstMount.text()).toContain('-1 000 000 XOF')
+    firstMount.unmount()
+
+    const updatedSummary: DashboardSummary = {
+      ...summary,
+      party_balances: {
+        ...summary.party_balances,
+        transporters: {
+          balance: '-637000.00',
+          open_count: 1,
+          largest_open: { name: 'Transporteur 1', amount: '637000.00' },
+        },
+      },
+    }
+    fetchDashboardSummary.mockImplementation(async () => updatedSummary)
+
+    const secondMount = mount(DashboardView, { global: { plugins: [router] } })
+    await flushPromises()
+
+    expect(fetchDashboardSummary).toHaveBeenCalledTimes(2)
+    expect(secondMount.text()).toContain('-637 000 XOF')
+    expect(secondMount.text()).not.toContain('-1 000 000 XOF')
+  })
+
   it('shows an error message when the summary fails to load', async () => {
     fetchDashboardSummary.mockRejectedValueOnce(new Error('network error'))
     const wrapper = mount(DashboardView, { global: { plugins: [makeRouter()] } })

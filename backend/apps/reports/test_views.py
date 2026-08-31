@@ -20,6 +20,7 @@ from apps.finance.models import (
     Expense,
     Shareholder,
     ShareholderLoan,
+    TransportPayment,
 )
 from apps.finance.services import (
     ControlledDebtPaymentService,
@@ -327,6 +328,175 @@ def test_dashboard_summary_shows_transit_debt_until_controlled_payment():
     assert after.status_code == 200, after.data
     assert after.data["debts"]["transit"] == "0.00"
     assert after.data["party_balances"]["customs_and_other"]["transit"] == "0.00"
+
+
+@pytest.mark.django_db
+def test_dashboard_summary_transporter_balance_matches_new_payment_reste_a_payer():
+    """Bug: the dashboard's "Transporteurs" card must show the same net
+    reste-a-payer as Journal de tresorerie > Nouveau paiement, not the raw
+    settlement total - a settlement of 5 670 000 with 33 000 already paid
+    must show as -5 637 000, not -5 670 000."""
+    admin_user = _make_admin("DASHTRANSPAY")
+    fx = _make_full_trip("DASHTRANSPAY", admin_user)
+    transporter = fx["trip"].transporter
+    TransportPayment.objects.create(
+        trip=fx["trip"],
+        transporter=transporter,
+        calculation_method=TransportPayment.CalculationMethod.NEGOTIATED,
+        base_amount=Decimal("5670000.00"),
+        status=TransportPayment.Status.PAYABLE,
+    )
+    bank = BankAccount.objects.create(
+        name="Dashboard Transport Bank", opening_balance=Decimal("10000000.00")
+    )
+    client = APIClient()
+    client.force_authenticate(admin_user)
+
+    before = client.get("/api/dashboard/summary/")
+    assert before.status_code == 200, before.data
+    assert before.data["party_balances"]["transporters"]["balance"] == "-5670000.00"
+
+    ControlledDebtPaymentService.record_payment(
+        debt_type=ControlledDebtPaymentService.TRANSPORTER,
+        debt_id=transporter.id,
+        bank_account_id=bank.id,
+        amount=Decimal("33000.00"),
+        date="2026-08-19",
+        reference="DASH-TRANS-PAY",
+        actor=admin_user,
+    )
+
+    after = client.get("/api/dashboard/summary/")
+
+    assert after.status_code == 200, after.data
+    assert after.data["debts"]["transporters"]["total"] == "5637000.00"
+    assert after.data["party_balances"]["transporters"]["balance"] == "-5637000.00"
+
+
+@pytest.mark.django_db
+def test_dashboard_summary_customs_and_other_balance_matches_open_debts_by_category():
+    """Bug: the dashboard's "Douane / Transit / Frais autres" card must sum
+    the same open reste-a-payer buckets as Nouveau paiement: douane +
+    transit routiere + frontiere (Expense.Category.ROAD) - here
+    20 200 000 + 350 000 + 450 000 = 21 000 000, not the old inflated
+    total that folded unrelated categories into "other"."""
+    admin_user = _make_admin("DASHCUSTNET")
+    Expense.objects.create(
+        category=Expense.Category.CUSTOMS,
+        amount=Decimal("20200000.00"),
+        calculation_method=Expense.CalculationMethod.FIXED,
+        date="2020-01-01",
+        status=Expense.Status.UNPAID,
+    )
+    Expense.objects.create(
+        category=Expense.Category.ROAD_TRANSIT,
+        amount=Decimal("350000.00"),
+        calculation_method=Expense.CalculationMethod.FIXED,
+        date="2020-01-01",
+        status=Expense.Status.UNPAID,
+    )
+    Expense.objects.create(
+        category=Expense.Category.ROAD,  # "frontiere" (ControlledDebtPaymentService.BORDER)
+        amount=Decimal("450000.00"),
+        calculation_method=Expense.CalculationMethod.FIXED,
+        date="2020-01-01",
+        status=Expense.Status.UNPAID,
+    )
+
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    response = client.get("/api/dashboard/summary/")
+
+    assert response.status_code == 200, response.data
+    assert response.data["debts"]["customs"] == "20200000.00"
+    assert response.data["debts"]["road_transit"] == "350000.00"
+    assert response.data["debts"]["other"] == "450000.00"
+    assert response.data["party_balances"]["customs_and_other"]["balance"] == "-21000000.00"
+
+
+@pytest.mark.django_db
+def test_dashboard_summary_customs_balance_decreases_immediately_after_partial_payment():
+    admin_user = _make_admin("DASHCUSTPAY")
+    Expense.objects.create(
+        category=Expense.Category.CUSTOMS,
+        amount=Decimal("20200000.00"),
+        calculation_method=Expense.CalculationMethod.FIXED,
+        date="2020-01-01",
+        status=Expense.Status.UNPAID,
+    )
+    bank = BankAccount.objects.create(
+        name="Dashboard Customs Bank", opening_balance=Decimal("30000000.00")
+    )
+    client = APIClient()
+    client.force_authenticate(admin_user)
+
+    ControlledDebtPaymentService.record_payment(
+        debt_type=ControlledDebtPaymentService.CUSTOMS,
+        debt_id=0,
+        bank_account_id=bank.id,
+        amount=Decimal("200000.00"),
+        date="2020-01-02",
+        reference="DASH-CUSTOMS-PAY",
+        actor=admin_user,
+    )
+
+    response = client.get("/api/dashboard/summary/")
+
+    assert response.status_code == 200, response.data
+    assert response.data["debts"]["customs"] == "20000000.00"
+    assert response.data["party_balances"]["customs_and_other"]["customs"] == "20000000.00"
+    assert response.data["party_balances"]["customs_and_other"]["balance"] == "-20000000.00"
+
+
+@pytest.mark.django_db
+def test_dashboard_summary_balances_exclude_cancelled_and_draft_items():
+    """Cancelled expenses, draft supplier orders, and fully PAID transport
+    settlements must never inflate the dashboard's open balances."""
+    admin_user = _make_admin("DASHEXCL")
+    fx = _make_full_trip("DASHEXCL", admin_user, with_sale=False)
+    transporter = fx["trip"].transporter
+    supplier = fx["supplier_order"].supplier
+
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    before = client.get("/api/dashboard/summary/")
+    assert before.status_code == 200, before.data
+    suppliers_balance_before = before.data["party_balances"]["suppliers"]["balance"]
+
+    # Cancelled expense in an otherwise-empty debt-bearing category.
+    Expense.objects.create(
+        category=Expense.Category.CUSTOMS,
+        amount=Decimal("999999.00"),
+        calculation_method=Expense.CalculationMethod.FIXED,
+        date="2020-01-01",
+        status=Expense.Status.CANCELLED,
+    )
+    # A fully PAID transport settlement must not count as open debt.
+    TransportPayment.objects.create(
+        trip=fx["trip"],
+        transporter=transporter,
+        calculation_method=TransportPayment.CalculationMethod.NEGOTIATED,
+        base_amount=Decimal("123456.00"),
+        status=TransportPayment.Status.PAID,
+    )
+    # A draft supplier order must not add to the supplier's open debt.
+    SupplierOrder.objects.create(
+        reference="SO-DASHEXCL-DRAFT",
+        supplier=supplier,
+        product=Product.objects.get(code="gasoil"),
+        purchase_date="2020-01-01",
+        quantity_litres=Decimal("1000.00"),
+        unit_price=Decimal("600.0000"),
+        status=SupplierOrder.Status.DRAFT,
+        created_by=admin_user,
+    )
+
+    after = client.get("/api/dashboard/summary/")
+
+    assert after.status_code == 200, after.data
+    assert after.data["debts"]["customs"] == "0.00"
+    assert after.data["party_balances"]["transporters"]["balance"] == "0.00"
+    assert after.data["party_balances"]["suppliers"]["balance"] == suppliers_balance_before
 
 
 @pytest.mark.django_db

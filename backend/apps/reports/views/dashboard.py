@@ -20,7 +20,7 @@ from apps.finance.models import (
     ShareholderWithdrawal,
     TransportPayment,
 )
-from apps.finance.services import ShareholderProfitPreviewService
+from apps.finance.services import ControlledDebtPaymentService, ShareholderProfitPreviewService
 from apps.reports.date_range import resolve_date_range
 from apps.reports.queries.customer_outstanding_report import CustomerOutstandingReportQuery
 from apps.reports.queries.supplier_outstanding_report import SupplierOutstandingReportQuery
@@ -33,19 +33,6 @@ from apps.reports.services.stock import TheoreticalStockService
 from apps.trips.models import Trip
 
 ZERO = Decimal("0.00")
-
-# Expense categories already captured elsewhere in the debts breakdown -
-# TRANSPORT is excluded from "other debts" because debts.transporters
-# (TransporterOutstandingReportQuery, based on TransportPayment) already
-# fully represents transporter liability; counting Expense(category=
-# TRANSPORT) too would double-count the same debt.
-_OTHER_DEBT_EXCLUDED_CATEGORIES = [
-    Expense.Category.CUSTOMS,
-    Expense.Category.TRANSIT,
-    Expense.Category.ROAD_TRANSIT,
-    Expense.Category.TRANSPORT,
-]
-_OUTSTANDING_EXPENSE_STATUSES = [Expense.Status.UNPAID, Expense.Status.PARTIALLY_PAID]
 
 
 class DashboardViewSet(viewsets.ViewSet):
@@ -123,33 +110,33 @@ class DashboardViewSet(viewsets.ViewSet):
         transporter_rows = TransporterOutstandingReportQuery.run()
         transporter_total = sum((row["outstanding"] for row in transporter_rows), ZERO)
 
-        outstanding_expenses = Expense.objects.filter(
-            status__in=_OUTSTANDING_EXPENSE_STATUSES
-        )
-        customs_total = (
-            outstanding_expenses.filter(category=Expense.Category.CUSTOMS).aggregate(
-                total=Sum("amount")
-            )["total"]
-            or ZERO
-        )
-        transit_total = (
-            outstanding_expenses.filter(category=Expense.Category.TRANSIT).aggregate(
-                total=Sum("amount")
-            )["total"]
-            or ZERO
-        )
-        road_transit_total = (
-            outstanding_expenses.filter(category=Expense.Category.ROAD_TRANSIT).aggregate(
-                total=Sum("amount")
-            )["total"]
-            or ZERO
-        )
-        other_total = (
-            outstanding_expenses.exclude(
-                category__in=_OTHER_DEBT_EXCLUDED_CATEGORIES
-            ).aggregate(total=Sum("amount"))["total"]
-            or ZERO
-        )
+        # Same reste-a-payer figures as the "Nouveau paiement" screen
+        # (ControlledDebtPaymentService.get_payable_debts): amount minus
+        # what's actually been disbursed via the TreasuryTransaction ledger,
+        # grouped by the same expense-category buckets the payment screen
+        # pays against. TRANSPORT-category expenses are excluded because
+        # debts.transporters (TransporterOutstandingReportQuery) already
+        # fully represents transporter liability; IMPORT_INTENTION has no
+        # payable-debt bucket and is intentionally excluded here too.
+        customs_total = ControlledDebtPaymentService.describe_expense_group(
+            ControlledDebtPaymentService.CUSTOMS
+        )["remaining_amount"]
+        transit_total = ControlledDebtPaymentService.describe_expense_group(
+            ControlledDebtPaymentService.TRANSIT
+        )["remaining_amount"]
+        road_transit_total = ControlledDebtPaymentService.describe_expense_group(
+            ControlledDebtPaymentService.ROAD_TRANSIT
+        )["remaining_amount"]
+        border_total = ControlledDebtPaymentService.describe_expense_group(
+            ControlledDebtPaymentService.BORDER
+        )["remaining_amount"]
+        loading_total = ControlledDebtPaymentService.describe_expense_group(
+            ControlledDebtPaymentService.LOADING
+        )["remaining_amount"]
+        trip_other_total = ControlledDebtPaymentService.describe_expense_group(
+            ControlledDebtPaymentService.TRIP_OTHER
+        )["remaining_amount"]
+        other_total = border_total + loading_total + trip_other_total
 
         debts = {
             "total": (

@@ -11,7 +11,15 @@ import pytest
 from apps.accounts.models import Role, User
 from apps.core.models import Product
 from apps.customers.models import Customer
-from apps.finance.models import CashAccount, CustomerPayment, Expense, SupplierPayment, TransportPayment
+from apps.finance.models import (
+    BankAccount,
+    CashAccount,
+    CustomerPayment,
+    Expense,
+    SupplierPayment,
+    TransportPayment,
+)
+from apps.finance.services import ControlledDebtPaymentService
 from apps.purchasing.models import CessionLetter, SupplierOrder
 from apps.reports.queries.customer_outstanding_report import CustomerOutstandingReportQuery
 from apps.reports.queries.expense_report import ExpenseReportQuery
@@ -242,3 +250,37 @@ def test_transporter_outstanding_report_sums_unpaid_settlements():
     rows = TransporterOutstandingReportQuery.run()
     row = next(r for r in rows if r["transporter"] == fx["transporter"].name)
     assert row["outstanding"] == Decimal("1500000.00")
+
+
+@pytest.mark.django_db
+def test_transporter_outstanding_report_nets_amount_already_paid():
+    """Bug fix: "outstanding" must be net_amount minus what was actually
+    disbursed via the TreasuryTransaction ledger - the same reste-a-payer
+    ControlledDebtPaymentService.describe_transporter shows on the Nouveau
+    paiement screen - not the raw settlement total."""
+    admin_user = _make_admin("TRANSOUTNET")
+    fx = _make_full_trip("TRANSOUTNET", admin_user)
+    TransportPayment.objects.create(
+        trip=fx["trip"],
+        transporter=fx["transporter"],
+        calculation_method=TransportPayment.CalculationMethod.NEGOTIATED,
+        base_amount=Decimal("5670000.00"),
+        status=TransportPayment.Status.PAYABLE,
+    )
+    bank = BankAccount.objects.create(
+        name="TransOutNet Bank", opening_balance=Decimal("10000000.00")
+    )
+
+    ControlledDebtPaymentService.record_payment(
+        debt_type=ControlledDebtPaymentService.TRANSPORTER,
+        debt_id=fx["transporter"].id,
+        bank_account_id=bank.id,
+        amount=Decimal("33000.00"),
+        date="2026-08-19",
+        reference="TRANSOUTNET-PAY",
+        actor=admin_user,
+    )
+
+    rows = TransporterOutstandingReportQuery.run()
+    row = next(r for r in rows if r["transporter"] == fx["transporter"].name)
+    assert row["outstanding"] == Decimal("5637000.00")
