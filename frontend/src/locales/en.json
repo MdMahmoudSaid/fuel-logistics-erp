@@ -733,6 +733,14 @@
       "listTitle": "Shareholder list",
       "saveError": "Could not save this shareholder — check the fields and your permissions.",
       "selectShareholder": "Select a shareholder",
+      "tabs": {
+        "summary": "Summary",
+        "associates": "Associates",
+        "distributions": "Profit distribution",
+        "loans": "Advances",
+        "withdrawals": "Withdrawals",
+        "ledger": "Ledger"
+      },
       "distribution": {
         "title": "Profit distribution",
         "periodStart": "Period start",
@@ -796,7 +804,8 @@
       },
       "preview": {
         "badge": "Indicative",
-        "notice": "Current indicative profit — not yet officially distributed"
+        "notice": "Current indicative profit — not yet officially distributed",
+        "summaryLabel": "Current indicative profit"
       }
     },
     "profit": {

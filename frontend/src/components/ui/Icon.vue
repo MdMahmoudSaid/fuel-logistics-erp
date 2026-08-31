@@ -8,18 +8,24 @@ defineOptions({ name: 'UiIcon' })
  */
 export type IconName =
   | 'trending-up'
+  | 'chart-no-axes-combined'
   | 'wallet'
   | 'receipt'
+  | 'receipt-text'
   | 'coins'
+  | 'circle-dollar-sign'
   | 'landmark'
   | 'users'
   | 'package'
   | 'truck'
   | 'pie-chart'
   | 'shield'
+  | 'shield-check'
   | 'droplet'
+  | 'fuel'
   | 'cart-plus'
   | 'file-signature'
+  | 'file-text'
   | 'route'
   | 'credit-card'
   | 'banknote'
@@ -43,6 +49,12 @@ withDefaults(defineProps<{ name: IconName; size?: number }>(), { size: 20 })
       <polyline points="3 17 9 11 13 15 21 7" />
       <polyline points="15 7 21 7 21 13" />
     </g>
+    <g v-else-if="name === 'chart-no-axes-combined'">
+      <path d="M4 19V5" />
+      <path d="M4 19h16" />
+      <path d="M7 15l3-3 3 2 5-7" />
+      <path d="M15 7h3v3" />
+    </g>
     <g v-else-if="name === 'wallet'">
       <rect x="3" y="6" width="18" height="13" rx="2" />
       <path d="M3 10h18" />
@@ -52,9 +64,18 @@ withDefaults(defineProps<{ name: IconName; size?: number }>(), { size: 20 })
       <path d="M6 2h12v19l-3-2-3 2-3-2-3 2V2Z" />
       <path d="M9 8h6M9 12h6" />
     </g>
+    <g v-else-if="name === 'receipt-text'">
+      <path d="M6 2h12v20l-3-2-3 2-3-2-3 2V2Z" />
+      <path d="M9 7h6M9 11h6M9 15h4" />
+    </g>
     <g v-else-if="name === 'coins'">
       <circle cx="9" cy="10" r="5" />
       <circle cx="15" cy="14" r="5" />
+    </g>
+    <g v-else-if="name === 'circle-dollar-sign'">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 6v12" />
+      <path d="M15 8.5h-4.5a2 2 0 0 0 0 4H13a2 2 0 0 1 0 4H8.5" />
     </g>
     <g v-else-if="name === 'landmark'">
       <path d="M2 10 12 4l10 6" />
@@ -86,8 +107,18 @@ withDefaults(defineProps<{ name: IconName; size?: number }>(), { size: 20 })
       <path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3Z" />
       <path d="M9 12l2 2 4-4" />
     </g>
+    <g v-else-if="name === 'shield-check'">
+      <path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3Z" />
+      <path d="M9 12l2 2 4-4" />
+    </g>
     <g v-else-if="name === 'droplet'">
       <path d="M12 3s6.5 7.4 6.5 11.5a6.5 6.5 0 1 1-13 0C5.5 10.4 12 3 12 3Z" />
+    </g>
+    <g v-else-if="name === 'fuel'">
+      <path d="M4 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16" />
+      <path d="M4 10h12" />
+      <path d="M16 7h1.5L20 9.5V17a2 2 0 0 0 4 0v-4.5a2 2 0 0 0-2-2H20" />
+      <path d="M3 21h14" />
     </g>
     <g v-else-if="name === 'cart-plus'">
       <circle cx="9" cy="20" r="1.4" />
@@ -99,6 +130,11 @@ withDefaults(defineProps<{ name: IconName; size?: number }>(), { size: 20 })
       <path d="M8 3h6l4 4v13a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" />
       <path d="M14 3v4h4" />
       <path d="M8 16.5s1-1.2 1.8-1.2 1 1.2 1.8 1.2 1-1.4 1.9-1.4 1.1 1.6 2 1.6" />
+    </g>
+    <g v-else-if="name === 'file-text'">
+      <path d="M8 3h6l4 4v13a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" />
+      <path d="M14 3v4h4" />
+      <path d="M9 12h6M9 16h6M9 8h2" />
     </g>
     <g v-else-if="name === 'route'">
       <circle cx="5" cy="19" r="2" />

@@ -735,6 +735,14 @@
       "listTitle": "Liste des actionnaires",
       "saveError": "Impossible d'enregistrer cet actionnaire — vérifiez les champs et vos droits.",
       "selectShareholder": "Sélectionner un actionnaire",
+      "tabs": {
+        "summary": "Résumé",
+        "associates": "Associés",
+        "distributions": "Répartition des bénéfices",
+        "loans": "Avances",
+        "withdrawals": "Retraits",
+        "ledger": "Grand livre"
+      },
       "distribution": {
         "title": "Répartition des bénéfices",
         "periodStart": "Début de période",
@@ -798,7 +806,8 @@
       },
       "preview": {
         "badge": "Indicatif",
-        "notice": "Bénéfice actuel indicatif — non distribué officiellement"
+        "notice": "Bénéfice actuel indicatif — non distribué officiellement",
+        "summaryLabel": "Bénéfice indicatif actuel"
       }
     },
     "profit": {

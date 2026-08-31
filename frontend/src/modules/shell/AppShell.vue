@@ -183,7 +183,7 @@ onUnmounted(() => {
 <template>
   <div class="bg-sable text-texte flex min-h-screen">
     <!-- Sidebar (desktop) -->
-    <aside class="bg-bitume hidden w-60 shrink-0 flex-col overflow-y-auto md:flex">
+    <aside class="bg-bitume sticky top-0 hidden h-screen w-60 shrink-0 flex-col overflow-y-auto md:flex">
       <div class="px-4 py-4">
         <AppLogo tone="light" :size="28" />
       </div>

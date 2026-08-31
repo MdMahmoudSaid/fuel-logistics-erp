@@ -99,12 +99,26 @@ describe('ProfitView', () => {
     const wrapper = mount(ProfitView)
     await flushPromises()
 
+    expect(wrapper.findAll('[data-test="profit-summary-card"]')).toHaveLength(3)
     expect(wrapper.text()).toContain('Bénéfice comptable')
     expect(wrapper.text()).toContain('Bénéfice encaissé')
     expect(wrapper.text()).toContain('Bénéfice distribuable')
     expect(wrapper.text()).toContain(
       "Le bénéfice comptable n'est pas automatiquement distribuable.",
     )
+  })
+
+  it('renders dashboard-style cost cards with icons and tabular aligned amounts', async () => {
+    const wrapper = mount(ProfitView)
+    await flushPromises()
+
+    const cards = wrapper.findAll('[data-test="profit-cost-card"]')
+    expect(cards).toHaveLength(8)
+    expect(cards[0]!.classes()).toEqual(
+      expect.arrayContaining(['border-ligne', 'rounded-lg', 'border', 'bg-white', 'p-4']),
+    )
+    expect(cards[0]!.find('svg').exists()).toBe(true)
+    expect(cards[0]!.find('.font-mono.tabular-nums').exists()).toBe(true)
   })
 
   it('shows an empty state when the period has no trips', async () => {

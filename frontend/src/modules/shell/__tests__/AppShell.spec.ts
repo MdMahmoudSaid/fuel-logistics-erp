@@ -11,7 +11,7 @@ function makeRouter() {
   return createRouter({
     history: createWebHistory(),
     routes: [
-      { path: '/', component: stub },
+      { path: '/', name: 'home', component: stub },
       { path: '/products', name: 'products', component: stub },
       { path: '/suppliers', name: 'suppliers', component: stub },
       { path: '/supplier-orders', name: 'supplier-orders', component: stub },
@@ -64,5 +64,41 @@ describe('AppShell navigation', () => {
 
     expect(wrapper.text()).toContain('Produits')
     expect(wrapper.text()).not.toContain('Utilisateurs')
+  })
+
+  it('keeps the desktop sidebar sticky and independently scrollable', async () => {
+    const router = makeRouter()
+    await router.push('/')
+    await router.isReady()
+
+    const auth = useAuthStore()
+    auth.user = {
+      id: 1,
+      phone: '+22212345678',
+      email: 'admin@example.com',
+      full_name: 'Admin User',
+      role: 1,
+      role_detail: {
+        id: 1,
+        name: 'Admin',
+        permissions: {
+          reports: ['view'],
+          operations: ['view'],
+          purchasing: ['view'],
+          sales: ['view'],
+          finance: ['view'],
+          shareholders: ['view'],
+          admin: ['view'],
+        },
+      },
+    }
+
+    const wrapper = mount(AppShell, { global: { plugins: [router, i18n] } })
+    const sidebar = wrapper.find('aside')
+
+    expect(sidebar.classes()).toContain('sticky')
+    expect(sidebar.classes()).toContain('top-0')
+    expect(sidebar.classes()).toContain('h-screen')
+    expect(sidebar.classes()).toContain('overflow-y-auto')
   })
 })

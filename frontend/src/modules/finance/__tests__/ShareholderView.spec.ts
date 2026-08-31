@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import ShareholderView from '../ShareholderView.vue'
+import { i18n } from '@/i18n'
 
 // Design doc 2026-08-26-benefices-associes-refinement-design.md: focused
 // coverage for what this pass added to the page - the read-only, clearly
@@ -55,6 +56,7 @@ vi.mock('@/api/resource', () => ({
 describe('ShareholderView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    i18n.global.locale.value = 'fr'
     fetchShareholderProfitPreview.mockResolvedValue({
       period_start: '2026-08-01',
       period_end: null,
@@ -136,5 +138,28 @@ describe('ShareholderView', () => {
     await flushPromises()
 
     expect(wrapper.find('#contribution').exists()).toBe(true)
+  })
+
+  it('localizes the shareholder tabs and indicative summary label in English and Arabic', async () => {
+    i18n.global.locale.value = 'en'
+    const english = mount(ShareholderView)
+    await flushPromises()
+
+    expect(english.text()).toContain('Summary')
+    expect(english.text()).toContain('Associates')
+    expect(english.text()).toContain('Current indicative profit')
+    expect(english.text()).not.toContain('Résumé')
+    expect(english.text()).not.toContain('Bénéfice indicatif actuel')
+
+    english.unmount()
+    i18n.global.locale.value = 'ar'
+    const arabic = mount(ShareholderView)
+    await flushPromises()
+
+    expect(arabic.text()).toContain('ملخص')
+    expect(arabic.text()).toContain('الشركاء')
+    expect(arabic.text()).toContain('الربح الحالي الإرشادي')
+    expect(arabic.text()).not.toContain('Résumé')
+    expect(arabic.text()).not.toContain('Bénéfice indicatif actuel')
   })
 })

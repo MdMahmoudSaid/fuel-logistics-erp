@@ -40,13 +40,13 @@ const { t } = useI18n()
 
 type ShareholderTab = 'summary' | 'associates' | 'distributions' | 'loans' | 'withdrawals' | 'ledger'
 const activeTab = ref<ShareholderTab>('summary')
-const tabs: { key: ShareholderTab; label: string }[] = [
-  { key: 'summary', label: 'Résumé' },
-  { key: 'associates', label: 'Associés' },
-  { key: 'distributions', label: 'Répartition des bénéfices' },
-  { key: 'loans', label: 'Avances' },
-  { key: 'withdrawals', label: 'Retraits' },
-  { key: 'ledger', label: 'Grand livre' },
+const tabs: { key: ShareholderTab; labelKey: string }[] = [
+  { key: 'summary', labelKey: 'finance.shareholder.tabs.summary' },
+  { key: 'associates', labelKey: 'finance.shareholder.tabs.associates' },
+  { key: 'distributions', labelKey: 'finance.shareholder.tabs.distributions' },
+  { key: 'loans', labelKey: 'finance.shareholder.tabs.loans' },
+  { key: 'withdrawals', labelKey: 'finance.shareholder.tabs.withdrawals' },
+  { key: 'ledger', labelKey: 'finance.shareholder.tabs.ledger' },
 ]
 
 function extractErrorMessage(e: unknown, fallback: string): string {
@@ -399,7 +399,7 @@ async function onViewLedger() {
         :class="activeTab === tab.key ? 'bg-bitume text-sable' : 'text-texte-2 hover:bg-white'"
         @click="activeTab = tab.key"
       >
-        {{ tab.label }}
+        {{ t(tab.labelKey) }}
       </button>
     </div>
 
@@ -411,8 +411,14 @@ async function onViewLedger() {
       >
         <p class="text-texte font-semibold">{{ row.name }}</p>
         <p class="text-texte-2 text-sm">{{ row.participation_percent }} %</p>
-        <p class="mt-3 text-sm">Bénéfice indicatif actuel</p>
-        <MonoValue class="text-lg font-semibold" align="left" :value="formatMoney(row.indicative_share)" />
+        <p class="text-texte-2 mt-3 text-sm">
+          {{ t('finance.shareholder.preview.summaryLabel') }}
+        </p>
+        <MonoValue
+          class="text-lg font-semibold"
+          align="left"
+          :value="formatMoney(row.indicative_share)"
+        />
       </div>
     </section>
 

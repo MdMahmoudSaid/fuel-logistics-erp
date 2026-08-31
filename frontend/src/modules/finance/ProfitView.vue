@@ -17,8 +17,8 @@ import { fetchReport } from '@/modules/reports/api'
 import { fetchShareholderProfitPreview } from './api'
 import type { ShareholderProfitPreview } from './types'
 import Badge from '@/components/ui/Badge.vue'
-import Card from '@/components/ui/Card.vue'
 import Icon from '@/components/ui/Icon.vue'
+import type { IconName } from '@/components/ui/Icon.vue'
 import MonoValue from '@/components/ui/MonoValue.vue'
 import { formatMoney, formatQuantity, formatUnitMoney } from '@/utils/currency'
 
@@ -74,15 +74,19 @@ const borderCost = computed(() => rows.value.reduce((sum, r) => sum + num(r.bord
 const loadingCost = computed(() => rows.value.reduce((sum, r) => sum + num(r.loading_cost), 0))
 const otherCosts = computed(() => rows.value.reduce((sum, r) => sum + num(r.additional_costs), 0))
 const costs = computed(() => [
-  { key: 'supplierCost', value: supplierCost.value, icon: 'droplet' as const },
-  { key: 'transportCost', value: transportCost.value, icon: 'truck' as const },
-  { key: 'lossIndemnity', value: lossIndemnity.value, icon: 'coins' as const },
-  { key: 'customsCost', value: customsCost.value, icon: 'landmark' as const },
-  { key: 'transitCost', value: transitCost.value, icon: 'route' as const },
-  { key: 'borderCost', value: borderCost.value, icon: 'shield' as const },
-  { key: 'loadingCost', value: loadingCost.value, icon: 'package' as const },
-  { key: 'otherCosts', value: otherCosts.value, icon: 'receipt' as const },
+  { key: 'supplierCost', value: supplierCost.value, icon: 'fuel' as IconName },
+  { key: 'transportCost', value: transportCost.value, icon: 'truck' as IconName },
+  { key: 'lossIndemnity', value: lossIndemnity.value, icon: 'circle-dollar-sign' as IconName },
+  { key: 'customsCost', value: customsCost.value, icon: 'landmark' as IconName },
+  { key: 'transitCost', value: transitCost.value, icon: 'route' as IconName },
+  { key: 'borderCost', value: borderCost.value, icon: 'shield-check' as IconName },
+  { key: 'loadingCost', value: loadingCost.value, icon: 'package' as IconName },
+  { key: 'otherCosts', value: otherCosts.value, icon: 'file-text' as IconName },
 ])
+
+const periodProfitTone = computed(() =>
+  periodProfit.value < 0 ? 'text-critique' : periodProfit.value > 0 ? 'text-livre' : 'text-texte',
+)
 
 async function loadRows() {
   loading.value = true
@@ -147,12 +151,21 @@ onMounted(() => {
 
     <template v-else>
       <section class="grid gap-3 lg:grid-cols-3">
-        <div class="border-ligne rounded-lg border bg-white p-4 lg:col-span-2">
+        <div
+          data-test="profit-summary-card"
+          class="border-ligne rounded-lg border bg-white p-4 shadow-sm lg:col-span-2"
+        >
           <div class="flex items-start justify-between gap-4">
             <div class="space-y-1">
-              <div class="text-bitume flex items-center gap-2">
-                <Icon name="trending-up" :size="18" />
-                <p class="text-sm font-semibold">{{ t('finance.profit.accountingProfit') }}</p>
+              <div class="text-texte flex items-center gap-2">
+                <span
+                  class="bg-livre-tint text-livre-texte inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+                >
+                  <Icon name="trending-up" :size="18" />
+                </span>
+                <p class="text-texte-2 text-xs font-medium tracking-wide uppercase">
+                  {{ t('finance.profit.accountingProfit') }}
+                </p>
               </div>
               <p class="text-texte-2 max-w-2xl text-sm">
                 {{ t('finance.profit.accountingProfitHelp') }}
@@ -160,6 +173,7 @@ onMounted(() => {
             </div>
             <MonoValue
               class="text-2xl font-semibold"
+              :class="periodProfitTone"
               :value="formatMoney(periodProfit)"
             />
           </div>
@@ -180,17 +194,35 @@ onMounted(() => {
         </div>
 
         <div class="grid gap-3">
-          <div class="border-ligne rounded-lg border bg-white p-4">
+          <div
+            data-test="profit-summary-card"
+            class="border-ligne rounded-lg border bg-white p-4 shadow-sm"
+          >
             <div class="text-texte flex items-center gap-2">
-              <Icon name="wallet" :size="17" />
-              <p class="text-sm font-semibold">{{ t('finance.profit.receivedProfit') }}</p>
+              <span
+                class="bg-transit-tint text-transit-texte inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+              >
+                <Icon name="receipt-text" :size="17" />
+              </span>
+              <p class="text-texte-2 text-xs font-medium tracking-wide uppercase">
+                {{ t('finance.profit.receivedProfit') }}
+              </p>
             </div>
             <p class="text-texte-2 mt-1 text-sm">{{ t('finance.profit.receivedProfitHelp') }}</p>
           </div>
-          <div class="border-ligne rounded-lg border bg-white p-4">
+          <div
+            data-test="profit-summary-card"
+            class="border-ligne rounded-lg border bg-white p-4 shadow-sm"
+          >
             <div class="text-texte flex items-center gap-2">
-              <Icon name="users" :size="17" />
-              <p class="text-sm font-semibold">{{ t('finance.profit.distributableProfit') }}</p>
+              <span
+                class="bg-transit-tint text-transit-texte inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+              >
+                <Icon name="chart-no-axes-combined" :size="17" />
+              </span>
+              <p class="text-texte-2 text-xs font-medium tracking-wide uppercase">
+                {{ t('finance.profit.distributableProfit') }}
+              </p>
             </div>
             <p class="text-texte-2 mt-1 text-sm">
               {{ t('finance.profit.distributableProfitHelp') }}
@@ -204,19 +236,31 @@ onMounted(() => {
       </p>
 
       <section class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Card v-for="cost in costs" :key="cost.key">
-          <div class="flex items-start justify-between gap-3">
-            <div>
-              <p class="text-texte-2 text-xs">{{ t(`finance.profit.${cost.key}`) }}</p>
+        <div
+          v-for="cost in costs"
+          :key="cost.key"
+          data-test="profit-cost-card"
+          class="border-ligne rounded-lg border bg-white p-4 shadow-sm"
+        >
+          <div class="flex min-h-20 items-start justify-between gap-3">
+            <div class="min-w-0 space-y-2">
+              <p class="text-texte-2 text-xs leading-snug font-medium">
+                {{ t(`finance.profit.${cost.key}`) }}
+              </p>
               <MonoValue
-                class="text-base font-semibold"
+                class="text-texte text-base font-semibold"
+                :class="Number(cost.value) < 0 ? '!text-critique' : ''"
                 align="left"
                 :value="formatMoney(cost.value)"
               />
             </div>
-            <Icon :name="cost.icon" :size="18" class="text-texte-3" />
+            <span
+              class="bg-transit-tint text-transit-texte inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+            >
+              <Icon :name="cost.icon" :size="17" />
+            </span>
           </div>
-        </Card>
+        </div>
       </section>
 
       <section class="border-ligne overflow-auto rounded-xl border bg-white">
