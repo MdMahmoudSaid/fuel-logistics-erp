@@ -96,15 +96,39 @@ const ledger: SupplierLedger = {
   total_paid: '0.00',
   outstanding_balance: '90000000.00',
   summary: {
-    id: 1, label: 'Total',
-    total_due: '0.00', open_advances: '150000.00', net_balance: '150000.00',
+    id: 1,
+    label: 'Total',
+    total_due: '0.00',
+    open_advances: '150000.00',
+    net_balance: '150000.00',
     last_advance: { date: '2026-08-20', amount: '150000.00' },
     last_payment: { date: '2026-08-20', amount: '100000.00' },
   },
   entries: [
-    { type: 'advance_given', date: '2026-08-15', amount: '150000.00', reference: 'ADV-1', note: '', proof_url: '/media/documents/advance.png' },
-    { type: 'debt_created', date: '2026-08-18', amount: '60000000.00', reference: 'ACH-010', note: '', proof_url: null },
-    { type: 'payment', date: '2026-08-20', amount: '100000.00', reference: 'PAY-WITH-PROOF', note: '', proof_url: null },
+    {
+      type: 'advance_given',
+      date: '2026-08-15',
+      amount: '150000.00',
+      reference: 'ADV-1',
+      note: '',
+      proof_url: '/media/documents/advance.png',
+    },
+    {
+      type: 'debt_created',
+      date: '2026-08-18',
+      amount: '60000000.00',
+      reference: 'ACH-010',
+      note: '',
+      proof_url: null,
+    },
+    {
+      type: 'payment',
+      date: '2026-08-20',
+      amount: '100000.00',
+      reference: 'PAY-WITH-PROOF',
+      note: '',
+      proof_url: null,
+    },
   ],
 }
 
@@ -128,7 +152,9 @@ describe('SupplierLedgerView', () => {
     expect(wrapper.text()).toContain('—')
     expect(wrapper.find('a[target="_blank"]').exists()).toBe(false)
 
-    const proofButton = wrapper.findAll('button').find((button) => button.text() === 'Voir justificatif')
+    const proofButton = wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Voir justificatif')
     expect(proofButton).toBeTruthy()
     await proofButton!.trigger('click')
     await flushPromises()
@@ -147,7 +173,9 @@ describe('SupplierLedgerView', () => {
     expect(paymentSectionText).toContain('Voir justificatif')
     expect(wrapper.find('a[target="_blank"]').exists()).toBe(false)
 
-    const proofButtons = wrapper.findAll('button').filter((button) => button.text() === 'Voir justificatif')
+    const proofButtons = wrapper
+      .findAll('button')
+      .filter((button) => button.text() === 'Voir justificatif')
     await proofButtons[1].trigger('click')
     await flushPromises()
 
@@ -162,9 +190,48 @@ describe('SupplierLedgerView', () => {
     expect(wrapper.text()).toContain('Total dû')
     expect(wrapper.text()).toContain('Avances ouvertes')
     expect(wrapper.text()).toContain('Solde net')
+    expect(wrapper.text()).toContain('Dernière opération')
     const buttons = wrapper.findAll('button').map((button) => button.text())
     expect(buttons).toContain('Nouvelle avance')
     expect(buttons).not.toContain('Enregistrer un paiement')
+  })
+
+  it('does not show the old redundant grid1 cards', async () => {
+    const wrapper = mount(SupplierLedgerView)
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('Total acheté')
+    expect(wrapper.text()).not.toContain('Total payé')
+    expect(wrapper.text()).not.toContain('Solde impayé')
+    expect(wrapper.text()).not.toContain('Dernier paiement')
+  })
+
+  it('collapses last_advance/last_payment into a single Dernière opération line', async () => {
+    const wrapper = mount(SupplierLedgerView)
+    await flushPromises()
+
+    // fixture: last_advance and last_payment share the same date, advance wins the tie
+    const text = wrapper.text().replace(/[⁦⁩]/g, '')
+    expect(text).toContain('Avance: 150 000 XOF')
+    expect(text).not.toContain('Paiement: 100 000 XOF')
+  })
+
+  it('opens AdvanceForm locked to this supplier when Nouvelle avance is clicked', async () => {
+    const wrapper = mount(SupplierLedgerView)
+    await flushPromises()
+
+    const advanceButton = wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Nouvelle avance')
+    expect(advanceButton).toBeTruthy()
+    await advanceButton!.trigger('click')
+    await flushPromises()
+
+    const selects = wrapper.findAll('select')
+    expect((selects[0].element as HTMLSelectElement).disabled).toBe(true)
+    const partySelect = wrapper.find('select#party')
+    expect(partySelect.exists()).toBe(true)
+    expect((partySelect.element as HTMLSelectElement).disabled).toBe(true)
   })
 
   it('renders the chronological entries table and opens a proof in the internal modal', async () => {
@@ -175,7 +242,9 @@ describe('SupplierLedgerView', () => {
     expect(wrapper.text()).toContain('Dette créée')
     expect(wrapper.text()).toContain('Paiement complémentaire')
 
-    const proofButtons = wrapper.findAll('button').filter((button) => button.text() === 'Voir justificatif')
+    const proofButtons = wrapper
+      .findAll('button')
+      .filter((button) => button.text() === 'Voir justificatif')
     await proofButtons[proofButtons.length - 1].trigger('click')
     await flushPromises()
 

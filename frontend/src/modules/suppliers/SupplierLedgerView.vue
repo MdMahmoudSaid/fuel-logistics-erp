@@ -50,16 +50,17 @@ async function onAdvanceSaved() {
 
 onMounted(load)
 
-const totalReliquat = computed(
-  () =>
-    ledger.value?.reliquat_summary.reduce(
-      (total, item) => total + Number(item.total_reliquat),
-      0,
-    ) ?? 0,
-)
-const lastPayment = computed(() => {
-  const payments = [...(ledger.value?.payments ?? [])]
-  return payments.sort((a, b) => b.payment_date.localeCompare(a.payment_date))[0] ?? null
+const lastOperation = computed(() => {
+  const advance = ledger.value?.summary.last_advance ?? null
+  const payment = ledger.value?.summary.last_payment ?? null
+  if (advance && payment) {
+    return advance.date >= payment.date
+      ? { kind: 'advance' as const, amount: advance.amount }
+      : { kind: 'payment' as const, amount: payment.amount }
+  }
+  if (advance) return { kind: 'advance' as const, amount: advance.amount }
+  if (payment) return { kind: 'payment' as const, amount: payment.amount }
+  return null
 })
 
 function badgeVariant(status: string) {
@@ -104,63 +105,31 @@ function proofUrl(order: SupplierLedger['orders'][number]) {
     <p v-else-if="loading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
     <template v-else-if="ledger">
-      <section class="grid gap-3 md:grid-cols-5">
-        <div class="border-ligne rounded-lg border bg-white p-4">
-          <p class="text-texte-2 text-xs font-semibold uppercase">
-            {{ t('purchasing.supplierLedger.totalPurchased') }}
-          </p>
-          <MonoValue
-            class="font-semibold"
-            align="left"
-            :value="formatMoney(ledger.total_purchased)"
-          />
-        </div>
-        <div class="border-ligne rounded-lg border bg-white p-4">
-          <p class="text-texte-2 text-xs font-semibold uppercase">
-            {{ t('purchasing.supplierLedger.totalPaid') }}
-          </p>
-          <MonoValue class="font-semibold" align="left" :value="formatMoney(ledger.total_paid)" />
-        </div>
-        <div class="border-ligne rounded-lg border bg-white p-4">
-          <p class="text-texte-2 text-xs font-semibold uppercase">
-            {{ t('purchasing.supplierLedger.outstandingBalance') }}
-          </p>
-          <MonoValue
-            class="font-semibold"
-            align="left"
-            :class="Number(ledger.outstanding_balance) > 0 ? 'text-ecart' : 'text-livre'"
-            :value="formatMoney(ledger.outstanding_balance)"
-          />
-        </div>
-        <div class="border-ligne rounded-lg border bg-white p-4">
-          <p class="text-texte-2 text-xs font-semibold uppercase">
-            {{ t('purchasing.supplierLedger.totalReliquat') }}
-          </p>
-          <MonoValue class="font-semibold" align="left" :value="formatQuantity(totalReliquat)" />
-        </div>
-        <div class="border-ligne rounded-lg border bg-white p-4">
-          <p class="text-texte-2 text-xs font-semibold uppercase">
-            {{ t('purchasing.supplierLedger.lastPayment') }}
-          </p>
-          <MonoValue
-            class="font-semibold"
-            align="left"
-            :value="lastPayment ? formatMoney(lastPayment.amount) : '—'"
-          />
-        </div>
-      </section>
-
       <section class="grid gap-3 md:grid-cols-4">
         <div class="border-ligne rounded-lg border bg-white p-4">
-          <p class="text-texte-2 text-xs font-semibold uppercase">{{ t('finance.partyLedger.totalDue') }}</p>
-          <MonoValue class="font-semibold" align="left" :value="formatMoney(ledger.summary.total_due)" />
+          <p class="text-texte-2 text-xs font-semibold uppercase">
+            {{ t('finance.partyLedger.totalDue') }}
+          </p>
+          <MonoValue
+            class="font-semibold"
+            align="left"
+            :value="formatMoney(ledger.summary.total_due)"
+          />
         </div>
         <div class="border-ligne rounded-lg border bg-white p-4">
-          <p class="text-texte-2 text-xs font-semibold uppercase">{{ t('finance.partyLedger.openAdvances') }}</p>
-          <MonoValue class="font-semibold" align="left" :value="formatMoney(ledger.summary.open_advances)" />
+          <p class="text-texte-2 text-xs font-semibold uppercase">
+            {{ t('finance.partyLedger.openAdvances') }}
+          </p>
+          <MonoValue
+            class="font-semibold"
+            align="left"
+            :value="formatMoney(ledger.summary.open_advances)"
+          />
         </div>
         <div class="border-ligne rounded-lg border bg-white p-4">
-          <p class="text-texte-2 text-xs font-semibold uppercase">{{ t('finance.partyLedger.netBalance') }}</p>
+          <p class="text-texte-2 text-xs font-semibold uppercase">
+            {{ t('finance.partyLedger.netBalance') }}
+          </p>
           <MonoValue
             class="font-semibold"
             align="left"
@@ -169,16 +138,13 @@ function proofUrl(order: SupplierLedger['orders'][number]) {
           />
         </div>
         <div class="border-ligne rounded-lg border bg-white p-4">
-          <p class="text-texte-2 text-xs font-semibold uppercase">{{ t('finance.partyLedger.lastMovement') }}</p>
-          <p class="text-texte text-sm">
-            <template v-if="ledger.summary.last_advance">
-              {{ t('finance.partyLedger.advance') }}: {{ formatMoney(ledger.summary.last_advance.amount) }}
-            </template>
-            <template v-else>—</template>
+          <p class="text-texte-2 text-xs font-semibold uppercase">
+            {{ t('finance.partyLedger.lastMovement') }}
           </p>
           <p class="text-texte text-sm">
-            <template v-if="ledger.summary.last_payment">
-              {{ t('finance.partyLedger.payment') }}: {{ formatMoney(ledger.summary.last_payment.amount) }}
+            <template v-if="lastOperation">
+              {{ t(`finance.partyLedger.${lastOperation.kind}`) }}:
+              {{ formatMoney(lastOperation.amount) }}
             </template>
             <template v-else>—</template>
           </p>
@@ -356,13 +322,21 @@ function proofUrl(order: SupplierLedger['orders'][number]) {
             <tr class="border-ligne text-texte-2 border-b">
               <th class="px-3 py-2.5 font-medium">{{ t('finance.partyLedger.table.date') }}</th>
               <th class="px-3 py-2.5 font-medium">{{ t('finance.partyLedger.table.type') }}</th>
-              <th class="px-3 py-2.5 font-medium">{{ t('finance.partyLedger.table.reference') }}</th>
-              <th class="px-3 py-2.5 text-end font-medium">{{ t('finance.partyLedger.table.amount') }}</th>
+              <th class="px-3 py-2.5 font-medium">
+                {{ t('finance.partyLedger.table.reference') }}
+              </th>
+              <th class="px-3 py-2.5 text-end font-medium">
+                {{ t('finance.partyLedger.table.amount') }}
+              </th>
               <th class="px-3 py-2.5 font-medium">{{ t('finance.partyLedger.table.proof') }}</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="(entry, index) in ledger.entries" :key="index" class="border-ligne border-b last:border-0">
+            <tr
+              v-for="(entry, index) in ledger.entries"
+              :key="index"
+              class="border-ligne border-b last:border-0"
+            >
               <td class="px-3 py-2.5">{{ entry.date }}</td>
               <td class="px-3 py-2.5">{{ t(`finance.partyLedger.entryTypes.${entry.type}`) }}</td>
               <td class="px-3 py-2.5">{{ entry.reference || '—' }}</td>
@@ -380,7 +354,9 @@ function proofUrl(order: SupplierLedger['orders'][number]) {
               </td>
             </tr>
             <tr v-if="ledger.entries.length === 0">
-              <td colspan="5" class="text-texte-3 px-3 py-8 text-center">{{ t('finance.partyLedger.noEntries') }}</td>
+              <td colspan="5" class="text-texte-3 px-3 py-8 text-center">
+                {{ t('finance.partyLedger.noEntries') }}
+              </td>
             </tr>
           </tbody>
         </table>
@@ -399,7 +375,7 @@ function proofUrl(order: SupplierLedger['orders'][number]) {
         lock-debt-type
         lock-debt
         @success="onPaymentSaved"
-      @cancel="showPaymentForm = false"
+        @cancel="showPaymentForm = false"
       />
     </Modal>
 

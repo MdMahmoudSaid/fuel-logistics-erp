@@ -766,7 +766,7 @@
       "totalDue": "Total dû",
       "openAdvances": "Avances ouvertes",
       "netBalance": "Solde net",
-      "lastMovement": "Dernière avance / dernier paiement",
+      "lastMovement": "Dernière opération",
       "advance": "Avance",
       "payment": "Paiement",
       "entriesTitle": "Historique",
