@@ -765,6 +765,7 @@
       "payment": "دفعة",
       "entriesTitle": "السجل",
       "noEntries": "لا توجد حركة.",
+      "viewProof": "عرض الإثبات",
       "table": {
         "date": "التاريخ",
         "type": "النوع",

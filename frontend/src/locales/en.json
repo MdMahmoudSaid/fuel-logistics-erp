@@ -765,6 +765,7 @@
       "payment": "Payment",
       "entriesTitle": "History",
       "noEntries": "No movement.",
+      "viewProof": "View proof",
       "table": {
         "date": "Date",
         "type": "Type",

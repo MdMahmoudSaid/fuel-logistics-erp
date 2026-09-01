@@ -767,6 +767,7 @@
       "payment": "Paiement",
       "entriesTitle": "Historique",
       "noEntries": "Aucun mouvement.",
+      "viewProof": "Voir justificatif",
       "table": {
         "date": "Date",
         "type": "Type",

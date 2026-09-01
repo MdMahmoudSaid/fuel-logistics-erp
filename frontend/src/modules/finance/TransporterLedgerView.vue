@@ -12,6 +12,7 @@ import { formatMoney } from '@/utils/currency'
 import Badge from '@/components/ui/Badge.vue'
 import Button from '@/components/ui/Button.vue'
 import Card from '@/components/ui/Card.vue'
+import AdvanceForm from './AdvanceForm.vue'
 import DebtPaymentForm from './DebtPaymentForm.vue'
 import Modal from '@/components/ui/Modal.vue'
 import MonoValue from '@/components/ui/MonoValue.vue'
@@ -24,6 +25,8 @@ const ledger = ref<TransporterLedger | null>(null)
 const loading = ref(true)
 const error = ref('')
 const showPaymentModal = ref(false)
+const showAdvanceForm = ref(false)
+const previewUrl = ref<string | null>(null)
 
 const transporterId = computed(() => Number(route.params.id))
 
@@ -46,6 +49,11 @@ async function onPaymentSuccess() {
   await load()
 }
 
+async function onAdvanceSaved() {
+  showAdvanceForm.value = false
+  await load()
+}
+
 function badgeVariant(status: string) {
   if (status === 'PAID') return 'livre' as const
   if (status === 'PARTIALLY_PAID') return 'ecart' as const
@@ -61,8 +69,19 @@ function badgeVariant(status: string) {
         {{ t('finance.transporterLedger.title', { name: ledger?.transporter.name ?? '…' }) }}
       </h1>
       <div class="flex gap-2">
-        <Button v-if="ledger" variant="primary" @click="showPaymentModal = true">
+        <Button
+          v-if="ledger && Number(ledger.summary.net_balance) < 0"
+          variant="primary"
+          @click="showPaymentModal = true"
+        >
           {{ t('finance.transporterLedger.newPayment') }}
+        </Button>
+        <Button
+          v-if="ledger && Number(ledger.summary.net_balance) >= 0"
+          variant="secondary"
+          @click="showAdvanceForm = true"
+        >
+          {{ t('finance.advanceForm.title') }}
         </Button>
         <Button variant="ghost" @click="router.push({ name: 'transporters' })">
           {{ t('finance.transporterLedger.back') }}
@@ -117,6 +136,41 @@ function badgeVariant(status: string) {
             :class="Number(ledger.net_outstanding) > 0 ? 'text-ecart' : 'text-livre'"
             :value="formatMoney(ledger.net_outstanding)"
           />
+        </div>
+      </section>
+
+      <section class="grid gap-3 md:grid-cols-4">
+        <div class="border-ligne rounded-lg border bg-white p-4">
+          <p class="text-texte-2 text-xs font-semibold uppercase">{{ t('finance.partyLedger.totalDue') }}</p>
+          <MonoValue class="font-semibold" align="left" :value="formatMoney(ledger.summary.total_due)" />
+        </div>
+        <div class="border-ligne rounded-lg border bg-white p-4">
+          <p class="text-texte-2 text-xs font-semibold uppercase">{{ t('finance.partyLedger.openAdvances') }}</p>
+          <MonoValue class="font-semibold" align="left" :value="formatMoney(ledger.summary.open_advances)" />
+        </div>
+        <div class="border-ligne rounded-lg border bg-white p-4">
+          <p class="text-texte-2 text-xs font-semibold uppercase">{{ t('finance.partyLedger.netBalance') }}</p>
+          <MonoValue
+            class="font-semibold"
+            align="left"
+            :class="Number(ledger.summary.net_balance) < 0 ? 'text-critique' : 'text-livre'"
+            :value="formatMoney(ledger.summary.net_balance)"
+          />
+        </div>
+        <div class="border-ligne rounded-lg border bg-white p-4">
+          <p class="text-texte-2 text-xs font-semibold uppercase">{{ t('finance.partyLedger.lastMovement') }}</p>
+          <p class="text-texte text-sm">
+            <template v-if="ledger.summary.last_advance">
+              {{ t('finance.partyLedger.advance') }}: {{ formatMoney(ledger.summary.last_advance.amount) }}
+            </template>
+            <template v-else>—</template>
+          </p>
+          <p class="text-texte text-sm">
+            <template v-if="ledger.summary.last_payment">
+              {{ t('finance.partyLedger.payment') }}: {{ formatMoney(ledger.summary.last_payment.amount) }}
+            </template>
+            <template v-else>—</template>
+          </p>
         </div>
       </section>
 
@@ -217,6 +271,42 @@ function badgeVariant(status: string) {
           </tbody>
         </table>
       </Card>
+
+      <Card :title="t('finance.partyLedger.entriesTitle')">
+        <table class="w-full text-start text-sm">
+          <thead>
+            <tr class="border-ligne text-texte-2 border-b">
+              <th class="px-3 py-2.5 font-medium">{{ t('finance.partyLedger.table.date') }}</th>
+              <th class="px-3 py-2.5 font-medium">{{ t('finance.partyLedger.table.type') }}</th>
+              <th class="px-3 py-2.5 font-medium">{{ t('finance.partyLedger.table.reference') }}</th>
+              <th class="px-3 py-2.5 text-end font-medium">{{ t('finance.partyLedger.table.amount') }}</th>
+              <th class="px-3 py-2.5 font-medium">{{ t('finance.partyLedger.table.proof') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(entry, index) in ledger.entries" :key="index" class="border-ligne border-b last:border-0">
+              <td class="px-3 py-2.5">{{ entry.date }}</td>
+              <td class="px-3 py-2.5">{{ t(`finance.partyLedger.entryTypes.${entry.type}`) }}</td>
+              <td class="px-3 py-2.5">{{ entry.reference || '—' }}</td>
+              <td class="px-3 py-2.5 text-end"><MonoValue :value="formatMoney(entry.amount)" /></td>
+              <td class="px-3 py-2.5">
+                <button
+                  v-if="entry.proof_url"
+                  type="button"
+                  class="text-bitume underline"
+                  @click="previewUrl = entry.proof_url"
+                >
+                  {{ t('finance.partyLedger.viewProof') }}
+                </button>
+                <span v-else class="text-texte-3">—</span>
+              </td>
+            </tr>
+            <tr v-if="ledger.entries.length === 0">
+              <td colspan="5" class="text-texte-3 px-3 py-8 text-center">{{ t('finance.partyLedger.noEntries') }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </Card>
     </template>
 
     <Modal
@@ -233,6 +323,34 @@ function badgeVariant(status: string) {
         @success="onPaymentSuccess"
         @cancel="showPaymentModal = false"
       />
+    </Modal>
+
+    <Modal
+      v-if="showAdvanceForm && ledger"
+      :title="t('finance.advanceForm.title')"
+      max-width="max-w-2xl"
+      @close="showAdvanceForm = false"
+    >
+      <AdvanceForm
+        initial-party-type="transporter"
+        :initial-party-id="ledger.transporter.id"
+        lock-party-type
+        lock-party
+        @success="onAdvanceSaved"
+        @cancel="showAdvanceForm = false"
+      />
+    </Modal>
+
+    <Modal
+      v-if="previewUrl"
+      :title="t('finance.partyLedger.table.proof')"
+      max-width="max-w-3xl"
+      @close="previewUrl = null"
+    >
+      <img :src="previewUrl" class="max-h-[80vh] w-full rounded-lg object-contain" />
+      <div class="mt-4 flex justify-end">
+        <Button variant="ghost" @click="previewUrl = null">{{ t('common.close') }}</Button>
+      </div>
     </Modal>
   </div>
 </template>
