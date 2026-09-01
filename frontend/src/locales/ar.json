@@ -672,6 +672,7 @@
       "internalTransfer": "تحويل داخلي",
       "newExpense": "+ مصروف جديد",
       "newPayment": "+ دفعة جديدة",
+      "newAdvance": "+ سلفة جديدة",
       "currentBalance": "الرصيد الحالي",
       "loadError": "تعذر تحميل سجل الخزينة.",
       "table": {
@@ -726,6 +727,33 @@
         "debtNotFound": "لم يتم العثور على دين قابل للدفع لهذه الجهة.",
         "noOpenDebts": "لا توجد ديون مفتوحة لهذا النوع.",
         "proofRequired": "صورة إثبات إلزامية لتسجيل هذه الدفعة."
+      }
+    },
+    "advanceForm": {
+      "title": "سلفة جديدة",
+      "type": "نوع الطرف",
+      "party": "الطرف",
+      "accountKind": "نوع الحساب",
+      "bank": "بنك",
+      "cash": "نقدية",
+      "amount": "مبلغ السلفة",
+      "date": "التاريخ",
+      "reference": "المرجع",
+      "note": "ملاحظة",
+      "attachment": "المستند المرفق (صورة)",
+      "availableBalance": "الرصيد المتاح",
+      "submit": "حفظ السلفة",
+      "imageOnlyError": "يُسمح فقط بصور JPG أو JPEG أو PNG أو WEBP.",
+      "loadError": "تعذر تحميل الأطراف المؤهلة.",
+      "saveError": "تعذر حفظ هذه السلفة.",
+      "errors": {
+        "partyRequired": "اختر طرفًا.",
+        "accountRequired": "اختر حسابًا.",
+        "positiveAmount": "يجب أن يكون المبلغ أكبر من الصفر.",
+        "insufficientBalance": "الرصيد غير كافٍ لهذه السلفة.",
+        "proofRequired": "المستند المرفق (صورة) إلزامي لحفظ هذه السلفة.",
+        "partyNotFound": "لم يتم العثور على طرف مؤهل.",
+        "noEligibleParty": "لا يوجد طرف مؤهل لسلفة جديدة."
       }
     },
     "shareholder": {

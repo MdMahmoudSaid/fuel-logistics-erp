@@ -674,6 +674,7 @@
       "internalTransfer": "Transfert interne",
       "newExpense": "+ Nouvelle dépense",
       "newPayment": "+ Nouveau paiement",
+      "newAdvance": "+ Nouvelle avance",
       "currentBalance": "Solde courant",
       "loadError": "Impossible de charger le journal de trésorerie.",
       "table": {
@@ -728,6 +729,33 @@
         "debtNotFound": "Aucune dette à payer trouvée pour cette entité.",
         "noOpenDebts": "Aucune dette ouverte pour ce type.",
         "proofRequired": "Un justificatif image est obligatoire pour enregistrer ce paiement."
+      }
+    },
+    "advanceForm": {
+      "title": "Nouvelle avance",
+      "type": "Type de tiers",
+      "party": "Tiers",
+      "accountKind": "Type de compte",
+      "bank": "Banque",
+      "cash": "Caisse",
+      "amount": "Montant de l'avance",
+      "date": "Date",
+      "reference": "Référence",
+      "note": "Note",
+      "attachment": "Justificatif (image)",
+      "availableBalance": "Solde disponible",
+      "submit": "Enregistrer l'avance",
+      "imageOnlyError": "Seules les images JPG, JPEG, PNG ou WEBP sont autorisées.",
+      "loadError": "Impossible de charger les tiers éligibles.",
+      "saveError": "Impossible d'enregistrer cette avance.",
+      "errors": {
+        "partyRequired": "Choisissez un tiers.",
+        "accountRequired": "Choisissez un compte.",
+        "positiveAmount": "Le montant doit être supérieur à zéro.",
+        "insufficientBalance": "Solde insuffisant pour cette avance.",
+        "proofRequired": "Un justificatif image est obligatoire pour enregistrer cette avance.",
+        "partyNotFound": "Aucun tiers éligible trouvé.",
+        "noEligibleParty": "Aucun tiers éligible pour une nouvelle avance."
       }
     },
     "shareholder": {

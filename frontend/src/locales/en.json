@@ -672,6 +672,7 @@
       "internalTransfer": "Internal transfer",
       "newExpense": "+ New expense",
       "newPayment": "+ New payment",
+      "newAdvance": "+ New advance",
       "currentBalance": "Current balance",
       "loadError": "Could not load the treasury journal.",
       "table": {
@@ -726,6 +727,33 @@
         "debtNotFound": "No payable debt found for this entity.",
         "noOpenDebts": "No open debt for this type.",
         "proofRequired": "An image proof is required to record this payment."
+      }
+    },
+    "advanceForm": {
+      "title": "New advance",
+      "type": "Party type",
+      "party": "Party",
+      "accountKind": "Account type",
+      "bank": "Bank",
+      "cash": "Cash",
+      "amount": "Advance amount",
+      "date": "Date",
+      "reference": "Reference",
+      "note": "Note",
+      "attachment": "Proof (image)",
+      "availableBalance": "Available balance",
+      "submit": "Save advance",
+      "imageOnlyError": "Only JPG, JPEG, PNG or WEBP images are allowed.",
+      "loadError": "Unable to load eligible parties.",
+      "saveError": "Unable to save this advance.",
+      "errors": {
+        "partyRequired": "Choose a party.",
+        "accountRequired": "Choose an account.",
+        "positiveAmount": "The amount must be greater than zero.",
+        "insufficientBalance": "Insufficient balance for this advance.",
+        "proofRequired": "An image proof is required to save this advance.",
+        "partyNotFound": "No eligible party found.",
+        "noEligibleParty": "No party eligible for a new advance."
       }
     },
     "shareholder": {
