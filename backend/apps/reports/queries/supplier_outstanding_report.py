@@ -1,15 +1,16 @@
 # SupplierOutstandingReportQuery - "supplier outstanding report"
 # (ERP_Specification.md Section 37; docs/PHASE_6_PLAN.md Etape 4/6).
 #
-# Mirrors CustomerOutstandingReportQuery on the purchasing side: total of
-# confirmed SupplierOrder.total_amount minus total SupplierPayment for
-# each supplier with at least one order.
+# "Outstanding" per supplier is the same reste-a-payer figure as the
+# "Nouveau paiement" screen (ControlledDebtPaymentService.describe_supplier,
+# already advance-aware since docs/superpowers/specs/2026-08-31-supplier-
+# transporter-advances-design.md), so this report, the payment screen, and
+# the Dashboard never disagree - mirrors TransporterOutstandingReportQuery's
+# alignment.
 
 from decimal import Decimal
 
-from django.db.models import Sum
-
-from apps.finance.models import SupplierPayment
+from apps.finance.services import ControlledDebtPaymentService
 from apps.purchasing.models import SupplierOrder
 from apps.suppliers.models import Supplier
 
@@ -29,19 +30,7 @@ class SupplierOutstandingReportQuery:
         )
         rows = []
         for supplier in Supplier.objects.filter(id__in=supplier_ids):
-            total_purchased = (
-                SupplierOrder.objects.filter(
-                    supplier=supplier,
-                    status=SupplierOrder.Status.CONFIRMED,
-                )
-                .aggregate(total=Sum("total_amount"))["total"]
-                or ZERO
-            )
-            total_paid = (
-                SupplierPayment.objects.filter(supplier=supplier).aggregate(total=Sum("amount"))[
-                    "total"
-                ]
-                or ZERO
-            )
-            rows.append({"supplier": supplier.name, "outstanding": total_purchased - total_paid})
+            outstanding = ControlledDebtPaymentService.describe_supplier(supplier)["remaining_amount"]
+            if outstanding > ZERO:
+                rows.append({"supplier": supplier.name, "outstanding": outstanding})
         return rows

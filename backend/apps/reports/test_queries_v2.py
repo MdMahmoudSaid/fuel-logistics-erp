@@ -16,6 +16,7 @@ from apps.finance.models import (
     CashAccount,
     CustomerPayment,
     Expense,
+    SupplierAdvance,
     SupplierPayment,
     TransportPayment,
 )
@@ -179,8 +180,16 @@ def test_customer_outstanding_report_matches_invoice_minus_payments():
 def test_supplier_outstanding_report_matches_purchases_minus_payments():
     admin_user = _make_admin("SUPPOUT")
     fx = _make_full_trip("SUPPOUT", admin_user, with_sale=False)
+    # supplier_order must be set: describe_supplier() (the new single source
+    # of truth this report is now aligned on) computes remaining per-order,
+    # exactly like the real "Nouveau paiement" flow always links its
+    # SupplierPayment rows to the order they settle
+    # (ControlledDebtPaymentService._record_supplier_payments) - an
+    # unlinked/orphan payment is not a real scenario this report needs to
+    # net off.
     SupplierPayment.objects.create(
         supplier=fx["supplier"],
+        supplier_order=fx["supplier_order"],
         amount=Decimal("2000000.00"),
         payment_date="2026-08-19",
         method=SupplierPayment.Method.CASH,
@@ -233,6 +242,28 @@ def test_supplier_outstanding_report_only_counts_confirmed_orders():
     row = next(r for r in rows if r["supplier"] == supplier.name)
 
     assert row["outstanding"] == confirmed_order.total_amount
+
+
+@pytest.mark.django_db
+def test_supplier_outstanding_report_nets_out_advance_consumption():
+    admin_user = _make_admin("SUPOUTADV")
+    supplier = Supplier.objects.create(name="Supplier SUPOUTADV", country="Senegal")
+    product = Product.objects.get(code="gasoil")
+    cash_account = CashAccount.objects.create(name="Cash SUPOUTADV")
+    SupplierAdvance.objects.create(
+        supplier=supplier, amount=Decimal("2000000.00"), date="2026-08-17",
+        cash_account=cash_account, recorded_by=admin_user,
+    )
+    order = SupplierOrder.objects.create(
+        reference="SO-QUERY2-SUPOUTADV", supplier=supplier, product=product,
+        purchase_date="2026-08-18", quantity_litres=Decimal("500000.00"),
+        unit_price=Decimal("600.0000"), status=SupplierOrder.Status.CONFIRMED,
+        created_by=admin_user,
+    )  # total 300000000, advance created BEFORE confirmation so it's consumed at confirm time
+
+    rows = SupplierOutstandingReportQuery.run()
+    row = next(r for r in rows if r["supplier"] == supplier.name)
+    assert row["outstanding"] == order.total_amount - Decimal("2000000.00")
 
 
 @pytest.mark.django_db
