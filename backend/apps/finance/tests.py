@@ -744,40 +744,6 @@ def test_supplier_debt_payment_bank_transfer_creates_linked_treasury_transaction
 
 
 @pytest.mark.django_db
-def test_supplier_advance_via_cash_is_still_allowed_and_posts_treasury(finance_client):
-    """Ruling 1: the bank-only restriction applies only to non-advance debt
-    repayment. An advance (is_advance=True) may still use cash - but ruling
-    2 says it's still real money leaving the company, so it must still post
-    a TreasuryTransaction(MONEY_OUT)."""
-    _admin_user, supplier, _order = _make_supplier_order("ADV-CASH-API")
-    cash_account = CashAccount.objects.create(name="Main Cash", opening_balance="2000000.00")
-    treasury_count_before = TreasuryTransaction.objects.count()
-
-    response = finance_client.post(
-        "/api/supplier-payments/",
-        {
-            "supplier": supplier.id,
-            "amount": "500000.00",
-            "payment_date": "2026-08-18",
-            "method": SupplierPayment.Method.CASH,
-            "cash_account": cash_account.id,
-            "is_advance": True,
-        },
-        format="json",
-    )
-
-    assert response.status_code == 201, response.data
-    assert TreasuryTransaction.objects.count() == treasury_count_before + 1
-
-    txn = TreasuryTransaction.objects.get(
-        source_content_type=ContentType.objects.get_for_model(SupplierPayment),
-        source_object_id=response.data["id"],
-    )
-    assert txn.type == TreasuryTransaction.Type.MONEY_OUT
-    assert txn.cash_account_id == cash_account.id
-
-
-@pytest.mark.django_db
 def test_supplier_payment_update_via_api_is_rejected(finance_client):
     """Ruling 3: every SupplierPayment is already posted to treasury inside
     create()'s atomic block, so there's no meaningful unposted state to

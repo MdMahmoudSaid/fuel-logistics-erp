@@ -278,6 +278,16 @@ class SupplierPaymentSerializer(serializers.ModelSerializer):
         is_advance = data.get("is_advance", getattr(self.instance, "is_advance", False))
         method = data.get("method", getattr(self.instance, "method", None))
 
+        if self.instance is None and is_advance:
+            raise serializers.ValidationError(
+                {
+                    "is_advance": (
+                        "Utilisez POST /api/supplier-advances/ pour creer une nouvelle "
+                        "avance fournisseur."
+                    )
+                }
+            )
+
         if bank_account and cash_account:
             raise serializers.ValidationError(
                 "Un seul compte (banque OU caisse) peut etre renseigne."

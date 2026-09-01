@@ -785,3 +785,26 @@ def test_party_balances_endpoint_rejects_unknown_debt_type(advances_finance_clie
         "/api/treasury-transactions/party-balances/?debt_type=bogus"
     )
     assert response.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Task 12 (simplified): retire SupplierPayment.is_advance for new writes.
+# No data migration: dev DB has zero existing is_advance=True rows.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_supplier_payment_serializer_rejects_new_advance_creation(advances_finance_client):
+    admin_user, supplier, order = _make_supplier_order_with_status(
+        "BLOCK-ADV", SupplierOrder.Status.CONFIRMED,
+    )
+    cash_account = CashAccount.objects.create(name="Main Cash")
+    response = advances_finance_client.post(
+        "/api/supplier-payments/",
+        {
+            "supplier": supplier.id, "amount": "500000.00", "payment_date": "2026-08-18",
+            "method": "CASH", "cash_account": cash_account.id, "is_advance": True,
+        },
+    )
+    assert response.status_code == 400
+    assert "is_advance" in response.data
