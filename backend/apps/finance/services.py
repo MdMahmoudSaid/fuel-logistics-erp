@@ -520,6 +520,115 @@ class AdvanceConsumptionService:
         return cls.get_consumed_amount(payment)
 
 
+class AdvanceError(ValueError):
+    """Raised when an advance request breaks a financial rule (open debt
+    already exists, insufficient treasury balance, invalid amount)."""
+
+
+class AdvanceService:
+    """Creates a SupplierAdvance/TransporterAdvance and posts its immediate
+    treasury outflow, atomically (docs/superpowers/specs/2026-08-31-
+    supplier-transporter-advances-design.md). Consuming an advance never
+    goes through here - only AdvanceConsumptionService does that, and it
+    never touches treasury."""
+
+    @staticmethod
+    def _lock_account(*, bank_account_id, cash_account_id):
+        if bank_account_id:
+            return BankAccount.objects.select_for_update().get(pk=bank_account_id), None
+        return None, CashAccount.objects.select_for_update().get(pk=cash_account_id)
+
+    @staticmethod
+    def _check_balance(bank_account, cash_account, amount):
+        account = bank_account or cash_account
+        if amount > account.current_balance:
+            raise AdvanceError("Solde insuffisant pour verser cette avance.")
+
+    @classmethod
+    @transaction.atomic
+    def create_supplier_advance(
+        cls, *, supplier_id, bank_account_id, cash_account_id, amount, date,
+        reference, notes, attachment, actor,
+    ) -> SupplierAdvance:
+        supplier = Supplier.objects.select_for_update().get(pk=supplier_id)
+        amount = Decimal(str(amount)).quantize(Decimal("0.01"))
+        if amount <= ZERO:
+            raise AdvanceError("Le montant de l'avance doit etre superieur a zero.")
+
+        net_balance = ControlledDebtPaymentService.describe_supplier_balance(supplier)["net_balance"]
+        if net_balance < ZERO:
+            raise AdvanceError(
+                "Impossible de creer une avance : ce fournisseur a une dette ouverte reelle."
+            )
+
+        bank_account, cash_account = cls._lock_account(
+            bank_account_id=bank_account_id, cash_account_id=cash_account_id
+        )
+        cls._check_balance(bank_account, cash_account, amount)
+
+        advance = SupplierAdvance.objects.create(
+            supplier=supplier, bank_account=bank_account, cash_account=cash_account,
+            amount=amount, date=date, reference=reference, notes=notes, recorded_by=actor,
+        )
+        document = Document.objects.create(
+            file=attachment, document_type="supplier_advance_proof", reference=reference,
+            uploaded_by=actor, content_type=ContentType.objects.get_for_model(SupplierAdvance),
+            object_id=advance.id,
+        )
+        advance.document = document
+        advance.save(update_fields=["document", "updated_at"])
+        TreasuryTransaction.objects.create(
+            bank_account=bank_account, cash_account=cash_account,
+            type=TreasuryTransaction.Type.MONEY_OUT, amount=amount, date=date,
+            reference=reference, note=notes,
+            source_content_type=ContentType.objects.get_for_model(SupplierAdvance),
+            source_object_id=advance.id, document=document, recorded_by=actor,
+        )
+        return advance
+
+    @classmethod
+    @transaction.atomic
+    def create_transporter_advance(
+        cls, *, transporter_id, bank_account_id, cash_account_id, amount, date,
+        reference, notes, attachment, actor,
+    ) -> TransporterAdvance:
+        transporter = Transporter.objects.select_for_update().get(pk=transporter_id)
+        amount = Decimal(str(amount)).quantize(Decimal("0.01"))
+        if amount <= ZERO:
+            raise AdvanceError("Le montant de l'avance doit etre superieur a zero.")
+
+        net_balance = ControlledDebtPaymentService.describe_transporter_balance(transporter)["net_balance"]
+        if net_balance < ZERO:
+            raise AdvanceError(
+                "Impossible de creer une avance : ce transporteur a une dette ouverte reelle."
+            )
+
+        bank_account, cash_account = cls._lock_account(
+            bank_account_id=bank_account_id, cash_account_id=cash_account_id
+        )
+        cls._check_balance(bank_account, cash_account, amount)
+
+        advance = TransporterAdvance.objects.create(
+            transporter=transporter, bank_account=bank_account, cash_account=cash_account,
+            amount=amount, date=date, reference=reference, notes=notes, recorded_by=actor,
+        )
+        document = Document.objects.create(
+            file=attachment, document_type="transporter_advance_proof", reference=reference,
+            uploaded_by=actor, content_type=ContentType.objects.get_for_model(TransporterAdvance),
+            object_id=advance.id,
+        )
+        advance.document = document
+        advance.save(update_fields=["document", "updated_at"])
+        TreasuryTransaction.objects.create(
+            bank_account=bank_account, cash_account=cash_account,
+            type=TreasuryTransaction.Type.MONEY_OUT, amount=amount, date=date,
+            reference=reference, note=notes,
+            source_content_type=ContentType.objects.get_for_model(TransporterAdvance),
+            source_object_id=advance.id, document=document, recorded_by=actor,
+        )
+        return advance
+
+
 class ControlledDebtPaymentError(ValueError):
     """Raised when a controlled debt payment request breaks a financial rule."""
 

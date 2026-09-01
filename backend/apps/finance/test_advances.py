@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 import pytest
+from django.contrib.contenttypes.models import ContentType
 from django.core.files.uploadedfile import SimpleUploadedFile
 
 from apps.accounts.models import Role, User
@@ -15,7 +16,7 @@ from apps.finance.models import (
     TransportPayment,
     TreasuryTransaction,
 )
-from apps.finance.services import ControlledDebtPaymentService
+from apps.finance.services import AdvanceError, AdvanceService, ControlledDebtPaymentService
 from apps.purchasing.models import SupplierOrder
 from apps.suppliers.models import Supplier
 from apps.transport.models import Transporter, Truck
@@ -459,3 +460,122 @@ def test_describe_transporter_balance_partial_consumption():
     assert balance["total_due"] == Decimal("500000.00")
     assert balance["open_advances"] == Decimal("0.00")
     assert balance["net_balance"] == Decimal("-500000.00")
+
+
+# ---------------------------------------------------------------------------
+# Task 6: AdvanceService (creation, treasury posting, open-debt guard)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_create_supplier_advance_posts_one_treasury_transaction_and_document():
+    admin_user = _make_admin("CREATE-SADV")
+    supplier = Supplier.objects.create(name="Create Advance Supplier", country="Senegal")
+    cash_account = CashAccount.objects.create(name="Main Cash", opening_balance=Decimal("5000000.00"))
+
+    advance = AdvanceService.create_supplier_advance(
+        supplier_id=supplier.id, bank_account_id=None, cash_account_id=cash_account.id,
+        amount=Decimal("1000000.00"), date="2026-08-18", reference="SADV-1", notes="",
+        attachment=_proof_file(), actor=admin_user,
+    )
+
+    assert advance.remaining_amount == Decimal("1000000.00")
+    assert advance.document_id is not None
+    cash_account.refresh_from_db()
+    assert cash_account.current_balance == Decimal("4000000.00")
+    txn = TreasuryTransaction.objects.get(
+        source_content_type=ContentType.objects.get_for_model(SupplierAdvance), source_object_id=advance.id,
+    )
+    assert txn.type == TreasuryTransaction.Type.MONEY_OUT
+    assert txn.amount == Decimal("1000000.00")
+    assert txn.document_id == advance.document_id
+
+
+@pytest.mark.django_db
+def test_create_supplier_advance_rejected_when_open_debt_exists():
+    admin_user, supplier, order = _make_supplier_order_with_status(
+        "REJECT-SADV", SupplierOrder.Status.CONFIRMED,
+    )  # total 600000, no advance yet -> net_balance = -600000
+    cash_account = CashAccount.objects.create(name="Main Cash", opening_balance=Decimal("5000000.00"))
+
+    with pytest.raises(AdvanceError):
+        AdvanceService.create_supplier_advance(
+            supplier_id=supplier.id, bank_account_id=None, cash_account_id=cash_account.id,
+            amount=Decimal("100000.00"), date="2026-08-18", reference="", notes="",
+            attachment=_proof_file(), actor=admin_user,
+        )
+    assert SupplierAdvance.objects.filter(supplier=supplier).count() == 0
+
+
+@pytest.mark.django_db
+def test_create_supplier_advance_allowed_when_net_balance_is_already_positive():
+    admin_user = _make_admin("STACK-SADV")
+    supplier = Supplier.objects.create(name="Stack Advance Supplier", country="Senegal")
+    cash_account = CashAccount.objects.create(name="Main Cash", opening_balance=Decimal("5000000.00"))
+    AdvanceService.create_supplier_advance(
+        supplier_id=supplier.id, bank_account_id=None, cash_account_id=cash_account.id,
+        amount=Decimal("300000.00"), date="2026-08-17", reference="SADV-A", notes="",
+        attachment=_proof_file(), actor=admin_user,
+    )
+
+    second = AdvanceService.create_supplier_advance(
+        supplier_id=supplier.id, bank_account_id=None, cash_account_id=cash_account.id,
+        amount=Decimal("200000.00"), date="2026-08-18", reference="SADV-B", notes="",
+        attachment=_proof_file(), actor=admin_user,
+    )
+
+    assert second.remaining_amount == Decimal("200000.00")
+    balance = ControlledDebtPaymentService.describe_supplier_balance(supplier)
+    assert balance["open_advances"] == Decimal("500000.00")
+
+
+@pytest.mark.django_db
+def test_create_transporter_advance_posts_treasury_transaction():
+    trip, transporter = _make_trip_for_deduction("CREATE-TADV")
+    bank_account = BankAccount.objects.create(name="Main BOA Account", opening_balance=Decimal("2000000.00"))
+
+    advance = AdvanceService.create_transporter_advance(
+        transporter_id=transporter.id, bank_account_id=bank_account.id, cash_account_id=None,
+        amount=Decimal("500000.00"), date="2026-08-18", reference="TADV-1", notes="",
+        attachment=_proof_file(), actor=_make_admin("CREATE-TADV-ACTOR"),
+    )
+
+    assert advance.remaining_amount == Decimal("500000.00")
+    bank_account.refresh_from_db()
+    assert bank_account.current_balance == Decimal("1500000.00")
+    assert TreasuryTransaction.objects.filter(
+        source_content_type=ContentType.objects.get_for_model(TransporterAdvance),
+        source_object_id=advance.id,
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_create_transporter_advance_rejected_when_open_debt_exists():
+    trip, transporter = _make_trip_for_deduction("REJECT-TADV")
+    TransportPayment.objects.create(
+        trip=trip, transporter=transporter,
+        calculation_method=TransportPayment.CalculationMethod.FIXED,
+        base_amount=Decimal("700000.00"),
+    )
+    bank_account = BankAccount.objects.create(name="Main BOA Account", opening_balance=Decimal("2000000.00"))
+
+    with pytest.raises(AdvanceError):
+        AdvanceService.create_transporter_advance(
+            transporter_id=transporter.id, bank_account_id=bank_account.id, cash_account_id=None,
+            amount=Decimal("100000.00"), date="2026-08-18", reference="", notes="",
+            attachment=_proof_file(), actor=_make_admin("REJECT-TADV-ACTOR"),
+        )
+
+
+@pytest.mark.django_db
+def test_create_supplier_advance_rejects_amount_exceeding_account_balance():
+    admin_user = _make_admin("INSUF-SADV")
+    supplier = Supplier.objects.create(name="Insufficient Balance Supplier", country="Senegal")
+    cash_account = CashAccount.objects.create(name="Main Cash", opening_balance=Decimal("100000.00"))
+
+    with pytest.raises(AdvanceError):
+        AdvanceService.create_supplier_advance(
+            supplier_id=supplier.id, bank_account_id=None, cash_account_id=cash_account.id,
+            amount=Decimal("1000000.00"), date="2026-08-18", reference="", notes="",
+            attachment=_proof_file(), actor=admin_user,
+        )
