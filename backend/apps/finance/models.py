@@ -300,22 +300,108 @@ class SupplierPayment(AuditableModel, TimeStampedModel):
         return f"{self.supplier}: {self.amount} ({self.payment_date})"
 
 
-class TransporterAdvance(TimeStampedModel):
-    """A road-expense advance handed to a transporter ahead of settlement
-    (docs/PHASE_5_PLAN.md Etape 3; guide Section 8.6).
+class SupplierAdvance(AuditableModel, TimeStampedModel):
+    """A cash advance handed to a supplier ahead of any confirmed debt
+    (docs/superpowers/specs/2026-08-31-supplier-transporter-advances-design.md).
 
-    `settled` flips to True once a TransportPayment consumes it -
-    TransportPayment.advance_applied is the only writer of that flag.
+    Becomes a credit consumed later, oldest-first, by AdvanceConsumption
+    rows created automatically when a SupplierOrder is confirmed.
+    `remaining_amount` is always derived from those rows, never stored, so
+    it can never drift (same "computed, never stored" convention as
+    BankAccount.current_balance).
     """
 
-    transporter = models.ForeignKey(
-        "transport.Transporter", on_delete=models.PROTECT, related_name="advances"
+    supplier = models.ForeignKey(
+        "suppliers.Supplier", on_delete=models.PROTECT, related_name="advances"
+    )
+    bank_account = models.ForeignKey(
+        BankAccount, on_delete=models.PROTECT, null=True, blank=True,
+        related_name="supplier_advances",
+    )
+    cash_account = models.ForeignKey(
+        CashAccount, on_delete=models.PROTECT, null=True, blank=True,
+        related_name="supplier_advances",
     )
     amount = models.DecimalField(max_digits=16, decimal_places=2)
     date = models.DateField()
     reference = models.CharField(max_length=100, blank=True)
     notes = models.TextField(blank=True)
-    settled = models.BooleanField(default=False)
+    document = models.ForeignKey(
+        "documents.Document", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="supplier_advances",
+    )
+    recorded_by = models.ForeignKey(
+        "accounts.User", on_delete=models.PROTECT, related_name="supplier_advances_recorded"
+    )
+
+    class Meta:
+        ordering = ["-date", "-id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0),
+                name="finance_supplieradvance_amount_positive",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(bank_account__isnull=True) | models.Q(cash_account__isnull=True),
+                name="finance_supplieradvance_single_account",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(bank_account__isnull=False) | models.Q(cash_account__isnull=False),
+                name="finance_supplieradvance_requires_account",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"Advance to {self.supplier}: {self.amount} ({self.date})"
+
+    @property
+    def remaining_amount(self) -> Decimal:
+        consumed = (
+            self.consumptions.filter(reversed_at__isnull=True).aggregate(
+                total=models.Sum("amount")
+            )["total"]
+            or Decimal("0.00")
+        )
+        return self.amount - consumed
+
+
+class TransporterAdvance(AuditableModel, TimeStampedModel):
+    """A road-expense advance handed to a transporter ahead of settlement
+    (docs/PHASE_5_PLAN.md Etape 3; guide Section 8.6), now a real treasury
+    outflow like SupplierAdvance (docs/superpowers/specs/
+    2026-08-31-supplier-transporter-advances-design.md) - it previously had
+    no bank_account/cash_account and never posted a TreasuryTransaction.
+
+    `settled` is a derived property (remaining_amount <= 0), never a stored
+    field - AdvanceConsumptionService is the only writer of the
+    AdvanceConsumption rows it's computed from. bank_account/cash_account/
+    document/recorded_by are nullable at the DB level only to keep rows
+    created before this change valid; every new advance requires them.
+    """
+
+    transporter = models.ForeignKey(
+        "transport.Transporter", on_delete=models.PROTECT, related_name="advances"
+    )
+    bank_account = models.ForeignKey(
+        BankAccount, on_delete=models.PROTECT, null=True, blank=True,
+        related_name="transporter_advances",
+    )
+    cash_account = models.ForeignKey(
+        CashAccount, on_delete=models.PROTECT, null=True, blank=True,
+        related_name="transporter_advances",
+    )
+    amount = models.DecimalField(max_digits=16, decimal_places=2)
+    date = models.DateField()
+    reference = models.CharField(max_length=100, blank=True)
+    notes = models.TextField(blank=True)
+    document = models.ForeignKey(
+        "documents.Document", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="transporter_advances",
+    )
+    recorded_by = models.ForeignKey(
+        "accounts.User", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="transporter_advances_recorded",
+    )
 
     class Meta:
         ordering = ["-date", "-id"]
@@ -328,6 +414,68 @@ class TransporterAdvance(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"Advance to {self.transporter}: {self.amount} ({self.date})"
+
+    @property
+    def remaining_amount(self) -> Decimal:
+        consumed = (
+            self.consumptions.filter(reversed_at__isnull=True).aggregate(
+                total=models.Sum("amount")
+            )["total"]
+            or Decimal("0.00")
+        )
+        return self.amount - consumed
+
+    @property
+    def settled(self) -> bool:
+        return self.remaining_amount <= Decimal("0.00")
+
+
+class AdvanceConsumption(TimeStampedModel):
+    """One FIFO allocation of an open SupplierAdvance/TransporterAdvance
+    against a real debt (a confirmed SupplierOrder or a TransportPayment) -
+    never a mutation of either row, so the ledger stays auditable
+    (docs/superpowers/specs/2026-08-31-supplier-transporter-advances-design.md).
+
+    reversed_at marks a consumption undone because the underlying
+    SupplierOrder was cancelled after consuming an advance - the row is
+    kept (never deleted) so the ledger shows both the consumption and its
+    reversal; remaining_amount on the advance always excludes rows with
+    reversed_at set.
+    """
+
+    supplier_advance = models.ForeignKey(
+        SupplierAdvance, on_delete=models.PROTECT, null=True, blank=True,
+        related_name="consumptions",
+    )
+    transporter_advance = models.ForeignKey(
+        TransporterAdvance, on_delete=models.PROTECT, null=True, blank=True,
+        related_name="consumptions",
+    )
+    debt_content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE, related_name="+")
+    debt_object_id = models.PositiveIntegerField()
+    debt_object = GenericForeignKey("debt_content_type", "debt_object_id")
+    amount = models.DecimalField(max_digits=16, decimal_places=2)
+    reversed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0),
+                name="finance_advanceconsumption_amount_positive",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(supplier_advance__isnull=True, transporter_advance__isnull=False)
+                    | models.Q(supplier_advance__isnull=False, transporter_advance__isnull=True)
+                ),
+                name="finance_advanceconsumption_single_advance",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        advance = self.supplier_advance or self.transporter_advance
+        return f"{advance}: {self.amount} -> {self.debt_object}"
 
 
 class TransportPayment(TimeStampedModel):
@@ -399,8 +547,6 @@ class TransportPayment(TimeStampedModel):
             self.base_amount - self.deduction_amount - advance_amount
         ).quantize(Decimal("0.01"))
         super().save(*args, **kwargs)
-        if self.advance_applied_id and not self.advance_applied.settled:
-            TransporterAdvance.objects.filter(pk=self.advance_applied_id).update(settled=True)
 
 
 class Expense(AuditableModel, TimeStampedModel):

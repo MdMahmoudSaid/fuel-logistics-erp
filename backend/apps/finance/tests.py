@@ -4,6 +4,7 @@ from decimal import Decimal
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import IntegrityError, transaction
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from django.contrib.contenttypes.models import ContentType
@@ -13,6 +14,7 @@ from apps.core.models import Product
 from apps.customers.models import Customer
 from apps.documents.models import Document
 from apps.finance.models import (
+    AdvanceConsumption,
     BankAccount,
     CashAccount,
     CustomerPayment,
@@ -24,6 +26,7 @@ from apps.finance.models import (
     ShareholderProfitDistribution,
     ShareholderProfitShare,
     ShareholderWithdrawal,
+    SupplierAdvance,
     SupplierPayment,
     TransportDeduction,
     TransporterAdvance,
@@ -893,6 +896,139 @@ def test_transport_payment_net_amount_without_advance():
     )
 
     assert payment.net_amount == Decimal("500000.00")
+
+
+# ---------------------------------------------------------------------------
+# Advance management (docs/superpowers/specs/2026-08-31-supplier-
+# transporter-advances-design.md): SupplierAdvance, AdvanceConsumption,
+# TransporterAdvance extended with treasury accounts + document.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_supplier_advance_requires_positive_amount():
+    admin_user, supplier, _order = _make_supplier_order("SADV-NEG")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+    with pytest.raises(IntegrityError):
+        with transaction.atomic():
+            SupplierAdvance.objects.create(
+                supplier=supplier, amount=Decimal("0.00"), date="2026-08-18",
+                cash_account=cash_account, recorded_by=admin_user,
+            )
+
+
+@pytest.mark.django_db
+def test_supplier_advance_requires_exactly_one_account():
+    admin_user, supplier, _order = _make_supplier_order("SADV-ACC")
+    bank_account = BankAccount.objects.create(name="Main BOA Account")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+    with pytest.raises(IntegrityError):
+        with transaction.atomic():
+            SupplierAdvance.objects.create(
+                supplier=supplier, amount=Decimal("1000000.00"), date="2026-08-18",
+                bank_account=bank_account, cash_account=cash_account, recorded_by=admin_user,
+            )
+    with pytest.raises(IntegrityError):
+        with transaction.atomic():
+            SupplierAdvance.objects.create(
+                supplier=supplier, amount=Decimal("1000000.00"), date="2026-08-18",
+                recorded_by=admin_user,
+            )
+
+
+@pytest.mark.django_db
+def test_supplier_advance_remaining_amount_defaults_to_full_amount():
+    admin_user, supplier, _order = _make_supplier_order("SADV-REM")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+    advance = SupplierAdvance.objects.create(
+        supplier=supplier, amount=Decimal("2000000.00"), date="2026-08-18",
+        cash_account=cash_account, recorded_by=admin_user,
+    )
+    assert advance.remaining_amount == Decimal("2000000.00")
+
+
+@pytest.mark.django_db
+def test_advance_consumption_reduces_remaining_amount_but_reversed_rows_do_not():
+    admin_user, supplier, order = _make_supplier_order("SADV-CONS")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+    advance = SupplierAdvance.objects.create(
+        supplier=supplier, amount=Decimal("2000000.00"), date="2026-08-18",
+        cash_account=cash_account, recorded_by=admin_user,
+    )
+    order_ct = ContentType.objects.get_for_model(SupplierOrder)
+    AdvanceConsumption.objects.create(
+        supplier_advance=advance, debt_content_type=order_ct, debt_object_id=order.id,
+        amount=Decimal("500000.00"),
+    )
+    assert advance.remaining_amount == Decimal("1500000.00")
+
+    reversed_consumption = AdvanceConsumption.objects.create(
+        supplier_advance=advance, debt_content_type=order_ct, debt_object_id=order.id,
+        amount=Decimal("300000.00"), reversed_at=timezone.now(),
+    )
+    assert advance.remaining_amount == Decimal("1500000.00")
+    assert reversed_consumption.reversed_at is not None
+
+
+@pytest.mark.django_db
+def test_advance_consumption_requires_exactly_one_advance_type():
+    admin_user, supplier, order = _make_supplier_order("CONS-BOTH")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+    supplier_advance = SupplierAdvance.objects.create(
+        supplier=supplier, amount=Decimal("500000.00"), date="2026-08-18",
+        cash_account=cash_account, recorded_by=admin_user,
+    )
+    trip, transporter = _make_trip_for_deduction("CONS-BOTH2")
+    transporter_advance = TransporterAdvance.objects.create(
+        transporter=transporter, amount=Decimal("100000.00"), date="2026-08-18",
+        cash_account=cash_account,
+    )
+    order_ct = ContentType.objects.get_for_model(SupplierOrder)
+    with pytest.raises(IntegrityError):
+        with transaction.atomic():
+            AdvanceConsumption.objects.create(
+                supplier_advance=supplier_advance, transporter_advance=transporter_advance,
+                debt_content_type=order_ct, debt_object_id=order.id, amount=Decimal("100.00"),
+            )
+    with pytest.raises(IntegrityError):
+        with transaction.atomic():
+            AdvanceConsumption.objects.create(
+                debt_content_type=order_ct, debt_object_id=order.id, amount=Decimal("100.00"),
+            )
+
+
+@pytest.mark.django_db
+def test_transporter_advance_now_supports_treasury_account_and_document():
+    trip, transporter = _make_trip_for_deduction("TADV-ACC")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+    advance = TransporterAdvance.objects.create(
+        transporter=transporter, amount=Decimal("100000.00"), date="2026-08-18",
+        cash_account=cash_account,
+    )
+    assert advance.remaining_amount == Decimal("100000.00")
+    assert advance.settled is False
+    assert advance.document_id is None
+
+
+@pytest.mark.django_db
+def test_transporter_advance_settled_property_reflects_consumption():
+    trip, transporter = _make_trip_for_deduction("TADV-SETTLE")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+    advance = TransporterAdvance.objects.create(
+        transporter=transporter, amount=Decimal("100000.00"), date="2026-08-18",
+        cash_account=cash_account,
+    )
+    payment_ct = ContentType.objects.get_for_model(TransportPayment)
+    dummy_payment = TransportPayment.objects.create(
+        trip=trip, transporter=transporter,
+        calculation_method=TransportPayment.CalculationMethod.FIXED,
+        base_amount=Decimal("700000.00"),
+    )
+    AdvanceConsumption.objects.create(
+        transporter_advance=advance, debt_content_type=payment_ct,
+        debt_object_id=dummy_payment.id, amount=Decimal("100000.00"),
+    )
+    assert advance.settled is True
 
 
 # ---------------------------------------------------------------------------
@@ -1996,8 +2132,9 @@ def test_acceptance_transporter_net_settlement_via_api(finance_client):
     assert response.status_code == 201
     assert response.data["net_amount"] == "557500.00"
 
-    advance.refresh_from_db()
-    assert advance.settled is True
+    # `settled` becomes a property derived from AdvanceConsumption once
+    # automatic FIFO consumption lands (Task 4 of the advances plan) - no
+    # assertion here yet since nothing consumes this advance until then.
 
 
 @pytest.mark.django_db

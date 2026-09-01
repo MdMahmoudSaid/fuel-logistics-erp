@@ -126,7 +126,7 @@ class SupplierPaymentViewSet(viewsets.ModelViewSet):
 class TransporterAdvanceViewSet(viewsets.ModelViewSet):
     queryset = TransporterAdvance.objects.select_related("transporter").all()
     serializer_class = TransporterAdvanceSerializer
-    filterset_fields = ["transporter", "settled"]
+    filterset_fields = ["transporter"]
     permission_classes = [HasModulePermission]
     module = "finance"
 
