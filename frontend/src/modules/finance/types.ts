@@ -333,6 +333,8 @@ export interface TransporterLedger {
   unsettled_advances: string
   payments: TransportPayment[]
   advances: TransporterAdvance[]
+  summary: PartyBalance
+  entries: LedgerEntry[]
 }
 
 // GET /api/treasury-transactions/party-balances/?debt_type=supplier|transporter
@@ -350,6 +352,21 @@ export interface PartyBalance {
   net_balance: string
   last_advance: { date: string; amount: string } | null
   last_payment: { date: string; amount: string } | null
+}
+
+// Wave 2: chronological Grand livre entries (SupplierLedgerService/
+// TransporterLedgerService), returned alongside `summary` (same shape as
+// PartyBalance) by GET /api/suppliers/{id}/ledger/ and
+// GET /api/transporters/{id}/ledger/.
+export type LedgerEntryType = 'advance_given' | 'debt_created' | 'advance_consumed' | 'payment'
+
+export interface LedgerEntry {
+  type: LedgerEntryType
+  date: string
+  amount: string
+  reference: string
+  note: string
+  proof_url: string | null
 }
 
 // --- Task 7 (client modifications plan): Shareholders / Associates -------

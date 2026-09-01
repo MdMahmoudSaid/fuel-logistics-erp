@@ -4,6 +4,8 @@
 // float) — convert with Number(...) only where arithmetic is needed, keep
 // as strings for display/round-tripping into forms.
 
+import type { LedgerEntry, PartyBalance } from '@/modules/finance/types'
+
 export interface SupplierBrief {
   id: number
   name: string
@@ -105,4 +107,6 @@ export interface SupplierLedger {
   total_purchased: string
   total_paid: string
   outstanding_balance: string
+  summary: PartyBalance
+  entries: LedgerEntry[]
 }
