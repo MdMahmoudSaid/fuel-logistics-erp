@@ -68,7 +68,25 @@ class SupplierOrder(AuditableModel, TimeStampedModel):
             self.optional_costs or Decimal("0.00")
         )
         self.total_amount = total.quantize(Decimal("0.01"))
+
+        previous_status = None
+        if self.pk:
+            previous_status = (
+                SupplierOrder.objects.filter(pk=self.pk).values_list("status", flat=True).first()
+            )
+
         super().save(*args, **kwargs)
+
+        # Imported lazily: apps.purchasing sits below apps.finance in the
+        # app dependency graph (apps.finance.services imports
+        # apps.purchasing.models.SupplierOrder at module level already), so
+        # a module-level import here would run the dependency backwards.
+        from apps.finance.services import AdvanceConsumptionService
+
+        if previous_status != self.Status.CONFIRMED and self.status == self.Status.CONFIRMED:
+            AdvanceConsumptionService.consume_for_supplier_order(self)
+        elif previous_status == self.Status.CONFIRMED and self.status == self.Status.CANCELLED:
+            AdvanceConsumptionService.reverse_for_supplier_order(self)
 
 
 class CessionLetter(TimeStampedModel):

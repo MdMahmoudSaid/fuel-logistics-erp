@@ -847,13 +847,15 @@ class ControlledDebtPaymentService:
     def _supplier_order_paid(order, *, override=None) -> Decimal:
         if override is not None:
             return override
-        return (
+        payments = (
             SupplierPayment.objects.filter(
                 supplier_order=order,
                 is_advance=False,
             ).aggregate(total=Sum("amount"))["total"]
             or ZERO
         )
+        consumed = AdvanceConsumptionService.get_consumed_amount(order)
+        return payments + consumed
 
     @classmethod
     def _open_supplier_orders(cls, supplier, *, for_update=False):
