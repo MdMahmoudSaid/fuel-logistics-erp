@@ -405,6 +405,7 @@
       "costBasis": "Prix de revient",
       "supplierPrice": "Prix fournisseur",
       "transporterCommission": "Commission transporteur",
+      "roadTransit": "Transit routière",
       "transit": "Transit",
       "border": "Frontière",
       "customs": "Douane",

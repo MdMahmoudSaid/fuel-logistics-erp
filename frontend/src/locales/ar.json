@@ -403,6 +403,7 @@
       "costBasis": "سعر التكلفة",
       "supplierPrice": "سعر المورد",
       "transporterCommission": "عمولة الناقل",
+      "roadTransit": "العبور الطرقي",
       "transit": "العبور",
       "border": "الحدود",
       "customs": "الجمارك",

@@ -36,6 +36,7 @@ const fetchTripCostBasis = vi.fn(async () => ({
   unit_components_per_litre: {
     supplier: '500.0000',
     commission_transporter: '65.0000',
+    road_transit: '10.0000',
     transit: '10.0000',
     border: '0.0000',
     customs: '225.0000',
@@ -225,6 +226,7 @@ describe('DeliveryControlForm', () => {
     expect(wrapper.text()).toContain('500')
     expect(wrapper.text()).toContain('Commission transporteur')
     expect(wrapper.text()).toContain('65')
+    expect(wrapper.text()).toContain('Transit routière')
     expect(wrapper.text()).toContain('Transit')
     expect(wrapper.text()).toContain('10')
     expect(wrapper.text()).toContain('Douane')

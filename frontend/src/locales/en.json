@@ -403,6 +403,7 @@
       "costBasis": "Cost price",
       "supplierPrice": "Supplier price",
       "transporterCommission": "Transporter commission",
+      "roadTransit": "Road transit",
       "transit": "Transit",
       "border": "Border",
       "customs": "Customs",
