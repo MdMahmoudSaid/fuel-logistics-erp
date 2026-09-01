@@ -12,6 +12,7 @@ import MonoValue from '@/components/ui/MonoValue.vue'
 import Modal from '@/components/ui/Modal.vue'
 import TransferForm from './TransferForm.vue'
 import DebtPaymentForm from './DebtPaymentForm.vue'
+import AdvanceForm from './AdvanceForm.vue'
 import type { TreasuryTransaction } from './types'
 import { formatMoney } from '@/utils/currency'
 
@@ -20,6 +21,7 @@ const { t } = useI18n()
 
 const showTransferModal = ref(false)
 const showDebtPaymentModal = ref(false)
+const showAdvanceModal = ref(false)
 const previewUrl = ref<string | null>(null)
 
 const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp']
@@ -36,6 +38,11 @@ function onTransferSuccess() {
 
 function onDebtPaymentSuccess() {
   showDebtPaymentModal.value = false
+  load()
+}
+
+function onAdvanceSuccess() {
+  showAdvanceModal.value = false
   load()
 }
 
@@ -94,6 +101,7 @@ onMounted(() => {
   load()
   if (route.query.action === 'transfer') showTransferModal.value = true
   if (route.query.action === 'payment') showDebtPaymentModal.value = true
+  if (route.query.action === 'advance') showAdvanceModal.value = true
 })
 
 const TYPE_BADGE: Record<string, string> = {
@@ -127,6 +135,9 @@ const filteredTransactions = computed(() =>
       <div class="flex gap-2">
         <Button variant="primary" @click="showDebtPaymentModal = true">
           {{ t('finance.treasuryLedger.newPayment') }}
+        </Button>
+        <Button variant="secondary" @click="showAdvanceModal = true">
+          {{ t('finance.treasuryLedger.newAdvance') }}
         </Button>
       </div>
     </div>
@@ -274,6 +285,15 @@ const filteredTransactions = computed(() =>
       @close="showDebtPaymentModal = false"
     >
       <DebtPaymentForm @success="onDebtPaymentSuccess" @cancel="showDebtPaymentModal = false" />
+    </Modal>
+
+    <Modal
+      v-if="showAdvanceModal"
+      :title="t('finance.advanceForm.title')"
+      max-width="max-w-2xl"
+      @close="showAdvanceModal = false"
+    >
+      <AdvanceForm @success="onAdvanceSuccess" @cancel="showAdvanceModal = false" />
     </Modal>
 
     <Modal
