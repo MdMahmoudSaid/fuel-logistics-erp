@@ -34,6 +34,7 @@ from apps.finance.models import (
     TreasuryTransaction,
 )
 from apps.finance.services import (
+    AdvanceConsumptionService,
     ControlledDebtPaymentError,
     ControlledDebtPaymentService,
     FinancePostingService,
@@ -1029,6 +1030,122 @@ def test_transporter_advance_settled_property_reflects_consumption():
         debt_object_id=dummy_payment.id, amount=Decimal("100000.00"),
     )
     assert advance.settled is True
+
+
+# ---------------------------------------------------------------------------
+# Task 2: AdvanceConsumptionService — pure FIFO engine
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_consume_for_supplier_order_is_fifo_across_two_advances():
+    admin_role = Role.objects.get(name=Role.NAME_ADMIN)
+    admin_user = User.objects.create_user(
+        phone="+222-fifo-two", pin="1234", role=admin_role
+    )
+    product = Product.objects.get(code="gasoil")
+    supplier = Supplier.objects.create(name="Supplier FIFO-TWO", country="Senegal")
+    order = SupplierOrder.objects.create(
+        reference="SO-FIFO-TWO", supplier=supplier, product=product,
+        purchase_date="2026-08-18", quantity_litres=Decimal("1000.00"),
+        unit_price=Decimal("600.0000"), status=SupplierOrder.Status.DRAFT,
+        created_by=admin_user,
+    )  # total 600000, still DRAFT - not yet a debt
+    cash_account = CashAccount.objects.create(name="Main Cash")
+    older_advance = SupplierAdvance.objects.create(
+        supplier=supplier, amount=Decimal("200000.00"), date="2026-08-10",
+        cash_account=cash_account, recorded_by=admin_user,
+    )
+    newer_advance = SupplierAdvance.objects.create(
+        supplier=supplier, amount=Decimal("500000.00"), date="2026-08-15",
+        cash_account=cash_account, recorded_by=admin_user,
+    )
+
+    AdvanceConsumptionService.consume_for_supplier_order(order)  # DRAFT: no-op
+    older_advance.refresh_from_db()
+    newer_advance.refresh_from_db()
+    assert older_advance.remaining_amount == Decimal("200000.00")
+    assert newer_advance.remaining_amount == Decimal("500000.00")
+
+    order.status = SupplierOrder.Status.CONFIRMED
+    order.save()
+    AdvanceConsumptionService.consume_for_supplier_order(order)
+
+    older_advance.refresh_from_db()
+    newer_advance.refresh_from_db()
+    assert older_advance.remaining_amount == Decimal("0.00")  # oldest consumed first, in full
+    assert newer_advance.remaining_amount == Decimal("100000.00")  # 400000 consumed, 100000 left
+
+
+@pytest.mark.django_db
+def test_consume_for_supplier_order_is_idempotent_when_called_twice():
+    admin_user, supplier, order = _make_supplier_order("FIFO-IDEMPOTENT")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+    advance = SupplierAdvance.objects.create(
+        supplier=supplier, amount=Decimal("50000000.00"), date="2026-08-10",
+        cash_account=cash_account, recorded_by=admin_user,
+    )
+
+    AdvanceConsumptionService.consume_for_supplier_order(order)
+    AdvanceConsumptionService.consume_for_supplier_order(order)
+
+    assert AdvanceConsumption.objects.filter(supplier_advance=advance).count() == 1
+
+
+@pytest.mark.django_db
+def test_consume_for_supplier_order_only_matches_advances_of_the_same_supplier():
+    admin_user, supplier, order = _make_supplier_order("FIFO-SAMETENANT")
+    other_supplier = Supplier.objects.create(name="Other Supplier FIFO", country="Senegal")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+    SupplierAdvance.objects.create(
+        supplier=other_supplier, amount=Decimal("50000000.00"), date="2026-08-10",
+        cash_account=cash_account, recorded_by=admin_user,
+    )
+
+    AdvanceConsumptionService.consume_for_supplier_order(order)
+
+    assert AdvanceConsumption.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_reverse_for_supplier_order_restores_the_advance():
+    admin_user, supplier, order = _make_supplier_order("FIFO-REVERSE")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+    advance = SupplierAdvance.objects.create(
+        supplier=supplier, amount=Decimal("50000000.00"), date="2026-08-10",
+        cash_account=cash_account, recorded_by=admin_user,
+    )
+    AdvanceConsumptionService.consume_for_supplier_order(order)
+    advance.refresh_from_db()
+    assert advance.remaining_amount == Decimal("0.00")
+
+    AdvanceConsumptionService.reverse_for_supplier_order(order)
+    advance.refresh_from_db()
+    assert advance.remaining_amount == Decimal("50000000.00")
+    consumption = AdvanceConsumption.objects.get(supplier_advance=advance)
+    assert consumption.reversed_at is not None
+
+
+@pytest.mark.django_db
+def test_consume_for_transport_payment_caps_at_the_payment_amount():
+    trip, transporter = _make_trip_for_deduction("FIFO-TRANS-CAP")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+    advance = TransporterAdvance.objects.create(
+        transporter=transporter, amount=Decimal("900000.00"), date="2026-08-10",
+        cash_account=cash_account,
+    )
+    payment = TransportPayment.objects.create(
+        trip=trip, transporter=transporter,
+        calculation_method=TransportPayment.CalculationMethod.FIXED,
+        base_amount=Decimal("700000.00"),
+    )
+    payment.advance_applied = None  # this task's service isn't wired to save() yet
+
+    consumed = AdvanceConsumptionService.consume_for_transport_payment(payment)
+
+    assert consumed == Decimal("700000.00")
+    advance.refresh_from_db()
+    assert advance.remaining_amount == Decimal("200000.00")
 
 
 # ---------------------------------------------------------------------------

@@ -17,6 +17,7 @@ from django.utils import timezone
 
 from apps.documents.models import Document
 from apps.finance.models import (
+    AdvanceConsumption,
     BankAccount,
     CashAccount,
     CustomerPayment,
@@ -27,7 +28,9 @@ from apps.finance.models import (
     ShareholderProfitDistribution,
     ShareholderProfitShare,
     ShareholderWithdrawal,
+    SupplierAdvance,
     SupplierPayment,
+    TransporterAdvance,
     TransportPayment,
     TreasuryTransaction,
 )
@@ -407,6 +410,105 @@ class FinancePostingService:
             recorded_by=withdrawal.recorded_by,
             resolve_accounts=resolve_accounts,
         )
+
+
+class AdvanceConsumptionService:
+    """Consumes open SupplierAdvance/TransporterAdvance rows, oldest-first,
+    against a real debt (a confirmed SupplierOrder or a TransportPayment) -
+    the automatic counterpart to ControlledDebtPaymentService's FIFO payment
+    allocation, but for advances instead of bank payments (docs/superpowers/
+    specs/2026-08-31-supplier-transporter-advances-design.md).
+
+    Never creates a TreasuryTransaction: consuming an advance is a pure
+    accounting compensation, the cash already left the company when the
+    advance itself was created.
+    """
+
+    @classmethod
+    def open_supplier_advances(cls, supplier, *, for_update=False) -> list:
+        queryset = SupplierAdvance.objects.filter(supplier=supplier).order_by("date", "id")
+        if for_update:
+            queryset = queryset.select_for_update()
+        return [advance for advance in queryset if advance.remaining_amount > ZERO]
+
+    @classmethod
+    def open_transporter_advances(cls, transporter, *, for_update=False) -> list:
+        queryset = TransporterAdvance.objects.filter(transporter=transporter).order_by("date", "id")
+        if for_update:
+            queryset = queryset.select_for_update()
+        return [advance for advance in queryset if advance.remaining_amount > ZERO]
+
+    @staticmethod
+    def get_consumed_amount(debt) -> Decimal:
+        content_type = ContentType.objects.get_for_model(debt.__class__)
+        return (
+            AdvanceConsumption.objects.filter(
+                debt_content_type=content_type, debt_object_id=debt.id, reversed_at__isnull=True
+            ).aggregate(total=Sum("amount"))["total"]
+            or ZERO
+        )
+
+    @classmethod
+    @transaction.atomic
+    def consume_for_supplier_order(cls, order) -> None:
+        """Idempotent: safe to call more than once for the same order - it
+        always recomputes what's still uncovered before consuming further,
+        so a redundant call (or a resave of an already-CONFIRMED order)
+        never double-consumes an advance."""
+        if order.status != order.Status.CONFIRMED:
+            return
+        content_type = ContentType.objects.get_for_model(order.__class__)
+        remaining_to_cover = order.total_amount - cls.get_consumed_amount(order)
+        if remaining_to_cover <= ZERO:
+            return
+        for advance in cls.open_supplier_advances(order.supplier, for_update=True):
+            if remaining_to_cover <= ZERO:
+                break
+            amount = min(advance.remaining_amount, remaining_to_cover)
+            if amount <= ZERO:
+                continue
+            AdvanceConsumption.objects.create(
+                supplier_advance=advance,
+                debt_content_type=content_type,
+                debt_object_id=order.id,
+                amount=amount,
+            )
+            remaining_to_cover -= amount
+
+    @classmethod
+    @transaction.atomic
+    def reverse_for_supplier_order(cls, order) -> None:
+        """Undo every non-reversed consumption this order made, restoring
+        the advance(s) it used to open (design doc: reversed_at rather than
+        a deletion, for a full audit trail)."""
+        content_type = ContentType.objects.get_for_model(order.__class__)
+        AdvanceConsumption.objects.filter(
+            debt_content_type=content_type, debt_object_id=order.id, reversed_at__isnull=True
+        ).update(reversed_at=timezone.now())
+
+    @classmethod
+    @transaction.atomic
+    def consume_for_transport_payment(cls, payment) -> Decimal:
+        """Returns the total now consumed (non-reversed) for this payment,
+        for TransportPayment.save() to fold into net_amount directly."""
+        content_type = ContentType.objects.get_for_model(payment.__class__)
+        target = payment.base_amount - payment.deduction_amount
+        remaining_to_cover = target - cls.get_consumed_amount(payment)
+        if remaining_to_cover > ZERO:
+            for advance in cls.open_transporter_advances(payment.transporter, for_update=True):
+                if remaining_to_cover <= ZERO:
+                    break
+                amount = min(advance.remaining_amount, remaining_to_cover)
+                if amount <= ZERO:
+                    continue
+                AdvanceConsumption.objects.create(
+                    transporter_advance=advance,
+                    debt_content_type=content_type,
+                    debt_object_id=payment.id,
+                    amount=amount,
+                )
+                remaining_to_cover -= amount
+        return cls.get_consumed_amount(payment)
 
 
 class ControlledDebtPaymentError(ValueError):
