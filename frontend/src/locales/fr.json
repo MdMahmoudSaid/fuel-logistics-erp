@@ -758,6 +758,29 @@
         "noEligibleParty": "Aucun tiers éligible pour une nouvelle avance."
       }
     },
+    "partyLedger": {
+      "totalDue": "Total dû",
+      "openAdvances": "Avances ouvertes",
+      "netBalance": "Solde net",
+      "lastMovement": "Dernière avance / dernier paiement",
+      "advance": "Avance",
+      "payment": "Paiement",
+      "entriesTitle": "Historique",
+      "noEntries": "Aucun mouvement.",
+      "table": {
+        "date": "Date",
+        "type": "Type",
+        "reference": "Référence",
+        "amount": "Montant",
+        "proof": "Justificatif"
+      },
+      "entryTypes": {
+        "advance_given": "Avance versée",
+        "debt_created": "Dette créée",
+        "advance_consumed": "Avance imputée",
+        "payment": "Paiement complémentaire"
+      }
+    },
     "shareholder": {
       "title": "Actionnaires / Associés",
       "listTitle": "Liste des actionnaires",

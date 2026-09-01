@@ -756,6 +756,29 @@
         "noEligibleParty": "لا يوجد طرف مؤهل لسلفة جديدة."
       }
     },
+    "partyLedger": {
+      "totalDue": "إجمالي المستحق",
+      "openAdvances": "السلف المفتوحة",
+      "netBalance": "الرصيد الصافي",
+      "lastMovement": "آخر سلفة / آخر دفعة",
+      "advance": "سلفة",
+      "payment": "دفعة",
+      "entriesTitle": "السجل",
+      "noEntries": "لا توجد حركة.",
+      "table": {
+        "date": "التاريخ",
+        "type": "النوع",
+        "reference": "المرجع",
+        "amount": "المبلغ",
+        "proof": "المستند"
+      },
+      "entryTypes": {
+        "advance_given": "سلفة مدفوعة",
+        "debt_created": "دين مستحق",
+        "advance_consumed": "سلفة مخصومة",
+        "payment": "دفعة تكميلية"
+      }
+    },
     "shareholder": {
       "title": "المساهمون / الشركاء",
       "listTitle": "قائمة المساهمين",

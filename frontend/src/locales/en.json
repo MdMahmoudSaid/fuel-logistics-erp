@@ -756,6 +756,29 @@
         "noEligibleParty": "No party eligible for a new advance."
       }
     },
+    "partyLedger": {
+      "totalDue": "Total due",
+      "openAdvances": "Open advances",
+      "netBalance": "Net balance",
+      "lastMovement": "Last advance / last payment",
+      "advance": "Advance",
+      "payment": "Payment",
+      "entriesTitle": "History",
+      "noEntries": "No movement.",
+      "table": {
+        "date": "Date",
+        "type": "Type",
+        "reference": "Reference",
+        "amount": "Amount",
+        "proof": "Proof"
+      },
+      "entryTypes": {
+        "advance_given": "Advance given",
+        "debt_created": "Debt created",
+        "advance_consumed": "Advance applied",
+        "payment": "Additional payment"
+      }
+    },
     "shareholder": {
       "title": "Shareholders / Associates",
       "listTitle": "Shareholder list",
