@@ -4,6 +4,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.accounts.permissions import HasModulePermission
+from apps.reports.serialization import decimals_to_str
 
 from .models import Supplier
 from .serializers import SupplierSerializer
@@ -62,6 +63,9 @@ class SupplierViewSet(viewsets.ModelViewSet):
         # here would run the dependency the wrong way round
         # (docs/PHASE_5_PLAN.md Etape 8: "achats + acomptes/avances fournisseurs").
         from apps.finance.serializers import SupplierPaymentSerializer
+        from apps.finance.services import SupplierLedgerService
+
+        ledger_data = SupplierLedgerService.get_ledger(supplier)
 
         payments = supplier.payments.select_related(
             "supplier_order", "bank_account", "cash_account", "recorded_by"
@@ -83,5 +87,7 @@ class SupplierViewSet(viewsets.ModelViewSet):
                 "total_purchased": f"{total_purchased:.2f}",
                 "total_paid": f"{total_paid:.2f}",
                 "outstanding_balance": f"{total_purchased - total_paid:.2f}",
+                "summary": decimals_to_str(ledger_data["summary"]),
+                "entries": decimals_to_str(ledger_data["entries"]),
             }
         )

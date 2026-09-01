@@ -1738,3 +1738,159 @@ class ShareholderProfitPreviewService:
             "current_profit": current_profit,
             "shareholders": shareholders,
         }
+
+
+class SupplierLedgerService:
+    """Chronological Grand livre for one supplier: advances given, debts
+    created, advances consumed, and complementary payments, all in one
+    ordered timeline (docs/superpowers/specs/2026-08-31-supplier-
+    transporter-advances-design.md) - built on describe_supplier_balance so
+    the summary cards never disagree with Nouveau paiement/Dashboard."""
+
+    @staticmethod
+    def get_ledger(supplier) -> dict:
+        entries = []
+
+        for advance in SupplierAdvance.objects.filter(supplier=supplier):
+            entries.append({
+                "type": "advance_given",
+                "date": advance.date,
+                "amount": advance.amount,
+                "reference": advance.reference,
+                "note": advance.notes,
+                "proof_url": (
+                    advance.document.file.url
+                    if advance.document_id and advance.document.file else None
+                ),
+            })
+
+        orders = SupplierOrder.objects.filter(supplier=supplier, status=SupplierOrder.Status.CONFIRMED)
+        for order in orders:
+            entries.append({
+                "type": "debt_created",
+                "date": order.purchase_date,
+                "amount": order.total_amount,
+                "reference": order.reference,
+                "note": "",
+                "proof_url": None,
+            })
+
+        order_ct = ContentType.objects.get_for_model(SupplierOrder)
+        consumptions = AdvanceConsumption.objects.filter(
+            supplier_advance__supplier=supplier, debt_content_type=order_ct, reversed_at__isnull=True,
+        ).select_related("supplier_advance")
+        for consumption in consumptions:
+            # Dated to the debt it was applied against (not the consumption
+            # row's own created_at) - a consumption always takes effect on
+            # the same business timeline as the debt that triggered it, and
+            # purchase_date can be arbitrarily backdated relative to when
+            # the order was actually confirmed in the system.
+            entries.append({
+                "type": "advance_consumed",
+                "date": consumption.debt_object.purchase_date,
+                "amount": consumption.amount,
+                "reference": consumption.supplier_advance.reference,
+                "note": "",
+                "proof_url": None,
+            })
+
+        payments = SupplierPayment.objects.filter(supplier=supplier, is_advance=False)
+        payment_ct = ContentType.objects.get_for_model(SupplierPayment)
+        for payment in payments:
+            txn = (
+                TreasuryTransaction.objects.filter(
+                    source_content_type=payment_ct, source_object_id=payment.id, document__isnull=False,
+                ).select_related("document").order_by("-date", "-id").first()
+            )
+            entries.append({
+                "type": "payment",
+                "date": payment.payment_date,
+                "amount": payment.amount,
+                "reference": payment.reference,
+                "note": "",
+                "proof_url": txn.document.file.url if txn and txn.document.file else None,
+            })
+
+        entries.sort(key=lambda entry: entry["date"])
+
+        return {
+            "summary": ControlledDebtPaymentService.describe_supplier_balance(supplier),
+            "entries": entries,
+        }
+
+
+class TransporterLedgerService:
+    """Same chronological Grand livre as SupplierLedgerService, for
+    transporters - 'debt_created' entries come from TransportPayment
+    (base_amount - deduction_amount, before any advance consumption),
+    'payment' entries from the TreasuryTransaction rows
+    ControlledDebtPaymentService posts against each TransportPayment."""
+
+    @staticmethod
+    def get_ledger(transporter) -> dict:
+        entries = []
+
+        for advance in TransporterAdvance.objects.filter(transporter=transporter):
+            entries.append({
+                "type": "advance_given",
+                "date": advance.date,
+                "amount": advance.amount,
+                "reference": advance.reference,
+                "note": advance.notes,
+                "proof_url": (
+                    advance.document.file.url
+                    if advance.document_id and advance.document.file else None
+                ),
+            })
+
+        payments = list(TransportPayment.objects.filter(transporter=transporter).select_related("trip"))
+        for payment in payments:
+            entries.append({
+                "type": "debt_created",
+                "date": payment.created_at.date(),
+                "amount": payment.base_amount - payment.deduction_amount,
+                "reference": payment.trip.reference,
+                "note": "",
+                "proof_url": None,
+            })
+
+        payment_ct = ContentType.objects.get_for_model(TransportPayment)
+        consumptions = AdvanceConsumption.objects.filter(
+            transporter_advance__transporter=transporter, debt_content_type=payment_ct,
+            reversed_at__isnull=True,
+        ).select_related("transporter_advance")
+        for consumption in consumptions:
+            # Dated to the debt it was applied against, same rationale as
+            # SupplierLedgerService above (consistency, not just here - a
+            # TransportPayment's own "debt_created" entry uses its
+            # created_at too, so this keeps both dated the same way).
+            entries.append({
+                "type": "advance_consumed",
+                "date": consumption.debt_object.created_at.date(),
+                "amount": consumption.amount,
+                "reference": consumption.transporter_advance.reference,
+                "note": "",
+                "proof_url": None,
+            })
+
+        payment_ids = [payment.id for payment in payments]
+        treasury_rows = TreasuryTransaction.objects.filter(
+            source_content_type=payment_ct, source_object_id__in=payment_ids,
+            type=TreasuryTransaction.Type.MONEY_OUT,
+        ).select_related("document")
+        for txn in treasury_rows:
+            entries.append({
+                "type": "payment",
+                "date": txn.date,
+                "amount": txn.amount,
+                "reference": txn.reference,
+                "note": txn.note,
+                "proof_url": txn.document.file.url if txn.document_id and txn.document.file else None,
+            })
+
+        entries.sort(key=lambda entry: entry["date"])
+
+        return {
+            "summary": ControlledDebtPaymentService.describe_transporter_balance(transporter),
+            "entries": entries,
+        }

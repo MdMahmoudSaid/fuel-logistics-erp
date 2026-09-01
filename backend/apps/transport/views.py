@@ -8,6 +8,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.accounts.permissions import HasModulePermission
+from apps.reports.serialization import decimals_to_str
 
 from .models import Driver, Transporter, Truck
 from .serializers import DriverSerializer, TransporterSerializer, TruckSerializer
@@ -80,13 +81,19 @@ class TransporterViewSet(viewsets.ModelViewSet):
 
         gross_amount = sum((p.base_amount for p in payments), Decimal("0.00"))
         deductions = sum((p.deduction_amount for p in payments), Decimal("0.00"))
-        advances_applied = sum(
-            (p.advance_applied.amount for p in payments if p.advance_applied_id),
-            Decimal("0.00"),
-        )
+        transport_payment_type = ContentType.objects.get_for_model(TransportPayment)
+
+        from apps.finance.models import AdvanceConsumption
+        from apps.finance.services import TransporterLedgerService
+
+        advances_applied = AdvanceConsumption.objects.filter(
+            transporter_advance__transporter=transporter,
+            debt_content_type=transport_payment_type,
+            reversed_at__isnull=True,
+        ).aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
+        ledger_data = TransporterLedgerService.get_ledger(transporter)
         net_amount = sum((p.net_amount for p in payments), Decimal("0.00"))
         payment_ids = [payment.id for payment in payments]
-        transport_payment_type = ContentType.objects.get_for_model(TransportPayment)
         paid_by_payment = {
             row["source_object_id"]: row["total"] or Decimal("0.00")
             for row in TreasuryTransaction.objects.filter(
@@ -126,6 +133,8 @@ class TransporterViewSet(viewsets.ModelViewSet):
                 "advances": TransporterAdvanceSerializer(
                     advances, many=True, context={"request": request}
                 ).data,
+                "summary": decimals_to_str(ledger_data["summary"]),
+                "entries": decimals_to_str(ledger_data["entries"]),
             }
         )
 

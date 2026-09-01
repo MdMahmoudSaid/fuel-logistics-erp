@@ -16,7 +16,13 @@ from apps.finance.models import (
     TransportPayment,
     TreasuryTransaction,
 )
-from apps.finance.services import AdvanceError, AdvanceService, ControlledDebtPaymentService
+from apps.finance.services import (
+    AdvanceError,
+    AdvanceService,
+    ControlledDebtPaymentService,
+    SupplierLedgerService,
+    TransporterLedgerService,
+)
 from apps.purchasing.models import SupplierOrder
 from apps.suppliers.models import Supplier
 from apps.transport.models import Transporter, Truck
@@ -909,3 +915,95 @@ def test_supplier_payment_serializer_rejects_new_advance_creation(advances_finan
     )
     assert response.status_code == 400
     assert "is_advance" in response.data
+
+
+# ---------------------------------------------------------------------------
+# Task 10: SupplierLedgerService / TransporterLedgerService
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_supplier_ledger_service_orders_entries_chronologically_with_all_four_types():
+    admin_user, supplier, order = _make_supplier_order_with_status(
+        "LEDGER-SVC", SupplierOrder.Status.DRAFT,
+    )
+    cash_account = CashAccount.objects.create(name="Main Cash", opening_balance=Decimal("5000000.00"))
+    SupplierAdvance.objects.create(
+        supplier=supplier, amount=Decimal("300000.00"), date="2026-08-10",
+        cash_account=cash_account, recorded_by=admin_user,
+    )
+    order.purchase_date = "2026-08-15"
+    order.status = SupplierOrder.Status.CONFIRMED
+    order.save()  # 600000 debt, consumes the 300000 advance, leaves 300000 payable
+
+    ControlledDebtPaymentService.record_payment(
+        debt_type="supplier", debt_id=supplier.id,
+        bank_account_id=BankAccount.objects.create(
+            name="Ledger Bank", opening_balance=Decimal("5000000.00")
+        ).id,
+        amount=Decimal("300000.00"), date="2026-08-20", reference="PAY-LEDGER-SVC", actor=admin_user,
+    )
+
+    ledger = SupplierLedgerService.get_ledger(supplier)
+
+    assert ledger["summary"]["net_balance"] == Decimal("0.00")
+    types_in_order = [entry["type"] for entry in ledger["entries"]]
+    assert types_in_order == ["advance_given", "debt_created", "advance_consumed", "payment"]
+    assert ledger["entries"][0]["amount"] == Decimal("300000.00")
+    assert ledger["entries"][1]["amount"] == Decimal("600000.00")
+    assert ledger["entries"][3]["amount"] == Decimal("300000.00")
+
+
+@pytest.mark.django_db
+def test_transporter_ledger_service_reports_summary_and_entries():
+    trip, transporter = _make_trip_for_deduction("LEDGER-SVC-T")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+    TransporterAdvance.objects.create(
+        transporter=transporter, amount=Decimal("200000.00"), date="2026-08-10",
+        cash_account=cash_account,
+    )
+    TransportPayment.objects.create(
+        trip=trip, transporter=transporter,
+        calculation_method=TransportPayment.CalculationMethod.FIXED,
+        base_amount=Decimal("700000.00"),
+    )
+
+    ledger = TransporterLedgerService.get_ledger(transporter)
+
+    assert ledger["summary"]["total_due"] == Decimal("500000.00")
+    types_present = {entry["type"] for entry in ledger["entries"]}
+    assert types_present == {"advance_given", "debt_created", "advance_consumed"}
+
+
+@pytest.mark.django_db
+def test_supplier_ledger_endpoint_keeps_existing_keys_and_adds_summary_entries(advances_finance_client):
+    admin_user, supplier, order = _make_supplier_order_with_status(
+        "LEDGER-API", SupplierOrder.Status.CONFIRMED,
+    )
+    response = advances_finance_client.get(f"/api/suppliers/{supplier.id}/ledger/")
+    assert response.status_code == 200
+    for key in ("orders", "reliquat_summary", "payments", "total_purchased", "total_paid", "outstanding_balance"):
+        assert key in response.data
+    assert "summary" in response.data
+    assert "entries" in response.data
+
+
+@pytest.mark.django_db
+def test_transporter_ledger_endpoint_advances_applied_reflects_automatic_consumption(advances_finance_client):
+    trip, transporter = _make_trip_for_deduction("LEDGER-API-T")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+    TransporterAdvance.objects.create(
+        transporter=transporter, amount=Decimal("100000.00"), date="2026-08-17",
+        cash_account=cash_account,
+    )
+    TransportPayment.objects.create(
+        trip=trip, transporter=transporter,
+        calculation_method=TransportPayment.CalculationMethod.FIXED,
+        base_amount=Decimal("700000.00"),
+    )
+
+    response = advances_finance_client.get(f"/api/transporters/{transporter.id}/ledger/")
+    assert response.status_code == 200
+    assert response.data["advances_applied"] == "100000.00"
+    assert "summary" in response.data
+    assert "entries" in response.data
