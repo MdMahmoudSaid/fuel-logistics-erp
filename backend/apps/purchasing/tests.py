@@ -443,3 +443,108 @@ def test_cession_letter_next_reference_endpoint():
     response = client.get("/api/cession-letters/next-reference/")
     assert response.status_code == 200
     assert response.data["reference"].startswith("CES-")
+
+
+# ---------------------------------------------------------------------------
+# docs/superpowers/plans/2026-09-01-supplier-transporter-advances.md, final
+# review: financial fields must be frozen once a SupplierOrder is CONFIRMED,
+# so an edit can never silently desync total_amount from what an
+# AdvanceConsumption has already consumed against it. The only way to
+# change the amount is the explicit cancellation workflow (PATCH
+# status=CANCELLED, which reverses any advance consumption), not an
+# in-place edit of a confirmed order's quantity/price/costs.
+# ---------------------------------------------------------------------------
+
+
+def _confirmed_order(suffix):
+    admin_role = Role.objects.get(name=Role.NAME_ADMIN)
+    admin_user = User.objects.create_user(
+        phone=(f"+222{suffix}")[:20], pin="1234", role=admin_role
+    )
+    product = Product.objects.get(code="gasoil")
+    supplier = Supplier.objects.create(name=f"Supplier {suffix}", country="Senegal")
+    order = SupplierOrder.objects.create(
+        reference=f"SO-{suffix}",
+        supplier=supplier,
+        product=product,
+        purchase_date="2026-08-18",
+        quantity_litres=Decimal("1000.00"),
+        unit_price=Decimal("600.0000"),
+        status=SupplierOrder.Status.CONFIRMED,
+        created_by=admin_user,
+    )
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    return client, order
+
+
+@pytest.mark.django_db
+def test_confirmed_order_rejects_quantity_change():
+    client, order = _confirmed_order("LOCK-QTY")
+    response = client.patch(f"/api/supplier-orders/{order.id}/", {"quantity_litres": "2000.00"})
+    assert response.status_code == 400
+    assert "quantity_litres" in response.data
+    order.refresh_from_db()
+    assert order.quantity_litres == Decimal("1000.00")
+
+
+@pytest.mark.django_db
+def test_confirmed_order_rejects_unit_price_change():
+    client, order = _confirmed_order("LOCK-PRICE")
+    response = client.patch(f"/api/supplier-orders/{order.id}/", {"unit_price": "700.0000"})
+    assert response.status_code == 400
+    assert "unit_price" in response.data
+    order.refresh_from_db()
+    assert order.unit_price == Decimal("600.0000")
+
+
+@pytest.mark.django_db
+def test_confirmed_order_rejects_optional_costs_change():
+    client, order = _confirmed_order("LOCK-COSTS")
+    response = client.patch(f"/api/supplier-orders/{order.id}/", {"optional_costs": "10000.00"})
+    assert response.status_code == 400
+    assert "optional_costs" in response.data
+
+
+@pytest.mark.django_db
+def test_confirmed_order_setting_the_same_value_is_not_rejected():
+    client, order = _confirmed_order("LOCK-SAME")
+    response = client.patch(f"/api/supplier-orders/{order.id}/", {"quantity_litres": "1000.00"})
+    assert response.status_code == 200
+
+
+@pytest.mark.django_db
+def test_confirmed_order_can_still_be_cancelled_without_touching_financial_fields():
+    client, order = _confirmed_order("LOCK-CANCEL")
+    response = client.patch(f"/api/supplier-orders/{order.id}/", {"status": "CANCELLED"})
+    assert response.status_code == 200, response.data
+    order.refresh_from_db()
+    assert order.status == SupplierOrder.Status.CANCELLED
+
+
+@pytest.mark.django_db
+def test_confirmed_order_still_allows_editing_non_financial_fields():
+    client, order = _confirmed_order("LOCK-NOTES")
+    response = client.patch(f"/api/supplier-orders/{order.id}/", {"notes": "Updated note"})
+    assert response.status_code == 200, response.data
+    order.refresh_from_db()
+    assert order.notes == "Updated note"
+
+
+@pytest.mark.django_db
+def test_draft_order_still_allows_financial_field_edits():
+    admin_role = Role.objects.get(name=Role.NAME_ADMIN)
+    admin_user = User.objects.create_user(phone="+2220000099", pin="1234", role=admin_role)
+    product = Product.objects.get(code="gasoil")
+    supplier = Supplier.objects.create(name="Draft Lock Supplier", country="Senegal")
+    order = SupplierOrder.objects.create(
+        reference="SO-LOCK-DRAFT", supplier=supplier, product=product,
+        purchase_date="2026-08-18", quantity_litres=Decimal("1000.00"),
+        unit_price=Decimal("600.0000"), status=SupplierOrder.Status.DRAFT,
+        created_by=admin_user,
+    )
+    client = APIClient()
+    client.force_authenticate(admin_user)
+
+    response = client.patch(f"/api/supplier-orders/{order.id}/", {"quantity_litres": "2000.00"})
+    assert response.status_code == 200, response.data

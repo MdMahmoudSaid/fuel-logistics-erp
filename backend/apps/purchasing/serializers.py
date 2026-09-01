@@ -110,6 +110,29 @@ class SupplierOrderSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
 
+    # Fields whose values determine total_amount, and therefore what an
+    # AdvanceConsumption row was computed against - frozen once the order is
+    # CONFIRMED (docs/superpowers/plans/2026-09-01-supplier-transporter-
+    # advances.md, final review): the only way to change the amount is the
+    # explicit cancellation workflow (status=CANCELLED reverses any
+    # consumption), never an in-place edit of a confirmed order.
+    _FINANCIAL_FIELDS = ["quantity_litres", "unit_price", "optional_costs"]
+
+    def validate(self, data):
+        if self.instance is not None and self.instance.status == SupplierOrder.Status.CONFIRMED:
+            for field in self._FINANCIAL_FIELDS:
+                if field in data and data[field] != getattr(self.instance, field):
+                    raise serializers.ValidationError(
+                        {
+                            field: (
+                                "Ce champ ne peut plus etre modifie une fois la commande "
+                                "confirmee. Annulez la commande (statut CANCELLED) si le "
+                                "montant doit changer."
+                            )
+                        }
+                    )
+        return data
+
     def get_reliquat(self, obj) -> str:
         reliquat = SupplierStockService.get_purchase_reliquat(obj)
         return f"{reliquat:.2f}"
