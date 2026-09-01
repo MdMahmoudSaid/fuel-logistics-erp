@@ -255,3 +255,82 @@ def test_supplier_advance_alone_without_debt_does_not_create_payable_debt():
         if row["id"] == supplier.id
     ]
     assert payable == []
+
+
+# ---------------------------------------------------------------------------
+# Task 4: TransportPayment automatic consumption
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_transport_payment_consumes_advance_automatically_without_manual_selection():
+    trip, transporter = _make_trip_for_deduction("AUTO-CONSUME")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+    TransporterAdvance.objects.create(
+        transporter=transporter, amount=Decimal("100000.00"), date="2026-08-17",
+        cash_account=cash_account,
+    )
+
+    payment = TransportPayment.objects.create(
+        trip=trip, transporter=transporter,
+        calculation_method=TransportPayment.CalculationMethod.FIXED,
+        base_amount=Decimal("700000.00"), deduction_amount=Decimal("42500.00"),
+    )
+
+    assert payment.net_amount == Decimal("557500.00")
+    assert payment.advance_applied_id is None
+
+
+@pytest.mark.django_db
+def test_transport_payment_partial_advance_leaves_remaining_payable():
+    trip, transporter = _make_trip_for_deduction("PARTIAL-TRANS")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+    TransporterAdvance.objects.create(
+        transporter=transporter, amount=Decimal("200000.00"), date="2026-08-17",
+        cash_account=cash_account,
+    )
+
+    payment = TransportPayment.objects.create(
+        trip=trip, transporter=transporter,
+        calculation_method=TransportPayment.CalculationMethod.FIXED,
+        base_amount=Decimal("700000.00"),
+    )
+
+    assert payment.net_amount == Decimal("500000.00")
+    remaining = ControlledDebtPaymentService.describe_transport_payment(payment)["remaining_amount"]
+    assert remaining == Decimal("500000.00")
+
+
+@pytest.mark.django_db
+def test_transport_payment_advance_surplus_stays_open_for_next_trip():
+    trip, transporter = _make_trip_for_deduction("SURPLUS-TRANS")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+    advance = TransporterAdvance.objects.create(
+        transporter=transporter, amount=Decimal("900000.00"), date="2026-08-17",
+        cash_account=cash_account,
+    )
+
+    payment = TransportPayment.objects.create(
+        trip=trip, transporter=transporter,
+        calculation_method=TransportPayment.CalculationMethod.FIXED,
+        base_amount=Decimal("700000.00"),
+    )
+
+    assert payment.net_amount == Decimal("0.00")
+    advance.refresh_from_db()
+    assert advance.remaining_amount == Decimal("200000.00")
+
+
+@pytest.mark.django_db
+def test_transporter_advance_alone_without_trip_does_not_create_payable_debt():
+    trip, transporter = _make_trip_for_deduction("NO-DEBT-TRANS")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+    TransporterAdvance.objects.create(
+        transporter=transporter, amount=Decimal("500000.00"), date="2026-08-18",
+        cash_account=cash_account,
+    )
+    payable = [
+        row for row in ControlledDebtPaymentService.get_payable_debts("transporter")
+        if row["id"] == transporter.id
+    ]
+    assert payable == []

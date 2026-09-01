@@ -2249,9 +2249,8 @@ def test_acceptance_transporter_net_settlement_via_api(finance_client):
     assert response.status_code == 201
     assert response.data["net_amount"] == "557500.00"
 
-    # `settled` becomes a property derived from AdvanceConsumption once
-    # automatic FIFO consumption lands (Task 4 of the advances plan) - no
-    # assertion here yet since nothing consumes this advance until then.
+    advance.refresh_from_db()
+    assert advance.settled is True
 
 
 @pytest.mark.django_db

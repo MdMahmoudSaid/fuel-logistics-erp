@@ -367,11 +367,10 @@ class TransportPaymentSerializer(serializers.ModelSerializer):
             "calculation_method", "base_amount", "unit_price_per_litre", "deduction_amount",
             "deduction_label", "advance_applied", "net_amount", "status", "created_at", "updated_at",
         ]
-        read_only_fields = ["id", "net_amount", "created_at", "updated_at"]
+        read_only_fields = ["id", "net_amount", "advance_applied", "created_at", "updated_at"]
         extra_kwargs = {"base_amount": {"required": False}}
 
     def validate(self, data):
-        advance = data.get("advance_applied", getattr(self.instance, "advance_applied", None))
         transporter = data.get("transporter", getattr(self.instance, "transporter", None))
         trip = data.get("trip", getattr(self.instance, "trip", None))
         calculation_method = data.get(
@@ -380,11 +379,6 @@ class TransportPaymentSerializer(serializers.ModelSerializer):
         unit_price_per_litre = data.get(
             "unit_price_per_litre", getattr(self.instance, "unit_price_per_litre", None)
         )
-
-        if advance and transporter and advance.transporter_id != transporter.id:
-            raise serializers.ValidationError(
-                "L'avance selectionnee n'appartient pas a ce transporteur."
-            )
 
         if trip and transporter and transporter.id != trip.transporter_id:
             raise serializers.ValidationError(

@@ -542,11 +542,26 @@ class TransportPayment(TimeStampedModel):
         return f"Transport payment for {self.trip.reference}: {self.net_amount}"
 
     def save(self, *args, **kwargs):
-        advance_amount = self.advance_applied.amount if self.advance_applied_id else Decimal("0.00")
-        self.net_amount = (
-            self.base_amount - self.deduction_amount - advance_amount
-        ).quantize(Decimal("0.01"))
-        super().save(*args, **kwargs)
+        # Imported lazily to avoid a circular import at module load time:
+        # apps.finance.services imports apps.finance.models at module level.
+        from apps.finance.services import AdvanceConsumptionService
+
+        is_new = self._state.adding
+        if is_new:
+            self.net_amount = (self.base_amount - self.deduction_amount).quantize(Decimal("0.01"))
+            super().save(*args, **kwargs)
+            consumed = AdvanceConsumptionService.consume_for_transport_payment(self)
+            if consumed > Decimal("0.00"):
+                self.net_amount = (
+                    self.base_amount - self.deduction_amount - consumed
+                ).quantize(Decimal("0.01"))
+                super().save(update_fields=["net_amount", "updated_at"])
+        else:
+            consumed = AdvanceConsumptionService.get_consumed_amount(self)
+            self.net_amount = (
+                self.base_amount - self.deduction_amount - consumed
+            ).quantize(Decimal("0.01"))
+            super().save(*args, **kwargs)
 
 
 class Expense(AuditableModel, TimeStampedModel):
