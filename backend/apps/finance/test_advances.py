@@ -243,6 +243,107 @@ def test_cancelling_confirmed_order_reverses_its_advance_consumption():
 
 
 @pytest.mark.django_db
+def test_reverting_confirmed_order_to_draft_also_reverses_advance_consumption():
+    """Final-review fix: reversal must not be CANCELLED-only. Any transition
+    OUT of CONFIRMED (not just to CANCELLED) must release the advance it
+    consumed, or the credit is silently lost - describe_supplier_order
+    already stops counting a non-CONFIRMED order as debt, so its consumed
+    advance must come back too."""
+    admin_user = _make_admin("REVERT-DRAFT")
+    supplier = Supplier.objects.create(name="Supplier REVERT-DRAFT", country="Senegal")
+    product = Product.objects.get(code="gasoil")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+    advance = SupplierAdvance.objects.create(
+        supplier=supplier, amount=Decimal("300000.00"), date="2026-08-17",
+        cash_account=cash_account, recorded_by=admin_user,
+    )
+    order = SupplierOrder.objects.create(
+        reference="SO-REVERT-DRAFT", supplier=supplier, product=product,
+        purchase_date="2026-08-18", quantity_litres=Decimal("500.00"),
+        unit_price=Decimal("600.0000"), status=SupplierOrder.Status.CONFIRMED,
+        created_by=admin_user,
+    )  # total 300000
+    advance.refresh_from_db()
+    assert advance.remaining_amount == Decimal("0.00")
+
+    order.status = SupplierOrder.Status.DRAFT
+    order.save()
+    advance.refresh_from_db()
+
+    assert advance.remaining_amount == Decimal("300000.00")
+    consumption = AdvanceConsumption.objects.get(supplier_advance=advance)
+    assert consumption.reversed_at is not None
+
+
+@pytest.mark.django_db
+def test_reconfirming_order_after_reverting_to_draft_consumes_the_advance_again():
+    """Round-trip: CONFIRMED -> DRAFT (reversed) -> CONFIRMED must consume
+    again, not skip because a reversed AdvanceConsumption row already
+    exists for this order."""
+    admin_user = _make_admin("REVERT-RECONFIRM")
+    supplier = Supplier.objects.create(name="Supplier REVERT-RECONFIRM", country="Senegal")
+    product = Product.objects.get(code="gasoil")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+    advance = SupplierAdvance.objects.create(
+        supplier=supplier, amount=Decimal("300000.00"), date="2026-08-17",
+        cash_account=cash_account, recorded_by=admin_user,
+    )
+    order = SupplierOrder.objects.create(
+        reference="SO-REVERT-RECONFIRM", supplier=supplier, product=product,
+        purchase_date="2026-08-18", quantity_litres=Decimal("500.00"),
+        unit_price=Decimal("600.0000"), status=SupplierOrder.Status.CONFIRMED,
+        created_by=admin_user,
+    )
+    order.status = SupplierOrder.Status.DRAFT
+    order.save()
+    advance.refresh_from_db()
+    assert advance.remaining_amount == Decimal("300000.00")
+
+    order.status = SupplierOrder.Status.CONFIRMED
+    order.save()
+    advance.refresh_from_db()
+
+    assert advance.remaining_amount == Decimal("0.00")
+
+
+@pytest.mark.django_db
+def test_increasing_total_amount_of_an_already_confirmed_order_consumes_the_delta():
+    """Final-review fix: staying CONFIRMED while total_amount increases (an
+    edit, not a status transition) must also pull from any newly-available
+    open advance for the remaining delta - the hook now re-attempts
+    consumption on every save while CONFIRMED, not just on the transition
+    edge, and this is idempotent when nothing changed."""
+    admin_user = _make_admin("INCREASE-CONFIRMED")
+    supplier = Supplier.objects.create(name="Supplier INCREASE-CONFIRMED", country="Senegal")
+    product = Product.objects.get(code="gasoil")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+    order = SupplierOrder.objects.create(
+        reference="SO-INCREASE-CONFIRMED", supplier=supplier, product=product,
+        purchase_date="2026-08-18", quantity_litres=Decimal("500.00"),
+        unit_price=Decimal("600.0000"), status=SupplierOrder.Status.CONFIRMED,
+        created_by=admin_user,
+    )  # total 300000, no advance yet -> nothing consumed
+    advance = SupplierAdvance.objects.create(
+        supplier=supplier, amount=Decimal("300000.00"), date="2026-08-19",
+        cash_account=cash_account, recorded_by=admin_user,
+    )
+    # advance created AFTER the order already exists - by design this does
+    # NOT retroactively consume (only a save() of the order can trigger
+    # consumption), so the advance stays fully open until the order itself
+    # is saved again.
+    advance.refresh_from_db()
+    assert advance.remaining_amount == Decimal("300000.00")
+
+    order.quantity_litres = Decimal("1000.00")  # total becomes 600000
+    order.save()  # still CONFIRMED -> CONFIRMED, re-attempts consumption
+
+    advance.refresh_from_db()
+    assert advance.remaining_amount == Decimal("0.00")
+    remaining_debt = ControlledDebtPaymentService.describe_supplier_order(order)["remaining_amount"]
+    assert remaining_debt == Decimal("300000.00")
+
+
+@pytest.mark.django_db
 def test_supplier_advance_alone_without_debt_does_not_create_payable_debt():
     admin_user = _make_admin("NO-DEBT")
     supplier = Supplier.objects.create(name="No Order Supplier", country="Senegal")

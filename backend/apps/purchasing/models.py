@@ -83,9 +83,21 @@ class SupplierOrder(AuditableModel, TimeStampedModel):
         # a module-level import here would run the dependency backwards.
         from apps.finance.services import AdvanceConsumptionService
 
-        if previous_status != self.Status.CONFIRMED and self.status == self.Status.CONFIRMED:
+        if self.status == self.Status.CONFIRMED:
+            # Re-attempted on every save while CONFIRMED (not just on the
+            # DRAFT/CANCELLED -> CONFIRMED transition edge) so an edit that
+            # increases total_amount also pulls from any newly-available
+            # open advance for the delta. Idempotent: consume_for_supplier_
+            # order always recomputes what's still uncovered first, so a
+            # plain re-save with no amount change is a no-op.
             AdvanceConsumptionService.consume_for_supplier_order(self)
-        elif previous_status == self.Status.CONFIRMED and self.status == self.Status.CANCELLED:
+        elif previous_status == self.Status.CONFIRMED and self.status != self.Status.CONFIRMED:
+            # Final-review fix: any transition OUT of CONFIRMED must release
+            # the advance it consumed, not just CANCELLED - describe_supplier_
+            # order already stops counting a non-CONFIRMED order as debt
+            # (docs/superpowers/plans/2026-09-01-supplier-transporter-
+            # advances.md, Task 3), so a CONFIRMED -> DRAFT edit must not
+            # silently strand the consumed credit.
             AdvanceConsumptionService.reverse_for_supplier_order(self)
 
 
