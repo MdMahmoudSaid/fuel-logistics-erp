@@ -334,3 +334,128 @@ def test_transporter_advance_alone_without_trip_does_not_create_payable_debt():
         if row["id"] == transporter.id
     ]
     assert payable == []
+
+
+# ---------------------------------------------------------------------------
+# Task 5: describe_supplier_balance / describe_transporter_balance
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_describe_supplier_balance_debt_only():
+    admin_user, supplier, order = _make_supplier_order_with_status(
+        "BAL-DEBT", SupplierOrder.Status.CONFIRMED,
+    )
+    balance = ControlledDebtPaymentService.describe_supplier_balance(supplier)
+    assert balance["total_due"] == Decimal("600000.00")
+    assert balance["open_advances"] == Decimal("0.00")
+    assert balance["net_balance"] == Decimal("-600000.00")
+
+
+@pytest.mark.django_db
+def test_describe_supplier_balance_advance_only():
+    admin_user = _make_admin("BAL-ADV-ONLY")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+    supplier = Supplier.objects.create(name="No Debt Supplier", country="Senegal")
+    SupplierAdvance.objects.create(
+        supplier=supplier, amount=Decimal("300000.00"), date="2026-08-18",
+        cash_account=cash_account, recorded_by=admin_user,
+    )
+    balance = ControlledDebtPaymentService.describe_supplier_balance(supplier)
+    assert balance["total_due"] == Decimal("0.00")
+    assert balance["open_advances"] == Decimal("300000.00")
+    assert balance["net_balance"] == Decimal("300000.00")
+
+
+@pytest.mark.django_db
+def test_describe_supplier_balance_partial_consumption():
+    admin_user = _make_admin("BAL-PARTIAL")
+    supplier = Supplier.objects.create(name="Supplier BAL-PARTIAL", country="Senegal")
+    product = Product.objects.get(code="gasoil")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+    # Advance created first
+    SupplierAdvance.objects.create(
+        supplier=supplier, amount=Decimal("250000.00"), date="2026-08-17",
+        cash_account=cash_account, recorded_by=admin_user,
+    )
+    # Order created at CONFIRMED, consumes the advance
+    order = SupplierOrder.objects.create(
+        reference="SO-BAL-PARTIAL", supplier=supplier, product=product,
+        purchase_date="2026-08-18", quantity_litres=Decimal("1000.00"),
+        unit_price=Decimal("600.0000"), status=SupplierOrder.Status.CONFIRMED,
+        created_by=admin_user,
+    )  # total 600000
+    balance = ControlledDebtPaymentService.describe_supplier_balance(supplier)
+    assert balance["total_due"] == Decimal("350000.00")
+    assert balance["open_advances"] == Decimal("0.00")
+    assert balance["net_balance"] == Decimal("-350000.00")
+
+
+@pytest.mark.django_db
+def test_describe_supplier_balance_full_consumption_with_surplus():
+    admin_user = _make_admin("BAL-FULL")
+    supplier = Supplier.objects.create(name="Supplier BAL-FULL", country="Senegal")
+    product = Product.objects.get(code="gasoil")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+    # Advance created first, larger than order
+    SupplierAdvance.objects.create(
+        supplier=supplier, amount=Decimal("500000.00"), date="2026-08-17",
+        cash_account=cash_account, recorded_by=admin_user,
+    )
+    # Order created at CONFIRMED, consumes part of the advance
+    order = SupplierOrder.objects.create(
+        reference="SO-BAL-FULL", supplier=supplier, product=product,
+        purchase_date="2026-08-18", quantity_litres=Decimal("500.00"),
+        unit_price=Decimal("600.0000"), status=SupplierOrder.Status.CONFIRMED,
+        created_by=admin_user,
+    )  # total 300000
+    balance = ControlledDebtPaymentService.describe_supplier_balance(supplier)
+    assert balance["total_due"] == Decimal("0.00")
+    assert balance["open_advances"] == Decimal("200000.00")
+    assert balance["net_balance"] == Decimal("200000.00")
+
+
+@pytest.mark.django_db
+def test_describe_transporter_balance_debt_only():
+    trip, transporter = _make_trip_for_deduction("TBAL-DEBT")
+    TransportPayment.objects.create(
+        trip=trip, transporter=transporter,
+        calculation_method=TransportPayment.CalculationMethod.FIXED,
+        base_amount=Decimal("700000.00"),
+    )
+    balance = ControlledDebtPaymentService.describe_transporter_balance(transporter)
+    assert balance["total_due"] == Decimal("700000.00")
+    assert balance["net_balance"] == Decimal("-700000.00")
+
+
+@pytest.mark.django_db
+def test_describe_transporter_balance_advance_only():
+    trip, transporter = _make_trip_for_deduction("TBAL-ADV")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+    TransporterAdvance.objects.create(
+        transporter=transporter, amount=Decimal("150000.00"), date="2026-08-18",
+        cash_account=cash_account,
+    )
+    balance = ControlledDebtPaymentService.describe_transporter_balance(transporter)
+    assert balance["total_due"] == Decimal("0.00")
+    assert balance["open_advances"] == Decimal("150000.00")
+    assert balance["net_balance"] == Decimal("150000.00")
+
+
+@pytest.mark.django_db
+def test_describe_transporter_balance_partial_consumption():
+    trip, transporter = _make_trip_for_deduction("TBAL-PARTIAL")
+    cash_account = CashAccount.objects.create(name="Main Cash")
+    TransporterAdvance.objects.create(
+        transporter=transporter, amount=Decimal("200000.00"), date="2026-08-17",
+        cash_account=cash_account,
+    )
+    TransportPayment.objects.create(
+        trip=trip, transporter=transporter,
+        calculation_method=TransportPayment.CalculationMethod.FIXED,
+        base_amount=Decimal("700000.00"),
+    )
+    balance = ControlledDebtPaymentService.describe_transporter_balance(transporter)
+    assert balance["total_due"] == Decimal("500000.00")
+    assert balance["open_advances"] == Decimal("0.00")
+    assert balance["net_balance"] == Decimal("-500000.00")

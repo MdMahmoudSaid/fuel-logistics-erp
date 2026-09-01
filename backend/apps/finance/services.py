@@ -961,6 +961,76 @@ class ControlledDebtPaymentService:
         }
 
     @classmethod
+    def describe_supplier_balance(cls, supplier) -> dict:
+        total_due = cls.describe_supplier(supplier)["remaining_amount"]
+        open_advances = sum(
+            (advance.remaining_amount for advance in AdvanceConsumptionService.open_supplier_advances(supplier)),
+            ZERO,
+        )
+        last_advance = (
+            SupplierAdvance.objects.filter(supplier=supplier)
+            .order_by("-date", "-id").values("date", "amount").first()
+        )
+        last_payment = (
+            SupplierPayment.objects.filter(supplier=supplier, is_advance=False)
+            .order_by("-payment_date", "-id").values("payment_date", "amount").first()
+        )
+        return {
+            "id": supplier.id,
+            "label": supplier.name,
+            "total_due": total_due,
+            "open_advances": open_advances,
+            "net_balance": open_advances - total_due,
+            "last_advance": (
+                {"date": last_advance["date"], "amount": last_advance["amount"]}
+                if last_advance else None
+            ),
+            "last_payment": (
+                {"date": last_payment["payment_date"], "amount": last_payment["amount"]}
+                if last_payment else None
+            ),
+        }
+
+    @classmethod
+    def describe_transporter_balance(cls, transporter) -> dict:
+        total_due = cls.describe_transporter(transporter)["remaining_amount"]
+        open_advances = sum(
+            (
+                advance.remaining_amount
+                for advance in AdvanceConsumptionService.open_transporter_advances(transporter)
+            ),
+            ZERO,
+        )
+        last_advance = (
+            TransporterAdvance.objects.filter(transporter=transporter)
+            .order_by("-date", "-id").values("date", "amount").first()
+        )
+        last_payment_txn = (
+            TreasuryTransaction.objects.filter(
+                source_content_type=ContentType.objects.get_for_model(TransportPayment),
+                source_object_id__in=TransportPayment.objects.filter(
+                    transporter=transporter
+                ).values_list("id", flat=True),
+                type=TreasuryTransaction.Type.MONEY_OUT,
+            ).order_by("-date", "-id").values("date", "amount").first()
+        )
+        return {
+            "id": transporter.id,
+            "label": transporter.name,
+            "total_due": total_due,
+            "open_advances": open_advances,
+            "net_balance": open_advances - total_due,
+            "last_advance": (
+                {"date": last_advance["date"], "amount": last_advance["amount"]}
+                if last_advance else None
+            ),
+            "last_payment": (
+                {"date": last_payment_txn["date"], "amount": last_payment_txn["amount"]}
+                if last_payment_txn else None
+            ),
+        }
+
+    @classmethod
     def describe_transport_payment(cls, payment) -> dict:
         paid = cls._paid_for_source(TransportPayment, payment.id)
         return {
