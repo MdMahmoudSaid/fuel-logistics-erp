@@ -8,12 +8,15 @@ import type {
   DebtPaymentResult,
   DebtPaymentType,
   Expense,
+  PartyBalance,
+  PartyType,
   Shareholder,
   ShareholderLedger,
   ShareholderLoan,
   ShareholderProfitDistribution,
   ShareholderProfitPreview,
   ShareholderWithdrawal,
+  SupplierAdvance,
   SupplierPayment,
   TransporterAdvance,
   TransporterLedger,
@@ -24,6 +27,7 @@ import type {
 
 export const customerPaymentResource = createResourceApi<CustomerPayment>('/customer-payments/')
 export const supplierPaymentResource = createResourceApi<SupplierPayment>('/supplier-payments/')
+export const supplierAdvanceResource = createResourceApi<SupplierAdvance>('/supplier-advances/')
 export const transporterAdvanceResource =
   createResourceApi<TransporterAdvance>('/transporter-advances/')
 export const transportPaymentResource = createResourceApi<TransportPayment>('/transport-payments/')
@@ -160,6 +164,62 @@ export function recordDebtPayment(payload: {
   return apiClient
     .post<DebtPaymentResult>('/treasury-transactions/record-debt-payment/', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    .then((r) => r.data)
+}
+
+function buildAdvanceForm(fields: Record<string, unknown>, attachment: File): FormData {
+  const form = new FormData()
+  for (const [key, value] of Object.entries(fields)) {
+    if (value !== undefined && value !== null) form.append(key, String(value))
+  }
+  form.append('attachment', attachment)
+  return form
+}
+
+export function createSupplierAdvance(payload: {
+  supplier: number
+  bank_account?: number | null
+  cash_account?: number | null
+  amount: string
+  date: string
+  reference?: string
+  notes?: string
+  attachment: File
+}): Promise<SupplierAdvance> {
+  const { attachment, ...fields } = payload
+  return apiClient
+    .post<SupplierAdvance>('/supplier-advances/', buildAdvanceForm(fields, attachment), {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    .then((r) => r.data)
+}
+
+export function createTransporterAdvance(payload: {
+  transporter: number
+  bank_account?: number | null
+  cash_account?: number | null
+  amount: string
+  date: string
+  reference?: string
+  notes?: string
+  attachment: File
+}): Promise<TransporterAdvance> {
+  const { attachment, ...fields } = payload
+  return apiClient
+    .post<TransporterAdvance>('/transporter-advances/', buildAdvanceForm(fields, attachment), {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    .then((r) => r.data)
+}
+
+// ControlledDebtPaymentService.describe_supplier_balance/describe_transporter_balance
+// (backend/apps/finance/services.py) is the single source of truth for
+// net_balance - never recompute it client-side.
+export function fetchPartyBalances(partyType: PartyType): Promise<PartyBalance[]> {
+  return apiClient
+    .get<PartyBalance[]>('/treasury-transactions/party-balances/', {
+      params: { debt_type: partyType },
     })
     .then((r) => r.data)
 }

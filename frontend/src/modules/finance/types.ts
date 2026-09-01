@@ -93,14 +93,35 @@ export interface SupplierPayment {
   updated_at: string
 }
 
-export interface TransporterAdvance {
+export interface SupplierAdvance {
   id: number
-  transporter: number
-  transporter_detail: TransporterBrief | null
+  supplier: number
+  supplier_detail: SupplierBrief | null
+  bank_account: number | null
+  cash_account: number | null
   amount: string
   date: string
   reference: string
   notes: string
+  proof_url: string | null
+  remaining_amount: string
+  recorded_by: number | null
+  created_at: string
+  updated_at: string
+}
+
+export interface TransporterAdvance {
+  id: number
+  transporter: number
+  transporter_detail: TransporterBrief | null
+  bank_account: number | null
+  cash_account: number | null
+  amount: string
+  date: string
+  reference: string
+  notes: string
+  proof_url: string | null
+  remaining_amount: string
   settled: boolean
   created_at: string
   updated_at: string
@@ -312,6 +333,23 @@ export interface TransporterLedger {
   unsettled_advances: string
   payments: TransportPayment[]
   advances: TransporterAdvance[]
+}
+
+// GET /api/treasury-transactions/party-balances/?debt_type=supplier|transporter
+// (ControlledDebtPaymentService.describe_supplier_balance/
+// describe_transporter_balance) - the single source of truth for net_balance,
+// consumed as-is by AdvanceForm's party picker and (in a later wave) the
+// Grand livre summary cards. Never recomputed client-side.
+export type PartyType = 'supplier' | 'transporter'
+
+export interface PartyBalance {
+  id: number
+  label: string
+  total_due: string
+  open_advances: string
+  net_balance: string
+  last_advance: { date: string; amount: string } | null
+  last_payment: { date: string; amount: string } | null
 }
 
 // --- Task 7 (client modifications plan): Shareholders / Associates -------
