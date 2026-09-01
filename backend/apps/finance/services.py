@@ -454,14 +454,18 @@ class AdvanceConsumptionService:
         """Idempotent: safe to call more than once for the same order - it
         always recomputes what's still uncovered before consuming further,
         so a redundant call (or a resave of an already-CONFIRMED order)
-        never double-consumes an advance."""
+        never double-consumes an advance. Locks advances before computing
+        remaining_to_cover to prevent concurrent double-consumption."""
         if order.status != order.Status.CONFIRMED:
             return
         content_type = ContentType.objects.get_for_model(order.__class__)
+        # Acquire locks on all open advances BEFORE computing remaining_to_cover
+        advances = cls.open_supplier_advances(order.supplier, for_update=True)
+        # Now compute remaining amount under lock
         remaining_to_cover = order.total_amount - cls.get_consumed_amount(order)
         if remaining_to_cover <= ZERO:
             return
-        for advance in cls.open_supplier_advances(order.supplier, for_update=True):
+        for advance in advances:
             if remaining_to_cover <= ZERO:
                 break
             amount = min(advance.remaining_amount, remaining_to_cover)
@@ -490,12 +494,17 @@ class AdvanceConsumptionService:
     @transaction.atomic
     def consume_for_transport_payment(cls, payment) -> Decimal:
         """Returns the total now consumed (non-reversed) for this payment,
-        for TransportPayment.save() to fold into net_amount directly."""
+        for TransportPayment.save() to fold into net_amount directly.
+        Locks advances before computing remaining_to_cover to prevent
+        concurrent double-consumption."""
         content_type = ContentType.objects.get_for_model(payment.__class__)
         target = payment.base_amount - payment.deduction_amount
+        # Acquire locks on all open advances BEFORE computing remaining_to_cover
+        advances = cls.open_transporter_advances(payment.transporter, for_update=True)
+        # Now compute remaining amount under lock
         remaining_to_cover = target - cls.get_consumed_amount(payment)
         if remaining_to_cover > ZERO:
-            for advance in cls.open_transporter_advances(payment.transporter, for_update=True):
+            for advance in advances:
                 if remaining_to_cover <= ZERO:
                     break
                 amount = min(advance.remaining_amount, remaining_to_cover)
