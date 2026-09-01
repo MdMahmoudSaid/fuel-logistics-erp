@@ -15,6 +15,7 @@ ACTION_MAP = {
     # Dashboard's single custom read action (docs/PHASE_6_PLAN.md Etape 5).
     "summary": "view",
     "payable_debts": "view",
+    "party_balances": "view",
     "create": "create",
     "update": "edit",
     "partial_update": "edit",

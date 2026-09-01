@@ -25,12 +25,15 @@ from .models import (
     ShareholderProfitDistribution,
     ShareholderProfitShare,
     ShareholderWithdrawal,
+    SupplierAdvance,
     SupplierPayment,
     TransporterAdvance,
     TransportPayment,
     TreasuryTransaction,
 )
 from .services import (
+    AdvanceError,
+    AdvanceService,
     ControlledDebtPaymentService,
     FinancePostingService,
     PaymentAllocationService,
@@ -340,18 +343,126 @@ class SupplierPaymentSerializer(serializers.ModelSerializer):
         )
 
 
+class SupplierAdvanceSerializer(serializers.ModelSerializer):
+    supplier_detail = SupplierSerializer(source="supplier", read_only=True)
+    attachment = serializers.FileField(write_only=True, required=False, allow_null=True, default=None)
+    proof_url = serializers.SerializerMethodField()
+    remaining_amount = serializers.DecimalField(max_digits=16, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = SupplierAdvance
+        fields = [
+            "id", "supplier", "supplier_detail", "bank_account", "cash_account",
+            "amount", "date", "reference", "notes", "attachment", "proof_url",
+            "remaining_amount", "recorded_by", "created_at", "updated_at",
+        ]
+        read_only_fields = ["id", "remaining_amount", "recorded_by", "created_at", "updated_at"]
+
+    def get_proof_url(self, obj) -> str | None:
+        if not obj.document_id or not obj.document.file:
+            return None
+        return obj.document.file.url
+
+    def validate(self, data):
+        bank_account = data.get("bank_account")
+        cash_account = data.get("cash_account")
+        if bank_account and cash_account:
+            raise serializers.ValidationError("Un seul compte (banque OU caisse) peut etre renseigne.")
+        if not bank_account and not cash_account:
+            raise serializers.ValidationError("Un compte de tresorerie (banque ou caisse) est requis.")
+        if self.instance is None and not data.get("attachment"):
+            raise serializers.ValidationError(
+                {"attachment": "Un justificatif image est obligatoire pour creer une avance."}
+            )
+        return data
+
+    def validate_attachment(self, value):
+        if value is None:
+            return value
+        return validate_image_upload(value)
+
+    def create(self, validated_data):
+        actor = self.context["request"].user
+        bank_account = validated_data.get("bank_account")
+        cash_account = validated_data.get("cash_account")
+        try:
+            return AdvanceService.create_supplier_advance(
+                supplier_id=validated_data["supplier"].id,
+                bank_account_id=bank_account.id if bank_account else None,
+                cash_account_id=cash_account.id if cash_account else None,
+                amount=validated_data["amount"],
+                date=validated_data["date"],
+                reference=validated_data.get("reference", ""),
+                notes=validated_data.get("notes", ""),
+                attachment=validated_data["attachment"],
+                actor=actor,
+            )
+        except AdvanceError as exc:
+            raise serializers.ValidationError(str(exc))
+
+    def update(self, instance, validated_data):
+        raise serializers.ValidationError("Une avance enregistree ne peut pas etre modifiee.")
+
+
 class TransporterAdvanceSerializer(serializers.ModelSerializer):
     transporter_detail = TransporterSerializer(source="transporter", read_only=True)
+    attachment = serializers.FileField(write_only=True, required=False, allow_null=True, default=None)
+    proof_url = serializers.SerializerMethodField()
+    remaining_amount = serializers.DecimalField(max_digits=16, decimal_places=2, read_only=True)
 
     class Meta:
         model = TransporterAdvance
         fields = [
-            "id", "transporter", "transporter_detail", "amount", "date",
-            "reference", "notes", "settled", "created_at", "updated_at",
+            "id", "transporter", "transporter_detail", "bank_account", "cash_account",
+            "amount", "date", "reference", "notes", "attachment", "proof_url",
+            "remaining_amount", "settled", "created_at", "updated_at",
         ]
-        # settled is flipped exclusively by TransportPayment.save() once a
-        # payment consumes this advance - never a direct client write.
-        read_only_fields = ["id", "settled", "created_at", "updated_at"]
+        read_only_fields = ["id", "remaining_amount", "settled", "created_at", "updated_at"]
+
+    def get_proof_url(self, obj) -> str | None:
+        if not obj.document_id or not obj.document.file:
+            return None
+        return obj.document.file.url
+
+    def validate(self, data):
+        bank_account = data.get("bank_account")
+        cash_account = data.get("cash_account")
+        if bank_account and cash_account:
+            raise serializers.ValidationError("Un seul compte (banque OU caisse) peut etre renseigne.")
+        if not bank_account and not cash_account:
+            raise serializers.ValidationError("Un compte de tresorerie (banque ou caisse) est requis.")
+        if self.instance is None and not data.get("attachment"):
+            raise serializers.ValidationError(
+                {"attachment": "Un justificatif image est obligatoire pour creer une avance."}
+            )
+        return data
+
+    def validate_attachment(self, value):
+        if value is None:
+            return value
+        return validate_image_upload(value)
+
+    def create(self, validated_data):
+        actor = self.context["request"].user
+        bank_account = validated_data.get("bank_account")
+        cash_account = validated_data.get("cash_account")
+        try:
+            return AdvanceService.create_transporter_advance(
+                transporter_id=validated_data["transporter"].id,
+                bank_account_id=bank_account.id if bank_account else None,
+                cash_account_id=cash_account.id if cash_account else None,
+                amount=validated_data["amount"],
+                date=validated_data["date"],
+                reference=validated_data.get("reference", ""),
+                notes=validated_data.get("notes", ""),
+                attachment=validated_data["attachment"],
+                actor=actor,
+            )
+        except AdvanceError as exc:
+            raise serializers.ValidationError(str(exc))
+
+    def update(self, instance, validated_data):
+        raise serializers.ValidationError("Une avance enregistree ne peut pas etre modifiee.")
 
 
 class TransportPaymentSerializer(serializers.ModelSerializer):

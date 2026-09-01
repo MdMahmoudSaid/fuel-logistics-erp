@@ -8,6 +8,8 @@ from rest_framework.response import Response
 from apps.accounts.permissions import HasModulePermission
 from apps.reports.date_range import resolve_date_range
 from apps.reports.serialization import decimals_to_str
+from apps.suppliers.models import Supplier
+from apps.transport.models import Transporter
 from apps.trips.models import Trip
 
 from .models import (
@@ -19,6 +21,7 @@ from .models import (
     ShareholderLoan,
     ShareholderProfitDistribution,
     ShareholderWithdrawal,
+    SupplierAdvance,
     SupplierPayment,
     TransporterAdvance,
     TransportPayment,
@@ -35,6 +38,7 @@ from .serializers import (
     ShareholderProfitDistributionSerializer,
     ShareholderSerializer,
     ShareholderWithdrawalSerializer,
+    SupplierAdvanceSerializer,
     SupplierPaymentSerializer,
     TransporterAdvanceSerializer,
     TransportPaymentSerializer,
@@ -123,12 +127,29 @@ class SupplierPaymentViewSet(viewsets.ModelViewSet):
         raise MethodNotAllowed("DELETE", detail=_NO_HARD_DELETE_DETAIL)
 
 
+class SupplierAdvanceViewSet(viewsets.ModelViewSet):
+    queryset = SupplierAdvance.objects.select_related("supplier", "bank_account", "cash_account").all()
+    serializer_class = SupplierAdvanceSerializer
+    filterset_fields = ["supplier"]
+    permission_classes = [HasModulePermission]
+    module = "finance"
+
+    def perform_create(self, serializer):
+        serializer.save()
+
+    def destroy(self, request, *args, **kwargs):
+        raise MethodNotAllowed("DELETE", detail=_NO_HARD_DELETE_DETAIL)
+
+
 class TransporterAdvanceViewSet(viewsets.ModelViewSet):
-    queryset = TransporterAdvance.objects.select_related("transporter").all()
+    queryset = TransporterAdvance.objects.select_related("transporter", "bank_account", "cash_account").all()
     serializer_class = TransporterAdvanceSerializer
     filterset_fields = ["transporter"]
     permission_classes = [HasModulePermission]
     module = "finance"
+
+    def perform_create(self, serializer):
+        serializer.save()
 
     def destroy(self, request, *args, **kwargs):
         raise MethodNotAllowed("DELETE", detail=_NO_HARD_DELETE_DETAIL)
@@ -277,6 +298,30 @@ class TreasuryTransactionViewSet(viewsets.ModelViewSet):
         except ControlledDebtPaymentError as exc:
             return Response({"detail": str(exc)}, status=http_status.HTTP_400_BAD_REQUEST)
         return Response(decimals_to_str(debts))
+
+    @action(detail=False, methods=["get"], url_path="party-balances")
+    def party_balances(self, request):
+        """Single source of truth for net_balance per supplier/transporter -
+        consumed by the Nouvelle avance / Nouveau paiement button logic
+        everywhere (Journal, Grands livres) and must never disagree with
+        the Dashboard or Grand livre summary cards.
+
+        GET /api/treasury-transactions/party-balances/?debt_type=supplier|transporter
+        """
+        debt_type = request.query_params.get("debt_type")
+        if debt_type == ControlledDebtPaymentService.SUPPLIER:
+            rows = [
+                ControlledDebtPaymentService.describe_supplier_balance(supplier)
+                for supplier in Supplier.objects.filter(is_active=True).order_by("name", "id")
+            ]
+        elif debt_type == ControlledDebtPaymentService.TRANSPORTER:
+            rows = [
+                ControlledDebtPaymentService.describe_transporter_balance(transporter)
+                for transporter in Transporter.objects.filter(is_active=True).order_by("name", "id")
+            ]
+        else:
+            return Response({"detail": "Type de tiers inconnu."}, status=http_status.HTTP_400_BAD_REQUEST)
+        return Response(decimals_to_str(rows))
 
     @action(detail=False, methods=["post"], url_path="record-debt-payment")
     def record_debt_payment(self, request):

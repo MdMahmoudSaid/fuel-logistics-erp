@@ -622,3 +622,166 @@ def test_advance_creation_and_consumption_never_touch_the_fields_profit_reads_fr
     )
     payment.refresh_from_db()
     assert payment.base_amount == Decimal("700000.00")
+
+
+# ---------------------------------------------------------------------------
+# Task 7: API endpoints
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def advances_finance_client():
+    from apps.accounts.models import Role, User
+    from rest_framework.test import APIClient
+
+    role = Role.objects.get(name=Role.NAME_FINANCE)
+    user = User.objects.create_user(phone="+2220000077", pin="1234", role=role)
+    client = APIClient()
+    client.force_authenticate(user)
+    return client
+
+
+@pytest.mark.django_db
+def test_supplier_advance_endpoint_requires_image_attachment(advances_finance_client):
+    supplier = Supplier.objects.create(name="API Advance Supplier", country="Senegal")
+    cash_account = CashAccount.objects.create(name="Main Cash", opening_balance=Decimal("5000000.00"))
+
+    response = advances_finance_client.post(
+        "/api/supplier-advances/",
+        {
+            "supplier": supplier.id, "cash_account": cash_account.id,
+            "amount": "500000.00", "date": "2026-08-18", "reference": "SADV-API",
+        },
+    )
+    assert response.status_code == 400
+    assert "attachment" in response.data
+
+
+@pytest.mark.django_db
+def test_supplier_advance_endpoint_rejects_non_image_attachment(advances_finance_client):
+    supplier = Supplier.objects.create(name="API Advance Supplier PDF", country="Senegal")
+    cash_account = CashAccount.objects.create(name="Main Cash", opening_balance=Decimal("5000000.00"))
+    pdf_file = SimpleUploadedFile("proof.pdf", b"%PDF-1.4 fake", content_type="application/pdf")
+
+    response = advances_finance_client.post(
+        "/api/supplier-advances/",
+        {
+            "supplier": supplier.id, "cash_account": cash_account.id,
+            "amount": "500000.00", "date": "2026-08-18", "attachment": pdf_file,
+        },
+        format="multipart",
+    )
+    assert response.status_code == 400
+    assert "attachment" in response.data
+
+
+@pytest.mark.django_db
+def test_supplier_advance_endpoint_creates_advance_with_valid_image(advances_finance_client):
+    supplier = Supplier.objects.create(name="API Advance Supplier OK", country="Senegal")
+    cash_account = CashAccount.objects.create(name="Main Cash", opening_balance=Decimal("5000000.00"))
+
+    response = advances_finance_client.post(
+        "/api/supplier-advances/",
+        {
+            "supplier": supplier.id, "cash_account": cash_account.id,
+            "amount": "500000.00", "date": "2026-08-18", "reference": "SADV-API-OK",
+            "attachment": _proof_file(),
+        },
+        format="multipart",
+    )
+    assert response.status_code == 201, response.data
+    assert response.data["remaining_amount"] == "500000.00"
+    assert response.data["proof_url"] is not None
+
+
+@pytest.mark.django_db
+def test_supplier_advance_endpoint_rejects_creation_with_open_debt(advances_finance_client):
+    admin_user, supplier, order = _make_supplier_order_with_status(
+        "API-REJECT", SupplierOrder.Status.CONFIRMED,
+    )
+    cash_account = CashAccount.objects.create(name="Main Cash", opening_balance=Decimal("5000000.00"))
+
+    response = advances_finance_client.post(
+        "/api/supplier-advances/",
+        {
+            "supplier": supplier.id, "cash_account": cash_account.id,
+            "amount": "100000.00", "date": "2026-08-18", "attachment": _proof_file(),
+        },
+        format="multipart",
+    )
+    assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_transporter_advance_endpoint_now_requires_account_and_attachment(advances_finance_client):
+    trip, transporter = _make_trip_for_deduction("API-TADV")
+    bank_account = BankAccount.objects.create(name="Main BOA Account", opening_balance=Decimal("2000000.00"))
+
+    response = advances_finance_client.post(
+        "/api/transporter-advances/",
+        {"transporter": transporter.id, "bank_account": bank_account.id, "amount": "100000.00", "date": "2026-08-18"},
+    )
+    assert response.status_code == 400
+    assert "attachment" in response.data
+
+
+@pytest.mark.django_db
+def test_transporter_advance_endpoint_creates_advance_and_posts_treasury(advances_finance_client):
+    trip, transporter = _make_trip_for_deduction("API-TADV-OK")
+    bank_account = BankAccount.objects.create(name="Main BOA Account", opening_balance=Decimal("2000000.00"))
+
+    response = advances_finance_client.post(
+        "/api/transporter-advances/",
+        {
+            "transporter": transporter.id, "bank_account": bank_account.id,
+            "amount": "300000.00", "date": "2026-08-18", "attachment": _proof_file(),
+        },
+        format="multipart",
+    )
+    assert response.status_code == 201, response.data
+    bank_account.refresh_from_db()
+    assert bank_account.current_balance == Decimal("1700000.00")
+
+
+# ---------------------------------------------------------------------------
+# Task 8: party-balances endpoint
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_party_balances_endpoint_matches_describe_supplier_balance(advances_finance_client):
+    admin_user, supplier, order = _make_supplier_order_with_status(
+        "PB-SUP", SupplierOrder.Status.CONFIRMED,
+    )
+    cash_account = CashAccount.objects.create(name="Main Cash")
+    SupplierAdvance.objects.create(
+        supplier=supplier, amount=Decimal("250000.00"), date="2026-08-17",
+        cash_account=cash_account, recorded_by=admin_user,
+    )
+
+    response = advances_finance_client.get(
+        "/api/treasury-transactions/party-balances/?debt_type=supplier"
+    )
+    assert response.status_code == 200
+    row = next(r for r in response.data if r["id"] == supplier.id)
+    expected = ControlledDebtPaymentService.describe_supplier_balance(supplier)
+    assert row["total_due"] == f"{expected['total_due']:.2f}"
+    assert row["net_balance"] == f"{expected['net_balance']:.2f}"
+
+
+@pytest.mark.django_db
+def test_party_balances_endpoint_lists_transporters(advances_finance_client):
+    trip, transporter = _make_trip_for_deduction("PB-TRANS")
+    response = advances_finance_client.get(
+        "/api/treasury-transactions/party-balances/?debt_type=transporter"
+    )
+    assert response.status_code == 200
+    assert any(r["id"] == transporter.id for r in response.data)
+
+
+@pytest.mark.django_db
+def test_party_balances_endpoint_rejects_unknown_debt_type(advances_finance_client):
+    response = advances_finance_client.get(
+        "/api/treasury-transactions/party-balances/?debt_type=bogus"
+    )
+    assert response.status_code == 400
