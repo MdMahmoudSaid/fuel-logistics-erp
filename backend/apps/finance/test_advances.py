@@ -579,3 +579,46 @@ def test_create_supplier_advance_rejects_amount_exceeding_account_balance():
             amount=Decimal("1000000.00"), date="2026-08-18", reference="", notes="",
             attachment=_proof_file(), actor=admin_user,
         )
+
+
+# ---------------------------------------------------------------------------
+# Task 13: profit non-impact (pinning test - no production code change)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_advance_creation_and_consumption_never_touch_the_fields_profit_reads_from():
+    """TripProfitService/TripCostService read SupplierOrder.unit_price and
+    TransportPayment.base_amount for cost purposes - never total_amount or
+    net_amount, which are the only fields advance consumption can affect.
+    Pinning this at the source is more decisive than wiring up a full
+    Sale/margin computation: if either input field below ever moved, the
+    margin formula would silently change too."""
+    admin_user, supplier, order = _make_supplier_order_with_status(
+        "PROFIT-ADV", SupplierOrder.Status.DRAFT, quantity=Decimal("45000.00"),
+    )
+    cash_account = CashAccount.objects.create(name="Main Cash")
+    trip, transporter = _make_trip_for_deduction("PROFIT-ADV-TRIP")
+
+    SupplierAdvance.objects.create(
+        supplier=supplier, amount=Decimal("2000000.00"), date="2026-08-17",
+        cash_account=cash_account, recorded_by=admin_user,
+    )
+    order.status = SupplierOrder.Status.CONFIRMED
+    order.save()
+    order.refresh_from_db()
+
+    assert order.unit_price == Decimal("600.0000")
+    assert order.total_amount == Decimal("27000000.00")
+
+    payment = TransportPayment.objects.create(
+        trip=trip, transporter=transporter,
+        calculation_method=TransportPayment.CalculationMethod.FIXED,
+        base_amount=Decimal("700000.00"),
+    )
+    TransporterAdvance.objects.create(
+        transporter=transporter, amount=Decimal("300000.00"), date="2026-08-17",
+        cash_account=cash_account,
+    )
+    payment.refresh_from_db()
+    assert payment.base_amount == Decimal("700000.00")
