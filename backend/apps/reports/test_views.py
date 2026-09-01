@@ -20,6 +20,7 @@ from apps.finance.models import (
     Expense,
     Shareholder,
     ShareholderLoan,
+    SupplierAdvance,
     TransportPayment,
 )
 from apps.finance.services import (
@@ -625,6 +626,74 @@ def test_dashboard_summary_exposes_final_business_sections():
 
     action_items = response.data["action_items"]
     assert any(item["kind"] == "company_stock_without_customer" for item in action_items)
+
+
+@pytest.mark.django_db
+def test_dashboard_party_balances_suppliers_reflects_advance_then_debt_then_payment():
+    """docs/superpowers/specs/2026-08-31-supplier-transporter-advances-
+    design.md: party_balances.suppliers.balance must equal net_balance
+    (open_advances - total_due), the same figure
+    ControlledDebtPaymentService.describe_supplier_balance and the
+    party-balances endpoint expose - never a separate computation - through
+    every stage of the advance/debt/payment lifecycle."""
+    admin_user = _make_admin("DASH-SYNC")
+    supplier = Supplier.objects.create(name="Dashboard Sync Supplier", country="Senegal")
+    product = Product.objects.get(code="gasoil")
+    cash_account = CashAccount.objects.create(name="Cash Dash Sync")
+    bank_account = BankAccount.objects.create(name="Bank Dash Sync", opening_balance=Decimal("10000000.00"))
+
+    client = APIClient()
+    client.force_authenticate(admin_user)
+
+    # 1) advance created -> positive net_balance
+    SupplierAdvance.objects.create(
+        supplier=supplier, amount=Decimal("2000000.00"), date="2026-08-17",
+        cash_account=cash_account, recorded_by=admin_user,
+    )
+    response = client.get("/api/dashboard/summary/")
+    balance_after_advance = Decimal(response.data["party_balances"]["suppliers"]["balance"])
+    assert balance_after_advance >= Decimal("2000000.00")
+
+    # 2) debt created (order confirmed), fully covered by the advance
+    SupplierOrder.objects.create(
+        reference="SO-DASH-SYNC", supplier=supplier, product=product,
+        purchase_date="2026-08-18", quantity_litres=Decimal("1000.00"),
+        unit_price=Decimal("600.0000"), status=SupplierOrder.Status.CONFIRMED,
+        created_by=admin_user,
+    )  # total 600000, fully covered by the 2M advance
+    response = client.get("/api/dashboard/summary/")
+    balance_after_debt = Decimal(response.data["party_balances"]["suppliers"]["balance"])
+    assert balance_after_debt == balance_after_advance - Decimal("600000.00")
+    assert balance_after_debt > Decimal("0.00")
+
+    # 3) a larger debt -> now net negative (real payable debt)
+    SupplierOrder.objects.create(
+        reference="SO-DASH-SYNC-2", supplier=supplier, product=product,
+        purchase_date="2026-08-19", quantity_litres=Decimal("5000.00"),
+        unit_price=Decimal("600.0000"), status=SupplierOrder.Status.CONFIRMED,
+        created_by=admin_user,
+    )  # total 3000000, consumes remaining 1400000 advance, leaves 1600000 real debt
+    response = client.get("/api/dashboard/summary/")
+    assert Decimal(response.data["party_balances"]["suppliers"]["balance"]) == Decimal("-1600000.00")
+
+    # 4) partial payment reduces the real payable debt
+    ControlledDebtPaymentService.record_payment(
+        debt_type="supplier", debt_id=supplier.id, bank_account_id=bank_account.id,
+        amount=Decimal("600000.00"), date="2026-08-20", reference="PAY-DASH-SYNC",
+        actor=admin_user,
+    )
+    response = client.get("/api/dashboard/summary/")
+    dashboard_balance = Decimal(response.data["party_balances"]["suppliers"]["balance"])
+    assert dashboard_balance == Decimal("-1000000.00")
+
+    # Chiffre exact: Dashboard == party-balances endpoint == describe_supplier_balance
+    party_balances_response = client.get(
+        "/api/treasury-transactions/party-balances/", {"debt_type": "supplier"}
+    )
+    row = next(r for r in party_balances_response.data if r["id"] == supplier.id)
+    balance = ControlledDebtPaymentService.describe_supplier_balance(supplier)
+
+    assert Decimal(row["net_balance"]) == dashboard_balance == balance["net_balance"] == Decimal("-1000000.00")
 
 
 # ---------------------------------------------------------------------------

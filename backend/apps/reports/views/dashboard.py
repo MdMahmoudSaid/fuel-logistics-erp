@@ -30,6 +30,8 @@ from apps.reports.queries.transporter_outstanding_report import (
 from apps.reports.serialization import decimals_to_str
 from apps.reports.services.profit import TripProfitService
 from apps.reports.services.stock import TheoreticalStockService
+from apps.suppliers.models import Supplier
+from apps.transport.models import Transporter
 from apps.trips.models import Trip
 
 ZERO = Decimal("0.00")
@@ -229,6 +231,30 @@ class DashboardViewSet(viewsets.ViewSet):
             row = max(open_rows, key=lambda item: item["outstanding"])
             return {"name": row[name_key], "amount": row["outstanding"]}
 
+        # net_balance-based party balances (docs/superpowers/specs/2026-08-31-
+        # supplier-transporter-advances-design.md): describe_supplier_balance/
+        # describe_transporter_balance is the single source of truth also used
+        # by Nouveau paiement's payable-debts and the Grand livre pages, so the
+        # Dashboard can never disagree with them.
+        supplier_balances = [
+            ControlledDebtPaymentService.describe_supplier_balance(supplier)
+            for supplier in Supplier.objects.filter(is_active=True)
+        ]
+        supplier_net_total = sum((row["net_balance"] for row in supplier_balances), ZERO)
+
+        transporter_balances = [
+            ControlledDebtPaymentService.describe_transporter_balance(transporter)
+            for transporter in Transporter.objects.filter(is_active=True)
+        ]
+        transporter_net_total = sum((row["net_balance"] for row in transporter_balances), ZERO)
+
+        def _largest_negative(rows):
+            negative_rows = [row for row in rows if row["net_balance"] < ZERO]
+            if not negative_rows:
+                return None
+            row = min(negative_rows, key=lambda item: item["net_balance"])
+            return {"name": row["label"], "amount": -row["net_balance"]}
+
         shareholder_balance = (
             shareholders_summary["remaining_undistributed"]
             - shareholders_summary["open_loans_total"]
@@ -242,16 +268,16 @@ class DashboardViewSet(viewsets.ViewSet):
                 "largest_open": _largest(customer_amounts["rows"], "customer"),
             },
             "suppliers": {
-                "balance": -supplier_total,
-                "open_count": len([row for row in supplier_rows if row["outstanding"] > ZERO]),
-                "largest_open": _largest(supplier_rows, "supplier"),
+                "balance": supplier_net_total,
+                "open_count": len([row for row in supplier_balances if row["net_balance"] != ZERO]),
+                "largest_open": _largest_negative(supplier_balances),
             },
             "transporters": {
-                "balance": -transporter_total,
+                "balance": transporter_net_total,
                 "open_count": len(
-                    [row for row in transporter_rows if row["outstanding"] > ZERO]
+                    [row for row in transporter_balances if row["net_balance"] != ZERO]
                 ),
-                "largest_open": _largest(transporter_rows, "transporter"),
+                "largest_open": _largest_negative(transporter_balances),
             },
             "shareholders": {
                 "balance": shareholder_balance,
