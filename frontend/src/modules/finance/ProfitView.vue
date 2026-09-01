@@ -332,13 +332,25 @@ onMounted(() => {
               <td class="px-3 py-2.5 text-end">
                 <MonoValue
                   :value="formatUnitMoney(num(row.unit_profit))"
-                  :class="num(row.unit_profit) < 0 ? 'text-critique' : ''"
+                  :class="
+                    num(row.unit_profit) > 0
+                      ? 'text-livre'
+                      : num(row.unit_profit) < 0
+                        ? 'text-critique'
+                        : ''
+                  "
                 />
               </td>
               <td class="px-3 py-2.5 text-end">
                 <MonoValue
                   :value="formatMoney(num(row.current_margin))"
-                  :class="num(row.current_margin) < 0 ? 'text-critique' : ''"
+                  :class="
+                    num(row.current_margin) > 0
+                      ? 'text-livre'
+                      : num(row.current_margin) < 0
+                        ? 'text-critique'
+                        : ''
+                  "
                 />
               </td>
             </tr>

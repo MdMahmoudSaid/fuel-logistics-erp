@@ -128,4 +128,103 @@ describe('ProfitView', () => {
 
     expect(wrapper.text()).toContain('Aucun')
   })
+
+  it('colors per-trip unit and total profit by sign', async () => {
+    fetchReport.mockResolvedValue({
+      report_type: 'margin-report',
+      fields: [],
+      rows: [
+        {
+          trip_reference: 'TRIP-POS',
+          client: 'Client A',
+          product: 'Gasoil',
+          quantity: '1000.00',
+          quantity_loaded: '1000.00',
+          quantity_invoiced: '1000.00',
+          transporter_loss_quantity: '0.00',
+          transporter_loss_indemnity: '0.00',
+          supplier_unit_price: '500.0000',
+          transport_cost: '0.00',
+          customs_cost: '0.00',
+          transit_cost: '0.00',
+          border_cost: '0.00',
+          loading_cost: '0.00',
+          additional_costs: '0.00',
+          real_total_cost: '630000.00',
+          unit_cost: '630.0000',
+          unit_selling_price: '640.0000',
+          unit_profit: '10.0000',
+          current_margin: '10000.00',
+        },
+        {
+          trip_reference: 'TRIP-NEG',
+          client: 'Client B',
+          product: 'Gasoil',
+          quantity: '1000.00',
+          quantity_loaded: '1000.00',
+          quantity_invoiced: '1000.00',
+          transporter_loss_quantity: '0.00',
+          transporter_loss_indemnity: '0.00',
+          supplier_unit_price: '500.0000',
+          transport_cost: '0.00',
+          customs_cost: '0.00',
+          transit_cost: '0.00',
+          border_cost: '0.00',
+          loading_cost: '0.00',
+          additional_costs: '0.00',
+          real_total_cost: '650000.00',
+          unit_cost: '650.0000',
+          unit_selling_price: '640.0000',
+          unit_profit: '-10.0000',
+          current_margin: '-10000.00',
+        },
+        {
+          trip_reference: 'TRIP-ZERO',
+          client: 'Client C',
+          product: 'Gasoil',
+          quantity: '1000.00',
+          quantity_loaded: '1000.00',
+          quantity_invoiced: '1000.00',
+          transporter_loss_quantity: '0.00',
+          transporter_loss_indemnity: '0.00',
+          supplier_unit_price: '500.0000',
+          transport_cost: '0.00',
+          customs_cost: '0.00',
+          transit_cost: '0.00',
+          border_cost: '0.00',
+          loading_cost: '0.00',
+          additional_costs: '0.00',
+          real_total_cost: '640000.00',
+          unit_cost: '640.0000',
+          unit_selling_price: '640.0000',
+          unit_profit: '0.0000',
+          current_margin: '0.00',
+        },
+      ],
+    })
+    const wrapper = mount(ProfitView)
+    await flushPromises()
+
+    const bodyRows = wrapper.findAll('tbody tr')
+    const [posRow, negRow, zeroRow] = bodyRows
+    const profitCells = (row: (typeof bodyRows)[number]) =>
+      row
+        .findAll('td')
+        .slice(-2)
+        .map((td) => td.find('span'))
+
+    const [posUnit, posTotal] = profitCells(posRow!)
+    expect(posUnit!.classes()).toContain('text-livre')
+    expect(posTotal!.classes()).toContain('text-livre')
+
+    const [negUnit, negTotal] = profitCells(negRow!)
+    expect(negUnit!.classes()).toContain('text-critique')
+    expect(negTotal!.classes()).toContain('text-critique')
+
+    const [zeroUnit, zeroTotal] = profitCells(zeroRow!)
+    expect(zeroUnit!.classes()).not.toContain('text-livre')
+    expect(zeroUnit!.classes()).not.toContain('text-critique')
+    expect(zeroTotal!.classes()).not.toContain('text-livre')
+    expect(zeroTotal!.classes()).not.toContain('text-critique')
+  })
 })
