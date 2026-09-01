@@ -73,13 +73,66 @@ const fetchTripMargin = vi.fn(async (_id: number) => marginToReturn)
 const postTripStatus = vi.fn(async (_id: number, _status: string, _notes = '') => tripToReturn)
 let allowedStatusesToReturn: string[] = ['IN_TRANSIT', 'BLOCKED', 'CANCELLED']
 const fetchAllowedTripStatuses = vi.fn(async (_id: number) => allowedStatusesToReturn)
+const postDeliveryControl = vi.fn(async (_tripId: number, payload: Record<string, unknown>) => ({
+  id: 1,
+  trip: 9,
+  loaded_quantity: '45000.00',
+  received_quantity: payload.received_quantity,
+  loss_quantity: '0.00',
+  chargeable_loss_quantity: '0.00',
+  tolerance_quantity: '100.00',
+  control_date: payload.control_date,
+  controller: 1,
+  controller_detail: null,
+  method: payload.method,
+  document: null,
+  notes: '',
+  anomaly_confirmed_by: null,
+  anomaly_confirmed_by_detail: null,
+  anomaly_confirmed_at: null,
+  created_at: '',
+  updated_at: '',
+}))
+const fetchSuggestedSellingPrice = vi.fn(async () => '850.0000')
+const fetchTripCostBasis = vi.fn(async () => ({
+  fuel_purchase_cost: '13500000.00',
+  transport_cost: '13500000.00',
+  expenses_by_category: {},
+  total_expenses: '0.00',
+  total_cost: '27000000.00',
+  quantity: '45000.00',
+  unit_cost: '600.0000',
+  unit_components_per_litre: {
+    supplier: '300.0000',
+    commission_transporter: '300.0000',
+    road_transit: '0.0000',
+    transit: '0.0000',
+    border: '0.0000',
+    customs: '0.0000',
+    loading: '0.0000',
+    other: '0.0000',
+  },
+}))
 vi.mock('../api', () => ({
   tripResource: { get: (id: number) => tripResourceGet(id) },
   fetchTripHistory: (id: number) => fetchTripHistory(id),
   fetchTripMargin: (id: number) => fetchTripMargin(id),
   fetchAllowedTripStatuses: (id: number) => fetchAllowedTripStatuses(id),
   postTripStatus: (id: number, status: string, notes?: string) => postTripStatus(id, status, notes),
+  postDeliveryControl: (tripId: number, payload: Record<string, unknown>) =>
+    postDeliveryControl(tripId, payload),
+  fetchSuggestedSellingPrice: () => fetchSuggestedSellingPrice(),
+  fetchTripCostBasis: () => fetchTripCostBasis(),
   assignTripCustomer: vi.fn(),
+}))
+
+vi.mock('@/modules/settings/api', () => ({
+  fetchLossTolerance: vi.fn(async () => ({
+    tolerance_litres: '100.00',
+    updated_by: null,
+    updated_by_detail: null,
+    updated_at: null,
+  })),
 }))
 
 function makeMargin(overrides: Partial<Extract<TripMargin, { available: true }>> = {}): TripMargin {
@@ -451,6 +504,49 @@ describe('TripDetail expenses section', () => {
     expect(optionText).not.toContain('En route vers le client')
     expect(optionText).not.toContain('Arrivé chez le client')
     expect(optionText).not.toContain('Contrôle de quantité')
+  })
+
+  it('refreshes backend-allowed statuses after delivery confirmation so Delivered is not offered again', async () => {
+    setUser({ operations: ['view', 'edit'], finance: ['view'] })
+    tripResourceGet
+      .mockResolvedValueOnce(makeTrip({ status: 'QUANTITY_CONTROL', client: 10 }))
+      .mockResolvedValueOnce(makeTrip({ status: 'DELIVERED', client: 10 }))
+    allowedStatusesToReturn = ['DELIVERED']
+    postDeliveryControl.mockImplementationOnce(async (_tripId, payload) => {
+      allowedStatusesToReturn = ['COMPLETED']
+      return {
+        id: 1,
+        trip: 9,
+        loaded_quantity: '45000.00',
+        received_quantity: payload.received_quantity,
+        loss_quantity: '0.00',
+        chargeable_loss_quantity: '0.00',
+        tolerance_quantity: '100.00',
+        control_date: payload.control_date,
+        controller: 1,
+        controller_detail: null,
+        method: payload.method,
+        document: null,
+        notes: '',
+        anomaly_confirmed_by: null,
+        anomaly_confirmed_by_detail: null,
+        anomaly_confirmed_at: null,
+        created_at: '',
+        updated_at: '',
+      }
+    })
+
+    const wrapper = await mountAt()
+    expect(wrapper.find('#next_status').text()).toContain('Livré')
+
+    await wrapper.find('#received_quantity').setValue('45000.00')
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    const optionText = wrapper.find('#next_status').text()
+    expect(fetchAllowedTripStatuses).toHaveBeenCalledTimes(2)
+    expect(optionText).toContain('Terminé')
+    expect(optionText).not.toContain('Livré')
   })
 
   it('shows the source cession proof in an internal preview modal', async () => {

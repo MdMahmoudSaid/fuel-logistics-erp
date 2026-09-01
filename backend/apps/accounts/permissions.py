@@ -8,6 +8,7 @@ ACTION_MAP = {
     "next_reference": "view",
     "trips": "view",
     "history": "view",
+    "allowed_statuses": "view",
     "margin": "view",
     # Delivery form's price pre-fill lookup (see "delivery_control" below) -
     # same "view" tier as margin, no write happens here.

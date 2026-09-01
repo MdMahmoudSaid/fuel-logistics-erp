@@ -1830,6 +1830,40 @@ def test_api_invoice_amount_based_on_received_quantity_not_loaded():
 
 
 @pytest.mark.django_db
+def test_api_allowed_statuses_after_delivery_control_does_not_offer_delivered_again():
+    fx = _fixtures_with_customer("API-DELIV-NEXT")
+    trip = _deliverable_trip(fx, "TRIP-API-DELIV-NEXT-001")
+    ProductSellingPriceHistory.objects.create(
+        product=fx["product"],
+        customer=fx["customer"],
+        price=Decimal("650.0000"),
+        changed_by=fx["admin_user"],
+    )
+
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+
+    delivery_response = client.post(
+        f"/api/trips/{trip.id}/delivery-control/",
+        {
+            "received_quantity": "44850.00",
+            "control_date": "2026-08-18",
+            "method": "MANUAL_GAUGE",
+        },
+    )
+    assert delivery_response.status_code == 201, delivery_response.data
+
+    trip.refresh_from_db()
+    assert trip.status == Trip.Status.DELIVERED
+
+    allowed_response = client.get(f"/api/trips/{trip.id}/allowed-statuses/")
+
+    assert allowed_response.status_code == 200
+    assert Trip.Status.DELIVERED not in allowed_response.data["statuses"]
+    assert Trip.Status.COMPLETED in allowed_response.data["statuses"]
+
+
+@pytest.mark.django_db
 def test_api_trip_margin_unavailable_before_sale():
     """TripDetail.vue's profit block: a trip with no Sale yet (i.e. not
     delivered) reports {"available": false} instead of an error."""

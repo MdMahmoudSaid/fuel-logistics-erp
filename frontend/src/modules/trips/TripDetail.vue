@@ -119,6 +119,11 @@ async function onCustomerAssigned() {
   await loadAllowedStatuses()
 }
 
+async function onDeliveryConfirmed() {
+  await Promise.all([load(), loadMargin()])
+  await loadAllowedStatuses()
+}
+
 async function loadExpenses() {
   expensesError.value = ''
   try {
@@ -477,7 +482,7 @@ const cessionProofUrl = computed(() => trip.value?.cession_letter_detail?.docume
         v-if="trip.status === 'QUANTITY_CONTROL' && canChangeStatus"
         :trip-id="trip.id"
         :quantity-loaded="trip.quantity_loaded"
-        @confirmed="load"
+        @confirmed="onDeliveryConfirmed"
       />
 
       <section v-if="deliveryData" class="border-ligne space-y-4 rounded-xl border bg-white p-4">
