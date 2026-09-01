@@ -5,6 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { fetchSupplierLedger } from '@/modules/purchasing/api'
 import type { SupplierLedger } from '@/modules/purchasing/types'
 import DebtPaymentForm from '@/modules/finance/DebtPaymentForm.vue'
+import AdvanceForm from '@/modules/finance/AdvanceForm.vue'
 import { formatMoney, formatQuantity } from '@/utils/currency'
 import Badge from '@/components/ui/Badge.vue'
 import Button from '@/components/ui/Button.vue'
@@ -20,6 +21,7 @@ const ledger = ref<SupplierLedger | null>(null)
 const loading = ref(true)
 const error = ref('')
 const showPaymentForm = ref(false)
+const showAdvanceForm = ref(false)
 const previewUrl = ref<string | null>(null)
 
 const supplierId = computed(() => Number(route.params.id))
@@ -38,6 +40,11 @@ async function load() {
 
 async function onPaymentSaved() {
   showPaymentForm.value = false
+  await load()
+}
+
+async function onAdvanceSaved() {
+  showAdvanceForm.value = false
   await load()
 }
 
@@ -73,8 +80,19 @@ function proofUrl(order: SupplierLedger['orders'][number]) {
         {{ t('purchasing.supplierLedger.title', { name: ledger?.supplier.name ?? '…' }) }}
       </h1>
       <div class="flex gap-2">
-        <Button v-if="ledger" variant="primary" @click="showPaymentForm = true">
+        <Button
+          v-if="ledger && Number(ledger.summary.net_balance) < 0"
+          variant="primary"
+          @click="showPaymentForm = true"
+        >
           {{ t('finance.supplierPayment.recordPayment') }}
+        </Button>
+        <Button
+          v-if="ledger && Number(ledger.summary.net_balance) >= 0"
+          variant="secondary"
+          @click="showAdvanceForm = true"
+        >
+          {{ t('finance.advanceForm.title') }}
         </Button>
         <Button variant="ghost" @click="router.push({ name: 'suppliers' })">
           {{ t('purchasing.supplierLedger.back') }}
@@ -129,6 +147,41 @@ function proofUrl(order: SupplierLedger['orders'][number]) {
             align="left"
             :value="lastPayment ? formatMoney(lastPayment.amount) : '—'"
           />
+        </div>
+      </section>
+
+      <section class="grid gap-3 md:grid-cols-4">
+        <div class="border-ligne rounded-lg border bg-white p-4">
+          <p class="text-texte-2 text-xs font-semibold uppercase">{{ t('finance.partyLedger.totalDue') }}</p>
+          <MonoValue class="font-semibold" align="left" :value="formatMoney(ledger.summary.total_due)" />
+        </div>
+        <div class="border-ligne rounded-lg border bg-white p-4">
+          <p class="text-texte-2 text-xs font-semibold uppercase">{{ t('finance.partyLedger.openAdvances') }}</p>
+          <MonoValue class="font-semibold" align="left" :value="formatMoney(ledger.summary.open_advances)" />
+        </div>
+        <div class="border-ligne rounded-lg border bg-white p-4">
+          <p class="text-texte-2 text-xs font-semibold uppercase">{{ t('finance.partyLedger.netBalance') }}</p>
+          <MonoValue
+            class="font-semibold"
+            align="left"
+            :class="Number(ledger.summary.net_balance) < 0 ? 'text-critique' : 'text-livre'"
+            :value="formatMoney(ledger.summary.net_balance)"
+          />
+        </div>
+        <div class="border-ligne rounded-lg border bg-white p-4">
+          <p class="text-texte-2 text-xs font-semibold uppercase">{{ t('finance.partyLedger.lastMovement') }}</p>
+          <p class="text-texte text-sm">
+            <template v-if="ledger.summary.last_advance">
+              {{ t('finance.partyLedger.advance') }}: {{ formatMoney(ledger.summary.last_advance.amount) }}
+            </template>
+            <template v-else>—</template>
+          </p>
+          <p class="text-texte text-sm">
+            <template v-if="ledger.summary.last_payment">
+              {{ t('finance.partyLedger.payment') }}: {{ formatMoney(ledger.summary.last_payment.amount) }}
+            </template>
+            <template v-else>—</template>
+          </p>
         </div>
       </section>
 
@@ -296,6 +349,42 @@ function proofUrl(order: SupplierLedger['orders'][number]) {
           </tbody>
         </table>
       </Card>
+
+      <Card :title="t('finance.partyLedger.entriesTitle')">
+        <table class="w-full text-start text-sm">
+          <thead>
+            <tr class="border-ligne text-texte-2 border-b">
+              <th class="px-3 py-2.5 font-medium">{{ t('finance.partyLedger.table.date') }}</th>
+              <th class="px-3 py-2.5 font-medium">{{ t('finance.partyLedger.table.type') }}</th>
+              <th class="px-3 py-2.5 font-medium">{{ t('finance.partyLedger.table.reference') }}</th>
+              <th class="px-3 py-2.5 text-end font-medium">{{ t('finance.partyLedger.table.amount') }}</th>
+              <th class="px-3 py-2.5 font-medium">{{ t('finance.partyLedger.table.proof') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(entry, index) in ledger.entries" :key="index" class="border-ligne border-b last:border-0">
+              <td class="px-3 py-2.5">{{ entry.date }}</td>
+              <td class="px-3 py-2.5">{{ t(`finance.partyLedger.entryTypes.${entry.type}`) }}</td>
+              <td class="px-3 py-2.5">{{ entry.reference || '—' }}</td>
+              <td class="px-3 py-2.5 text-end"><MonoValue :value="formatMoney(entry.amount)" /></td>
+              <td class="px-3 py-2.5">
+                <button
+                  v-if="entry.proof_url"
+                  type="button"
+                  class="text-bitume underline"
+                  @click="previewUrl = entry.proof_url"
+                >
+                  {{ t('purchasing.supplierLedger.viewProof') }}
+                </button>
+                <span v-else class="text-texte-3">—</span>
+              </td>
+            </tr>
+            <tr v-if="ledger.entries.length === 0">
+              <td colspan="5" class="text-texte-3 px-3 py-8 text-center">{{ t('finance.partyLedger.noEntries') }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </Card>
     </template>
 
     <Modal
@@ -311,6 +400,22 @@ function proofUrl(order: SupplierLedger['orders'][number]) {
         lock-debt
         @success="onPaymentSaved"
       @cancel="showPaymentForm = false"
+      />
+    </Modal>
+
+    <Modal
+      v-if="showAdvanceForm && ledger"
+      :title="t('finance.advanceForm.title')"
+      max-width="max-w-2xl"
+      @close="showAdvanceForm = false"
+    >
+      <AdvanceForm
+        initial-party-type="supplier"
+        :initial-party-id="ledger.supplier.id"
+        lock-party-type
+        lock-party
+        @success="onAdvanceSaved"
+        @cancel="showAdvanceForm = false"
       />
     </Modal>
 

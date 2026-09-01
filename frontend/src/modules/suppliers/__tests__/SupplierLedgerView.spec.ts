@@ -95,6 +95,17 @@ const ledger: SupplierLedger = {
   total_purchased: '90000000.00',
   total_paid: '0.00',
   outstanding_balance: '90000000.00',
+  summary: {
+    id: 1, label: 'Total',
+    total_due: '0.00', open_advances: '150000.00', net_balance: '150000.00',
+    last_advance: { date: '2026-08-20', amount: '150000.00' },
+    last_payment: { date: '2026-08-20', amount: '100000.00' },
+  },
+  entries: [
+    { type: 'advance_given', date: '2026-08-15', amount: '150000.00', reference: 'ADV-1', note: '', proof_url: '/media/documents/advance.png' },
+    { type: 'debt_created', date: '2026-08-18', amount: '60000000.00', reference: 'ACH-010', note: '', proof_url: null },
+    { type: 'payment', date: '2026-08-20', amount: '100000.00', reference: 'PAY-WITH-PROOF', note: '', proof_url: null },
+  ],
 }
 
 const fetchSupplierLedger = vi.fn(async () => ledger)
@@ -142,5 +153,32 @@ describe('SupplierLedgerView', () => {
 
     expect(push).not.toHaveBeenCalled()
     expect(wrapper.find('img[src="/media/documents/supplier-payment.png"]').exists()).toBe(true)
+  })
+
+  it('shows the 4 balance cards from summary and a Nouvelle avance button when net_balance >= 0', async () => {
+    const wrapper = mount(SupplierLedgerView)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Total dû')
+    expect(wrapper.text()).toContain('Avances ouvertes')
+    expect(wrapper.text()).toContain('Solde net')
+    const buttons = wrapper.findAll('button').map((button) => button.text())
+    expect(buttons).toContain('Nouvelle avance')
+    expect(buttons).not.toContain('Enregistrer un paiement')
+  })
+
+  it('renders the chronological entries table and opens a proof in the internal modal', async () => {
+    const wrapper = mount(SupplierLedgerView)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Avance versée')
+    expect(wrapper.text()).toContain('Dette créée')
+    expect(wrapper.text()).toContain('Paiement complémentaire')
+
+    const proofButtons = wrapper.findAll('button').filter((button) => button.text() === 'Voir justificatif')
+    await proofButtons[proofButtons.length - 1].trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('img[src="/media/documents/advance.png"]').exists()).toBe(true)
   })
 })
