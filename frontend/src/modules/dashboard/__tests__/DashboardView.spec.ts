@@ -519,4 +519,47 @@ describe('DashboardView', () => {
     expect(wrapper.text()).not.toContain("Chiffre d'affaires de la période")
     expect(wrapper.text()).not.toContain('Soldes par partie')
   })
+
+  it('labels supplier/transporter balances by sign: dette a payer, avance disponible, aucun solde ouvert', async () => {
+    const router = makeRouter()
+    fetchDashboardSummary.mockResolvedValueOnce({
+      ...summary,
+      party_balances: {
+        ...summary.party_balances,
+        suppliers: { balance: '-500000.00', open_count: 1, largest_open: null },
+        transporters: { balance: '300000.00', open_count: 0, largest_open: null },
+      },
+    })
+    const wrapper = mount(DashboardView, { global: { plugins: [router] } })
+    await flushPromises()
+
+    const cards = wrapper.findAll('[data-test="party-balance-card"]')
+    const supplierCard = cards.find((card) => card.text().includes('Fournisseurs'))!
+    const transporterCard = cards.find((card) => card.text().includes('Transporteurs'))!
+    expect(supplierCard.text()).toContain('Dette à payer')
+    expect(transporterCard.text()).toContain('Avance disponible')
+    // Amount styling is intentionally left neutral (text-texte) for all
+    // party cards, matching the existing app convention that reserves
+    // text-critique/red for the "action items" section only, not routine
+    // debt states (see 'keeps action work prominent...' test above) - the
+    // label alone conveys the sign, per the actual requirement.
+    expect(supplierCard.find('[data-test="party-balance-amount"]').classes()).toContain('text-texte')
+  })
+
+  it('shows "aucun solde ouvert" when a party has net_balance exactly zero', async () => {
+    const router = makeRouter()
+    fetchDashboardSummary.mockResolvedValueOnce({
+      ...summary,
+      party_balances: {
+        ...summary.party_balances,
+        suppliers: { balance: '0.00', open_count: 0, largest_open: null },
+      },
+    })
+    const wrapper = mount(DashboardView, { global: { plugins: [router] } })
+    await flushPromises()
+
+    const cards = wrapper.findAll('[data-test="party-balance-card"]')
+    const supplierCard = cards.find((card) => card.text().includes('Fournisseurs'))!
+    expect(supplierCard.text()).toContain('Aucun solde ouvert')
+  })
 })

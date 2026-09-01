@@ -200,6 +200,14 @@ const treasuryCard = computed(() => {
 const partyCards = computed(() => {
   if (!summary.value) return []
   const p = summary.value.party_balances
+
+  function partySub(balance: string) {
+    const value = Number(balance)
+    if (value < 0) return t('dashboard.final.debtToPay')
+    if (value > 0) return t('dashboard.final.advanceAvailable')
+    return t('dashboard.final.noOpenBalance')
+  }
+
   return [
     {
       label: t('dashboard.final.customers'),
@@ -210,26 +218,25 @@ const partyCards = computed(() => {
         ? t('dashboard.final.largestCustomerDebt', { name: p.customers.largest_open.name })
         : t('dashboard.final.nothingToSettle'),
       icon: 'users' as IconName,
+      negative: false,
     },
     {
       label: t('dashboard.final.suppliers'),
       to: { name: 'suppliers' },
       balance: p.suppliers.balance,
       detail: t('dashboard.final.openSuppliers', { count: p.suppliers.open_count }),
-      sub: p.suppliers.largest_open
-        ? t('dashboard.final.largestSupplierDebt', { name: p.suppliers.largest_open.name })
-        : t('dashboard.final.nothingToSettle'),
+      sub: partySub(p.suppliers.balance),
       icon: 'package' as IconName,
+      negative: false,
     },
     {
       label: t('dashboard.final.transporters'),
       to: { name: 'transporters' },
       balance: p.transporters.balance,
       detail: t('dashboard.final.openTransporters', { count: p.transporters.open_count }),
-      sub: p.transporters.largest_open
-        ? t('dashboard.final.largestTransporterBalance', { name: p.transporters.largest_open.name })
-        : t('dashboard.final.nothingToSettle'),
+      sub: partySub(p.transporters.balance),
       icon: 'truck' as IconName,
+      negative: false,
     },
     {
       label: t('dashboard.final.shareholders'),
@@ -240,6 +247,7 @@ const partyCards = computed(() => {
       }),
       sub: t('dashboard.final.openLoans', { amount: formatMoney(p.shareholders.open_loans_total) }),
       icon: 'pie-chart' as IconName,
+      negative: false,
     },
     {
       label: t('dashboard.final.customsAndOther'),
@@ -250,11 +258,11 @@ const partyCards = computed(() => {
         amount: formatMoney(p.customs_and_other.road_transit),
       }),
       icon: 'shield' as IconName,
+      negative: false,
     },
   ].map((card) => ({
     ...card,
     balanceParts: formatMoneyParts(card.balance),
-    negative: false,
   }))
 })
 
