@@ -762,6 +762,28 @@
         "noEligibleParty": "Aucun tiers éligible pour une nouvelle avance."
       }
     },
+    "contributionForm": {
+      "title": "Nouvel apport en capital",
+      "shareholder": "Actionnaire / Associé",
+      "accountKind": "Type de compte",
+      "bank": "Banque",
+      "cash": "Caisse",
+      "amount": "Montant de l'apport",
+      "date": "Date",
+      "reference": "Référence",
+      "note": "Note",
+      "attachment": "Justificatif (image)",
+      "submit": "Enregistrer l'apport",
+      "imageOnlyError": "Seules les images JPG, JPEG, PNG ou WEBP sont autorisées.",
+      "loadError": "Impossible de charger les actionnaires.",
+      "saveError": "Impossible d'enregistrer cet apport.",
+      "errors": {
+        "shareholderRequired": "Choisissez un actionnaire.",
+        "accountRequired": "Choisissez un compte.",
+        "positiveAmount": "Le montant doit être supérieur à zéro.",
+        "proofRequired": "Un justificatif image est obligatoire pour enregistrer cet apport."
+      }
+    },
     "partyLedger": {
       "totalDue": "Total dû",
       "openAdvances": "Avances ouvertes",

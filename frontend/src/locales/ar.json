@@ -760,6 +760,28 @@
         "noEligibleParty": "لا يوجد طرف مؤهل لسلفة جديدة."
       }
     },
+    "contributionForm": {
+      "title": "مساهمة رأسمالية جديدة",
+      "shareholder": "المساهم / الشريك",
+      "accountKind": "نوع الحساب",
+      "bank": "بنك",
+      "cash": "نقدية",
+      "amount": "مبلغ المساهمة",
+      "date": "التاريخ",
+      "reference": "المرجع",
+      "note": "ملاحظة",
+      "attachment": "المستند المرفق (صورة)",
+      "submit": "حفظ المساهمة",
+      "imageOnlyError": "يُسمح فقط بصور JPG أو JPEG أو PNG أو WEBP.",
+      "loadError": "تعذر تحميل المساهمين.",
+      "saveError": "تعذر حفظ هذه المساهمة.",
+      "errors": {
+        "shareholderRequired": "اختر مساهمًا.",
+        "accountRequired": "اختر حسابًا.",
+        "positiveAmount": "يجب أن يكون المبلغ أكبر من الصفر.",
+        "proofRequired": "المستند المرفق (صورة) إلزامي لحفظ هذه المساهمة."
+      }
+    },
     "partyLedger": {
       "totalDue": "إجمالي المستحق",
       "openAdvances": "السلف المفتوحة",
