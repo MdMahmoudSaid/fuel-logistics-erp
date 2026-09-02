@@ -125,7 +125,7 @@
       "customerReceivables": "Customer receivables",
       "supplierNetBalance": "Net supplier balance",
       "transporterNetBalance": "Net transporter balance",
-      "otherDebts": "Customs/transit/fee debts",
+      "otherDebts": "Customs / transit / fee debts",
       "partyBalances": "Balances by party",
       "customers": "Customers",
       "suppliers": "Suppliers",
