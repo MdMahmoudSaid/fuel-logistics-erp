@@ -73,8 +73,17 @@ class Trip(TimeStampedModel):
     truck = models.ForeignKey(
         "transport.Truck", on_delete=models.PROTECT, related_name="trips"
     )
+    # Phase 6 (docs/superpowers/specs/2026-09-02-business-corrections-6-
+    # phases-design.md): null only for a COMPANY_OWNED truck - no artificial
+    # "internal transporter" is ever created for the company's own fleet.
+    # An EXTERNAL truck's trip always has one, auto-derived from
+    # truck.owner_transporter (TripSerializer._validate_and_derive_transporter).
     transporter = models.ForeignKey(
-        "transport.Transporter", on_delete=models.PROTECT, related_name="trips"
+        "transport.Transporter",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="trips",
     )
     driver = models.ForeignKey(
         "transport.Driver",

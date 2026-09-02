@@ -2,6 +2,8 @@
 // all serialized as strings (never float) — convert with Number(...) only
 // where arithmetic is needed, keep as strings for display/round-tripping.
 
+import type { TruckBrief } from '@/modules/trips/types'
+
 export interface CustomerBrief {
   id: number
   name: string
@@ -334,6 +336,10 @@ export interface CustomerLedger {
 
 export interface TransporterLedger {
   transporter: { id: number; name: string; company_name: string }
+  // Phase 6 (docs/superpowers/specs/2026-09-02-business-corrections-6-
+  // phases-design.md): EXTERNAL trucks rattaches to this transporter -
+  // a COMPANY_OWNED truck never appears here.
+  trucks: TruckBrief[]
   gross_amount: string
   deductions: string
   advances_applied: string

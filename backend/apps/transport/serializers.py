@@ -76,3 +76,27 @@ class TruckSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id", "status", "created_at", "updated_at"]
         extra_kwargs = {"internal_id": {"required": False, "allow_blank": True}}
+
+    def validate(self, data):
+        # Phase 6 (docs/superpowers/specs/2026-09-02-business-corrections-6-
+        # phases-design.md): owner_transporter is mandatory for an EXTERNAL
+        # truck (a Trip built on it always needs a real transporter to
+        # derive) and stays optional for COMPANY_OWNED - never an
+        # artificial "internal transporter".
+        ownership_type = data.get(
+            "ownership_type", getattr(self.instance, "ownership_type", None)
+        )
+        owner_transporter = (
+            data["owner_transporter"]
+            if "owner_transporter" in data
+            else getattr(self.instance, "owner_transporter", None)
+        )
+        if ownership_type == Truck.OwnershipType.EXTERNAL and owner_transporter is None:
+            raise serializers.ValidationError(
+                {
+                    "owner_transporter": (
+                        "Le transporteur est obligatoire pour un camion externe."
+                    )
+                }
+            )
+        return data

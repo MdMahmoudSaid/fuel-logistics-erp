@@ -2455,6 +2455,44 @@ def test_transporter_ledger_endpoint_reports_net_outstanding(finance_client):
 
 
 @pytest.mark.django_db
+def test_transporter_ledger_endpoint_lists_only_external_trucks(finance_client):
+    """Phase 6 (docs/superpowers/specs/2026-09-02-business-corrections-6-
+    phases-design.md): the Grand livre transporteur lists the trucks
+    rattaches to that transporter - only EXTERNAL ones, since a
+    COMPANY_OWNED truck never has an owner_transporter."""
+    trip, transporter = _make_trip_for_deduction("API-TRANSTRUCKS")
+    external_truck = Truck.objects.create(
+        internal_id="TRK-TRANSTRUCKS-EXT",
+        tractor_registration="EXT-TRACTOR",
+        tanker_registration="EXT-TANKER",
+        capacity_litres=Decimal("45000.00"),
+        ownership_type=Truck.OwnershipType.EXTERNAL,
+        owner_transporter=transporter,
+    )
+    Truck.objects.create(
+        internal_id="TRK-TRANSTRUCKS-CO",
+        tractor_registration="CO-TRACTOR",
+        tanker_registration="CO-TANKER",
+        capacity_litres=Decimal("45000.00"),
+    )
+    other_transporter = Transporter.objects.create(name="Other Transport")
+    Truck.objects.create(
+        internal_id="TRK-TRANSTRUCKS-OTHER",
+        tractor_registration="OTH-TRACTOR",
+        tanker_registration="OTH-TANKER",
+        capacity_litres=Decimal("45000.00"),
+        ownership_type=Truck.OwnershipType.EXTERNAL,
+        owner_transporter=other_transporter,
+    )
+
+    response = finance_client.get(f"/api/transporters/{transporter.id}/ledger/")
+
+    assert response.status_code == 200
+    truck_ids = {row["id"] for row in response.data["trucks"]}
+    assert truck_ids == {external_truck.id}
+
+
+@pytest.mark.django_db
 def test_transporter_ledger_endpoint_counts_partial_treasury_settlements(
     finance_client, treasury_user
 ):

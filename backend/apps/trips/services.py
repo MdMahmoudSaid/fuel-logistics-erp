@@ -572,6 +572,14 @@ class DeliveryService:
     def sync_transport_shortage_deduction(
         *, trip: Trip, received_qty: Decimal, unit_selling_price: Decimal
     ) -> None:
+        # Phase 6 (docs/superpowers/specs/2026-09-02-business-corrections-6-
+        # phases-design.md): a company-owned truck's trip has no
+        # transporter to charge - a chargeable shortfall is a plain
+        # unrecovered loss (reflected only in the lower delivered quantity),
+        # never a TransportDeduction.
+        if trip.transporter_id is None:
+            return
+
         missing_quantity = (trip.quantity_loaded - received_qty).quantize(Decimal("0.01"))
         deductions = list(
             TransportDeduction.objects.select_for_update().filter(trip=trip).order_by("id")

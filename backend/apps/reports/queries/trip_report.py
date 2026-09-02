@@ -37,7 +37,7 @@ class TripReportQuery:
                 "loading_date": trip.loading_date,
                 "status": trip.status,
                 "truck": trip.truck.internal_id,
-                "transporter": trip.transporter.name,
+                "transporter": trip.transporter.name if trip.transporter_id else None,
                 "supplier": trip.supplier.name,
                 "product": trip.product.name,
                 "quantity_loaded": trip.quantity_loaded,

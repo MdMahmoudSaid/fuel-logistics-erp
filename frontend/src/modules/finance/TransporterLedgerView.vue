@@ -152,6 +152,24 @@ function badgeVariant(status: string) {
         </div>
       </section>
 
+      <Card :title="t('finance.transporterLedger.trucks')">
+        <ul class="divide-ligne divide-y text-sm">
+          <li
+            v-for="truck in ledger.trucks"
+            :key="truck.id"
+            class="flex items-center justify-between py-2"
+          >
+            <span class="text-texte font-medium">{{ truck.internal_id }}</span>
+            <span class="text-texte-2">
+              {{ truck.tractor_registration }} / {{ truck.tanker_registration }}
+            </span>
+          </li>
+          <li v-if="ledger.trucks.length === 0" class="text-texte-3 py-2">
+            {{ t('finance.transporterLedger.noTrucks') }}
+          </li>
+        </ul>
+      </Card>
+
       <Card :title="t('finance.transporterLedger.settlementsByTrip')">
         <table class="w-full text-start text-sm">
           <thead>

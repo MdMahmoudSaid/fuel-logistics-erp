@@ -35,6 +35,11 @@ const selectedTruck = ref<TruckBrief | null>(null)
 
 const trucks = ref<TruckBrief[]>([])
 const transporters = ref<TransporterBrief[]>([])
+// Unfiltered (unlike `transporters` above, which hides busy ones) - only
+// used to resolve the readonly name for an EXTERNAL truck's derived
+// transporter (Phase 6), which must show correctly even if that
+// transporter is currently busy with another truck.
+const allTransporters = ref<TransporterBrief[]>([])
 const drivers = ref<DriverBrief[]>([])
 const customers = ref<CustomerBrief[]>([])
 const customerOrders = ref<CustomerOrder[]>([])
@@ -90,14 +95,28 @@ async function onCessionChange() {
     : null
 }
 
+// Phase 6 (docs/superpowers/specs/2026-09-02-business-corrections-6-phases-
+// design.md): transporter is derived from the truck, not independently
+// chosen - EXTERNAL always carries truck.owner_transporter (readonly here,
+// re-validated server-side), COMPANY_OWNED never has one.
+const isExternalTruck = computed(() => selectedTruck.value?.ownership_type === 'EXTERNAL')
+const isCompanyOwnedTruck = computed(
+  () => selectedTruck.value?.ownership_type === 'COMPANY_OWNED',
+)
+const lockedTransporterName = computed(
+  () =>
+    allTransporters.value.find((tr) => tr.id === selectedTruck.value?.owner_transporter)?.name ??
+    '',
+)
+
 function onTruckChange() {
   const truck = trucks.value.find((t) => t.id === Number(form.value.truck))
   selectedTruck.value = truck ?? null
   if (!truck) return
-  // Convenience prefill only — the transporter/driver fields stay editable
-  // (roadmap/phase_3_truck_operations.md: transporter "defaults from
-  // truck.owner_transporter", but the backend requires it explicitly).
-  if (truck.owner_transporter) form.value.transporter = String(truck.owner_transporter)
+  form.value.transporter =
+    truck.ownership_type === 'EXTERNAL' && truck.owner_transporter
+      ? String(truck.owner_transporter)
+      : ''
   if (truck.default_driver) form.value.driver = String(truck.default_driver)
 }
 
@@ -120,6 +139,8 @@ onMounted(async () => {
   cessions.value = cessionData.results
   drivers.value = driverData.results
   customers.value = customerData.results
+  const allTransportersData = await transporterResource.list()
+  allTransporters.value = allTransportersData.results
   await Promise.all([loadTrucks(), loadTransporters()])
 
   if (!prefilledOrderId.value) {
@@ -173,7 +194,7 @@ async function onSubmit() {
   fieldErrors.value = {}
   const payload: Partial<Trip> = {
     truck: Number(form.value.truck),
-    transporter: Number(form.value.transporter),
+    transporter: form.value.transporter ? Number(form.value.transporter) : null,
     driver: form.value.driver ? Number(form.value.driver) : null,
     supplier: selectedSupplierOrder.value.supplier,
     supplier_order: selectedSupplierOrder.value.id,
@@ -297,7 +318,24 @@ async function onSubmit() {
           <label class="text-texte-2 text-sm font-medium" for="transporter">{{
             t('trips.newForm.transporter')
           }}</label>
+          <!-- Phase 6: derived from the truck, never independently chosen -
+               EXTERNAL shows the derived name readonly, COMPANY_OWNED shows
+               no field at all (no transporter to pick). -->
+          <p
+            v-if="isCompanyOwnedTruck"
+            class="border-ligne-forte text-texte-2 flex h-12 w-full items-center rounded-lg border bg-fond px-3.5 text-sm"
+          >
+            {{ t('trips.newForm.companyOwnedNoTransporter') }}
+          </p>
+          <p
+            v-else-if="isExternalTruck"
+            id="transporter"
+            class="border-ligne-forte text-texte flex h-12 w-full items-center rounded-lg border bg-fond px-3.5 text-sm"
+          >
+            {{ lockedTransporterName || '—' }}
+          </p>
           <select
+            v-else
             id="transporter"
             v-model="form.transporter"
             required

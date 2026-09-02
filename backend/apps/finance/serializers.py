@@ -507,6 +507,15 @@ class TransportPaymentSerializer(serializers.ModelSerializer):
             "unit_price_per_litre", getattr(self.instance, "unit_price_per_litre", None)
         )
 
+        # Phase 6 (docs/superpowers/specs/2026-09-02-business-corrections-6-
+        # phases-design.md): a company-owned truck's trip has no
+        # transporter, so no transport payment can ever be posted against it.
+        if trip and trip.transporter_id is None:
+            raise serializers.ValidationError(
+                "Ce trajet n'a pas de transporteur externe, aucun paiement "
+                "transport n'est possible."
+            )
+
         if trip and transporter and transporter.id != trip.transporter_id:
             raise serializers.ValidationError(
                 "Le transporteur ne correspond pas au transporteur du voyage."

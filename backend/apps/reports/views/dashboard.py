@@ -356,7 +356,7 @@ class DashboardViewSet(viewsets.ViewSet):
                     "reference": trip.reference,
                     "truck": trip.truck.internal_id,
                     "supplier": trip.supplier.name,
-                    "transporter": trip.transporter.name,
+                    "transporter": trip.transporter.name if trip.transporter_id else None,
                     "product": trip.product.name,
                     "remaining_quantity": trip.quantity_loaded,
                     "entry_date": trip.loading_date,

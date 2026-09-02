@@ -174,3 +174,83 @@ def test_truck_provided_internal_id_is_kept(ops_client):
     )
     assert created.status_code == 201, created.data
     assert created.data["internal_id"] == "CUSTOM-ID-42"
+
+
+# ---------------------------------------------------------------------------
+# Phase 6 (docs/superpowers/specs/2026-09-02-business-corrections-6-phases-
+# design.md): an EXTERNAL truck always needs owner_transporter; a
+# COMPANY_OWNED truck stays free of one - never an artificial "internal
+# transporter" row.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_external_truck_without_owner_transporter_is_rejected(ops_client):
+    response = ops_client.post(
+        "/api/trucks/",
+        {
+            "internal_id": "TRK-EXT-001",
+            "tractor_registration": "OO-111-SN",
+            "tanker_registration": "PP-222-SN",
+            "capacity_litres": "45000.00",
+            "ownership_type": "EXTERNAL",
+        },
+    )
+    assert response.status_code == 400
+    assert "owner_transporter" in response.data
+
+
+@pytest.mark.django_db
+def test_external_truck_with_owner_transporter_is_accepted(ops_client):
+    transporter = Transporter.objects.create(name="Diallo Transport")
+
+    response = ops_client.post(
+        "/api/trucks/",
+        {
+            "internal_id": "TRK-EXT-002",
+            "tractor_registration": "QQ-333-SN",
+            "tanker_registration": "RR-444-SN",
+            "capacity_litres": "45000.00",
+            "ownership_type": "EXTERNAL",
+            "owner_transporter": transporter.id,
+        },
+    )
+    assert response.status_code == 201, response.data
+    assert response.data["owner_transporter"] == transporter.id
+
+
+@pytest.mark.django_db
+def test_company_owned_truck_without_owner_transporter_is_accepted(ops_client):
+    response = ops_client.post(
+        "/api/trucks/",
+        {
+            "internal_id": "TRK-CO-001",
+            "tractor_registration": "SS-555-SN",
+            "tanker_registration": "TT-666-SN",
+            "capacity_litres": "45000.00",
+            "ownership_type": "COMPANY_OWNED",
+        },
+    )
+    assert response.status_code == 201, response.data
+    assert response.data["owner_transporter"] is None
+
+
+@pytest.mark.django_db
+def test_switching_truck_to_external_without_transporter_is_rejected(ops_client):
+    created = ops_client.post(
+        "/api/trucks/",
+        {
+            "internal_id": "TRK-SWITCH-001",
+            "tractor_registration": "UU-777-SN",
+            "tanker_registration": "VV-888-SN",
+            "capacity_litres": "45000.00",
+            "ownership_type": "COMPANY_OWNED",
+        },
+    )
+    assert created.status_code == 201, created.data
+
+    response = ops_client.patch(
+        f"/api/trucks/{created.data['id']}/", {"ownership_type": "EXTERNAL"}
+    )
+    assert response.status_code == 400
+    assert "owner_transporter" in response.data

@@ -77,6 +77,11 @@ export function isTripEnRoute(status: TripStatus): boolean {
 
 export type TruckStatus = 'AVAILABLE' | 'ON_TRIP' | 'BLOCKED'
 
+// Phase 6 (docs/superpowers/specs/2026-09-02-business-corrections-6-phases-
+// design.md): EXTERNAL always has owner_transporter (backend-enforced);
+// COMPANY_OWNED never does - no artificial "internal transporter".
+export type TruckOwnershipType = 'COMPANY_OWNED' | 'EXTERNAL'
+
 export interface TruckBrief {
   id: number
   internal_id: string
@@ -84,6 +89,7 @@ export interface TruckBrief {
   tanker_registration: string
   capacity_litres: string
   status: TruckStatus
+  ownership_type: TruckOwnershipType
   owner_transporter: number | null
   default_driver: number | null
 }
@@ -132,7 +138,9 @@ export interface Trip {
   reference: string
   truck: number
   truck_detail: TruckBrief | null
-  transporter: number
+  // Phase 6: null only for a COMPANY_OWNED truck's trip - no artificial
+  // "internal transporter" is ever created for the company's own fleet.
+  transporter: number | null
   transporter_detail: TransporterBrief | null
   driver: number | null
   driver_detail: DriverBrief | null

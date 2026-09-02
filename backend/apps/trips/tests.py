@@ -108,12 +108,21 @@ def _setup_fixtures(order_suffix="001"):
     }
 
 
-def _make_truck(code):
+def _make_truck(code, *, owner_transporter=None):
+    # Phase 6 (docs/superpowers/specs/2026-09-02-business-corrections-6-
+    # phases-design.md): a truck used with an explicit "transporter" in a
+    # trip payload must be EXTERNAL (owner_transporter matching) - a
+    # COMPANY_OWNED truck (the default here) can never carry one.
+    kwargs = {}
+    if owner_transporter is not None:
+        kwargs["ownership_type"] = Truck.OwnershipType.EXTERNAL
+        kwargs["owner_transporter"] = owner_transporter
     return Truck.objects.create(
         internal_id=code,
         tractor_registration=f"{code}-TRACTOR",
         tanker_registration=f"{code}-TANKER",
         capacity_litres=Decimal("45000.00"),
+        **kwargs,
     )
 
 
@@ -699,7 +708,7 @@ def test_trip_serializer_accepts_quantity_within_cession_remaining():
     fx = _setup_fixtures("SER-OK")
     fx["cession"].authorized_quantity = Decimal("45000.00")
     fx["cession"].save(update_fields=["authorized_quantity"])
-    truck = _make_truck("TRK-SER-OK")
+    truck = _make_truck("TRK-SER-OK", owner_transporter=fx["transporter"])
 
     serializer = TripSerializer(
         data=_trip_payload(fx, truck, "TRIP-SER-OK-001", quantity=Decimal("45000.00")),
@@ -725,7 +734,9 @@ def test_trip_serializer_rejects_quantity_over_truck_capacity():
 @pytest.mark.django_db
 def test_trip_serializer_accepts_quantity_equal_to_truck_capacity():
     fx = _setup_fixtures("SER-CAP-OK")
-    truck = _make_truck("TRK-SER-CAP-OK")  # capacity_litres = 45000.00
+    truck = _make_truck(
+        "TRK-SER-CAP-OK", owner_transporter=fx["transporter"]
+    )  # capacity_litres = 45000.00
 
     serializer = TripSerializer(
         data=_trip_payload(fx, truck, "TRIP-SER-CAP-OK-001", quantity=Decimal("45000.00")),
@@ -769,7 +780,7 @@ def test_trip_serializer_rejects_force_from_non_admin():
 @pytest.mark.django_db
 def test_trip_serializer_allows_force_override_by_admin():
     fx = _setup_fixtures("SER-FORCE")
-    truck = _make_truck("TRK-SER-FORCE")
+    truck = _make_truck("TRK-SER-FORCE", owner_transporter=fx["transporter"])
     _make_trip(fx, truck, "TRIP-SER-FORCE-001")
 
     serializer = TripSerializer(
@@ -880,7 +891,10 @@ def test_api_repeated_truck_scenario_450000_litres():
     assert order_response.status_code == 201, order_response.data
     order_id = order_response.data["id"]
 
-    trucks = [_make_truck(f"TRK-API-450K-{letter}") for letter in "ABCDEF"]
+    trucks = [
+        _make_truck(f"TRK-API-450K-{letter}", owner_transporter=fx["transporter"])
+        for letter in "ABCDEF"
+    ]
 
     round_one_trip_ids = []
     for truck in trucks:
@@ -941,7 +955,7 @@ def test_api_repeated_truck_scenario_450000_litres():
 @pytest.mark.django_db
 def test_api_truck_lock_rejected_then_admin_force_succeeds():
     fx = _setup_fixtures("API-LOCK")
-    truck = _make_truck("TRK-API-LOCK")
+    truck = _make_truck("TRK-API-LOCK", owner_transporter=fx["transporter"])
     _make_trip(fx, truck, "TRIP-API-LOCK-SEED")  # pre-existing active trip
 
     ops_role = Role.objects.get(name=Role.NAME_OPERATIONS)
@@ -965,7 +979,7 @@ def test_api_truck_lock_rejected_then_admin_force_succeeds():
 @pytest.mark.django_db
 def test_api_bl_reference_is_generated_when_left_blank():
     fx = _setup_fixtures("API-BL-GEN")
-    truck = _make_truck("TRK-API-BL-GEN")
+    truck = _make_truck("TRK-API-BL-GEN", owner_transporter=fx["transporter"])
     client = APIClient()
     client.force_authenticate(fx["admin_user"])
 
@@ -980,7 +994,7 @@ def test_api_bl_reference_is_generated_when_left_blank():
 @pytest.mark.django_db
 def test_api_bl_reference_provided_by_user_is_kept():
     fx = _setup_fixtures("API-BL-KEEP")
-    truck = _make_truck("TRK-API-BL-KEEP")
+    truck = _make_truck("TRK-API-BL-KEEP", owner_transporter=fx["transporter"])
     client = APIClient()
     client.force_authenticate(fx["admin_user"])
 
@@ -994,7 +1008,7 @@ def test_api_bl_reference_provided_by_user_is_kept():
 @pytest.mark.django_db
 def test_api_direct_sale_trip_without_customer_order():
     fx = _setup_fixtures("API-DIRECT")
-    truck = _make_truck("TRK-API-DIRECT")
+    truck = _make_truck("TRK-API-DIRECT", owner_transporter=fx["transporter"])
     customer = Customer.objects.create(name="Direct Client")
 
     client = APIClient()
@@ -1787,7 +1801,7 @@ def test_api_invoice_amount_based_on_received_quantity_not_loaded():
     # (creation + status transitions), unlike the service-level happy-path
     # test above, to confirm the same rule holds end-to-end through HTTP.
     fx = _fixtures_with_customer("API-INV-QTY")
-    truck = _make_truck("TRK-API-INV-QTY")
+    truck = _make_truck("TRK-API-INV-QTY", owner_transporter=fx["transporter"])
 
     client = APIClient()
     client.force_authenticate(fx["admin_user"])
@@ -1941,7 +1955,7 @@ def test_trip_with_no_client_and_no_customer_order_defaults_to_company_stock():
 @pytest.mark.django_db
 def test_trip_serializer_normalizes_destination_type_to_company_stock_by_default():
     fx = _setup_fixtures("DEST-DEFAULT")
-    truck = _make_truck("TRK-DEST-DEFAULT")
+    truck = _make_truck("TRK-DEST-DEFAULT", owner_transporter=fx["transporter"])
 
     serializer = TripSerializer(
         data=_trip_payload(fx, truck, "TRIP-DEST-DEFAULT-001"),
@@ -1954,7 +1968,7 @@ def test_trip_serializer_normalizes_destination_type_to_company_stock_by_default
 @pytest.mark.django_db
 def test_trip_serializer_normalizes_destination_type_to_customer_when_client_given():
     fx = _setup_fixtures("DEST-CLIENT")
-    truck = _make_truck("TRK-DEST-CLIENT")
+    truck = _make_truck("TRK-DEST-CLIENT", owner_transporter=fx["transporter"])
     customer = Customer.objects.create(name="Dest Client")
 
     serializer = TripSerializer(
@@ -1968,7 +1982,7 @@ def test_trip_serializer_normalizes_destination_type_to_customer_when_client_giv
 @pytest.mark.django_db
 def test_trip_serializer_normalizes_destination_type_to_customer_when_customer_order_given():
     fx = _setup_fixtures("DEST-ORDER")
-    truck = _make_truck("TRK-DEST-ORDER")
+    truck = _make_truck("TRK-DEST-ORDER", owner_transporter=fx["transporter"])
     customer = Customer.objects.create(name="Dest Order Client")
     order = CustomerOrder.objects.create(
         customer=customer,
@@ -1987,7 +2001,7 @@ def test_trip_serializer_normalizes_destination_type_to_customer_when_customer_o
 @pytest.mark.django_db
 def test_trip_serializer_rejects_client_and_customer_order_for_different_customers():
     fx = _setup_fixtures("DEST-MISMATCH")
-    truck = _make_truck("TRK-DEST-MISMATCH")
+    truck = _make_truck("TRK-DEST-MISMATCH", owner_transporter=fx["transporter"])
     customer_a = Customer.objects.create(name="Customer A")
     customer_b = Customer.objects.create(name="Customer B")
     order = CustomerOrder.objects.create(
@@ -2013,7 +2027,7 @@ def test_trip_serializer_rejects_client_and_customer_order_for_different_custome
 @pytest.mark.django_db
 def test_trip_serializer_accepts_client_matching_customer_order_customer():
     fx = _setup_fixtures("DEST-MATCH")
-    truck = _make_truck("TRK-DEST-MATCH")
+    truck = _make_truck("TRK-DEST-MATCH", owner_transporter=fx["transporter"])
     customer = Customer.objects.create(name="Matching Customer")
     order = CustomerOrder.objects.create(
         customer=customer,
@@ -2237,3 +2251,148 @@ def test_api_assign_customer_endpoint_rejected_once_sale_exists():
     )
 
     assert response.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Phase 6 (docs/superpowers/specs/2026-09-02-business-corrections-6-phases-
+# design.md): a truck's ownership_type governs whether its trip needs a
+# transporter - EXTERNAL always does (auto-derived from truck.
+# owner_transporter), COMPANY_OWNED never does (no artificial "internal
+# transporter" row is ever created).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_trip_serializer_auto_derives_transporter_from_external_truck():
+    fx = _setup_fixtures("EXT-AUTO")
+    truck = _make_truck("TRK-EXT-AUTO", owner_transporter=fx["transporter"])
+
+    serializer = TripSerializer(
+        data=_trip_payload(fx, truck, "TRIP-EXT-AUTO-001", **{"transporter": None}),
+        context={"request": _FakeRequest(fx["admin_user"])},
+    )
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["transporter"] == fx["transporter"]
+
+
+@pytest.mark.django_db
+def test_trip_serializer_rejects_transporter_mismatched_with_external_truck():
+    fx = _setup_fixtures("EXT-MISMATCH")
+    other_transporter = Transporter.objects.create(name="Other Transport")
+    truck = _make_truck("TRK-EXT-MISMATCH", owner_transporter=fx["transporter"])
+
+    serializer = TripSerializer(
+        data=_trip_payload(
+            fx, truck, "TRIP-EXT-MISMATCH-001", transporter=other_transporter.id
+        ),
+        context={"request": _FakeRequest(fx["admin_user"])},
+    )
+    assert not serializer.is_valid()
+    assert "transporter" in serializer.errors
+
+
+@pytest.mark.django_db
+def test_trip_serializer_forces_null_transporter_for_company_owned_truck():
+    fx = _setup_fixtures("CO-NULL")
+    truck = _make_truck("TRK-CO-NULL")  # COMPANY_OWNED by default, no transporter
+
+    serializer = TripSerializer(
+        data=_trip_payload(fx, truck, "TRIP-CO-NULL-001", **{"transporter": None}),
+        context={"request": _FakeRequest(fx["admin_user"])},
+    )
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["transporter"] is None
+
+
+@pytest.mark.django_db
+def test_trip_serializer_rejects_transporter_for_company_owned_truck():
+    fx = _setup_fixtures("CO-REJECT")
+    truck = _make_truck("TRK-CO-REJECT")
+
+    serializer = TripSerializer(
+        data=_trip_payload(fx, truck, "TRIP-CO-REJECT-001"),  # includes transporter
+        context={"request": _FakeRequest(fx["admin_user"])},
+    )
+    assert not serializer.is_valid()
+    assert "transporter" in serializer.errors
+
+
+@pytest.mark.django_db
+def test_company_owned_truck_chargeable_loss_creates_no_transport_deduction():
+    fx = _fixtures_with_customer("CO-LOSS")
+    truck = _make_truck("TRK-CO-LOSS")
+    trip = Trip.objects.create(
+        reference="TRIP-CO-LOSS-001",
+        truck=truck,
+        transporter=None,
+        supplier=fx["supplier"],
+        supplier_order=fx["supplier_order"],
+        cession_letter=fx["cession"],
+        product=fx["product"],
+        quantity_loaded=Decimal("45000.00"),
+        client=fx["customer"],
+        destination_type=Trip.DestinationType.CUSTOMER,
+        loading_date="2026-08-18",
+        bl_reference="BL-CO-LOSS-001",
+        created_by=fx["admin_user"],
+    )
+    _advance_to_quantity_control(trip, fx["admin_user"])
+    ProductSellingPriceHistory.objects.create(
+        product=fx["product"],
+        customer=fx["customer"],
+        price=Decimal("650.0000"),
+        changed_by=fx["admin_user"],
+    )
+    LossToleranceConfig.objects.create(
+        tolerance_litres=Decimal("100.00"), updated_by=fx["admin_user"]
+    )
+
+    control = DeliveryService.record_delivery(
+        trip_id=trip.id,
+        received_qty=Decimal("44850.00"),  # 150 L short, 50 L chargeable
+        control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE,
+        controller=fx["admin_user"],
+    )
+
+    trip.refresh_from_db()
+    assert trip.status == Trip.Status.DELIVERED
+    assert control.chargeable_loss_quantity == Decimal("50.00")
+    # No transporter to charge - the shortfall is an unrecovered loss, not a
+    # transporter debt.
+    assert not TransportDeduction.objects.filter(trip=trip).exists()
+    assert trip.sale.delivered_quantity == Decimal("44850.00")
+
+
+@pytest.mark.django_db
+def test_transport_payment_rejected_for_company_owned_truck_trip():
+    fx = _setup_fixtures("CO-PAYREJECT")
+    truck = _make_truck("TRK-CO-PAYREJECT")
+    trip = Trip.objects.create(
+        reference="TRIP-CO-PAYREJECT-001",
+        truck=truck,
+        transporter=None,
+        supplier=fx["supplier"],
+        supplier_order=fx["supplier_order"],
+        cession_letter=fx["cession"],
+        product=fx["product"],
+        quantity_loaded=Decimal("45000.00"),
+        loading_date="2026-08-18",
+        bl_reference="BL-CO-PAYREJECT-001",
+        created_by=fx["admin_user"],
+    )
+
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+    response = client.post(
+        "/api/transport-payments/",
+        {
+            "trip": trip.id,
+            "transporter": fx["transporter"].id,
+            "calculation_method": "FIXED",
+            "base_amount": "500000.00",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "transporteur externe" in str(response.data)

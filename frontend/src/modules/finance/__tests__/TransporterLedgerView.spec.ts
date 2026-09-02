@@ -11,6 +11,19 @@ vi.mock('vue-router', () => ({
 
 const ledger: TransporterLedger = {
   transporter: { id: 1, name: 'Trans SA', company_name: '' },
+  trucks: [
+    {
+      id: 1,
+      internal_id: 'TRK-01',
+      tractor_registration: 'AA-111',
+      tanker_registration: 'BB-222',
+      capacity_litres: '45000.00',
+      status: 'AVAILABLE',
+      ownership_type: 'EXTERNAL',
+      owner_transporter: 1,
+      default_driver: null,
+    },
+  ],
   gross_amount: '700000.00',
   deductions: '0.00',
   advances_applied: '100000.00',
@@ -142,6 +155,22 @@ describe('TransporterLedgerView', () => {
 
     const text = wrapper.text().replace(/[⁦⁩]/g, '')
     expect(text).toContain('Avance: 100 000 XOF')
+  })
+
+  it('shows the trucks linked to this transporter', async () => {
+    const wrapper = mount(TransporterLedgerView)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('TRK-01')
+    expect(wrapper.text()).toContain('AA-111')
+  })
+
+  it('shows an empty state when the transporter has no trucks', async () => {
+    fetchTransporterLedger.mockResolvedValueOnce({ ...ledger, trucks: [] })
+    const wrapper = mount(TransporterLedgerView)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Aucun camion rattaché à ce transporteur.')
   })
 
   it('shows a Nouvelle avance button and opens AdvanceForm locked to this transporter when net_balance >= 0', async () => {

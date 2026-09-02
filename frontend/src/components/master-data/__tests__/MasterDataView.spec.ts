@@ -136,6 +136,36 @@ describe('MasterDataView', () => {
     expect(resource.update).toHaveBeenCalledWith(1, { is_active: true })
   })
 
+  it('surfaces the backend field error instead of a generic save message', async () => {
+    // Phase 6 (docs/superpowers/specs/2026-09-02-business-corrections-6-
+    // phases-design.md): e.g. TruckSerializer rejecting an EXTERNAL truck
+    // with no owner_transporter - the message must reach the user, not
+    // just a generic "save failed".
+    const resource = makeResource([])
+    resource.create = vi.fn(async () => {
+      throw {
+        response: {
+          status: 400,
+          data: { owner_transporter: ['Le transporteur est obligatoire pour un camion externe.'] },
+        },
+      }
+    })
+    const wrapper = mount(MasterDataView, {
+      props: { title: 'Trucks', resource, fields },
+      global: { plugins: [i18n] },
+    })
+    await flushPromises()
+
+    await wrapper.find('button').trigger('click')
+    await wrapper.find('input#name').setValue('TRK-EXT')
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain(
+      'Le transporteur est obligatoire pour un camion externe.',
+    )
+  })
+
   it('renders a ledger link per row when ledgerRouteName is passed through', async () => {
     const resource = makeResource([{ id: 7, name: 'Total Senegal', is_active: true }])
     const wrapper = mount(MasterDataView, {

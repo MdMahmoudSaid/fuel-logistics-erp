@@ -78,6 +78,12 @@ class TransporterViewSet(viewsets.ModelViewSet):
             "trip", "advance_applied"
         )
         advances = transporter.advances.all()
+        # Phase 6 (docs/superpowers/specs/2026-09-02-business-corrections-6-
+        # phases-design.md): only EXTERNAL trucks are ever rattaches to a
+        # transporter - a COMPANY_OWNED truck's owner_transporter stays
+        # null by construction, so this filter is belt-and-suspenders, not
+        # load-bearing.
+        trucks = transporter.trucks.filter(ownership_type=Truck.OwnershipType.EXTERNAL)
 
         gross_amount = sum((p.base_amount for p in payments), Decimal("0.00"))
         deductions = sum((p.deduction_amount for p in payments), Decimal("0.00"))
@@ -121,6 +127,7 @@ class TransporterViewSet(viewsets.ModelViewSet):
         return Response(
             {
                 "transporter": TransporterSerializer(transporter).data,
+                "trucks": TruckSerializer(trucks, many=True).data,
                 "gross_amount": f"{gross_amount:.2f}",
                 "deductions": f"{deductions:.2f}",
                 "advances_applied": f"{advances_applied:.2f}",

@@ -12,6 +12,7 @@ from apps.documents.models import Document
 from apps.purchasing.serializers import CessionLetterSerializer
 from apps.purchasing.services import SupplierStockService
 from apps.suppliers.serializers import SupplierSerializer
+from apps.transport.models import Truck
 from apps.transport.serializers import DriverSerializer, TransporterSerializer, TruckSerializer
 from apps.trips.models import DeliveryControl, Trip, TripStatusHistory
 from apps.trips.services import TruckAvailabilityService
@@ -118,6 +119,7 @@ class TripSerializer(serializers.ModelSerializer):
         self._validate_cession_quantity(data)
         self._validate_truck_capacity(data)
         self._validate_truck_availability(data, force)
+        self._validate_and_derive_transporter(data)
         self._validate_client_customer_order_consistency(data)
         self._normalize_destination_type(data)
 
@@ -239,6 +241,38 @@ class TripSerializer(serializers.ModelSerializer):
             active_trip.reference if active_trip else None,
             user.email,
         )
+
+
+    def _validate_and_derive_transporter(self, data):
+        """Phase 6 (docs/superpowers/specs/2026-09-02-business-corrections-
+        6-phases-design.md): an EXTERNAL truck's transporter is always
+        truck.owner_transporter (auto-filled if the caller didn't send one,
+        rejected if it sent a different one - readonly on the frontend, but
+        the backend never trusts that alone). A COMPANY_OWNED truck never
+        has a transporter - no artificial "internal transporter" row.
+        """
+        truck = data.get("truck") or (self.instance.truck if self.instance else None)
+        if truck is None:
+            return
+
+        if truck.ownership_type == Truck.OwnershipType.EXTERNAL:
+            submitted = data.get("transporter") if "transporter" in data else None
+            if submitted is not None and submitted.id != truck.owner_transporter_id:
+                raise serializers.ValidationError(
+                    {
+                        "transporter": (
+                            "Le transporteur doit correspondre au transporteur "
+                            "du camion externe selectionne."
+                        )
+                    }
+                )
+            data["transporter"] = truck.owner_transporter
+        else:
+            if data.get("transporter") is not None:
+                raise serializers.ValidationError(
+                    {"transporter": "Un camion societe ne peut pas avoir de transporteur."}
+                )
+            data["transporter"] = None
 
 
 class DeliveryControlSerializer(serializers.ModelSerializer):

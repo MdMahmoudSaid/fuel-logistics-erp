@@ -282,6 +282,10 @@ const automaticExpenseByStatus: Partial<Record<TripStatus, { title: string; cate
 function openAutomaticFeePopup(targetStatus: TripStatus) {
   if (!canManageExpenses.value || !trip.value) return
   if (targetStatus === 'SENT_FOR_LOADING') {
+    // Phase 6: a company-owned truck's trip has no transporter, so no
+    // commission is ever due (docs/superpowers/specs/2026-09-02-business-
+    // corrections-6-phases-design.md).
+    if (!trip.value.transporter) return
     automaticTransportTitle.value = t('trips.detail.autoExpense.transporterCommission')
     showTransportPaymentForm.value = true
     return
@@ -375,11 +379,13 @@ const cessionProofUrl = computed(() => trip.value?.cession_letter_detail?.docume
           <span class="text-texte-2">{{ t('trips.detail.transporter') }}</span>
           <p class="text-texte font-medium">
             <RouterLink
+              v-if="trip.transporter"
               class="underline decoration-dotted"
               :to="{ name: 'transporter-ledger', params: { id: trip.transporter } }"
             >
               {{ trip.transporter_detail?.name }}
             </RouterLink>
+            <span v-else>{{ t('trips.detail.companyOwnedTruck') }}</span>
           </p>
         </div>
         <div>
@@ -628,7 +634,7 @@ const cessionProofUrl = computed(() => trip.value?.cession_letter_detail?.docume
               {{ t('trips.detail.addExpense') }}
             </Button>
             <Button
-              v-if="canManageExpenses"
+              v-if="canManageExpenses && trip.transporter"
               variant="ghost"
               @click=";(automaticTransportTitle = null), (showTransportPaymentForm = true)"
             >
@@ -742,7 +748,7 @@ const cessionProofUrl = computed(() => trip.value?.cession_letter_detail?.docume
             :title="automaticTransportTitle ?? undefined"
             :trip-id="trip.id"
             :trip-reference="trip.reference"
-            :transporter-id="trip.transporter"
+            :transporter-id="trip.transporter!"
             :transporter-name="trip.transporter_detail?.name ?? ''"
             :quantity-loaded="trip.quantity_loaded"
             @success="onTransportPaymentSaved"

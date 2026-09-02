@@ -6,6 +6,7 @@ import EntityForm from './EntityForm.vue'
 import Button from '@/components/ui/Button.vue'
 import type { FieldSchema } from './types'
 import type { ResourceApi } from '@/api/resource'
+import { translateApiError, extractFieldErrors } from '@/i18n/apiErrors'
 
 const { t } = useI18n()
 
@@ -74,8 +75,21 @@ async function onSubmit() {
     }
     showForm.value = false
     await load()
-  } catch {
-    error.value = t('masterData.saveError')
+  } catch (e) {
+    // Surface the backend's own validation message (e.g. Phase 6's "le
+    // transporteur est obligatoire pour un camion externe") instead of a
+    // generic failure - the API already writes these in French
+    // (translateApiError), so no per-entity mapping is needed here.
+    const response = (e as { response?: { status?: number; data?: Record<string, unknown> } })
+      ?.response
+    const body = response?.status === 400 ? response.data : undefined
+    const fieldErrors = extractFieldErrors(body)
+    const generic = body?.detail ?? body?.non_field_errors
+    const genericMessage = Array.isArray(generic) ? generic[0] : generic
+    error.value =
+      translateApiError(typeof genericMessage === 'string' ? genericMessage : undefined) ??
+      Object.values(fieldErrors)[0] ??
+      t('masterData.saveError')
   }
 }
 

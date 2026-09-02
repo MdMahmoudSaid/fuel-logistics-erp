@@ -55,7 +55,8 @@ const AVAILABLE_TRUCK = {
   tanker_registration: 'BB-001',
   capacity_litres: '45000.00',
   status: 'AVAILABLE',
-  owner_transporter: null,
+  ownership_type: 'EXTERNAL',
+  owner_transporter: 10,
   default_driver: null,
 }
 const BUSY_TRUCK = {
@@ -65,6 +66,18 @@ const BUSY_TRUCK = {
   tanker_registration: 'BB-002',
   capacity_litres: '45000.00',
   status: 'ON_TRIP',
+  ownership_type: 'EXTERNAL',
+  owner_transporter: 11,
+  default_driver: null,
+}
+const COMPANY_OWNED_TRUCK = {
+  id: 3,
+  internal_id: 'TRK-003',
+  tractor_registration: 'AA-003',
+  tanker_registration: 'BB-003',
+  capacity_litres: '45000.00',
+  status: 'AVAILABLE',
+  ownership_type: 'COMPANY_OWNED',
   owner_transporter: null,
   default_driver: null,
 }
@@ -80,7 +93,9 @@ vi.mock('@/api/resource', () => ({
   createResourceApi: vi.fn((basePath: string) => ({
     list: vi.fn(async (params?: Record<string, unknown>) => {
       if (basePath === '/trucks/') {
-        const trucks = params?.available ? [AVAILABLE_TRUCK] : [AVAILABLE_TRUCK, BUSY_TRUCK]
+        const trucks = params?.available
+          ? [AVAILABLE_TRUCK, COMPANY_OWNED_TRUCK]
+          : [AVAILABLE_TRUCK, BUSY_TRUCK, COMPANY_OWNED_TRUCK]
         return paginated(trucks)
       }
       if (basePath === '/transporters/') {
@@ -151,6 +166,75 @@ describe('TripForm', () => {
     expect(wrapper.text()).not.toContain('Sow Transport')
   })
 
+  // Phase 6 (docs/superpowers/specs/2026-09-02-business-corrections-6-
+  // phases-design.md): transporter is derived from the truck, not
+  // independently chosen.
+  it('auto-derives and locks the transporter when an EXTERNAL truck is selected', async () => {
+    const router = makeRouter()
+    await router.isReady()
+    const wrapper = mount(TripForm, { global: { plugins: [router] } })
+    await flushPromises()
+
+    await wrapper.find('#truck').setValue('1') // AVAILABLE_TRUCK, EXTERNAL, owner_transporter 10
+    await flushPromises()
+
+    expect(wrapper.find('select#transporter').exists()).toBe(false)
+    expect(wrapper.find('#transporter').text()).toContain('Diallo Transport')
+  })
+
+  it('shows no transporter field when a COMPANY_OWNED truck is selected', async () => {
+    const router = makeRouter()
+    await router.isReady()
+    const wrapper = mount(TripForm, { global: { plugins: [router] } })
+    await flushPromises()
+
+    await wrapper.find('#truck').setValue('3') // COMPANY_OWNED_TRUCK
+    await flushPromises()
+
+    expect(wrapper.find('select#transporter').exists()).toBe(false)
+    expect(wrapper.text()).toContain('Camion société — aucun transporteur')
+  })
+
+  it('submits transporter: null for a company-owned truck trip', async () => {
+    const router = makeRouter()
+    await router.isReady()
+    const wrapper = mount(TripForm, { global: { plugins: [router] } })
+    await flushPromises()
+
+    await wrapper.find('#cession_letter').setValue('9')
+    await flushPromises()
+    await wrapper.find('#truck').setValue('3') // COMPANY_OWNED_TRUCK
+    await wrapper.find('#quantity_loaded').setValue('20000')
+    await wrapper.find('#loading_date').setValue('2026-08-18')
+    await wrapper.find('#bl_reference').setValue('BL-CO-001')
+
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createTrip).toHaveBeenCalledWith(expect.objectContaining({ transporter: null }))
+  })
+
+  it('submits the derived transporter for an external truck trip', async () => {
+    const router = makeRouter()
+    await router.isReady()
+    const wrapper = mount(TripForm, { global: { plugins: [router] } })
+    await flushPromises()
+
+    await wrapper.find('#cession_letter').setValue('9')
+    await flushPromises()
+    await wrapper.find('#truck').setValue('1') // AVAILABLE_TRUCK, EXTERNAL
+    await wrapper.find('#quantity_loaded').setValue('20000')
+    await wrapper.find('#loading_date').setValue('2026-08-18')
+    await wrapper.find('#bl_reference').setValue('BL-EXT-001')
+
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createTrip).toHaveBeenCalledWith(
+      expect.objectContaining({ transporter: AVAILABLE_TRANSPORTER.id }),
+    )
+  })
+
   it('hides the occupied-trucks override from a non-Admin user', async () => {
     const router = makeRouter()
     await router.isReady()
@@ -216,7 +300,7 @@ describe('TripForm', () => {
     await wrapper.find('#cession_letter').setValue('9')
     await flushPromises()
     await wrapper.find('#truck').setValue('1') // AVAILABLE_TRUCK, capacity_litres 45000
-    await wrapper.find('#transporter').setValue(String(AVAILABLE_TRANSPORTER.id))
+    // Transporter is derived automatically from the EXTERNAL truck (Phase 6).
     await wrapper.find('#quantity_loaded').setValue('50000')
     await wrapper.find('#loading_date').setValue('2026-08-18')
     await flushPromises()
@@ -248,7 +332,8 @@ describe('TripForm', () => {
     await wrapper.find('#cession_letter').setValue('9')
     await flushPromises()
     await wrapper.find('#truck').setValue('1')
-    await wrapper.find('#transporter').setValue(String(AVAILABLE_TRANSPORTER.id))
+    // Transporter is derived automatically from the EXTERNAL truck (Phase 6) -
+    // no need to set it manually.
     await wrapper.find('#quantity_loaded').setValue('20000')
     await wrapper.find('#loading_date').setValue('2026-08-18')
     await wrapper.find('#bl_reference').setValue('BL-001')
@@ -274,7 +359,8 @@ describe('TripForm', () => {
     await wrapper.find('#cession_letter').setValue('9')
     await flushPromises()
     await wrapper.find('#truck').setValue('1')
-    await wrapper.find('#transporter').setValue(String(AVAILABLE_TRANSPORTER.id))
+    // Transporter is derived automatically from the EXTERNAL truck (Phase 6) -
+    // no need to set it manually.
     await wrapper.find('#quantity_loaded').setValue('20000')
     await wrapper.find('#loading_date').setValue('2026-08-18')
     await wrapper.find('#bl_reference').setValue('BL-DUP')
