@@ -76,28 +76,32 @@ Nouveau modèle `ShareholderContribution` (app `finance`, hérite `AuditableMode
 
 ---
 
-## Phase 2 — Fond de roulement (formule corrigée, pas de double comptage)
+## Phase 2 — Fond de roulement (formule corrigée, pas de double comptage, avances ouvertes comptées comme un droit)
 
 ### Règle métier corrigée
 
-Le capital apporté (Phase 1) est déjà entré en banque/caisse via sa `TreasuryTransaction` — l'additionner une seconde fois au calcul du fond de roulement compterait le même argent deux fois. Formule retenue :
+Le capital apporté (Phase 1) est déjà entré en banque/caisse via sa `TreasuryTransaction` — l'additionner une seconde fois au calcul du fond de roulement compterait le même argent deux fois.
+
+Une avance ouverte fournisseur/transporteur est un droit de l'entreprise (l'argent a quitté la banque mais reste dû à l'entreprise sous forme de marchandise/service à recevoir) — elle ne doit pas faire baisser artificiellement le fond de roulement au seul motif que du cash a été transformé en avance. `ControlledDebtPaymentService.describe_supplier_balance`/`describe_transporter_balance` retournent déjà un `net_balance = open_advances - total_due` **signé** (positif = avances nettes en faveur de l'entreprise, négatif = dette nette envers le tiers) ; `supplier_net_total`/`transporter_net_total` dans `DashboardViewSet.summary()` sont la somme de ces `net_balance` signés. La formule doit donc **additionner** ces totaux signés, jamais les soustraire comme s'ils étaient de purs montants de dette :
 
 ```
 Fond de roulement réel =
   banques + caisses
   + créances clients
-  - dettes fournisseurs
-  - dettes transporteurs
+  + supplier_net_total   (signé : avances ouvertes fournisseurs − dettes fournisseurs)
+  + transporter_net_total (signé : avances ouvertes transporteurs − dettes transporteurs)
   - dettes douane/transit/frais
 ```
+
+Équivalent : `+ avances ouvertes fournisseurs + avances ouvertes transporteurs - dettes fournisseurs - dettes transporteurs - dettes douane/transit/frais` — mais en pratique on réutilise directement `supplier_net_total`/`transporter_net_total` déjà calculés (ne pas re-décomposer avances/dettes séparément, pour ne jamais désynchroniser avec la logique déjà validée de `ControlledDebtPaymentService`).
 
 Le capital apparaît dans le breakdown à titre **informatif** (source de financement), pas dans le calcul final :
 
 - Capital apporté (info)
 - Trésorerie disponible (banques + caisses)
 - Créances clients
-- Dettes fournisseurs
-- Dettes transporteurs
+- Solde net fournisseurs (avances − dettes, signé)
+- Solde net transporteurs (avances − dettes, signé)
 - Dettes douane/transit/frais
 - **Fond de roulement final** (formule ci-dessus, n'inclut pas "Capital apporté")
 
@@ -108,17 +112,18 @@ Le capital apparaît dans le breakdown à titre **informatif** (source de financ
 - Nouvelle fonction backend, réutilisant les valeurs déjà calculées dans `DashboardViewSet.summary()` sans re-requêter :
   - `bank_amounts["total"] + cash_amounts["total"]` (trésorerie disponible)
   - `customer_amounts["total"]` (créances clients)
-  - `supplier_net_total`, `transporter_net_total` (déjà calculés via `ControlledDebtPaymentService.describe_supplier_balance`/`describe_transporter_balance`)
+  - `supplier_net_total`, `transporter_net_total` (déjà calculés via `ControlledDebtPaymentService.describe_supplier_balance`/`describe_transporter_balance`, **signés**, additionnés tels quels)
   - `customs_total + transit_total + road_transit_total + other_total` (déjà calculés, buckets `debts`)
   - `get_total_capital()` (Phase 1), affiché seul, non sommé dans le résultat final.
-- Ajouté au payload `summary()` sous une clé `working_capital` : `{capital, treasury_available, customer_receivables, supplier_debts, transporter_debts, other_debts, total}`.
+- Ajouté au payload `summary()` sous une clé `working_capital` : `{capital, treasury_available, customer_receivables, supplier_net_balance, transporter_net_balance, other_debts, total}`.
 - Frontend : bloc "Fond de roulement" (Dashboard ou Trésorerie — décidé en implémentation selon la place disponible sans refonte large) avec sous-cartes correspondant au breakdown ci-dessus, "Capital apporté" visuellement distinct (ex. carte "info" non incluse dans la somme visuelle) et "Trésorerie disponible" clairement séparée de "Fond de roulement final".
 
 ### Tests
 
 - Base avec banque + caisse + capital (via apport Phase 1) + client débiteur + dettes fournisseurs/transporteurs/frais : `working_capital.total` ne compte le capital qu'une fois indirectement (via banque/caisse), jamais deux fois.
 - Un apport supplémentaire → `treasury_available` augmente, `working_capital.total` augmente d'autant (pas du double du montant).
-- Un remboursement fournisseur/transporteur → dettes diminuent, `working_capital.total` augmente correctement (trésorerie baisse d'un côté, dette baisse de l'autre côté d'un même montant → effet net nul sur le total, à vérifier explicitement dans le test).
+- **Avance fournisseur de 2 000 000** : banque diminue de 2 000 000, `supplier_net_total` augmente de 2 000 000 (avance ouverte = droit) → `working_capital.total` **inchangé** (cash transformé en avance, pas de perte de fond de roulement).
+- **Paiement d'une dette fournisseur/transporteur déjà due** (pas une avance) : trésorerie baisse, `supplier_net_total`/`transporter_net_total` augmente d'autant (la dette diminue) → effet net sur `working_capital.total` = **0**. Le test doit vérifier explicitement l'égalité avant/après (pas une augmentation).
 
 ---
 
@@ -127,9 +132,11 @@ Le capital apparaît dans le breakdown à titre **informatif** (source de financ
 ### Règle métier
 
 - Dépenses générales = `Expense` non liées à un trajet, payées depuis la trésorerie, diminuent la trésorerie, comptent dans le bénéfice net, jamais dans le coût trajet.
-- Catégories générales créables librement par l'utilisateur (loyer, salaires, internet, électricité, administration, autres, etc.).
-- Catégories système liées aux trajets (douane, transit, transit routière, frontière/border, chargement, transport) protégées — ne doivent pas être supprimées/renommées/désactivées, car elles pilotent le calcul du coût trajet et les dettes du dashboard.
+- Catégories générales créables librement par l'utilisateur : loyer, salaires, internet, électricité, administration, réparations, frais bancaires, autres, et toute catégorie personnalisée.
+- Catégories système liées aux trajets — **customs, transit, road_transit, road (frontière), loading, transport** — protégées : ne doivent pas être supprimées/renommées/désactivées, car elles pilotent le calcul du coût trajet et les dettes du dashboard.
 - Les frais trajet restent liés aux trajets ; la page Dépenses générales ne fait que les afficher en monitoring (lecture seule), sans dupliquer la dette.
+
+**Phase sensible** : la migration `Expense.category` (enum → FK) touche potentiellement un grand nombre de tests existants qui créent des `Expense(category=Expense.Category.X)`. Elle doit être traitée comme une sous-étape isolée à l'intérieur de la Phase 3, avec sa propre passe de tests larges (exécution complète de la suite `finance`/`trips`/`reports` avant et après la migration, pas seulement les tests nouvellement ajoutés) avant de poursuivre sur le reste de la phase.
 
 ### Modèle `ExpenseCategory` (nouveau, précédent : `core.Product`)
 
@@ -206,18 +213,22 @@ Validation serializer : `ExpenseCategoryViewSet` (nouveau, CRUD simple) refuse l
 
 ### Édition / suppression
 
-- Non payé (`UNPAID`) : modification/suppression autorisée sans changement (comportement actuel conservé).
+- Non payé (`UNPAID`) : modification/suppression autorisée sans changement (comportement actuel conservé), **pas de mouvement de trésorerie inverse** puisqu'aucune sortie n'a encore eu lieu.
 - Payé ou partiellement payé (`PAID`/`PARTIALLY_PAID`) :
   - `ExpenseSerializer.validate()` bloque la modification des champs sensibles (`amount`, `calculation_method`, `category`, allocations) avec message clair.
   - Le hard-delete reste bloqué (déjà le cas, `MethodNotAllowed` inconditionnel).
-  - Nouvelle action `POST /api/expenses/{id}/cancel/` (nouveau `ExpensePostingService.cancel_paid_expense(expense, user)`, `@transaction.atomic`) : passe `status=CANCELLED` (déjà dans l'enum), crée une `TreasuryTransaction` `MONEY_IN` compensatoire du montant déjà payé (`source_object=expense`), visible au Journal et dans le Grand livre concerné. Rejette si déjà `CANCELLED`.
+  - Nouvelle action `POST /api/expenses/{id}/cancel/` (nouveau `ExpensePostingService.cancel_paid_expense(expense, user)`, `@transaction.atomic`), qui **respecte le mode de règlement d'origine** :
+    - `paid_by_customer_directly=False` (règlement normal via trésorerie) : calcule le montant **réellement sorti** en sommant les `TreasuryTransaction` `MONEY_OUT` déjà liées à cette dépense (pas `expense.amount` brut — pertinent pour un `PARTIALLY_PAID`), crée une `TreasuryTransaction` `MONEY_IN` compensatoire de ce même montant exact, sur le même type de compte (banque/caisse) que la sortie d'origine.
+    - `paid_by_customer_directly=True` (réglé indirectement par le client via `IndirectSettlementService`, jamais passé par la trésorerie de l'entreprise) : **aucune** `TreasuryTransaction` n'est créée à l'annulation — il faut inverser l'effet indirect existant (restaurer la créance client correspondante) en s'appuyant sur la logique déjà présente d'`IndirectSettlementService`, à confirmer/adapter précisément en implémentation plutôt que de fabriquer un mouvement banque/caisse qui n'a jamais existé.
+    - Dans les deux cas : passe `status=CANCELLED` (déjà dans l'enum), visible au Journal et au Grand livre concerné, rejette si déjà `CANCELLED`.
 
 ### Tests
 
 - Frais Par litre : total = montant × quantité.
 - Frais Par camion sur 45 000 L, montant 10 000 XOF → total trajet = 10 000 XOF, coût/L ≈ 0,222.
-- Modification/suppression d'un frais non payé → OK.
-- Modification d'un frais payé → rejetée ; annulation via `/cancel/` → `status=CANCELLED` + `TreasuryTransaction` inverse créée, coût trajet et bénéfice recalculés sans ce frais.
+- Modification/suppression d'un frais non payé → OK, aucune `TreasuryTransaction` créée.
+- Modification d'un frais payé → rejetée ; annulation via `/cancel/` sur un frais réglé via trésorerie → `status=CANCELLED` + `TreasuryTransaction` `MONEY_IN` inverse créée pour le montant réellement sorti (pas `expense.amount` si `PARTIALLY_PAID`), coût trajet et bénéfice recalculés sans ce frais.
+- Annulation d'un frais réglé indirectement par le client (`paid_by_customer_directly=True`) → `status=CANCELLED`, **aucune** `TreasuryTransaction` créée, créance client restaurée en conséquence.
 - Prix de revient/L et bénéfice trajet corrects après passage Par camion.
 
 ---
@@ -254,6 +265,10 @@ Validation serializer : `ExpenseCategoryViewSet` (nouveau, CRUD simple) refuse l
 ### Migration des données existantes
 
 - Rapport (management command ou script one-shot, pas de migration silencieuse) listant les camions `EXTERNAL` existants sans `owner_transporter` pour correction manuelle avant d'activer la contrainte bloquante en base — pas d'invention automatique de transporteur.
+
+### Vérification exhaustive avant merge
+
+Avant de fusionner cette phase, recherche exhaustive de tous les accès `.transporter.` (attribut, pas juste les 4 sites déjà identifiés en investigation : `trip_report.py:40`, `dashboard.py:328`, `sync_transport_shortage_deduction`, `TransportPaymentSerializer.validate`) côté backend **et** frontend (`trip.transporter.name`, `trip.transporter_detail?.name`, accès similaires en `.vue`/`.ts`), pour s'assurer qu'aucun ne plante sur `transporter=null`. Cette recherche doit être refaite au moment de l'implémentation (le code a pu changer depuis l'investigation initiale) et documentée dans le résumé final de la phase.
 
 ### Tests
 
