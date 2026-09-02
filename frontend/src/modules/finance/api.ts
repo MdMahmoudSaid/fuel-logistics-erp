@@ -267,9 +267,10 @@ export function fetchShareholderLedger(shareholderId: number): Promise<Sharehold
 // Read-only, indicative current-profit split - never stored, never gates
 // a withdrawal. `from`/`to` are optional; omitted, the backend defaults to
 // the period since the last VALIDATED distribution (or all-time if none).
-export function fetchShareholderProfitPreview(
-  params?: Record<string, string | undefined>,
-): Promise<ShareholderProfitPreview> {
+export function fetchShareholderProfitPreview(params?: {
+  from?: string
+  to?: string
+}): Promise<ShareholderProfitPreview> {
   return apiClient
     .get<ShareholderProfitPreview>('/shareholders/profit-preview/', { params })
     .then((r) => r.data)
