@@ -43,12 +43,15 @@ Nouveau modèle `ShareholderContribution` (app `finance`, hérite `AuditableMode
 
 ### Service
 
-- `ShareholderContributionService.record_contribution(shareholder, amount, bank_account_id|cash_account_id, date, reference, note, attachment, user)` — `@transaction.atomic` :
-  1. Valide l'image (`validate_image_upload`), obligatoire.
-  2. Crée le `Document` (`document_type="shareholder_contribution_proof"`).
+Le justificatif étant obligatoire (comme les avances), le précédent le plus proche est `AdvanceService.create_supplier_advance` (`backend/apps/finance/services.py:549-587`) — création directe (`Document` + `TreasuryTransaction`), pas d'indirection par `FinancePostingService._post_treasury` (réservée aux flux où le document reste optionnel, comme les retraits associés).
+
+- `ShareholderContributionService.record_contribution(*, shareholder_id, amount, date, reference, notes, bank_account_id=None, cash_account_id=None, attachment, actor)` — `@transaction.atomic`, même forme que `create_supplier_advance` :
+  1. `select_for_update` sur le `Shareholder`.
+  2. Verrouille le compte cible (banque ou caisse), vérifie exactement un des deux fourni.
   3. Crée la ligne `ShareholderContribution`.
-  4. Appelle `FinancePostingService.record_shareholder_contribution_treasury(contribution)` — nouvelle méthode miroir de `record_shareholder_withdrawal_treasury`, `type=MONEY_IN`, `source_object=contribution`, `document=contribution.document`.
-- Verrou (`select_for_update`) sur le compte cible, comme les autres postings trésorerie.
+  4. Crée le `Document` (`document_type="shareholder_contribution_proof"`), le lie à la contribution.
+  5. Crée la `TreasuryTransaction` (`type=MONEY_IN`, `source_object=contribution`, `document=document`).
+- Pas de vérification de solde bancaire (contrairement à un retrait) : un apport augmente le compte, aucune contrainte de solde suffisant à vérifier.
 
 ### Capital total
 
@@ -57,8 +60,9 @@ Nouveau modèle `ShareholderContribution` (app `finance`, hérite `AuditableMode
 
 ### Ledger associé
 
-- `ShareholderStatementQuery` (`backend/apps/reports/queries/shareholder_statement.py`) : ajoute un type de ligne `CONTRIBUTION` (crédit), fusionné chronologiquement avec `PROFIT_SHARE`/`WITHDRAWAL`/`LOAN_*`, même structure `{type, date, amount, reference, note, proof_url}`.
-- `ShareholderLedgerService.get_shareholder_summary` : inchangé dans sa formule de solde disponible (les apports ne financent pas de retrait, ils augmentent le capital, pas `available_balance`) — à confirmer explicitement en implémentation que la contribution n'entre PAS dans `get_available_balance` (elle n'est pas un profit distribuable).
+- **Ne pas** fusionner l'apport dans `ShareholderStatementQuery` (`backend/apps/reports/queries/shareholder_statement.py`) : ce relevé maintient un solde courant dont l'invariant documenté est `balance == ShareholderLedgerService.get_available_balance()` (équité distribuable : parts de bénéfice, retraits, prêts). Un apport en capital n'est pas distribuable — l'ajouter comme ligne de crédit y gonflerait artificiellement ce solde et casserait l'invariant.
+- À la place : nouvelle méthode `ShareholderContributionService.get_contribution_history(shareholder_id)` retournant la liste chronologique des `ShareholderContribution` avec un total cumulé de capital (calcul indépendant, pas mélangé à `balance`). Affiché comme section/tab distincte "Capital" dans `ShareholderView.vue`, à côté du relevé existant — répond à l'exigence "le Grand livre de l'associé affiche l'apport" sans toucher au solde validé.
+- `ShareholderLedgerService.get_shareholder_summary`/`get_available_balance` : **inchangés**, la contribution n'y entre jamais (elle augmente le capital, pas le solde distribuable).
 
 ### UI
 
