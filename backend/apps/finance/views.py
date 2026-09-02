@@ -52,6 +52,8 @@ from .serializers import (
 from .services import (
     ControlledDebtPaymentError,
     ControlledDebtPaymentService,
+    ExpenseCancellationError,
+    ExpensePostingService,
     IndirectSettlementService,
     PaymentAllocationError,
     ShareholderDistributionService,
@@ -197,6 +199,22 @@ class ExpenseViewSet(viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         raise MethodNotAllowed("DELETE", detail=_NO_HARD_DELETE_DETAIL)
+
+    @action(detail=True, methods=["post"])
+    def cancel(self, request, pk=None):
+        """Reverse a PAID/PARTIALLY_PAID Expense (Phase 5, docs/superpowers/
+        specs/2026-09-02-business-corrections-6-phases-design.md): the only
+        way to unwind a fee once payment has moved, since PATCH blocks its
+        sensitive fields past that point.
+
+        POST /api/expenses/{id}/cancel/
+        """
+        expense = self.get_object()
+        try:
+            expense = ExpensePostingService.cancel_paid_expense(expense, request.user)
+        except ExpenseCancellationError as exc:
+            return Response({"detail": str(exc)}, status=http_status.HTTP_400_BAD_REQUEST)
+        return Response(ExpenseSerializer(expense, context={"request": request}).data)
 
     @action(detail=False, methods=["post"], url_path="record-indirect")
     def record_indirect(self, request):

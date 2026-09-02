@@ -4187,3 +4187,323 @@ def test_general_expense_does_not_change_trip_cost_basis():
     after = TripCostService.calculate_trip_cost_basis(trip)
     assert after["total_expenses"] == before["total_expenses"]
     assert after["total_cost"] == before["total_cost"]
+
+
+# ---------------------------------------------------------------------------
+# Phase 5 (docs/superpowers/specs/2026-09-02-business-corrections-6-phases-
+# design.md): Par litre / Par camion calculation for trip-allocated fees,
+# PAID/PARTIALLY_PAID edit lock, and POST /api/expenses/{id}/cancel/.
+# ---------------------------------------------------------------------------
+
+
+def _admin_client(suffix):
+    admin_role = Role.objects.get(name=Role.NAME_ADMIN)
+    admin_user = User.objects.create_user(
+        phone=(f"+222{suffix}")[:20], pin="1234", role=admin_role
+    )
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    return client, admin_user
+
+
+@pytest.mark.django_db
+def test_trip_fee_per_litre_total_is_rate_times_quantity_loaded(finance_client):
+    trip, _ = _make_trip_for_deduction("PERLITRE")
+    trip_content_type_id = ContentType.objects.get_for_model(Trip).id
+
+    response = finance_client.post(
+        "/api/expenses/",
+        {
+            "category": "customs",
+            "amount": "100.00",
+            "calculation_method": "PER_LITRE",
+            "date": "2026-09-02",
+            "allocations": [
+                {
+                    "content_type": trip_content_type_id,
+                    "object_id": trip.id,
+                    "allocated_amount": "1.00",
+                }
+            ],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201, response.data
+    expense = Expense.objects.get(pk=response.data["id"])
+    # "montant saisi" (amount) stays the XOF/L rate as typed - never
+    # overwritten with the computed total.
+    assert expense.amount == Decimal("100.00")
+    allocation = expense.allocations.get(object_id=trip.id)
+    assert allocation.allocated_amount == Decimal("100.00") * trip.quantity_loaded
+
+
+@pytest.mark.django_db
+def test_trip_fee_per_truck_total_is_unmultiplied_and_unit_cost_derived(finance_client):
+    trip, _ = _make_trip_for_deduction("PERTRUCK")
+    assert trip.quantity_loaded == Decimal("45000.00")
+    trip_content_type_id = ContentType.objects.get_for_model(Trip).id
+
+    response = finance_client.post(
+        "/api/expenses/",
+        {
+            "category": "customs",
+            "amount": "10000.00",
+            "calculation_method": "PER_TRUCK",
+            "date": "2026-09-02",
+            "allocations": [
+                {
+                    "content_type": trip_content_type_id,
+                    "object_id": trip.id,
+                    "allocated_amount": "1.00",
+                }
+            ],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201, response.data
+    expense = Expense.objects.get(pk=response.data["id"])
+    allocation = expense.allocations.get(object_id=trip.id)
+    # Par camion: total = montant saisi, never multiplied by quantity.
+    assert allocation.allocated_amount == Decimal("10000.00")
+
+    from apps.trips.services import TripCostService
+
+    cost_basis = TripCostService.calculate_trip_cost_basis(trip)
+    unit_cost = (allocation.allocated_amount / trip.quantity_loaded).quantize(Decimal("0.0001"))
+    assert unit_cost == Decimal("0.2222")
+    assert cost_basis["expenses_by_category"]["customs"] == Decimal("10000.00")
+
+
+@pytest.mark.django_db
+def test_trip_allocation_rejects_calculation_methods_other_than_per_litre_or_truck(
+    finance_client,
+):
+    trip, _ = _make_trip_for_deduction("BADMETHOD")
+    trip_content_type_id = ContentType.objects.get_for_model(Trip).id
+
+    response = finance_client.post(
+        "/api/expenses/",
+        {
+            "category": "customs",
+            "amount": "100000.00",
+            "calculation_method": "FIXED",
+            "date": "2026-09-02",
+            "allocations": [
+                {
+                    "content_type": trip_content_type_id,
+                    "object_id": trip.id,
+                    "allocated_amount": "100000.00",
+                }
+            ],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "Par litre" in str(response.data) or "Par camion" in str(response.data)
+
+
+@pytest.mark.django_db
+def test_unpaid_trip_fee_can_be_edited_freely_with_no_treasury_movement(finance_client):
+    trip, _ = _make_trip_for_deduction("EDITUNPAID")
+    expense = Expense.objects.create(
+        category=Expense.Category.CUSTOMS,
+        amount=Decimal("100.00"),
+        calculation_method=Expense.CalculationMethod.PER_LITRE,
+        date="2026-09-02",
+        status=Expense.Status.UNPAID,
+    )
+    ExpenseAllocation.objects.create(
+        expense=expense,
+        content_type=ContentType.objects.get_for_model(Trip),
+        object_id=trip.id,
+        allocated_amount=Decimal("100.00") * trip.quantity_loaded,
+    )
+    treasury_count_before = TreasuryTransaction.objects.count()
+
+    response = finance_client.patch(
+        f"/api/expenses/{expense.id}/", {"amount": "150.00"}, format="json"
+    )
+
+    assert response.status_code == 200, response.data
+    expense.refresh_from_db()
+    assert expense.amount == Decimal("150.00")
+    assert TreasuryTransaction.objects.count() == treasury_count_before
+
+
+@pytest.mark.django_db
+def test_paid_expense_rejects_amount_modification(finance_client):
+    expense = Expense.objects.create(
+        category=Expense.Category.RENT,
+        amount=Decimal("50000.00"),
+        calculation_method=Expense.CalculationMethod.MANUAL,
+        date="2026-09-02",
+        status=Expense.Status.PAID,
+    )
+
+    response = finance_client.patch(
+        f"/api/expenses/{expense.id}/", {"amount": "60000.00"}, format="json"
+    )
+
+    assert response.status_code == 400
+    assert "annulation" in str(response.data)
+    expense.refresh_from_db()
+    assert expense.amount == Decimal("50000.00")
+
+
+@pytest.mark.django_db
+def test_cancel_fully_paid_treasury_expense_reverses_and_clears_trip_cost():
+    client, admin_user = _admin_client("CANCELPAIDA")
+    trip, _ = _make_trip_for_deduction("CANCELPAIDB")
+    bank_account = BankAccount.objects.create(
+        name="Banque annulation", opening_balance=Decimal("1000000.00")
+    )
+    expense = Expense.objects.create(
+        category=Expense.Category.CUSTOMS,
+        amount=Decimal("100000.00"),
+        calculation_method=Expense.CalculationMethod.PER_TRUCK,
+        date="2026-09-02",
+        status=Expense.Status.PAID,
+    )
+    ExpenseAllocation.objects.create(
+        expense=expense,
+        content_type=ContentType.objects.get_for_model(Trip),
+        object_id=trip.id,
+        allocated_amount=Decimal("100000.00"),
+    )
+    TreasuryTransaction.objects.create(
+        bank_account=bank_account,
+        type=TreasuryTransaction.Type.MONEY_OUT,
+        amount=Decimal("100000.00"),
+        date="2026-09-02",
+        source_content_type=ContentType.objects.get_for_model(Expense),
+        source_object_id=expense.id,
+        recorded_by=admin_user,
+    )
+
+    from apps.trips.services import TripCostService
+
+    before = TripCostService.calculate_trip_cost_basis(trip)
+    assert before["expenses_by_category"]["customs"] == Decimal("100000.00")
+
+    response = client.post(f"/api/expenses/{expense.id}/cancel/")
+
+    assert response.status_code == 200, response.data
+    expense.refresh_from_db()
+    assert expense.status == Expense.Status.CANCELLED
+
+    reversal = TreasuryTransaction.objects.get(
+        source_content_type=ContentType.objects.get_for_model(Expense),
+        source_object_id=expense.id,
+        type=TreasuryTransaction.Type.MONEY_IN,
+    )
+    assert reversal.amount == Decimal("100000.00")
+    assert reversal.bank_account == bank_account
+
+    after = TripCostService.calculate_trip_cost_basis(trip)
+    assert "customs" not in after["expenses_by_category"]
+    assert after["total_cost"] == before["total_cost"] - Decimal("100000.00")
+
+
+@pytest.mark.django_db
+def test_cancel_partially_paid_expense_reverses_only_the_amount_actually_paid():
+    client, admin_user = _admin_client("CANCELPARTIAL")
+    bank_account = BankAccount.objects.create(
+        name="Banque partielle", opening_balance=Decimal("1000000.00")
+    )
+    expense = Expense.objects.create(
+        category=Expense.Category.RENT,
+        amount=Decimal("200000.00"),
+        calculation_method=Expense.CalculationMethod.MANUAL,
+        date="2026-09-02",
+        status=Expense.Status.PARTIALLY_PAID,
+    )
+    TreasuryTransaction.objects.create(
+        bank_account=bank_account,
+        type=TreasuryTransaction.Type.MONEY_OUT,
+        amount=Decimal("80000.00"),
+        date="2026-09-02",
+        source_content_type=ContentType.objects.get_for_model(Expense),
+        source_object_id=expense.id,
+        recorded_by=admin_user,
+    )
+
+    response = client.post(f"/api/expenses/{expense.id}/cancel/")
+
+    assert response.status_code == 200, response.data
+    reversal = TreasuryTransaction.objects.get(
+        source_content_type=ContentType.objects.get_for_model(Expense),
+        source_object_id=expense.id,
+        type=TreasuryTransaction.Type.MONEY_IN,
+    )
+    # Reverses the 80 000 actually paid, never the 200 000 face amount.
+    assert reversal.amount == Decimal("80000.00")
+
+
+@pytest.mark.django_db
+def test_cancel_indirect_expense_restores_customer_receivable_with_no_treasury_row():
+    client, admin_user = _admin_client("CANCELINDIRA")
+    _, customer, invoice = _make_invoice_for_payment(
+        "CANCELINDIRB", total_amount=Decimal("50000000.00")
+    )
+    treasury_count_before = TreasuryTransaction.objects.count()
+
+    expense, payment, allocation = IndirectSettlementService.record_indirect_payment(
+        customer_id=customer.id,
+        expense_data={
+            "category": Expense.Category.CUSTOMS,
+            "amount": Decimal("5000000.00"),
+            "date": "2026-08-18",
+        },
+        actor=admin_user,
+        invoice_id=invoice.id,
+    )
+    assert PaymentAllocationService.get_customer_outstanding(customer) == Decimal("45000000.00")
+
+    response = client.post(f"/api/expenses/{expense.id}/cancel/")
+
+    assert response.status_code == 200, response.data
+    expense.refresh_from_db()
+    assert expense.status == Expense.Status.CANCELLED
+    assert TreasuryTransaction.objects.count() == treasury_count_before
+    # Never hard-deleted (AuditableModel blocks that past draft) - marked
+    # reversed instead, and every balance consumer excludes it.
+    payment.refresh_from_db()
+    assert payment.is_reversed is True
+    assert PaymentAllocationService.get_customer_outstanding(customer) == Decimal("50000000.00")
+    assert PaymentAllocationService.get_invoice_outstanding(invoice) == invoice.total_amount
+
+
+@pytest.mark.django_db
+def test_cancel_already_cancelled_expense_is_rejected():
+    client, _ = _admin_client("CANCELTWICE")
+    expense = Expense.objects.create(
+        category=Expense.Category.RENT,
+        amount=Decimal("10000.00"),
+        calculation_method=Expense.CalculationMethod.MANUAL,
+        date="2026-09-02",
+        status=Expense.Status.CANCELLED,
+    )
+
+    response = client.post(f"/api/expenses/{expense.id}/cancel/")
+
+    assert response.status_code == 400
+    assert "annule" in str(response.data)
+
+
+@pytest.mark.django_db
+def test_cancel_unpaid_expense_is_rejected():
+    client, _ = _admin_client("CANCELUNPAID")
+    expense = Expense.objects.create(
+        category=Expense.Category.RENT,
+        amount=Decimal("10000.00"),
+        calculation_method=Expense.CalculationMethod.MANUAL,
+        date="2026-09-02",
+        status=Expense.Status.UNPAID,
+    )
+
+    response = client.post(f"/api/expenses/{expense.id}/cancel/")
+
+    assert response.status_code == 400

@@ -28,7 +28,12 @@ class CustomerSerializer(serializers.ModelSerializer):
         return f"{total:.2f}"
 
     def get_total_collected(self, obj) -> str:
-        total = obj.payments.aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
+        # Excludes is_reversed=True (Phase 5: a cancelled indirect
+        # settlement's synthetic payment must not still count as collected).
+        total = (
+            obj.payments.exclude(is_reversed=True).aggregate(total=Sum("amount"))["total"]
+            or Decimal("0.00")
+        )
         return f"{total:.2f}"
 
     def get_outstanding_balance(self, obj) -> str:

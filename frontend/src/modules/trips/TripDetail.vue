@@ -22,7 +22,7 @@ import Button from '@/components/ui/Button.vue'
 import Card from '@/components/ui/Card.vue'
 import Modal from '@/components/ui/Modal.vue'
 import { useTripStatusLabel } from './tripStatusLabels'
-import { expenseResource } from '@/modules/finance/api'
+import { cancelExpense, expenseResource } from '@/modules/finance/api'
 import { transportPaymentResource } from '@/modules/finance/api'
 import ExpenseForm from '@/modules/finance/ExpenseForm.vue'
 import TransportPaymentForm from '@/modules/finance/TransportPaymentForm.vue'
@@ -74,6 +74,12 @@ const automaticExpense = ref<{
   category: ExpenseCategory
 } | null>(null)
 const canManageExpenses = computed(() => auth.can('finance', 'create'))
+// Phase 5: POST /api/expenses/{id}/cancel/ requires the "cancel" tier
+// (backend/apps/accounts/permissions.py ACTION_MAP falls back to the raw
+// action name "cancel", same tier already gating destroy/hard-delete
+// elsewhere) - not every finance-create role has it.
+const canCancelExpenses = computed(() => auth.can('finance', 'cancel'))
+const cancellingExpenseId = ref<number | null>(null)
 
 // Client modification Task 2: transporter fees per litre create payable
 // debt - same "finance" module create permission gates both forms.
@@ -152,6 +158,20 @@ async function onExpenseSaved() {
   showExpenseForm.value = false
   automaticExpense.value = null
   await Promise.all([loadExpenses(), loadMargin()])
+}
+
+async function onCancelExpense(expense: Expense) {
+  cancellingExpenseId.value = expense.id
+  expensesError.value = ''
+  try {
+    await cancelExpense(expense.id)
+    await Promise.all([loadExpenses(), loadMargin()])
+  } catch (e) {
+    const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+    expensesError.value = translateApiError(detail) || t('trips.detail.expensesLoadError')
+  } finally {
+    cancellingExpenseId.value = null
+  }
 }
 
 async function onTransportPaymentSaved() {
@@ -558,7 +578,7 @@ const cessionProofUrl = computed(() => trip.value?.cession_letter_detail?.docume
             <li
               v-for="expense in expenses"
               :key="expense.id"
-              class="grid grid-cols-[1fr_auto] gap-3 py-2 text-sm"
+              class="grid grid-cols-[1fr_auto] items-start gap-3 py-2 text-sm"
             >
               <div>
                 <p class="text-texte font-medium">{{ tripExpenseLabel(expense) }}</p>
@@ -567,11 +587,29 @@ const cessionProofUrl = computed(() => trip.value?.cession_letter_detail?.docume
                   {{ formatUnitMoney(expenseUnitPrice(expense)) }} ·
                   {{ formatQuantity(trip.quantity_loaded) }}
                 </p>
+                <p v-if="expense.status === 'CANCELLED'" class="text-critique text-xs font-medium">
+                  {{ t('trips.detail.expenseCancelled') }}
+                </p>
               </div>
-              <MonoValue
-                :value="formatMoney(tripAllocation(expense)?.allocated_amount ?? expense.amount)"
-                align="left"
-              />
+              <div class="flex flex-col items-end gap-1">
+                <MonoValue
+                  :value="formatMoney(tripAllocation(expense)?.allocated_amount ?? expense.amount)"
+                  align="left"
+                  :class="expense.status === 'CANCELLED' ? 'text-texte-3 line-through' : ''"
+                />
+                <button
+                  v-if="
+                    canCancelExpenses &&
+                    (expense.status === 'PAID' || expense.status === 'PARTIALLY_PAID')
+                  "
+                  type="button"
+                  class="text-critique text-xs hover:brightness-90 disabled:opacity-50"
+                  :disabled="cancellingExpenseId === expense.id"
+                  @click="onCancelExpense(expense)"
+                >
+                  {{ t('trips.detail.cancelExpense') }}
+                </button>
+              </div>
             </li>
             <li
               v-if="!expenses.length && !transportPayments.length"
@@ -688,7 +726,7 @@ const cessionProofUrl = computed(() => trip.value?.cession_letter_detail?.docume
             :title="automaticExpense?.title"
             :initial-category="automaticExpense?.category"
             :initial-calculation-method="automaticExpense ? 'PER_LITRE' : undefined"
-            :per-litre-quantity="automaticExpense ? trip.quantity_loaded : undefined"
+            :per-litre-quantity="trip.quantity_loaded"
             @success="onExpenseSaved"
             @cancel=";(showExpenseForm = false), (automaticExpense = null)"
           />

@@ -59,10 +59,18 @@ interface AccountOption {
   name: string
 }
 
+// Phase 5 (docs/superpowers/specs/2026-09-02-business-corrections-6-phases-
+// design.md): a trip-allocated fee only ever uses "Par litre" or "Par
+// camion" (backend ExpenseSerializer.validate() enforces the same rule) -
+// "Manuel" isn't even a valid choice once presetAllocation targets a trip.
+const isTripAllocation = computed(() => props.presetAllocation?.kind === 'trip')
+
 const form = ref<ExpenseFormState>({
   category: props.initialCategory ?? 'other',
   amount: '',
-  calculation_method: props.initialCalculationMethod ?? ('MANUAL' as ExpenseCalculationMethod),
+  calculation_method:
+    props.initialCalculationMethod ??
+    ((isTripAllocation.value ? 'PER_LITRE' : 'MANUAL') as ExpenseCalculationMethod),
   date: new Date().toISOString().slice(0, 10),
   notes: '',
 })
@@ -197,15 +205,28 @@ async function onCustomerChange() {
 
 const saving = ref(false)
 const error = ref('')
+// "Par litre" preview only - the backend (ExpenseSerializer._resolve_
+// allocated_amount) is the authoritative source for a trip allocation's
+// real total, computed the same way from the same inputs. `form.amount`
+// itself always stays the XOF/L rate as typed - it is never overwritten
+// with this computed total before submission.
 const perLitreMode = computed(
   () => form.value.calculation_method === 'PER_LITRE' && Boolean(props.perLitreQuantity),
 )
-const amountTotal = computed(() => {
-  if (!perLitreMode.value) return form.value.amount
+const perLitreTotal = computed(() => {
   const quantity = Number(props.perLitreQuantity)
   const amount = Number(form.value.amount)
   if (!quantity || !amount) return form.value.amount
   return (quantity * amount).toFixed(2)
+})
+const perTruckMode = computed(
+  () => form.value.calculation_method === 'PER_TRUCK' && Boolean(props.perLitreQuantity),
+)
+const perTruckUnitCost = computed(() => {
+  const quantity = Number(props.perLitreQuantity)
+  const amount = Number(form.value.amount)
+  if (!quantity || !amount) return '0'
+  return (amount / quantity).toFixed(4)
 })
 
 async function onSubmit() {
@@ -217,7 +238,7 @@ async function onSubmit() {
         customer: Number(indirectForm.value.customer),
         invoice: indirectForm.value.invoice ? Number(indirectForm.value.invoice) : null,
         category: form.value.category,
-        amount: amountTotal.value,
+        amount: form.value.amount,
         calculation_method: form.value.calculation_method,
         date: form.value.date,
         notes: form.value.notes,
@@ -231,7 +252,11 @@ async function onSubmit() {
       .map((line) => ({
         content_type: allocatableTypes.value[line.kind as AllocatableKind] ?? null,
         object_id: line.objectId,
-        allocated_amount: perLitreMode.value ? amountTotal.value : line.allocatedAmount,
+        // For a trip allocation under PER_LITRE/PER_TRUCK the backend
+        // recomputes this authoritatively from amount + the trip's
+        // quantity_loaded (Phase 5) - this only satisfies the required-
+        // field validator, it is never trusted as-is in that case.
+        allocated_amount: line.allocatedAmount,
       }))
 
     const paymentFields = props.showTreasuryPayment
@@ -249,7 +274,7 @@ async function onSubmit() {
 
     await expenseResource.create({
       category: form.value.category,
-      amount: amountTotal.value,
+      amount: form.value.amount,
       calculation_method: form.value.calculation_method,
       date: form.value.date,
       notes: form.value.notes,
@@ -341,13 +366,22 @@ async function onSubmit() {
             v-model="form.calculation_method"
             class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           >
-            <option value="FIXED">{{ t('expenseCalcMethod.FIXED') }}</option>
-            <option value="PER_LITRE">{{ t('expenseCalcMethod.PER_LITRE') }}</option>
-            <option value="PERCENTAGE">{{ t('expenseCalcMethod.PERCENTAGE') }}</option>
-            <option value="PER_ORDER">{{ t('expenseCalcMethod.PER_ORDER') }}</option>
-            <option value="PER_TRUCK">{{ t('expenseCalcMethod.PER_TRUCK') }}</option>
-            <option value="MANUAL">{{ t('expenseCalcMethod.MANUAL') }}</option>
+            <template v-if="isTripAllocation">
+              <option value="PER_LITRE">{{ t('expenseCalcMethod.PER_LITRE') }}</option>
+              <option value="PER_TRUCK">{{ t('expenseCalcMethod.PER_TRUCK') }}</option>
+            </template>
+            <template v-else>
+              <option value="FIXED">{{ t('expenseCalcMethod.FIXED') }}</option>
+              <option value="PER_LITRE">{{ t('expenseCalcMethod.PER_LITRE') }}</option>
+              <option value="PERCENTAGE">{{ t('expenseCalcMethod.PERCENTAGE') }}</option>
+              <option value="PER_ORDER">{{ t('expenseCalcMethod.PER_ORDER') }}</option>
+              <option value="PER_TRUCK">{{ t('expenseCalcMethod.PER_TRUCK') }}</option>
+              <option value="MANUAL">{{ t('expenseCalcMethod.MANUAL') }}</option>
+            </template>
           </select>
+          <p v-if="isTripAllocation" class="text-texte-3 text-xs">
+            {{ t('finance.expense.tripCalculationMethodHint') }}
+          </p>
         </div>
 
         <div class="space-y-1.5">
@@ -503,7 +537,17 @@ async function onSubmit() {
           <span class="text-texte-2">{{ t('finance.expense.perLitreCalculation') }}</span>
           <span class="text-texte font-medium">
             {{ formatQuantity(perLitreQuantity ?? 0) }} × {{ formatUnitMoney(form.amount || 0) }} =
-            {{ formatMoney(amountTotal || 0) }}
+            {{ formatMoney(perLitreTotal || 0) }}
+          </span>
+        </div>
+        <div
+          v-if="perTruckMode"
+          class="border-ligne flex items-center justify-between rounded-lg border bg-fond px-3.5 py-2.5 text-sm"
+        >
+          <span class="text-texte-2">{{ t('finance.expense.perTruckCalculation') }}</span>
+          <span class="text-texte font-medium">
+            {{ formatMoney(form.amount || 0) }} / {{ formatQuantity(perLitreQuantity ?? 0) }} =
+            {{ perTruckUnitCost }} XOF/L
           </span>
         </div>
         <div class="flex items-center justify-between">
@@ -511,7 +555,7 @@ async function onSubmit() {
             {{ t('finance.expense.allocationOptional') }}
           </h2>
           <button
-            v-if="!perLitreMode"
+            v-if="!perLitreMode && !perTruckMode"
             type="button"
             class="text-texte-2 hover:text-texte text-sm"
             @click="addLine"

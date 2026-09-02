@@ -54,7 +54,16 @@ class PaymentAllocationService:
 
     @staticmethod
     def get_invoice_outstanding(invoice: Invoice) -> Decimal:
-        allocated = invoice.allocations.aggregate(total=Sum("amount"))["total"] or ZERO
+        # Excludes allocations whose CustomerPayment was reversed (Phase 5:
+        # cancelling an indirectly-settled expense) - the PaymentAllocation
+        # row itself is kept (audit trail), only its money effect stops
+        # counting, same rule as get_customer_outstanding below.
+        allocated = (
+            invoice.allocations.exclude(payment__is_reversed=True).aggregate(total=Sum("amount"))[
+                "total"
+            ]
+            or ZERO
+        )
         return invoice.total_amount - allocated
 
     @staticmethod
@@ -70,7 +79,8 @@ class PaymentAllocationService:
             or ZERO
         )
         total_received = (
-            customer.payments.aggregate(total=Sum("amount"))["total"] or ZERO
+            customer.payments.exclude(is_reversed=True).aggregate(total=Sum("amount"))["total"]
+            or ZERO
         )
         return total_invoiced - total_received
 
@@ -199,7 +209,81 @@ class IndirectSettlementService:
         if invoice is not None:
             PaymentAllocationService._sync_invoice_status(invoice)
 
+        expense.indirect_settlement_payment = payment
+        expense.save(update_fields=["indirect_settlement_payment", "updated_at"])
+
         return expense, payment, allocation
+
+
+class ExpenseCancellationError(ValueError):
+    """Raised when an Expense cannot be cancelled as requested."""
+
+
+class ExpensePostingService:
+    """Cancels a PAID/PARTIALLY_PAID Expense (Phase 5, docs/superpowers/
+    specs/2026-09-02-business-corrections-6-phases-design.md) by reversing
+    it through whichever settlement path actually paid it - never a
+    silent delete of a transaction that already had accounting impact,
+    and never fabricating a treasury movement (bank/cash) that never
+    happened for an indirect (customer-paid) settlement.
+    """
+
+    @staticmethod
+    @transaction.atomic
+    def cancel_paid_expense(expense: Expense, actor) -> Expense:
+        expense = Expense.objects.select_for_update().get(pk=expense.pk)
+        if expense.status == Expense.Status.CANCELLED:
+            raise ExpenseCancellationError("Ce frais est deja annule.")
+        if expense.status == Expense.Status.UNPAID:
+            raise ExpenseCancellationError(
+                "Ce frais n'est pas paye ; modifiez-le ou supprimez-le directement."
+            )
+
+        if expense.paid_by_customer_directly:
+            # Never passed through company treasury (IndirectSettlementService
+            # docstring) - reversing means undoing the synthetic CustomerPayment
+            # it created to reduce the receivable, not fabricating a bank/cash
+            # movement that never existed. is_reversed=True, never delete()
+            # (AuditableModel blocks hard-deleting a CustomerPayment past
+            # draft) - every balance/ledger consumer excludes it instead.
+            payment = expense.indirect_settlement_payment
+            if payment is not None and not payment.is_reversed:
+                invoice = (
+                    payment.allocations.exclude(invoice__isnull=True)
+                    .values_list("invoice", flat=True)
+                    .first()
+                )
+                payment.is_reversed = True
+                payment.save(update_fields=["is_reversed", "updated_at"])
+                if invoice is not None:
+                    PaymentAllocationService._sync_invoice_status(Invoice.objects.get(pk=invoice))
+        else:
+            # PARTIALLY_PAID means only part of expense.amount actually left
+            # treasury - reverse that real, summed amount, not expense.amount.
+            content_type = ContentType.objects.get_for_model(Expense)
+            paid_transactions = TreasuryTransaction.objects.filter(
+                source_content_type=content_type,
+                source_object_id=expense.id,
+                type=TreasuryTransaction.Type.MONEY_OUT,
+            )
+            paid_amount = paid_transactions.aggregate(total=Sum("amount"))["total"] or ZERO
+            if paid_amount > ZERO:
+                original = paid_transactions.order_by("id").first()
+                TreasuryTransaction.objects.create(
+                    bank_account=original.bank_account,
+                    cash_account=original.cash_account,
+                    type=TreasuryTransaction.Type.MONEY_IN,
+                    amount=paid_amount,
+                    date=timezone.localdate(),
+                    note=f"Annulation frais #{expense.id}",
+                    source_content_type=content_type,
+                    source_object_id=expense.id,
+                    recorded_by=actor,
+                )
+
+        expense.status = Expense.Status.CANCELLED
+        expense.save(update_fields=["status", "updated_at"])
+        return expense
 
 
 class FinancePostingService:

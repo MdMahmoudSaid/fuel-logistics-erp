@@ -13,6 +13,7 @@ from apps.documents.validators import validate_image_upload
 from apps.finance.labels import describe_treasury_transaction
 from apps.suppliers.serializers import SupplierSerializer
 from apps.transport.serializers import TransporterSerializer
+from apps.trips.models import Trip
 
 from .models import (
     BankAccount,
@@ -610,6 +611,18 @@ class ExpenseCategorySerializer(serializers.ModelSerializer):
 
 
 class ExpenseSerializer(serializers.ModelSerializer):
+    # Phase 5 (docs/superpowers/specs/2026-09-02-business-corrections-6-
+    # phases-design.md): a trip-allocated fee only ever uses one of these
+    # two methods - other methods (FIXED, PERCENTAGE, PER_ORDER, MANUAL)
+    # stay available for general (unallocated) expenses, unchanged.
+    _TRIP_CALCULATION_METHODS = {
+        Expense.CalculationMethod.PER_LITRE,
+        Expense.CalculationMethod.PER_TRUCK,
+    }
+    # Locked once PAID/PARTIALLY_PAID - only /cancel/ (ExpensePostingService.
+    # cancel_paid_expense) may unwind a fee past that point.
+    _SENSITIVE_FIELDS_LOCKED_WHEN_PAID = ("amount", "calculation_method", "category", "allocations")
+
     allocations_detail = ExpenseAllocationSerializer(source="allocations", many=True, read_only=True)
     allocations = ExpenseAllocationInputSerializer(many=True, write_only=True, required=False)
     category = serializers.CharField()
@@ -648,7 +661,52 @@ class ExpenseSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Le paiement direct est reserve aux depenses generales sans repartition."
             )
+
+        if self.instance is not None and self.instance.status in (
+            Expense.Status.PAID,
+            Expense.Status.PARTIALLY_PAID,
+        ):
+            locked_changed = any(
+                field in data for field in self._SENSITIVE_FIELDS_LOCKED_WHEN_PAID
+            )
+            status_changed = "status" in data and data["status"] != self.instance.status
+            if locked_changed or status_changed:
+                raise serializers.ValidationError(
+                    "Ce frais est deja paye (totalement ou partiellement) : "
+                    "utilisez l'annulation pour le modifier."
+                )
+
+        calculation_method = data.get(
+            "calculation_method", getattr(self.instance, "calculation_method", None)
+        )
+        allocations = data.get("allocations")
+        if allocations:
+            trip_content_type = ContentType.objects.get_for_model(Trip)
+            targets_trip = any(
+                item.get("content_type") == trip_content_type for item in allocations
+            )
+            if targets_trip and calculation_method not in self._TRIP_CALCULATION_METHODS:
+                raise serializers.ValidationError(
+                    "Pour un frais alloue a un trajet, seules les methodes "
+                    "'Par litre' ou 'Par camion' sont autorisees."
+                )
         return data
+
+    def _resolve_allocated_amount(self, item, calculation_method, amount):
+        # Server-authoritative for a Trip target: PER_LITRE's "amount" is a
+        # XOF/L rate (total = rate x trip.quantity_loaded), PER_TRUCK's
+        # "amount" is already the total (unmultiplied) - never trust
+        # whatever allocated_amount the client happened to send for these,
+        # only for other allocatable kinds (truck/customer/supplier/
+        # transporter) or other calculation methods, unchanged.
+        if item.get("content_type") != ContentType.objects.get_for_model(Trip):
+            return item["allocated_amount"]
+        if calculation_method not in self._TRIP_CALCULATION_METHODS:
+            return item["allocated_amount"]
+        trip = Trip.objects.get(pk=item["object_id"])
+        if calculation_method == Expense.CalculationMethod.PER_LITRE:
+            return (amount * trip.quantity_loaded).quantize(Decimal("0.01"))
+        return amount
 
     def create(self, validated_data):
         allocations = validated_data.pop("allocations", [])
@@ -660,7 +718,15 @@ class ExpenseSerializer(serializers.ModelSerializer):
         with transaction.atomic():
             expense = Expense.objects.create(**validated_data)
             for item in allocations:
-                ExpenseAllocation.objects.create(expense=expense, **item)
+                ExpenseAllocation.objects.create(
+                    expense=expense,
+                    **{
+                        **item,
+                        "allocated_amount": self._resolve_allocated_amount(
+                            item, expense.calculation_method, expense.amount
+                        ),
+                    },
+                )
             if paid_directly:
                 TreasuryTransaction.objects.create(
                     bank_account=bank_account,
@@ -679,7 +745,15 @@ class ExpenseSerializer(serializers.ModelSerializer):
         allocations = validated_data.pop("allocations", [])
         expense = super().update(instance, validated_data)
         for item in allocations:
-            ExpenseAllocation.objects.create(expense=expense, **item)
+            ExpenseAllocation.objects.create(
+                expense=expense,
+                **{
+                    **item,
+                    "allocated_amount": self._resolve_allocated_amount(
+                        item, expense.calculation_method, expense.amount
+                    ),
+                },
+            )
         return expense
 
 

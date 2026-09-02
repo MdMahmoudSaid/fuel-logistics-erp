@@ -122,6 +122,12 @@ export function recordIndirectExpense(payload: {
     .then((r) => r.data as { expense: Expense; payment: CustomerPayment; allocation_id: number })
 }
 
+// backend/apps/finance/services.py ExpensePostingService.cancel_paid_expense()
+// is the sole authority on this flow (Phase 5) - this just posts the request.
+export function cancelExpense(expenseId: number): Promise<Expense> {
+  return apiClient.post(`/expenses/${expenseId}/cancel/`).then((r) => r.data as Expense)
+}
+
 // backend/apps/finance/services.py TreasuryService.record_transfer() is the sole
 // authority on this flow (matched MONEY_OUT/MONEY_IN TRANSFER pair under
 // account locks) - this just posts the request.

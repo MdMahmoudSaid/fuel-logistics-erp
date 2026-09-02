@@ -186,6 +186,12 @@ class CustomerPayment(AuditableModel, TimeStampedModel):
     recorded_by = models.ForeignKey(
         "accounts.User", on_delete=models.PROTECT, related_name="customer_payments_recorded"
     )
+    # Set by ExpensePostingService.cancel_paid_expense (Phase 5) when
+    # reversing an indirect settlement's synthetic payment - never a hard
+    # delete (AuditableModel.is_locked_for_deletion blocks that once past
+    # draft), so every balance/ledger consumer that sums customer.payments
+    # must exclude is_reversed=True rows.
+    is_reversed = models.BooleanField(default=False)
 
     class Meta:
         ordering = ["-payment_date", "-id"]
@@ -627,6 +633,19 @@ class Expense(AuditableModel, TimeStampedModel):
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.UNPAID)
     paid_by_customer_directly = models.BooleanField(default=False)
     notes = models.TextField(blank=True)
+    # Set only by IndirectSettlementService.record_indirect_payment, so
+    # ExpensePostingService.cancel_paid_expense (Phase 5) can find and
+    # reverse the exact CustomerPayment an indirect settlement created,
+    # without guessing from amount/date. SET_NULL: cancelling deletes the
+    # CustomerPayment (the synthetic proxy IndirectSettlementService
+    # created purely to restore the receivable), not the Expense.
+    indirect_settlement_payment = models.ForeignKey(
+        "CustomerPayment",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="settled_expenses",
+    )
 
     class Meta:
         ordering = ["-date", "-id"]

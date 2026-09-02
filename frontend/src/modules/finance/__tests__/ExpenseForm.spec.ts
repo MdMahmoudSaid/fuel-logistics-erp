@@ -208,4 +208,84 @@ describe('ExpenseForm', () => {
 
     expect(wrapper.findAll('button').find((b) => b.text() === 'Retirer')).toBeUndefined()
   })
+
+  // Phase 5 (docs/superpowers/specs/2026-09-02-business-corrections-6-
+  // phases-design.md): a trip-allocated fee only ever uses Par litre / Par
+  // camion.
+  it('restricts calculation method to Par litre / Par camion when allocated to a trip', async () => {
+    const wrapper = mount(ExpenseForm, {
+      props: { presetAllocation: { kind: 'trip', objectId: 42, label: 'TRIP-042' } },
+    })
+    await flushPromises()
+
+    const options = wrapper.find('#calculation_method').findAll('option')
+    expect(options.map((o) => o.element.value)).toEqual(['PER_LITRE', 'PER_TRUCK'])
+  })
+
+  it('offers every calculation method for a general (non-trip) expense', async () => {
+    const wrapper = mount(ExpenseForm)
+    await flushPromises()
+
+    const options = wrapper.find('#calculation_method').findAll('option')
+    expect(options.map((o) => o.element.value)).toEqual([
+      'FIXED',
+      'PER_LITRE',
+      'PERCENTAGE',
+      'PER_ORDER',
+      'PER_TRUCK',
+      'MANUAL',
+    ])
+  })
+
+  it('submits the entered XOF/L rate as amount, not the computed total, for a Par litre trip fee', async () => {
+    const wrapper = mount(ExpenseForm, {
+      props: {
+        presetAllocation: { kind: 'trip', objectId: 42, label: 'TRIP-042' },
+        perLitreQuantity: '45000.00',
+      },
+    })
+    await flushPromises()
+
+    expect((wrapper.find('#calculation_method').element as HTMLSelectElement).value).toBe(
+      'PER_LITRE',
+    )
+    await wrapper.find('#amount').setValue('100')
+    await wrapper.find('#date').setValue('2026-08-25')
+
+    // Live preview shows the computed total without touching the amount field.
+    expect(wrapper.text()).toContain('4 500 000 XOF')
+
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createExpense).toHaveBeenCalledWith(
+      expect.objectContaining({ calculation_method: 'PER_LITRE' }),
+    )
+    // The rate as typed, never the computed total (4 500 000).
+    expect(Number(createExpense.mock.calls[0][0].amount)).toBe(100)
+  })
+
+  it('shows the derived cost-per-litre preview for a Par camion trip fee', async () => {
+    const wrapper = mount(ExpenseForm, {
+      props: {
+        presetAllocation: { kind: 'trip', objectId: 42, label: 'TRIP-042' },
+        perLitreQuantity: '45000.00',
+        initialCalculationMethod: 'PER_TRUCK',
+      },
+    })
+    await flushPromises()
+
+    await wrapper.find('#amount').setValue('10000')
+
+    expect(wrapper.text()).toContain('0.2222')
+
+    await wrapper.find('#date').setValue('2026-08-25')
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createExpense).toHaveBeenCalledWith(
+      expect.objectContaining({ calculation_method: 'PER_TRUCK' }),
+    )
+    expect(Number(createExpense.mock.calls[0][0].amount)).toBe(10000)
+  })
 })

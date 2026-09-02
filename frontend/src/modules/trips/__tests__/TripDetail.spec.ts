@@ -158,6 +158,7 @@ function makeMargin(overrides: Partial<Extract<TripMargin, { available: true }>>
 let expensesToReturn: Expense[] = []
 let transportPaymentsToReturn: TransportPayment[] = []
 const createExpense = vi.fn(async (_payload: Record<string, unknown>) => ({}))
+const cancelExpense = vi.fn(async (_id: number) => ({}))
 const createTransportPayment = vi.fn(async (_payload: Record<string, unknown>) => ({}))
 const expenseList = vi.fn(async (_params: Record<string, unknown>) => ({
   count: expensesToReturn.length,
@@ -178,6 +179,7 @@ vi.mock('@/modules/finance/api', () => ({
     list: (params: Record<string, unknown>) => expenseList(params),
     create: (payload: Record<string, unknown>) => createExpense(payload),
   },
+  cancelExpense: (id: number) => cancelExpense(id),
   transportPaymentResource: {
     list: (params: Record<string, unknown>) => transportPaymentList(params),
     create: (payload: Record<string, unknown>) => createTransportPayment(payload),
@@ -309,6 +311,60 @@ describe('TripDetail expenses section', () => {
     expect(expenseList).toHaveBeenCalledWith({ trip: 9 })
     expect(wrapper.text()).toContain('90 000 XOF')
     expect(wrapper.text()).not.toContain('150 000 XOF')
+  })
+
+  // Phase 5 (docs/superpowers/specs/2026-09-02-business-corrections-6-
+  // phases-design.md): POST /api/expenses/{id}/cancel/ - only for PAID/
+  // PARTIALLY_PAID fees, and only for users with the "cancel" tier.
+  it('shows a cancel button for a paid trip fee when the user has cancel permission', async () => {
+    setUser({ operations: ['view'], finance: ['view', 'cancel'] })
+    expensesToReturn = [makeExpense({ status: 'PAID' })]
+
+    const wrapper = await mountAt()
+
+    expect(wrapper.findAll('button').find((b) => b.text() === 'Annuler')).toBeDefined()
+  })
+
+  it('hides the cancel button without cancel permission', async () => {
+    setUser({ operations: ['view'], finance: ['view'] })
+    expensesToReturn = [makeExpense({ status: 'PAID' })]
+
+    const wrapper = await mountAt()
+
+    expect(wrapper.findAll('button').find((b) => b.text() === 'Annuler')).toBeUndefined()
+  })
+
+  it('hides the cancel button for an unpaid fee even with cancel permission', async () => {
+    setUser({ operations: ['view'], finance: ['view', 'cancel'] })
+    expensesToReturn = [makeExpense({ status: 'UNPAID' })]
+
+    const wrapper = await mountAt()
+
+    expect(wrapper.findAll('button').find((b) => b.text() === 'Annuler')).toBeUndefined()
+  })
+
+  it('cancels a paid trip fee and reloads the expenses list', async () => {
+    setUser({ operations: ['view'], finance: ['view', 'cancel'] })
+    expensesToReturn = [makeExpense({ id: 5, status: 'PARTIALLY_PAID' })]
+
+    const wrapper = await mountAt()
+    expect(expenseList).toHaveBeenCalledTimes(1)
+
+    await wrapper.findAll('button').find((b) => b.text() === 'Annuler')!.trigger('click')
+    await flushPromises()
+
+    expect(cancelExpense).toHaveBeenCalledWith(5)
+    expect(expenseList).toHaveBeenCalledTimes(2)
+  })
+
+  it('shows a cancelled fee as cancelled, with no cancel button', async () => {
+    setUser({ operations: ['view'], finance: ['view', 'cancel'] })
+    expensesToReturn = [makeExpense({ status: 'CANCELLED' })]
+
+    const wrapper = await mountAt()
+
+    expect(wrapper.text()).toContain('Frais annulé')
+    expect(wrapper.findAll('button').find((b) => b.text() === 'Annuler')).toBeUndefined()
   })
 
   it('shows transporter commission together with trip expenses', async () => {
