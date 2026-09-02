@@ -21,6 +21,7 @@ from .models import (
     ExpenseAllocation,
     PaymentAllocation,
     Shareholder,
+    ShareholderContribution,
     ShareholderLoan,
     ShareholderProfitDistribution,
     ShareholderProfitShare,
@@ -37,6 +38,8 @@ from .services import (
     ControlledDebtPaymentService,
     FinancePostingService,
     PaymentAllocationService,
+    ShareholderContributionError,
+    ShareholderContributionService,
     ShareholderDistributionService,
     ShareholderLoanError,
     ShareholderLoanService,
@@ -952,3 +955,69 @@ class ShareholderWithdrawalSerializer(serializers.ModelSerializer):
         raise serializers.ValidationError(
             "Un retrait enregistre ne peut pas etre modifie."
         )
+
+
+class ShareholderContributionSerializer(serializers.ModelSerializer):
+    """Creation is delegated to
+    ShareholderContributionService.record_contribution() (Phase 1) - it,
+    not this serializer, owns the Document creation and the
+    TreasuryTransaction(MONEY_IN) posting, both under one row lock."""
+
+    shareholder_detail = ShareholderBriefSerializer(source="shareholder", read_only=True)
+    recorded_by_detail = UserSerializer(source="recorded_by", read_only=True)
+    attachment = serializers.FileField(write_only=True, required=False, allow_null=True, default=None)
+    proof_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ShareholderContribution
+        fields = [
+            "id", "shareholder", "shareholder_detail", "amount", "date",
+            "bank_account", "cash_account", "reference", "notes", "attachment", "proof_url",
+            "recorded_by", "recorded_by_detail", "created_at", "updated_at",
+        ]
+        read_only_fields = ["id", "recorded_by", "created_at", "updated_at"]
+
+    def get_proof_url(self, obj) -> str | None:
+        if not obj.document_id or not obj.document.file:
+            return None
+        return obj.document.file.url
+
+    def validate_attachment(self, value):
+        if value is None:
+            return value
+        return validate_image_upload(value)
+
+    def validate(self, data):
+        bank_account = data.get("bank_account")
+        cash_account = data.get("cash_account")
+        if bank_account and cash_account:
+            raise serializers.ValidationError("Un seul compte (banque OU caisse) peut etre renseigne.")
+        if not bank_account and not cash_account:
+            raise serializers.ValidationError("Un compte de tresorerie (banque ou caisse) est requis.")
+        if not data.get("attachment"):
+            raise serializers.ValidationError(
+                {"attachment": "Un justificatif image est obligatoire pour enregistrer un apport."}
+            )
+        return data
+
+    def create(self, validated_data):
+        actor = self.context["request"].user
+        bank_account = validated_data.get("bank_account")
+        cash_account = validated_data.get("cash_account")
+        try:
+            return ShareholderContributionService.record_contribution(
+                shareholder_id=validated_data["shareholder"].id,
+                amount=validated_data["amount"],
+                date=validated_data["date"],
+                actor=actor,
+                attachment=validated_data["attachment"],
+                bank_account_id=bank_account.id if bank_account else None,
+                cash_account_id=cash_account.id if cash_account else None,
+                reference=validated_data.get("reference", ""),
+                notes=validated_data.get("notes", ""),
+            )
+        except ShareholderContributionError as exc:
+            raise serializers.ValidationError(str(exc))
+
+    def update(self, instance, validated_data):
+        raise serializers.ValidationError("Un apport enregistre ne peut pas etre modifie.")

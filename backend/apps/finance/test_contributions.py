@@ -143,3 +143,72 @@ def test_get_total_capital_sums_opening_balance_and_contributions():
     )
 
     assert ShareholderContributionService.get_total_capital() == Decimal("15000000.00")
+
+
+from rest_framework.test import APIClient
+
+
+def _authed_client(user):
+    client = APIClient()
+    client.force_authenticate(user=user)
+    return client
+
+
+@pytest.mark.django_db
+def test_contribution_api_create_requires_attachment():
+    admin_user = _make_admin("CONTRIB-API-1")
+    shareholder = _make_shareholder("CONTRIB-API-1")
+    bank = BankAccount.objects.create(name="Bank F", opening_balance=Decimal("0.00"))
+    client = _authed_client(admin_user)
+
+    response = client.post(
+        "/api/shareholder-contributions/",
+        {
+            "shareholder": shareholder.id, "amount": "500000.00", "date": "2026-09-02",
+            "bank_account": bank.id,
+        },
+        format="multipart",
+    )
+    assert response.status_code == 400
+    assert "attachment" in response.data
+
+
+@pytest.mark.django_db
+def test_contribution_api_create_succeeds_with_attachment():
+    admin_user = _make_admin("CONTRIB-API-2")
+    shareholder = _make_shareholder("CONTRIB-API-2")
+    bank = BankAccount.objects.create(name="Bank G", opening_balance=Decimal("0.00"))
+    client = _authed_client(admin_user)
+
+    response = client.post(
+        "/api/shareholder-contributions/",
+        {
+            "shareholder": shareholder.id, "amount": "500000.00", "date": "2026-09-02",
+            "bank_account": bank.id, "attachment": _proof_file(),
+        },
+        format="multipart",
+    )
+    assert response.status_code == 201, response.data
+    assert response.data["proof_url"] is not None
+    bank.refresh_from_db()
+    assert bank.current_balance == Decimal("500000.00")
+
+
+@pytest.mark.django_db
+def test_contribution_api_rejects_update_and_hard_delete():
+    admin_user = _make_admin("CONTRIB-API-3")
+    shareholder = _make_shareholder("CONTRIB-API-3")
+    bank = BankAccount.objects.create(name="Bank H", opening_balance=Decimal("0.00"))
+    contribution = ShareholderContributionService.record_contribution(
+        shareholder_id=shareholder.id, amount=Decimal("100000.00"), date="2026-09-02",
+        actor=admin_user, attachment=_proof_file(), bank_account_id=bank.id,
+    )
+    client = _authed_client(admin_user)
+
+    patch_response = client.patch(
+        f"/api/shareholder-contributions/{contribution.id}/", {"amount": "999999.00"}, format="json",
+    )
+    assert patch_response.status_code == 400
+
+    delete_response = client.delete(f"/api/shareholder-contributions/{contribution.id}/")
+    assert delete_response.status_code == 405
