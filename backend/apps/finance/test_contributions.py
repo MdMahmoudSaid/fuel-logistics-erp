@@ -57,3 +57,89 @@ def test_shareholder_contribution_amount_must_be_positive():
                 shareholder=shareholder, amount=Decimal("0.00"), date="2026-09-02",
                 bank_account=bank, recorded_by=admin_user,
             )
+
+
+from django.contrib.contenttypes.models import ContentType
+
+from apps.finance.models import TreasuryTransaction
+from apps.finance.services import ShareholderContributionError, ShareholderContributionService
+
+
+@pytest.mark.django_db
+def test_record_contribution_posts_one_treasury_transaction_and_document():
+    admin_user = _make_admin("CONTRIB-SVC-1")
+    shareholder = _make_shareholder("CONTRIB-SVC-1")
+    bank = BankAccount.objects.create(name="Bank C", opening_balance=Decimal("5000000.00"))
+
+    contribution = ShareholderContributionService.record_contribution(
+        shareholder_id=shareholder.id, amount=Decimal("10000000.00"), date="2026-09-02",
+        actor=admin_user, attachment=_proof_file(), bank_account_id=bank.id,
+        reference="APPORT-1", notes="Apport initial",
+    )
+
+    assert contribution.document_id is not None
+    bank.refresh_from_db()
+    assert bank.current_balance == Decimal("15000000.00")
+
+    txn = TreasuryTransaction.objects.get(
+        source_content_type=ContentType.objects.get_for_model(ShareholderContribution),
+        source_object_id=contribution.id,
+    )
+    assert txn.type == TreasuryTransaction.Type.MONEY_IN
+    assert txn.amount == Decimal("10000000.00")
+    assert txn.document_id == contribution.document_id
+    assert TreasuryTransaction.objects.filter(
+        source_content_type=ContentType.objects.get_for_model(ShareholderContribution),
+        source_object_id=contribution.id,
+    ).count() == 1
+
+
+@pytest.mark.django_db
+def test_record_contribution_requires_attachment():
+    admin_user = _make_admin("CONTRIB-SVC-2")
+    shareholder = _make_shareholder("CONTRIB-SVC-2")
+    cash = CashAccount.objects.create(name="Cash C", opening_balance=Decimal("0.00"))
+
+    with pytest.raises(ShareholderContributionError):
+        ShareholderContributionService.record_contribution(
+            shareholder_id=shareholder.id, amount=Decimal("100000.00"), date="2026-09-02",
+            actor=admin_user, attachment=None, cash_account_id=cash.id,
+        )
+    assert ShareholderContribution.objects.filter(shareholder=shareholder).count() == 0
+
+
+@pytest.mark.django_db
+def test_record_contribution_requires_exactly_one_account():
+    admin_user = _make_admin("CONTRIB-SVC-3")
+    shareholder = _make_shareholder("CONTRIB-SVC-3")
+    bank = BankAccount.objects.create(name="Bank D", opening_balance=Decimal("0.00"))
+    cash = CashAccount.objects.create(name="Cash D", opening_balance=Decimal("0.00"))
+
+    with pytest.raises(ShareholderContributionError):
+        ShareholderContributionService.record_contribution(
+            shareholder_id=shareholder.id, amount=Decimal("100000.00"), date="2026-09-02",
+            actor=admin_user, attachment=_proof_file(),
+            bank_account_id=bank.id, cash_account_id=cash.id,
+        )
+    with pytest.raises(ShareholderContributionError):
+        ShareholderContributionService.record_contribution(
+            shareholder_id=shareholder.id, amount=Decimal("100000.00"), date="2026-09-02",
+            actor=admin_user, attachment=_proof_file(),
+        )
+
+
+@pytest.mark.django_db
+def test_get_total_capital_sums_opening_balance_and_contributions():
+    admin_user = _make_admin("CONTRIB-CAP-1")
+    shareholder_a = _make_shareholder("CONTRIB-CAP-1A", contribution=Decimal("2000000.00"))
+    _make_shareholder("CONTRIB-CAP-1B", contribution=Decimal("3000000.00"))
+    bank = BankAccount.objects.create(name="Bank E", opening_balance=Decimal("0.00"))
+
+    assert ShareholderContributionService.get_total_capital() == Decimal("5000000.00")
+
+    ShareholderContributionService.record_contribution(
+        shareholder_id=shareholder_a.id, amount=Decimal("10000000.00"), date="2026-09-02",
+        actor=admin_user, attachment=_proof_file(), bank_account_id=bank.id,
+    )
+
+    assert ShareholderContributionService.get_total_capital() == Decimal("15000000.00")

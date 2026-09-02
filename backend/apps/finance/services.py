@@ -24,6 +24,7 @@ from apps.finance.models import (
     Expense,
     PaymentAllocation,
     Shareholder,
+    ShareholderContribution,
     ShareholderLoan,
     ShareholderProfitDistribution,
     ShareholderProfitShare,
@@ -1485,6 +1486,83 @@ class ShareholderWithdrawalService:
         FinancePostingService.record_shareholder_withdrawal_treasury(withdrawal)
 
         return withdrawal
+
+
+class ShareholderContributionError(ValueError):
+    """Raised when a capital contribution is missing its mandatory proof
+    image or has an invalid account selection."""
+
+
+class ShareholderContributionService:
+    """Owns ShareholderContribution creation (Phase 1, docs/superpowers/
+    specs/2026-09-02-business-corrections-6-phases-design.md) - copied
+    from AdvanceService.create_supplier_advance's shape (Document +
+    TreasuryTransaction created directly, in one atomic block) rather than
+    ShareholderWithdrawalService's (which delegates posting to
+    FinancePostingService._post_treasury): the proof document is mandatory
+    here, exactly like an advance, unlike a withdrawal.
+    """
+
+    @staticmethod
+    @transaction.atomic
+    def record_contribution(
+        *,
+        shareholder_id,
+        amount,
+        date,
+        actor,
+        attachment,
+        bank_account_id=None,
+        cash_account_id=None,
+        reference="",
+        notes="",
+    ) -> ShareholderContribution:
+        if bank_account_id and cash_account_id:
+            raise ShareholderContributionError("Un seul compte (banque OU caisse) peut etre renseigne.")
+        if not bank_account_id and not cash_account_id:
+            raise ShareholderContributionError("Un compte de tresorerie (banque ou caisse) est requis.")
+        if not attachment:
+            raise ShareholderContributionError(
+                "Un justificatif image est obligatoire pour enregistrer un apport."
+            )
+
+        shareholder = Shareholder.objects.select_for_update().get(pk=shareholder_id)
+        amount = Decimal(str(amount)).quantize(Decimal("0.01"))
+        if amount <= ZERO:
+            raise ShareholderContributionError("Le montant de l'apport doit etre superieur a zero.")
+
+        bank_account = None
+        cash_account = None
+        if bank_account_id:
+            bank_account = BankAccount.objects.select_for_update().get(pk=bank_account_id)
+        else:
+            cash_account = CashAccount.objects.select_for_update().get(pk=cash_account_id)
+
+        contribution = ShareholderContribution.objects.create(
+            shareholder=shareholder, bank_account=bank_account, cash_account=cash_account,
+            amount=amount, date=date, reference=reference, notes=notes, recorded_by=actor,
+        )
+        document = Document.objects.create(
+            file=attachment, document_type="shareholder_contribution_proof", reference=reference,
+            uploaded_by=actor, content_type=ContentType.objects.get_for_model(ShareholderContribution),
+            object_id=contribution.id,
+        )
+        contribution.document = document
+        contribution.save(update_fields=["document", "updated_at"])
+        TreasuryTransaction.objects.create(
+            bank_account=bank_account, cash_account=cash_account,
+            type=TreasuryTransaction.Type.MONEY_IN, amount=amount, date=date,
+            reference=reference, note=notes,
+            source_content_type=ContentType.objects.get_for_model(ShareholderContribution),
+            source_object_id=contribution.id, document=document, recorded_by=actor,
+        )
+        return contribution
+
+    @staticmethod
+    def get_total_capital() -> Decimal:
+        opening_balances = Shareholder.objects.aggregate(total=Sum("contribution"))["total"] or ZERO
+        contributions = ShareholderContribution.objects.aggregate(total=Sum("amount"))["total"] or ZERO
+        return opening_balances + contributions
 
 
 class ShareholderLoanError(ValueError):
