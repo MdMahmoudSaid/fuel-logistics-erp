@@ -555,5 +555,12 @@ export interface ShareholderProfitPreview {
   period_start: string | null
   period_end: string | null
   current_profit: string
+  // Phase 4 (docs/superpowers/specs/2026-09-02-business-corrections-6-
+  // phases-design.md): operational_profit is trips-only (same value as
+  // current_profit); net_profit = operational_profit - general_expenses_paid
+  // (unallocated Expense rows actually PAID in the period).
+  operational_profit: string
+  general_expenses_paid: string
+  net_profit: string
   shareholders: ShareholderProfitPreviewShare[]
 }

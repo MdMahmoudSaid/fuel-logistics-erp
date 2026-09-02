@@ -26,6 +26,9 @@ describe('ProfitView', () => {
       period_start: '2026-08-01',
       period_end: null,
       current_profit: '900000.00',
+      operational_profit: '900000.00',
+      general_expenses_paid: '150000.00',
+      net_profit: '750000.00',
       shareholders: [],
     })
     fetchReport.mockResolvedValue({
@@ -100,12 +103,23 @@ describe('ProfitView', () => {
     await flushPromises()
 
     expect(wrapper.findAll('[data-test="profit-summary-card"]')).toHaveLength(3)
-    expect(wrapper.text()).toContain('Bénéfice comptable')
+    expect(wrapper.text()).toContain('Bénéfice opérationnel')
     expect(wrapper.text()).toContain('Bénéfice encaissé')
     expect(wrapper.text()).toContain('Bénéfice distribuable')
     expect(wrapper.text()).toContain(
       "Le bénéfice comptable n'est pas automatiquement distribuable.",
     )
+  })
+
+  it('shows operational profit, general expenses paid, and net profit from the preview', async () => {
+    const wrapper = mount(ProfitView)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Bénéfice opérationnel')
+    expect(wrapper.text()).toContain('Dépenses générales payées')
+    expect(wrapper.text()).toContain('Bénéfice net')
+    expect(wrapper.text()).toContain('150 000 XOF')
+    expect(wrapper.text()).toContain('750 000 XOF')
   })
 
   it('renders dashboard-style cost cards with icons and tabular aligned amounts', async () => {

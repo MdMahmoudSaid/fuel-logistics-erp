@@ -426,7 +426,7 @@ describe('DashboardView', () => {
     expect(wrapper.text()).toContain("Chiffre d'affaires de la période")
     expect(wrapper.text()).toContain('Encaissements de la période')
     expect(wrapper.text()).toContain('Dépenses payées de la période')
-    expect(wrapper.text()).toContain('Bénéfice comptable de la période')
+    expect(wrapper.text()).toContain('Bénéfice opérationnel de la période (trajets uniquement)')
     expect(wrapper.text()).not.toContain(
       'La période filtre les ventes, encaissements, dépenses, volumes et bénéfices.',
     )
@@ -526,7 +526,7 @@ describe('DashboardView', () => {
     expect(wrapper.text()).toContain('إيرادات الفترة')
     expect(wrapper.text()).toContain('تحصيلات الفترة')
     expect(wrapper.text()).toContain('المصروفات المدفوعة للفترة')
-    expect(wrapper.text()).toContain('الربح المحاسبي للفترة')
+    expect(wrapper.text()).toContain('الربح التشغيلي للفترة (الرحلات فقط)')
     expect(wrapper.text()).toContain('الخزينة المتاحة')
     expect(wrapper.text()).toContain('البنوك')
     expect(wrapper.text()).toContain('الصناديق')

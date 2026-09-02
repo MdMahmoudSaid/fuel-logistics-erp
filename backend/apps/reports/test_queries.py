@@ -495,6 +495,102 @@ def test_shareholder_profit_preview_defaults_to_period_after_last_validated_dist
 
 
 # ---------------------------------------------------------------------------
+# ShareholderProfitPreviewService.get_preview - operational vs net profit
+# (Phase 4, docs/superpowers/specs/2026-09-02-business-corrections-6-phases-
+# design.md): operational_profit is the trip-only margin (unchanged
+# formula, same as current_profit above); general_expenses_paid sums only
+# unallocated (general) Expense rows actually PAID in the period;
+# net_profit = operational_profit - general_expenses_paid.
+# ---------------------------------------------------------------------------
+
+
+def _general_expense(amount, suffix, date_, status=Expense.Status.PAID):
+    return Expense.objects.create(
+        category=Expense.Category.OTHER,
+        amount=amount,
+        calculation_method=Expense.CalculationMethod.MANUAL,
+        date=date_,
+        status=status,
+    )
+
+
+@pytest.mark.django_db
+def test_net_profit_equals_operational_profit_without_general_expenses():
+    admin_user = _make_admin("NETNOEXP")
+    _make_full_trip("NETNOEXP", admin_user)
+
+    preview = ShareholderProfitPreviewService.get_preview(
+        date_from="2026-08-01", date_to="2026-08-31"
+    )
+
+    assert preview["general_expenses_paid"] == Decimal("0.00")
+    assert preview["net_profit"] == preview["operational_profit"]
+
+
+@pytest.mark.django_db
+def test_net_profit_subtracts_general_expense_paid_in_period():
+    admin_user = _make_admin("NETWITHEXP")
+    _make_full_trip("NETWITHEXP", admin_user)
+    _general_expense(Decimal("150000.00"), "NETWITHEXP", "2026-08-20")
+
+    preview = ShareholderProfitPreviewService.get_preview(
+        date_from="2026-08-01", date_to="2026-08-31"
+    )
+
+    assert preview["general_expenses_paid"] == Decimal("150000.00")
+    assert preview["net_profit"] == preview["operational_profit"] - Decimal("150000.00")
+
+
+@pytest.mark.django_db
+def test_general_expense_outside_period_is_not_counted():
+    admin_user = _make_admin("NETOUTPERIOD")
+    _make_full_trip("NETOUTPERIOD", admin_user)
+    _general_expense(Decimal("150000.00"), "NETOUTPERIOD", "2026-07-01")
+
+    preview = ShareholderProfitPreviewService.get_preview(
+        date_from="2026-08-01", date_to="2026-08-31"
+    )
+
+    assert preview["general_expenses_paid"] == Decimal("0.00")
+    assert preview["net_profit"] == preview["operational_profit"]
+
+
+@pytest.mark.django_db
+def test_trip_expense_stays_in_operational_profit_and_is_not_double_counted():
+    admin_user = _make_admin("NETTRIPEXP")
+    fx = _make_full_trip("NETTRIPEXP", admin_user)
+    _allocate_expense(
+        fx["trip"], Expense.Category.CUSTOMS, Decimal("300000.00"), "NETTRIPEXP"
+    )
+
+    preview = ShareholderProfitPreviewService.get_preview(
+        date_from="2026-08-01", date_to="2026-08-31"
+    )
+
+    from apps.reports.services.profit import TripProfitService
+
+    expected_margin = TripProfitService.get_cost_breakdown(fx["trip"])["margin"]
+    assert preview["operational_profit"] == expected_margin
+    assert preview["general_expenses_paid"] == Decimal("0.00")
+    assert preview["net_profit"] == expected_margin
+
+
+@pytest.mark.django_db
+def test_general_expenses_paid_ignores_unpaid_and_allocated_expenses():
+    admin_user = _make_admin("NETMIX")
+    fx = _make_full_trip("NETMIX", admin_user)
+    _allocate_expense(fx["trip"], Expense.Category.CUSTOMS, Decimal("300000.00"), "NETMIX")
+    _general_expense(Decimal("50000.00"), "NETMIXUNPAID", "2026-08-15", status=Expense.Status.UNPAID)
+    paid = _general_expense(Decimal("75000.00"), "NETMIXPAID", "2026-08-16")
+
+    preview = ShareholderProfitPreviewService.get_preview(
+        date_from="2026-08-01", date_to="2026-08-31"
+    )
+
+    assert preview["general_expenses_paid"] == paid.amount
+
+
+# ---------------------------------------------------------------------------
 # TreasuryStatementQuery
 # ---------------------------------------------------------------------------
 

@@ -1797,6 +1797,25 @@ class ShareholderProfitPreviewService:
 
         rows = MarginReportQuery.run(date_from=date_from, date_to=date_to)
         current_profit = sum((row["current_margin"] for row in rows), ZERO)
+        operational_profit = current_profit
+
+        # Phase 4 (docs/superpowers/specs/2026-09-02-business-corrections-
+        # 6-phases-design.md): general expenses = Expense rows with no
+        # ExpenseAllocation (never a trip cost, already excluded from
+        # operational_profit via MarginReportQuery/TripProfitService), only
+        # those actually PAID - an UNPAID general expense hasn't left
+        # treasury yet, so it shouldn't reduce net profit before it does.
+        general_expenses = Expense.objects.filter(
+            allocations__isnull=True, status=Expense.Status.PAID
+        )
+        if date_from:
+            general_expenses = general_expenses.filter(date__gte=date_from)
+        if date_to:
+            general_expenses = general_expenses.filter(date__lte=date_to)
+        general_expenses_paid = (
+            general_expenses.aggregate(total=Sum("amount"))["total"] or ZERO
+        )
+        net_profit = operational_profit - general_expenses_paid
 
         shareholders = [
             {
@@ -1814,6 +1833,9 @@ class ShareholderProfitPreviewService:
             "period_start": date_from,
             "period_end": date_to,
             "current_profit": current_profit,
+            "operational_profit": operational_profit,
+            "general_expenses_paid": general_expenses_paid,
+            "net_profit": net_profit,
             "shareholders": shareholders,
         }
 

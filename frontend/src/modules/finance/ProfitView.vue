@@ -231,6 +231,46 @@ onMounted(() => {
         </div>
       </section>
 
+      <!-- Phase 4 (docs/superpowers/specs/2026-09-02-business-corrections-
+           6-phases-design.md): operational profit (trips only, same figure
+           as the accounting-profit card above) vs net profit after general
+           expenses actually paid in the period - both sourced from the
+           same period-scoped preview as the badge above, never
+           recomputed here. -->
+      <section v-if="preview" class="grid gap-3 sm:grid-cols-3">
+        <div data-test="profit-net-card" class="border-ligne rounded-lg border bg-white p-4 shadow-sm">
+          <p class="text-texte-2 text-xs font-medium tracking-wide uppercase">
+            {{ t('finance.profit.accountingProfit') }}
+          </p>
+          <MonoValue
+            class="text-lg font-semibold"
+            align="left"
+            :value="formatMoney(preview.operational_profit)"
+          />
+        </div>
+        <div data-test="profit-net-card" class="border-ligne rounded-lg border bg-white p-4 shadow-sm">
+          <p class="text-texte-2 text-xs font-medium tracking-wide uppercase">
+            {{ t('finance.profit.generalExpensesPaid') }}
+          </p>
+          <MonoValue
+            class="text-lg font-semibold"
+            align="left"
+            :value="formatMoney(preview.general_expenses_paid)"
+          />
+        </div>
+        <div data-test="profit-net-card" class="border-ligne rounded-lg border bg-white p-4 shadow-sm">
+          <p class="text-texte-2 text-xs font-medium tracking-wide uppercase">
+            {{ t('finance.profit.netProfit') }}
+          </p>
+          <MonoValue
+            class="text-lg font-semibold"
+            :class="Number(preview.net_profit) < 0 ? 'text-critique' : 'text-livre'"
+            align="left"
+            :value="formatMoney(preview.net_profit)"
+          />
+        </div>
+      </section>
+
       <p class="border-ligne bg-sable text-texte rounded-lg border px-4 py-3 text-sm">
         {{ t('finance.profit.distributionNote') }}
       </p>
