@@ -834,3 +834,86 @@ def test_search_with_empty_query_returns_empty_categories():
     assert response.status_code == 200
     assert response.data["trucks"] == []
     assert response.data["customers"] == []
+
+
+# ---------------------------------------------------------------------------
+# DashboardViewSet.summary - working_capital
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_dashboard_summary_includes_working_capital_section():
+    admin_user = _make_admin("DASHWC1")
+    client = APIClient()
+    client.force_authenticate(admin_user)
+
+    response = client.get("/api/dashboard/summary/")
+
+    assert response.status_code == 200, response.data
+    assert set(response.data["working_capital"]) >= {
+        "capital", "treasury_available", "customer_receivables",
+        "supplier_net_balance", "transporter_net_balance", "other_debts", "total",
+    }
+
+
+@pytest.mark.django_db
+def test_dashboard_working_capital_formula_matches_manual_calculation():
+    from decimal import Decimal
+    from apps.finance.models import BankAccount, CashAccount, Shareholder
+    from apps.finance.services import ShareholderContributionService
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    admin_user = _make_admin("DASHWC2")
+    bank = BankAccount.objects.create(name="WC Bank", opening_balance=Decimal("10000000.00"))
+    CashAccount.objects.create(name="WC Cash", opening_balance=Decimal("2000000.00"))
+    shareholder = Shareholder.objects.create(
+        name="WC Shareholder", participation_percent=Decimal("100.00"), contribution=Decimal("0.00"),
+    )
+    ShareholderContributionService.record_contribution(
+        shareholder_id=shareholder.id, amount=Decimal("5000000.00"), date="2026-09-02",
+        actor=admin_user, attachment=SimpleUploadedFile("p.jpg", b"x", content_type="image/jpeg"),
+        bank_account_id=bank.id,
+    )
+
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    response = client.get("/api/dashboard/summary/")
+    wc = response.data["working_capital"]
+
+    # Bank now holds 10,000,000 (opening) + 5,000,000 (contribution) = 15,000,000.
+    # Cash = 2,000,000. No suppliers/transporters/customers/debts exist in this
+    # test, so treasury_available is the only nonzero component.
+    assert wc["treasury_available"] == "17000000.00"
+    assert wc["capital"] == "5000000.00"
+    assert wc["total"] == "17000000.00"
+    # Capital must NOT be double-counted: total == treasury_available exactly,
+    # not treasury_available + capital.
+    assert Decimal(wc["total"]) == Decimal(wc["treasury_available"])
+
+
+@pytest.mark.django_db
+def test_dashboard_working_capital_treats_open_advance_as_asset_not_liability():
+    from decimal import Decimal
+    from apps.finance.models import CashAccount
+    from apps.finance.services import AdvanceService
+    from apps.suppliers.models import Supplier
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    admin_user = _make_admin("DASHWC3")
+    cash = CashAccount.objects.create(name="WC Cash 2", opening_balance=Decimal("10000000.00"))
+    supplier = Supplier.objects.create(name="WC Supplier", country="Senegal")
+
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    before = client.get("/api/dashboard/summary/").data["working_capital"]["total"]
+
+    AdvanceService.create_supplier_advance(
+        supplier_id=supplier.id, bank_account_id=None, cash_account_id=cash.id,
+        amount=Decimal("2000000.00"), date="2026-09-02", reference="", notes="",
+        attachment=SimpleUploadedFile("p.jpg", b"x", content_type="image/jpeg"), actor=admin_user,
+    )
+
+    after = client.get("/api/dashboard/summary/").data["working_capital"]["total"]
+    # Cash dropped by 2,000,000 but the advance is now an open asset
+    # (supplier_net_balance +2,000,000) - total working capital is unchanged.
+    assert after == before

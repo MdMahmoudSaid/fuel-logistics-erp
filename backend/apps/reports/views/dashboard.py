@@ -20,7 +20,11 @@ from apps.finance.models import (
     ShareholderWithdrawal,
     TransportPayment,
 )
-from apps.finance.services import ControlledDebtPaymentService, ShareholderProfitPreviewService
+from apps.finance.services import (
+    ControlledDebtPaymentService,
+    ShareholderContributionService,
+    ShareholderProfitPreviewService,
+)
 from apps.reports.date_range import resolve_date_range
 from apps.reports.queries.customer_outstanding_report import CustomerOutstandingReportQuery
 from apps.reports.queries.supplier_outstanding_report import SupplierOutstandingReportQuery
@@ -294,6 +298,33 @@ class DashboardViewSet(viewsets.ViewSet):
             },
         }
 
+        # Fond de roulement (Phase 2, docs/superpowers/specs/2026-09-02-
+        # business-corrections-6-phases-design.md): reuses the exact same
+        # variables party_balances above already computed - never a second
+        # query path that could disagree. Capital is shown for information
+        # only and is NOT summed into total: a posted ShareholderContribution
+        # already increased bank/cash, so adding it again here would double
+        # count the same money. supplier_net_total/transporter_net_total are
+        # signed (advances minus debts) and are ADDED, not subtracted - an
+        # open advance is the company's asset, not a liability.
+        treasury_available = bank_amounts["total"] + cash_amounts["total"]
+        other_debts = customs_total + transit_total + road_transit_total + other_total
+        working_capital = {
+            "capital": ShareholderContributionService.get_total_capital(),
+            "treasury_available": treasury_available,
+            "customer_receivables": customer_amounts["total"],
+            "supplier_net_balance": supplier_net_total,
+            "transporter_net_balance": transporter_net_total,
+            "other_debts": other_debts,
+            "total": (
+                treasury_available
+                + customer_amounts["total"]
+                + supplier_net_total
+                + transporter_net_total
+                - other_debts
+            ),
+        }
+
         # Only trips that have physically arrived at the depot count as stock -
         # destination_type alone isn't enough: GOING_TO_COMPANY_STOCK/earlier
         # pipeline statuses haven't arrived yet, and a trip un-assigned from a
@@ -376,6 +407,7 @@ class DashboardViewSet(viewsets.ViewSet):
                     "shareholders_summary": shareholders_summary,
                     "financial_summary": financial_summary,
                     "party_balances": party_balances,
+                    "working_capital": working_capital,
                     "company_stock": company_stock,
                     "action_items": action_items,
                 }
