@@ -7,11 +7,40 @@ import GlobalSearchBar from '@/modules/search/GlobalSearchBar.vue'
 import AppLogo from '@/components/AppLogo.vue'
 import Button from '@/components/ui/Button.vue'
 import LanguageSwitcher from '@/components/LanguageSwitcher.vue'
+import Icon, { type IconName } from '@/components/ui/Icon.vue'
 
 interface NavItem {
   to: string
   labelKey: string
   module: string
+}
+
+// Icône associée à chaque route de nav (bottom bar mobile + feuille "Plus").
+const NAV_ICONS: Record<string, IconName> = {
+  home: 'chart-no-axes-combined',
+  trips: 'route',
+  'company-stock': 'package',
+  suppliers: 'users',
+  'supplier-orders': 'cart-plus',
+  'cession-letters': 'file-signature',
+  customers: 'users',
+  'customer-orders': 'cart-plus',
+  sales: 'trending-up',
+  invoices: 'receipt-text',
+  'treasury-transactions': 'wallet',
+  'bank-accounts': 'landmark',
+  'cash-accounts': 'banknote',
+  profit: 'circle-dollar-sign',
+  shareholders: 'pie-chart',
+  transporters: 'truck',
+  drivers: 'shield',
+  trucks: 'truck',
+  products: 'droplet',
+  users: 'users',
+  roles: 'shield-check',
+  'loss-tolerance-settings': 'shield',
+  reports: 'file-text',
+  'audit-logs': 'file-text',
 }
 interface NavGroup {
   key: string
@@ -129,6 +158,17 @@ const bottomPrimaryItems = computed(() =>
 )
 const bottomOverflowItems = computed(() =>
   visibleNavItems.value.filter((item) => !(BOTTOM_NAV_KEYS as readonly string[]).includes(item.to)),
+)
+
+// Feuille "Plus" (mobile) groupée comme la sidebar desktop, moins les
+// entrées déjà présentes dans la barre de navigation basse.
+const overflowGroups = computed(() =>
+  NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter(
+      (item) => auth.can(item.module, 'view') && !(BOTTOM_NAV_KEYS as readonly string[]).includes(item.to),
+    ),
+  })).filter((group) => group.items.length > 0),
 )
 
 const moreOpen = ref(false)
@@ -274,7 +314,9 @@ onUnmounted(() => {
           <span v-if="auth.user" class="text-texte-2 hidden text-sm sm:inline">
             {{ auth.user.full_name || auth.user.email }} · {{ auth.user.role_detail?.name }}
           </span>
-          <LanguageSwitcher />
+          <div class="hidden sm:block">
+            <LanguageSwitcher />
+          </div>
           <Button variant="ghost" size="md" class="!h-9 !px-3 text-sm" @click="onLogout">{{
             t('header.logout')
           }}</Button>
@@ -288,6 +330,7 @@ onUnmounted(() => {
 
     <!-- Bottom nav (mobile) — zone tactile 56px, §0.4 -->
     <nav
+      data-test="mobile-bottom-nav"
       class="bg-bitume border-bitume-2 fixed inset-x-0 bottom-0 z-20 flex h-14 items-stretch border-t md:hidden"
       :aria-label="t('common.mainNavigation')"
     >
@@ -298,15 +341,18 @@ onUnmounted(() => {
         class="text-sable/70 flex flex-1 flex-col items-center justify-center gap-0.5 text-[11px]"
         :class="isNavActive(item.to) ? '!text-orange' : ''"
       >
-        {{ t(item.labelKey) }}
+        <Icon :name="NAV_ICONS[item.to] ?? 'route'" :size="20" />
+        {{ item.to === 'trips' ? t('navigation.tripsShort') : t(item.labelKey) }}
       </RouterLink>
       <button
         v-if="bottomOverflowItems.length"
         type="button"
+        data-test="mobile-more-button"
         class="text-sable/70 flex flex-1 flex-col items-center justify-center gap-0.5 text-[11px]"
         :class="moreOpen ? 'text-orange' : ''"
         @click="moreOpen = !moreOpen"
       >
+        <Icon name="more-horizontal" :size="20" />
         {{ t('common.more') }}
       </button>
     </nav>
@@ -314,6 +360,7 @@ onUnmounted(() => {
     <!-- Feuille "Plus" (mobile) -->
     <div
       v-if="moreOpen"
+      data-test="mobile-more-sheet"
       class="fixed inset-0 z-30 flex items-end bg-black/40 md:hidden"
       @click.self="moreOpen = false"
     >
@@ -321,15 +368,25 @@ onUnmounted(() => {
         <div
           class="border-ligne-forte mx-auto mb-4 h-1.5 w-10 rounded-full border-0 bg-current opacity-20"
         />
-        <RouterLink
-          v-for="item in bottomOverflowItems"
-          :key="item.to"
-          :to="{ name: item.to }"
-          class="text-texte hover:bg-sable flex h-12 items-center rounded-lg px-3 text-sm"
-          @click="moreOpen = false"
-        >
-          {{ t(item.labelKey) }}
-        </RouterLink>
+        <div v-for="group in overflowGroups" :key="group.key" class="mb-3 last:mb-0">
+          <p class="text-texte-3 px-3 pb-1 text-xs font-semibold tracking-wide uppercase">
+            {{ t(group.titleKey) }}
+          </p>
+          <RouterLink
+            v-for="item in group.items"
+            :key="item.to"
+            :to="{ name: item.to }"
+            class="text-texte hover:bg-sable flex h-12 items-center gap-3 rounded-lg px-3 text-sm"
+            @click="moreOpen = false"
+          >
+            <Icon :name="NAV_ICONS[item.to] ?? 'route'" :size="18" class="text-texte-2" />
+            {{ t(item.labelKey) }}
+          </RouterLink>
+        </div>
+        <div class="border-ligne mt-2 flex items-center justify-between border-t px-3 pt-3">
+          <span class="text-texte-2 text-sm">{{ t('header.languageLabel') }}</span>
+          <LanguageSwitcher />
+        </div>
       </div>
     </div>
   </div>

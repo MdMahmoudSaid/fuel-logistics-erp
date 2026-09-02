@@ -55,7 +55,8 @@
       "settings": "Paramètres"
     },
     "shareholders": "Actionnaires / Associés",
-    "profit": "Bénéfices"
+    "profit": "Bénéfices",
+    "tripsShort": "Trajets"
   },
   "header": {
     "logout": "Déconnexion",

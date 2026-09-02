@@ -55,7 +55,8 @@
       "settings": "الإعدادات"
     },
     "shareholders": "المساهمون / الشركاء",
-    "profit": "الأرباح"
+    "profit": "الأرباح",
+    "tripsShort": "الرحلات"
   },
   "header": {
     "logout": "تسجيل الخروج",

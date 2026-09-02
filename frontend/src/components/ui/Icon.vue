@@ -29,6 +29,7 @@ export type IconName =
   | 'route'
   | 'credit-card'
   | 'banknote'
+  | 'more-horizontal'
 
 withDefaults(defineProps<{ name: IconName; size?: number }>(), { size: 20 })
 </script>
@@ -149,6 +150,11 @@ withDefaults(defineProps<{ name: IconName; size?: number }>(), { size: 20 })
       <rect x="2" y="6" width="20" height="12" rx="2" />
       <circle cx="12" cy="12" r="2.5" />
       <path d="M6 9v.01M18 15v.01" />
+    </g>
+    <g v-else-if="name === 'more-horizontal'">
+      <circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+      <circle cx="19" cy="12" r="1.5" fill="currentColor" stroke="none" />
     </g>
   </svg>
 </template>

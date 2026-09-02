@@ -55,7 +55,8 @@
       "settings": "Settings"
     },
     "shareholders": "Shareholders / Associates",
-    "profit": "Profit"
+    "profit": "Profit",
+    "tripsShort": "Trips"
   },
   "header": {
     "logout": "Log out",

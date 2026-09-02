@@ -103,3 +103,109 @@ describe('AppShell navigation', () => {
     expect(sidebar.classes()).toContain('overflow-y-auto')
   })
 })
+
+// Phase "UI responsive mobile" (WIP groupe C): bottom nav bar + feuille
+// "Plus" — couverture minimale demandée avant commit séparé.
+describe('AppShell mobile navigation', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  function mountAsAdmin(router = makeRouter()) {
+    const auth = useAuthStore()
+    auth.user = {
+      id: 1,
+      phone: '+22212345678',
+      email: 'admin@example.com',
+      full_name: 'Admin User',
+      role: 1,
+      role_detail: {
+        id: 1,
+        name: 'Admin',
+        permissions: {
+          reports: ['view'],
+          operations: ['view'],
+          purchasing: ['view'],
+          sales: ['view'],
+          finance: ['view'],
+          shareholders: ['view'],
+          admin: ['view'],
+        },
+      },
+    }
+    return mount(AppShell, { global: { plugins: [router, i18n] } })
+  }
+
+  it('shows the bottom nav bar with the primary items, hidden above the mobile breakpoint', async () => {
+    const router = makeRouter()
+    await router.push('/')
+    await router.isReady()
+    const wrapper = mountAsAdmin(router)
+
+    const bottomNav = wrapper.find('[data-test="mobile-bottom-nav"]')
+    expect(bottomNav.exists()).toBe(true)
+    expect(bottomNav.classes()).toContain('md:hidden')
+    expect(bottomNav.text()).toContain('Tableau de bord')
+    expect(bottomNav.text()).toContain('Trajets')
+    expect(bottomNav.text()).toContain('Ventes')
+    expect(bottomNav.text()).toContain('Rapports')
+  })
+
+  it('only shows bottom nav items the role has permission to view', async () => {
+    const router = makeRouter()
+    await router.push('/')
+    await router.isReady()
+    const auth = useAuthStore()
+    auth.user = {
+      id: 2,
+      phone: '+22212345679',
+      email: 'ops@example.com',
+      full_name: 'Ops User',
+      role: 3,
+      role_detail: {
+        id: 3,
+        name: 'Operations',
+        // No "sales" permission -> the "Ventes" bottom-nav entry must not render.
+        permissions: { operations: ['view'], reports: ['view'] },
+      },
+    }
+    const wrapper = mount(AppShell, { global: { plugins: [router, i18n] } })
+
+    const bottomNav = wrapper.find('[data-test="mobile-bottom-nav"]')
+    expect(bottomNav.text()).toContain('Trajets')
+    expect(bottomNav.text()).toContain('Rapports')
+    expect(bottomNav.text()).not.toContain('Ventes')
+  })
+
+  it('opens and closes the "Plus" sheet from the bottom nav button', async () => {
+    const router = makeRouter()
+    await router.push('/')
+    await router.isReady()
+    const wrapper = mountAsAdmin(router)
+
+    expect(wrapper.find('[data-test="mobile-more-sheet"]').exists()).toBe(false)
+
+    await wrapper.find('[data-test="mobile-more-button"]').trigger('click')
+    expect(wrapper.find('[data-test="mobile-more-sheet"]').exists()).toBe(true)
+
+    await wrapper.find('[data-test="mobile-more-button"]').trigger('click')
+    expect(wrapper.find('[data-test="mobile-more-sheet"]').exists()).toBe(false)
+  })
+
+  it('closes the "Plus" sheet when a nav item inside it is clicked', async () => {
+    const router = makeRouter()
+    await router.push('/')
+    await router.isReady()
+    const wrapper = mountAsAdmin(router)
+
+    await wrapper.find('[data-test="mobile-more-button"]').trigger('click')
+    const sheet = wrapper.find('[data-test="mobile-more-sheet"]')
+    expect(sheet.exists()).toBe(true)
+
+    const firstItem = sheet.find('a')
+    expect(firstItem.exists()).toBe(true)
+    await firstItem.trigger('click')
+
+    expect(wrapper.find('[data-test="mobile-more-sheet"]').exists()).toBe(false)
+  })
+})
