@@ -5,6 +5,7 @@ from .views import (
     BankAccountViewSet,
     CashAccountViewSet,
     CustomerPaymentViewSet,
+    ExpenseCategoryViewSet,
     ExpenseViewSet,
     ShareholderContributionViewSet,
     ShareholderLoanViewSet,
@@ -28,6 +29,7 @@ router.register("supplier-advances", SupplierAdvanceViewSet, basename="suppliera
 router.register("transporter-advances", TransporterAdvanceViewSet, basename="transporteradvance")
 router.register("transport-payments", TransportPaymentViewSet, basename="transportpayment")
 router.register("expenses", ExpenseViewSet, basename="expense")
+router.register("expense-categories", ExpenseCategoryViewSet, basename="expensecategory")
 router.register("treasury-transactions", TreasuryTransactionViewSet, basename="treasurytransaction")
 router.register("allocatable-types", AllocatableTypesViewSet, basename="allocatabletype")
 router.register("shareholders", ShareholderViewSet, basename="shareholder")

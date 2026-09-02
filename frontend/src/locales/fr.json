@@ -38,6 +38,7 @@
     "bankAccounts": "Comptes bancaires",
     "cashAccounts": "Comptes de caisse",
     "treasuryTransactions": "Journal de trésorerie",
+    "expenses": "Dépenses générales",
     "reports": "Rapports",
     "users": "Utilisateurs",
     "roles": "Rôles",
@@ -516,6 +517,12 @@
       "notes": "Notes",
       "paidByCustomer": "Payée directement par le client",
       "paidByCustomerHint": "Ceci réduit la créance du client et marque la dépense comme payée — aucun mouvement de trésorerie n'est enregistré.",
+      "treasuryPayment": "Paiement trésorerie",
+      "accountType": "Type de compte",
+      "bankAccount": "Compte bancaire",
+      "cashAccount": "Compte de caisse",
+      "selectBankAccount": "Sélectionner un compte bancaire",
+      "selectCashAccount": "Sélectionner une caisse",
       "customer": "Client",
       "selectCustomer": "Sélectionner un client",
       "applyToInvoice": "Appliquer à une facture (optionnel)",
@@ -531,6 +538,39 @@
       "saving": "Enregistrement…",
       "save": "Enregistrer la dépense",
       "saveError": "Impossible d'enregistrer cette dépense — vérifiez les champs."
+    },
+    "expenseCategoryForm": {
+      "createNew": "+ Créer une nouvelle catégorie",
+      "newCategoryName": "Nom de la nouvelle catégorie",
+      "createButton": "Créer",
+      "cancelButton": "Annuler",
+      "createError": "Impossible de créer cette catégorie."
+    },
+    "expensesView": {
+      "title": "Dépenses générales",
+      "newExpense": "+ Nouvelle dépense",
+      "periodStart": "Début",
+      "periodEnd": "Fin",
+      "listEmpty": "Aucune dépense enregistrée sur cette période.",
+      "loadError": "Impossible de charger les dépenses générales.",
+      "monitoringTitle": "Suivi des dettes de frais trajet",
+      "monitoringHelp": "Lecture seule : ces montants proviennent des frais trajet existants, aucune nouvelle dette n'est créée ici.",
+      "monitoringRows": "{count} ligne | {count} lignes",
+      "table": {
+        "date": "Date",
+        "category": "Catégorie",
+        "notes": "Notes",
+        "status": "Statut",
+        "amount": "Montant"
+      },
+      "monitoring": {
+        "customs": "Douane",
+        "transit": "Transit",
+        "roadTransit": "Transit routière",
+        "border": "Frontière",
+        "loading": "Chargement",
+        "tripOther": "Autres frais trajet"
+      }
     },
     "transportPayment": {
       "title": "Frais de transport (au litre)",

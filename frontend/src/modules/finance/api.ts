@@ -8,6 +8,7 @@ import type {
   DebtPaymentResult,
   DebtPaymentType,
   Expense,
+  ExpenseCategoryOption,
   PartyBalance,
   PartyType,
   Shareholder,
@@ -33,6 +34,11 @@ export const transporterAdvanceResource =
   createResourceApi<TransporterAdvance>('/transporter-advances/')
 export const transportPaymentResource = createResourceApi<TransportPayment>('/transport-payments/')
 export const expenseResource = createResourceApi<Expense>('/expenses/')
+export const expenseCategoryResource = createResourceApi<ExpenseCategoryOption>('/expense-categories/')
+
+export function createExpenseCategory(payload: { name: string }): Promise<ExpenseCategoryOption> {
+  return apiClient.post<ExpenseCategoryOption>('/expense-categories/', payload).then((r) => r.data)
+}
 
 // GET /api/allocatable-types/ (backend/apps/finance/views.py
 // AllocatableTypesViewSet) - kind -> ContentType PK lookup the allocation

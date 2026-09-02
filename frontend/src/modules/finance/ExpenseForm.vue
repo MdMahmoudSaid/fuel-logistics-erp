@@ -9,8 +9,10 @@ import { createResourceApi } from '@/api/resource'
 import { translateApiError } from '@/i18n/apiErrors'
 import {
   expenseResource,
+  expenseCategoryResource,
   fetchAllocatableTypes,
   fetchCustomerLedger,
+  createExpenseCategory,
   recordIndirectExpense,
 } from './api'
 import { EXPENSE_CATEGORIES } from './types'
@@ -25,6 +27,7 @@ import type {
   ExpenseAllocationInput,
   ExpenseCalculationMethod,
   ExpenseCategory,
+  ExpenseCategoryOption,
 } from './types'
 
 // When opened from a trip's "Frais du trajet" tab (TripDetail.vue), this
@@ -37,18 +40,81 @@ const props = defineProps<{
   initialCategory?: ExpenseCategory
   initialCalculationMethod?: ExpenseCalculationMethod
   perLitreQuantity?: string
+  showTreasuryPayment?: boolean
   title?: string
 }>()
 const emit = defineEmits<{ success: [customerId: number | null]; cancel: [] }>()
 const { t } = useI18n()
 
-const form = ref({
-  category: props.initialCategory ?? ('other' as ExpenseCategory),
+interface ExpenseFormState {
+  category: string
+  amount: string
+  calculation_method: ExpenseCalculationMethod
+  date: string
+  notes: string
+}
+
+interface AccountOption {
+  id: number
+  name: string
+}
+
+const form = ref<ExpenseFormState>({
+  category: props.initialCategory ?? 'other',
   amount: '',
   calculation_method: props.initialCalculationMethod ?? ('MANUAL' as ExpenseCalculationMethod),
   date: new Date().toISOString().slice(0, 10),
   notes: '',
 })
+
+const categories = ref<ExpenseCategoryOption[]>([])
+const creatingCategory = ref(false)
+const newCategoryName = ref('')
+const categoryError = ref('')
+const savingCategory = ref(false)
+
+function fallbackCategories(): ExpenseCategoryOption[] {
+  return EXPENSE_CATEGORIES.map((category, index) => ({
+    id: -(index + 1),
+    name: t(`expenseCategory.${category.value}`),
+    code: category.value,
+    is_system: false,
+    is_active: true,
+    display_order: index,
+  }))
+}
+
+async function loadCategories() {
+  try {
+    categories.value = (await expenseCategoryResource.list({ is_active: true })).results
+  } catch {
+    categories.value = fallbackCategories()
+  }
+  if (!categories.value.some((category) => category.code === form.value.category)) {
+    form.value.category =
+      categories.value.find((category) => category.code === 'other')?.code ??
+      categories.value[0]?.code ??
+      'other'
+  }
+}
+
+async function onCreateCategory() {
+  const name = newCategoryName.value.trim()
+  if (!name) return
+  savingCategory.value = true
+  categoryError.value = ''
+  try {
+    const category = await createExpenseCategory({ name })
+    categories.value = [...categories.value, category]
+    form.value.category = category.code
+    newCategoryName.value = ''
+    creatingCategory.value = false
+  } catch {
+    categoryError.value = t('finance.expenseCategoryForm.createError')
+  } finally {
+    savingCategory.value = false
+  }
+}
 
 function emptyDraft(): AllocationDraft {
   return { kind: '', objectId: null, label: '', allocatedAmount: '' }
@@ -84,6 +150,29 @@ function removeLine(index: number) {
 const allocatableTypes = ref<AllocatableTypeMap>({})
 onMounted(async () => {
   allocatableTypes.value = await fetchAllocatableTypes()
+  await loadCategories()
+})
+
+const bankAccountResource = createResourceApi<AccountOption>('/bank-accounts/')
+const cashAccountResource = createResourceApi<AccountOption>('/cash-accounts/')
+const bankAccounts = ref<AccountOption[]>([])
+const cashAccounts = ref<AccountOption[]>([])
+const treasuryForm = ref({
+  accountKind: 'bank' as 'bank' | 'cash',
+  bankAccountId: '',
+  cashAccountId: '',
+})
+
+onMounted(async () => {
+  if (!props.showTreasuryPayment) return
+  const [bankData, cashData] = await Promise.all([
+    bankAccountResource.list(),
+    cashAccountResource.list(),
+  ])
+  bankAccounts.value = bankData.results
+  cashAccounts.value = cashData.results
+  treasuryForm.value.bankAccountId = bankData.results[0]?.id ? String(bankData.results[0].id) : ''
+  treasuryForm.value.cashAccountId = cashData.results[0]?.id ? String(cashData.results[0].id) : ''
 })
 
 // --- "Paid directly by customer" (indirect settlement) ---
@@ -145,6 +234,19 @@ async function onSubmit() {
         allocated_amount: perLitreMode.value ? amountTotal.value : line.allocatedAmount,
       }))
 
+    const paymentFields = props.showTreasuryPayment
+      ? {
+          bank_account:
+            treasuryForm.value.accountKind === 'bank' && treasuryForm.value.bankAccountId
+              ? Number(treasuryForm.value.bankAccountId)
+              : null,
+          cash_account:
+            treasuryForm.value.accountKind === 'cash' && treasuryForm.value.cashAccountId
+              ? Number(treasuryForm.value.cashAccountId)
+              : null,
+        }
+      : {}
+
     await expenseResource.create({
       category: form.value.category,
       amount: amountTotal.value,
@@ -152,6 +254,7 @@ async function onSubmit() {
       date: form.value.date,
       notes: form.value.notes,
       allocations,
+      ...paymentFields,
     })
     emit('success', null)
   } catch (e) {
@@ -184,10 +287,49 @@ async function onSubmit() {
             v-model="form.category"
             class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           >
-            <option v-for="c in EXPENSE_CATEGORIES" :key="c.value" :value="c.value">
-              {{ t(`expenseCategory.${c.value}`) }}
+            <option v-for="c in categories" :key="c.code" :value="c.code">
+              {{ c.name }}
             </option>
           </select>
+          <div class="space-y-2">
+            <button
+              v-if="!creatingCategory"
+              type="button"
+              data-test="create-expense-category-toggle"
+              class="text-bitume hover:text-orange text-sm font-medium"
+              @click="creatingCategory = true"
+            >
+              {{ t('finance.expenseCategoryForm.createNew') }}
+            </button>
+            <div v-else class="border-ligne rounded-lg border bg-fond p-3">
+              <label class="sr-only" for="new_expense_category_name">
+                {{ t('finance.expenseCategoryForm.newCategoryName') }}
+              </label>
+              <div class="flex flex-wrap gap-2">
+                <input
+                  id="new_expense_category_name"
+                  v-model="newCategoryName"
+                  type="text"
+                  class="border-ligne-forte h-10 min-w-0 flex-1 rounded-lg border bg-white px-3 text-sm focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+                  :placeholder="t('finance.expenseCategoryForm.newCategoryName')"
+                  @keydown.enter.prevent="onCreateCategory"
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  :loading="savingCategory"
+                  data-test="create-expense-category-submit"
+                  @click="onCreateCategory"
+                >
+                  {{ t('finance.expenseCategoryForm.createButton') }}
+                </Button>
+                <Button type="button" variant="ghost" @click="creatingCategory = false">
+                  {{ t('finance.expenseCategoryForm.cancelButton') }}
+                </Button>
+              </div>
+              <p v-if="categoryError" class="text-critique mt-2 text-xs">{{ categoryError }}</p>
+            </div>
+          </div>
         </div>
 
         <div class="space-y-1.5">
@@ -301,6 +443,59 @@ async function onSubmit() {
       </template>
 
       <div v-else class="border-ligne space-y-2 border-t pt-4">
+        <div v-if="showTreasuryPayment" class="border-ligne space-y-3 rounded-lg border bg-fond p-3">
+          <h2 class="font-display text-sm font-semibold uppercase">
+            {{ t('finance.expense.treasuryPayment') }}
+          </h2>
+          <div class="grid grid-cols-2 gap-4">
+            <div class="space-y-1.5">
+              <label class="text-texte-2 text-sm font-medium" for="treasury_account_kind">
+                {{ t('finance.expense.accountType') }}
+              </label>
+              <select
+                id="treasury_account_kind"
+                v-model="treasuryForm.accountKind"
+                class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+              >
+                <option value="bank">{{ t('finance.expense.bankAccount') }}</option>
+                <option value="cash">{{ t('finance.expense.cashAccount') }}</option>
+              </select>
+            </div>
+            <div v-if="treasuryForm.accountKind === 'bank'" class="space-y-1.5">
+              <label class="text-texte-2 text-sm font-medium" for="expense_bank_account">
+                {{ t('finance.expense.bankAccount') }}
+              </label>
+              <select
+                id="expense_bank_account"
+                v-model="treasuryForm.bankAccountId"
+                required
+                class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+              >
+                <option value="" disabled>{{ t('finance.expense.selectBankAccount') }}</option>
+                <option v-for="account in bankAccounts" :key="account.id" :value="account.id">
+                  {{ account.name }}
+                </option>
+              </select>
+            </div>
+            <div v-else class="space-y-1.5">
+              <label class="text-texte-2 text-sm font-medium" for="expense_cash_account">
+                {{ t('finance.expense.cashAccount') }}
+              </label>
+              <select
+                id="expense_cash_account"
+                v-model="treasuryForm.cashAccountId"
+                required
+                class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+              >
+                <option value="" disabled>{{ t('finance.expense.selectCashAccount') }}</option>
+                <option v-for="account in cashAccounts" :key="account.id" :value="account.id">
+                  {{ account.name }}
+                </option>
+              </select>
+            </div>
+          </div>
+        </div>
+
         <div
           v-if="perLitreMode"
           class="border-ligne flex items-center justify-between rounded-lg border bg-fond px-3.5 py-2.5 text-sm"

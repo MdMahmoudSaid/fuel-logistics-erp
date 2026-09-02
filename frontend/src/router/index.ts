@@ -169,6 +169,11 @@ const router = createRouter({
           component: () => import('@/modules/finance/TreasuryLedgerView.vue'),
         },
         {
+          path: 'expenses',
+          name: 'expenses',
+          component: () => import('@/modules/finance/ExpensesView.vue'),
+        },
+        {
           // "Transfert interne" est désormais une modale ouverte depuis le
           // Journal de trésorerie — rétrocompatibilité des anciens liens.
           path: 'treasury/transfer',

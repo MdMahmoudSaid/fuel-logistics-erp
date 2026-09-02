@@ -186,6 +186,15 @@ export const EXPENSE_CATEGORIES: { value: ExpenseCategory; label: string }[] = [
   { value: 'other', label: 'Other' },
 ]
 
+export interface ExpenseCategoryOption {
+  id: number
+  name: string
+  code: string
+  is_system: boolean
+  is_active: boolean
+  display_order: number
+}
+
 export type ExpenseCalculationMethod =
   'FIXED' | 'PER_LITRE' | 'PERCENTAGE' | 'PER_ORDER' | 'PER_TRUCK' | 'MANUAL'
 
@@ -230,7 +239,7 @@ export type AllocatableTypeMap = Partial<Record<AllocatableKind, number>>
 
 export interface Expense {
   id: number
-  category: ExpenseCategory
+  category: string
   amount: string
   calculation_method: ExpenseCalculationMethod
   date: string

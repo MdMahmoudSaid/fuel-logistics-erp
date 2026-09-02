@@ -3802,6 +3802,34 @@ def test_describe_treasury_transaction_labels_a_customs_expense():
 
 
 @pytest.mark.django_db
+def test_describe_treasury_transaction_labels_a_custom_expense_category():
+    from apps.finance.models import ExpenseCategory
+
+    admin_user = _make_admin_user("DESCRIBE-TXN-CUSTOM-EXP")
+    bank_account = BankAccount.objects.create(
+        name="Main BOA Account DESCRIBE-TXN-CUSTOM-EXP", opening_balance="5000000.00"
+    )
+    ExpenseCategory.objects.create(name="Internet", code="internet")
+    expense = Expense.objects.create(
+        category="internet",
+        amount=Decimal("90000.00"),
+        calculation_method=Expense.CalculationMethod.MANUAL,
+        date="2026-08-18",
+    )
+    txn = TreasuryTransaction.objects.create(
+        bank_account=bank_account,
+        type=TreasuryTransaction.Type.MONEY_OUT,
+        amount=Decimal("90000.00"),
+        date="2026-08-18",
+        source_content_type=ContentType.objects.get_for_model(Expense),
+        source_object_id=expense.id,
+        recorded_by=admin_user,
+    )
+
+    assert describe_treasury_transaction(txn) == {"counterparty": "Internet"}
+
+
+@pytest.mark.django_db
 def test_describe_treasury_transaction_labels_a_transfer_with_direction():
     admin_user = _make_admin_user("DESCRIBE-TXN-TRF")
     bank_account = BankAccount.objects.create(
@@ -3841,3 +3869,321 @@ def test_describe_treasury_transaction_has_no_counterparty_for_a_manual_entry():
     )
 
     assert describe_treasury_transaction(txn) == {"counterparty": None}
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: Depenses generales + categories configurables
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_expense_category_migration_seeds_system_and_custom_categories():
+    from apps.finance.models import ExpenseCategory
+
+    system_codes = {"customs", "transit", "road_transit", "road", "loading", "transport"}
+    seeded = {category.code: category.is_system for category in ExpenseCategory.objects.all()}
+    assert system_codes <= set(seeded)
+    for code in system_codes:
+        assert seeded[code] is True
+    assert seeded["rent"] is False
+    assert seeded["other"] is False
+
+
+@pytest.mark.django_db
+def test_expense_category_crud_via_api(finance_client):
+    response = finance_client.post(
+        "/api/expense-categories/", {"name": "Internet", "code": "internet"}
+    )
+    assert response.status_code == 201, response.data
+    assert response.data["is_system"] is False
+    assert response.data["is_active"] is True
+
+    list_response = finance_client.get("/api/expense-categories/")
+    assert list_response.status_code == 200
+    codes = {row["code"] for row in list_response.data["results"]}
+    assert "internet" in codes
+    assert "customs" in codes
+
+
+@pytest.mark.django_db
+def test_expense_category_api_generates_code_from_name(finance_client):
+    response = finance_client.post(
+        "/api/expense-categories/", {"name": "Frais internet mensuels"}, format="json"
+    )
+
+    assert response.status_code == 201, response.data
+    assert response.data["name"] == "Frais internet mensuels"
+    assert response.data["code"] == "frais_internet_mensuels"
+
+
+@pytest.mark.django_db
+def test_expense_category_system_rows_cannot_be_deactivated_or_renamed():
+    from apps.finance.models import ExpenseCategory
+
+    admin_role = Role.objects.get(name=Role.NAME_ADMIN)
+    admin_user = User.objects.create_user(phone="+22200000ADM", pin="1234", role=admin_role)
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    customs = ExpenseCategory.objects.get(code="customs")
+
+    response = client.patch(
+        f"/api/expense-categories/{customs.id}/", {"is_active": False}, format="json"
+    )
+    assert response.status_code == 400
+    customs.refresh_from_db()
+    assert customs.is_active is True
+
+    rename_response = client.patch(
+        f"/api/expense-categories/{customs.id}/", {"name": "Renamed"}, format="json"
+    )
+    assert rename_response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_expense_category_system_rows_cannot_be_hard_deleted():
+    from apps.finance.models import ExpenseCategory
+
+    admin_role = Role.objects.get(name=Role.NAME_ADMIN)
+    admin_user = User.objects.create_user(phone="+22200000ADM2", pin="1234", role=admin_role)
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    customs = ExpenseCategory.objects.get(code="customs")
+
+    response = client.delete(f"/api/expense-categories/{customs.id}/")
+    assert response.status_code in (400, 405)
+    assert ExpenseCategory.objects.filter(code="customs").exists()
+
+
+@pytest.mark.django_db
+def test_expense_category_non_system_rows_can_be_edited_and_deleted():
+    from apps.finance.models import ExpenseCategory
+
+    admin_role = Role.objects.get(name=Role.NAME_ADMIN)
+    admin_user = User.objects.create_user(phone="+22200000ADM3", pin="1234", role=admin_role)
+    client = APIClient()
+    client.force_authenticate(admin_user)
+
+    custom = ExpenseCategory.objects.create(name="Fournitures", code="fournitures")
+    response = client.patch(
+        f"/api/expense-categories/{custom.id}/", {"name": "Fournitures bureau"}, format="json"
+    )
+    assert response.status_code == 200
+    delete_response = client.delete(f"/api/expense-categories/{custom.id}/")
+    assert delete_response.status_code == 204
+
+
+@pytest.mark.django_db
+def test_expense_accepts_custom_category(finance_client):
+    from apps.finance.models import ExpenseCategory
+
+    ExpenseCategory.objects.create(name="Internet", code="internet")
+    response = finance_client.post(
+        "/api/expenses/",
+        {
+            "category": "internet",
+            "amount": "50000.00",
+            "calculation_method": "MANUAL",
+            "date": "2026-09-02",
+        },
+    )
+    assert response.status_code == 201, response.data
+    assert response.data["category"] == "internet"
+
+
+@pytest.mark.django_db
+def test_expense_custom_category_display_uses_category_name():
+    from apps.finance.models import Expense, ExpenseCategory
+
+    ExpenseCategory.objects.create(name="Internet", code="internet")
+    expense = Expense.objects.create(
+        category="internet",
+        amount="50000.00",
+        calculation_method=Expense.CalculationMethod.MANUAL,
+        date="2026-09-02",
+    )
+
+    assert expense.get_category_display() == "Internet"
+    assert str(expense).startswith("Internet:")
+
+
+@pytest.mark.django_db
+def test_expense_rejects_unknown_category(finance_client):
+    response = finance_client.post(
+        "/api/expenses/",
+        {
+            "category": "not_a_real_category",
+            "amount": "50000.00",
+            "calculation_method": "MANUAL",
+            "date": "2026-09-02",
+        },
+    )
+    assert response.status_code == 400
+    assert "category" in response.data
+
+
+@pytest.mark.django_db
+def test_expense_still_accepts_system_categories(finance_client):
+    response = finance_client.post(
+        "/api/expenses/",
+        {
+            "category": "customs",
+            "amount": "100000.00",
+            "calculation_method": "FIXED",
+            "date": "2026-09-02",
+        },
+    )
+    assert response.status_code == 201, response.data
+
+
+@pytest.mark.django_db
+def test_general_expense_with_bank_account_posts_money_out(finance_client):
+    bank_account = BankAccount.objects.create(
+        name="Banque recette generale", opening_balance=Decimal("500000.00")
+    )
+
+    response = finance_client.post(
+        "/api/expenses/",
+        {
+            "category": "rent",
+            "amount": "120000.00",
+            "calculation_method": "MANUAL",
+            "date": "2026-09-02",
+            "notes": "Loyer bureau",
+            "bank_account": bank_account.id,
+        },
+    )
+
+    assert response.status_code == 201, response.data
+    assert response.data["status"] == Expense.Status.PAID
+    transaction = TreasuryTransaction.objects.get(source_object_id=response.data["id"])
+    assert transaction.source_content_type == ContentType.objects.get_for_model(Expense)
+    assert transaction.bank_account == bank_account
+    assert transaction.cash_account is None
+    assert transaction.type == TreasuryTransaction.Type.MONEY_OUT
+    assert transaction.amount == Decimal("120000.00")
+
+
+@pytest.mark.django_db
+def test_general_expense_with_cash_account_posts_money_out(finance_client):
+    cash_account = CashAccount.objects.create(
+        name="Caisse recette generale", opening_balance=Decimal("500000.00")
+    )
+
+    response = finance_client.post(
+        "/api/expenses/",
+        {
+            "category": "salary",
+            "amount": "90000.00",
+            "calculation_method": "MANUAL",
+            "date": "2026-09-02",
+            "cash_account": cash_account.id,
+        },
+    )
+
+    assert response.status_code == 201, response.data
+    assert response.data["status"] == Expense.Status.PAID
+    transaction = TreasuryTransaction.objects.get(source_object_id=response.data["id"])
+    assert transaction.source_content_type == ContentType.objects.get_for_model(Expense)
+    assert transaction.cash_account == cash_account
+    assert transaction.bank_account is None
+    assert transaction.type == TreasuryTransaction.Type.MONEY_OUT
+    assert transaction.amount == Decimal("90000.00")
+
+
+@pytest.mark.django_db
+def test_expense_rejects_two_treasury_accounts(finance_client):
+    bank_account = BankAccount.objects.create(name="Banque double", opening_balance=Decimal("1.00"))
+    cash_account = CashAccount.objects.create(name="Caisse double", opening_balance=Decimal("1.00"))
+
+    response = finance_client.post(
+        "/api/expenses/",
+        {
+            "category": "other",
+            "amount": "10000.00",
+            "calculation_method": "MANUAL",
+            "date": "2026-09-02",
+            "bank_account": bank_account.id,
+            "cash_account": cash_account.id,
+        },
+    )
+
+    assert response.status_code == 400
+    assert "Un seul compte" in str(response.data)
+
+
+@pytest.mark.django_db
+def test_expense_rejects_inactive_category(finance_client):
+    from apps.finance.models import ExpenseCategory
+
+    ExpenseCategory.objects.create(name="Old", code="old_cat", is_active=False)
+    response = finance_client.post(
+        "/api/expenses/",
+        {
+            "category": "old_cat",
+            "amount": "10000.00",
+            "calculation_method": "MANUAL",
+            "date": "2026-09-02",
+        },
+    )
+    assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_expense_list_unallocated_filter(finance_client):
+    unallocated = Expense.objects.create(
+        category=Expense.Category.RENT,
+        amount=Decimal("300000.00"),
+        calculation_method=Expense.CalculationMethod.MANUAL,
+        date="2026-09-02",
+    )
+    trip, _ = _make_trip_for_deduction("UNALLOC")
+    allocated = Expense.objects.create(
+        category=Expense.Category.CUSTOMS,
+        amount=Decimal("100000.00"),
+        calculation_method=Expense.CalculationMethod.FIXED,
+        date="2026-09-02",
+    )
+    ExpenseAllocation.objects.create(
+        expense=allocated,
+        content_type=ContentType.objects.get_for_model(Trip),
+        object_id=trip.id,
+        allocated_amount=Decimal("100000.00"),
+    )
+
+    response = finance_client.get("/api/expenses/?unallocated=true")
+
+    assert response.status_code == 200
+    returned_ids = {row["id"] for row in response.data["results"]}
+    assert unallocated.id in returned_ids
+    assert allocated.id not in returned_ids
+
+
+@pytest.mark.django_db
+def test_general_expense_does_not_change_trip_cost_basis():
+    from apps.trips.services import TripCostService
+
+    trip, _ = _make_trip_for_deduction("GENCOST")
+    allocated = Expense.objects.create(
+        category=Expense.Category.CUSTOMS,
+        amount=Decimal("100000.00"),
+        calculation_method=Expense.CalculationMethod.FIXED,
+        date="2026-09-02",
+    )
+    ExpenseAllocation.objects.create(
+        expense=allocated,
+        content_type=ContentType.objects.get_for_model(Trip),
+        object_id=trip.id,
+        allocated_amount=Decimal("100000.00"),
+    )
+    before = TripCostService.calculate_trip_cost_basis(trip)
+
+    Expense.objects.create(
+        category=Expense.Category.RENT,
+        amount=Decimal("300000.00"),
+        calculation_method=Expense.CalculationMethod.MANUAL,
+        date="2026-09-02",
+    )
+
+    after = TripCostService.calculate_trip_cost_basis(trip)
+    assert after["total_expenses"] == before["total_expenses"]
+    assert after["total_cost"] == before["total_cost"]

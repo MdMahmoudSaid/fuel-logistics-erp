@@ -17,6 +17,7 @@ from .models import (
     CashAccount,
     CustomerPayment,
     Expense,
+    ExpenseCategory,
     Shareholder,
     ShareholderContribution,
     ShareholderLoan,
@@ -33,6 +34,7 @@ from .serializers import (
     CashAccountSerializer,
     ControlledDebtPaymentRequestSerializer,
     CustomerPaymentSerializer,
+    ExpenseCategorySerializer,
     ExpenseSerializer,
     IndirectSettlementRequestSerializer,
     ShareholderContributionSerializer,
@@ -189,6 +191,8 @@ class ExpenseViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(
                 allocations__content_type=trip_content_type, allocations__object_id=trip_id
             ).distinct()
+        if self.request.query_params.get("unallocated") == "true":
+            queryset = queryset.filter(allocations__isnull=True)
         return queryset
 
     def destroy(self, request, *args, **kwargs):
@@ -231,6 +235,23 @@ class ExpenseViewSet(viewsets.ModelViewSet):
             },
             status=http_status.HTTP_201_CREATED,
         )
+
+
+class ExpenseCategoryViewSet(viewsets.ModelViewSet):
+    queryset = ExpenseCategory.objects.all()
+    serializer_class = ExpenseCategorySerializer
+    filterset_fields = ["is_system", "is_active"]
+    permission_classes = [HasModulePermission]
+    module = "finance"
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.is_system:
+            return Response(
+                {"detail": "Une categorie systeme ne peut pas etre supprimee."},
+                status=http_status.HTTP_400_BAD_REQUEST,
+            )
+        return super().destroy(request, *args, **kwargs)
 
 
 class TreasuryTransactionViewSet(viewsets.ModelViewSet):

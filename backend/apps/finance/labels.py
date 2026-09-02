@@ -34,7 +34,7 @@ def _source_counterparty(txn) -> str | None:
     if model_name == "shareholderwithdrawal":
         return f"Retrait associe - {source.shareholder.name}"
     if model_name == "expense":
-        return _EXPENSE_COUNTERPARTY_BY_CATEGORY.get(source.category, "Autres frais du trajet")
+        return _EXPENSE_COUNTERPARTY_BY_CATEGORY.get(source.category, source.get_category_display())
     return None
 
 

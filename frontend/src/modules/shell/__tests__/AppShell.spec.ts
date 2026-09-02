@@ -29,6 +29,7 @@ function makeRouter() {
       { path: '/bank-accounts', name: 'bank-accounts', component: stub },
       { path: '/cash-accounts', name: 'cash-accounts', component: stub },
       { path: '/treasury/transactions', name: 'treasury-transactions', component: stub },
+      { path: '/expenses', name: 'expenses', component: stub },
       { path: '/shareholders', name: 'shareholders', component: stub },
       { path: '/profit', name: 'profit', component: stub },
       { path: '/reports', name: 'reports', component: stub },

@@ -61,6 +61,7 @@ const NAV_GROUPS: NavGroup[] = [
         labelKey: 'navigation.treasuryTransactions',
         module: 'finance',
       },
+      { to: 'expenses', labelKey: 'navigation.expenses', module: 'finance' },
       { to: 'bank-accounts', labelKey: 'navigation.bankAccounts', module: 'finance' },
       { to: 'cash-accounts', labelKey: 'navigation.cashAccounts', module: 'finance' },
     ],

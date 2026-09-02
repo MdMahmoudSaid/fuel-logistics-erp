@@ -38,6 +38,7 @@
     "bankAccounts": "Bank Accounts",
     "cashAccounts": "Cash Accounts",
     "treasuryTransactions": "Treasury Journal",
+    "expenses": "General Expenses",
     "reports": "Reports",
     "users": "Users",
     "roles": "Roles",
@@ -514,6 +515,12 @@
       "notes": "Notes",
       "paidByCustomer": "Paid directly by customer",
       "paidByCustomerHint": "This reduces the customer's receivable and marks the expense paid — no treasury movement is recorded.",
+      "treasuryPayment": "Treasury payment",
+      "accountType": "Account type",
+      "bankAccount": "Bank account",
+      "cashAccount": "Cash account",
+      "selectBankAccount": "Select a bank account",
+      "selectCashAccount": "Select a cash account",
       "customer": "Customer",
       "selectCustomer": "Select a customer",
       "applyToInvoice": "Apply to invoice (optional)",
@@ -529,6 +536,39 @@
       "saving": "Saving…",
       "save": "Save expense",
       "saveError": "Could not save this expense — check the fields."
+    },
+    "expenseCategoryForm": {
+      "createNew": "+ Create a new category",
+      "newCategoryName": "New category name",
+      "createButton": "Create",
+      "cancelButton": "Cancel",
+      "createError": "Could not create this category."
+    },
+    "expensesView": {
+      "title": "General expenses",
+      "newExpense": "+ New expense",
+      "periodStart": "Start",
+      "periodEnd": "End",
+      "listEmpty": "No expenses recorded for this period.",
+      "loadError": "Could not load general expenses.",
+      "monitoringTitle": "Trip-fee debt monitoring",
+      "monitoringHelp": "Read only: these amounts come from existing trip fees; no new debt is created here.",
+      "monitoringRows": "{count} row | {count} rows",
+      "table": {
+        "date": "Date",
+        "category": "Category",
+        "notes": "Notes",
+        "status": "Status",
+        "amount": "Amount"
+      },
+      "monitoring": {
+        "customs": "Customs",
+        "transit": "Transit",
+        "roadTransit": "Road transit",
+        "border": "Border",
+        "loading": "Loading",
+        "tripOther": "Other trip fees"
+      }
     },
     "transportPayment": {
       "title": "Transport fee (per litre)",

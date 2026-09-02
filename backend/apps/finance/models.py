@@ -564,6 +564,20 @@ class TransportPayment(TimeStampedModel):
             super().save(*args, **kwargs)
 
 
+class ExpenseCategory(TimeStampedModel):
+    name = models.CharField(max_length=100)
+    code = models.SlugField(max_length=30, unique=True)
+    is_system = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+    display_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["display_order", "name"]
+
+    def __str__(self) -> str:
+        return self.name
+
+
 class Expense(AuditableModel, TimeStampedModel):
     """A company operating cost, optionally split across several trips,
     trucks, customers, suppliers or transporters via ExpenseAllocation
@@ -606,7 +620,7 @@ class Expense(AuditableModel, TimeStampedModel):
         PAID = "PAID", "Paid"
         CANCELLED = "CANCELLED", "Cancelled"
 
-    category = models.CharField(max_length=30, choices=Category.choices)
+    category = models.CharField(max_length=30)
     amount = models.DecimalField(max_digits=16, decimal_places=2)
     calculation_method = models.CharField(max_length=20, choices=CalculationMethod.choices)
     date = models.DateField()
@@ -625,6 +639,17 @@ class Expense(AuditableModel, TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.get_category_display()}: {self.amount} ({self.date})"
+
+    def get_category_display(self) -> str:
+        legacy_label = dict(self.Category.choices).get(self.category)
+        if legacy_label:
+            return legacy_label
+        return (
+            ExpenseCategory.objects.filter(code=self.category)
+            .values_list("name", flat=True)
+            .first()
+            or self.category
+        )
 
 
 class ExpenseAllocation(TimeStampedModel):

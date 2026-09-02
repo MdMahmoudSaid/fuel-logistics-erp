@@ -38,6 +38,7 @@
     "bankAccounts": "الحسابات البنكية",
     "cashAccounts": "حسابات الصندوق",
     "treasuryTransactions": "سجل الخزينة",
+    "expenses": "المصروفات العامة",
     "reports": "التقارير",
     "users": "المستخدمون",
     "roles": "الأدوار",
@@ -514,6 +515,12 @@
       "notes": "ملاحظات",
       "paidByCustomer": "مدفوعة مباشرة من قبل العميل",
       "paidByCustomerHint": "هذا يخفّض دين العميل ويحدّد المصروف كمدفوع — لا تُسجَّل أي حركة خزينة.",
+      "treasuryPayment": "دفع الخزينة",
+      "accountType": "نوع الحساب",
+      "bankAccount": "حساب بنكي",
+      "cashAccount": "حساب صندوق",
+      "selectBankAccount": "اختر حساباً بنكياً",
+      "selectCashAccount": "اختر حساب صندوق",
       "customer": "العميل",
       "selectCustomer": "اختر عميلاً",
       "applyToInvoice": "تطبيق على فاتورة (اختياري)",
@@ -529,6 +536,39 @@
       "saving": "جارٍ الحفظ…",
       "save": "حفظ المصروف",
       "saveError": "تعذر حفظ هذا المصروف — تحقق من الحقول."
+    },
+    "expenseCategoryForm": {
+      "createNew": "+ إنشاء فئة جديدة",
+      "newCategoryName": "اسم الفئة الجديدة",
+      "createButton": "إنشاء",
+      "cancelButton": "إلغاء",
+      "createError": "تعذر إنشاء هذه الفئة."
+    },
+    "expensesView": {
+      "title": "المصروفات العامة",
+      "newExpense": "+ مصروف جديد",
+      "periodStart": "البداية",
+      "periodEnd": "النهاية",
+      "listEmpty": "لا توجد مصروفات مسجلة في هذه الفترة.",
+      "loadError": "تعذر تحميل المصروفات العامة.",
+      "monitoringTitle": "متابعة ديون رسوم الرحلات",
+      "monitoringHelp": "للقراءة فقط: تأتي هذه المبالغ من رسوم الرحلات الموجودة، ولا يتم إنشاء أي دين جديد هنا.",
+      "monitoringRows": "{count} سطر | {count} أسطر",
+      "table": {
+        "date": "التاريخ",
+        "category": "الفئة",
+        "notes": "ملاحظات",
+        "status": "الحالة",
+        "amount": "المبلغ"
+      },
+      "monitoring": {
+        "customs": "الجمارك",
+        "transit": "العبور",
+        "roadTransit": "العبور البري",
+        "border": "الحدود",
+        "loading": "التحميل",
+        "tripOther": "رسوم رحلات أخرى"
+      }
     },
     "transportPayment": {
       "title": "رسوم النقل (لكل لتر)",

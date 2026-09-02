@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
+from django.utils.text import slugify
 from rest_framework import serializers
 
 from apps.accounts.serializers import UserSerializer
@@ -19,6 +20,7 @@ from .models import (
     CustomerPayment,
     Expense,
     ExpenseAllocation,
+    ExpenseCategory,
     PaymentAllocation,
     Shareholder,
     ShareholderContribution,
@@ -569,26 +571,108 @@ class ExpenseAllocationInputSerializer(serializers.Serializer):
     allocated_amount = serializers.DecimalField(max_digits=16, decimal_places=2, min_value=Decimal("0.01"))
 
 
+class ExpenseCategorySerializer(serializers.ModelSerializer):
+    code = serializers.SlugField(max_length=30, required=False, allow_blank=True)
+    is_active = serializers.BooleanField(required=False, default=True)
+
+    class Meta:
+        model = ExpenseCategory
+        fields = ["id", "name", "code", "is_system", "is_active", "display_order"]
+        read_only_fields = ["id", "is_system"]
+
+    def validate(self, data):
+        if self.instance is not None and self.instance.is_system:
+            changed_fields = {
+                key
+                for key, value in data.items()
+                if key != "is_system" and getattr(self.instance, key) != value
+            }
+            if changed_fields:
+                raise serializers.ValidationError(
+                    "Une categorie systeme ne peut pas etre modifiee."
+                )
+        return data
+
+    def create(self, validated_data):
+        if not validated_data.get("code"):
+            validated_data["code"] = self._generate_unique_code(validated_data["name"])
+        return super().create(validated_data)
+
+    def _generate_unique_code(self, name: str) -> str:
+        base = slugify(name).replace("-", "_")[:30].strip("_") or "category"
+        code = base
+        suffix = 2
+        while ExpenseCategory.objects.filter(code=code).exists():
+            suffix_text = f"_{suffix}"
+            code = f"{base[:30 - len(suffix_text)]}{suffix_text}"
+            suffix += 1
+        return code
+
+
 class ExpenseSerializer(serializers.ModelSerializer):
     allocations_detail = ExpenseAllocationSerializer(source="allocations", many=True, read_only=True)
     allocations = ExpenseAllocationInputSerializer(many=True, write_only=True, required=False)
+    category = serializers.CharField()
+    bank_account = serializers.PrimaryKeyRelatedField(
+        queryset=BankAccount.objects.all(), write_only=True, required=False, allow_null=True
+    )
+    cash_account = serializers.PrimaryKeyRelatedField(
+        queryset=CashAccount.objects.all(), write_only=True, required=False, allow_null=True
+    )
 
     class Meta:
         model = Expense
         fields = [
             "id", "category", "amount", "calculation_method", "date", "status",
             "paid_by_customer_directly", "notes",
-            "allocations", "allocations_detail", "created_at", "updated_at",
+            "allocations", "allocations_detail", "bank_account", "cash_account",
+            "created_at", "updated_at",
         ]
         # paid_by_customer_directly/status=PAID for the indirect case is only
         # ever set by IndirectSettlementService, never a direct client write.
         read_only_fields = ["id", "paid_by_customer_directly", "created_at", "updated_at"]
 
+    def validate_category(self, value):
+        if not ExpenseCategory.objects.filter(code=value, is_active=True).exists():
+            raise serializers.ValidationError("Categorie de depense invalide ou inactive.")
+        return value
+
+    def validate(self, data):
+        bank_account = data.get("bank_account")
+        cash_account = data.get("cash_account")
+        if bank_account and cash_account:
+            raise serializers.ValidationError(
+                "Un seul compte (banque OU caisse) peut etre renseigne."
+            )
+        if (bank_account or cash_account) and data.get("allocations"):
+            raise serializers.ValidationError(
+                "Le paiement direct est reserve aux depenses generales sans repartition."
+            )
+        return data
+
     def create(self, validated_data):
         allocations = validated_data.pop("allocations", [])
-        expense = Expense.objects.create(**validated_data)
-        for item in allocations:
-            ExpenseAllocation.objects.create(expense=expense, **item)
+        bank_account = validated_data.pop("bank_account", None)
+        cash_account = validated_data.pop("cash_account", None)
+        paid_directly = bank_account is not None or cash_account is not None
+        if paid_directly:
+            validated_data["status"] = Expense.Status.PAID
+        with transaction.atomic():
+            expense = Expense.objects.create(**validated_data)
+            for item in allocations:
+                ExpenseAllocation.objects.create(expense=expense, **item)
+            if paid_directly:
+                TreasuryTransaction.objects.create(
+                    bank_account=bank_account,
+                    cash_account=cash_account,
+                    type=TreasuryTransaction.Type.MONEY_OUT,
+                    amount=expense.amount,
+                    date=expense.date,
+                    note=expense.notes,
+                    source_content_type=ContentType.objects.get_for_model(Expense),
+                    source_object_id=expense.id,
+                    recorded_by=self.context["request"].user,
+                )
         return expense
 
     def update(self, instance, validated_data):
