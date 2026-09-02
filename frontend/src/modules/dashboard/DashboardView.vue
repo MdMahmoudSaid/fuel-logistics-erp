@@ -197,6 +197,21 @@ const treasuryCard = computed(() => {
   }
 })
 
+const workingCapitalCard = computed(() => {
+  if (!summary.value) return null
+  const wc = summary.value.working_capital
+  return {
+    totalParts: formatMoneyParts(wc.total),
+    negative: Number(wc.total) < 0,
+    capitalParts: formatMoneyParts(wc.capital),
+    treasuryParts: formatMoneyParts(wc.treasury_available),
+    receivablesParts: formatMoneyParts(wc.customer_receivables),
+    supplierParts: formatMoneyParts(wc.supplier_net_balance),
+    transporterParts: formatMoneyParts(wc.transporter_net_balance),
+    otherDebtsParts: formatMoneyParts(wc.other_debts),
+  }
+})
+
 const partyCards = computed(() => {
   if (!summary.value) return []
   const p = summary.value.party_balances
@@ -415,6 +430,65 @@ const compactEnRouteTrips = computed(() => enRouteTrips.value.slice(0, 5))
               <dt class="text-texte-2">{{ t('dashboard.final.cashAccounts') }}</dt>
               <dd class="text-texte font-medium">
                 <MonoValue v-bind="treasuryCard.cashParts" />
+              </dd>
+            </div>
+          </dl>
+        </section>
+
+        <section class="working-capital-card border-ligne rounded-lg border bg-white p-4">
+          <div class="flex items-center gap-2">
+            <span
+              class="bg-transit-tint text-transit-texte inline-flex size-8 shrink-0 items-center justify-center rounded-lg"
+            >
+              <Icon name="landmark" :size="16" />
+            </span>
+            <h2 class="text-texte-2 text-sm font-semibold uppercase">
+              {{ t('dashboard.final.workingCapital') }}
+            </h2>
+          </div>
+          <p class="text-texte-3 mt-1 text-xs">{{ t('dashboard.final.workingCapitalHelp') }}</p>
+          <p
+            v-if="workingCapitalCard"
+            class="mt-3 text-2xl font-semibold"
+            :class="workingCapitalCard.negative ? 'text-critique' : 'text-texte'"
+          >
+            <MonoValue v-bind="workingCapitalCard.totalParts" align="left" />
+          </p>
+          <dl v-if="workingCapitalCard" class="mt-4 grid gap-2 text-sm">
+            <div class="bg-sable flex items-center justify-between gap-3 rounded-lg px-3 py-2">
+              <dt class="text-texte-2">{{ t('dashboard.final.capitalContributed') }}</dt>
+              <dd class="text-texte font-medium">
+                <MonoValue v-bind="workingCapitalCard.capitalParts" />
+              </dd>
+            </div>
+            <div class="bg-sable flex items-center justify-between gap-3 rounded-lg px-3 py-2">
+              <dt class="text-texte-2">{{ t('dashboard.final.availableTreasury') }}</dt>
+              <dd class="text-texte font-medium">
+                <MonoValue v-bind="workingCapitalCard.treasuryParts" />
+              </dd>
+            </div>
+            <div class="bg-sable flex items-center justify-between gap-3 rounded-lg px-3 py-2">
+              <dt class="text-texte-2">{{ t('dashboard.final.customerReceivables') }}</dt>
+              <dd class="text-texte font-medium">
+                <MonoValue v-bind="workingCapitalCard.receivablesParts" />
+              </dd>
+            </div>
+            <div class="bg-sable flex items-center justify-between gap-3 rounded-lg px-3 py-2">
+              <dt class="text-texte-2">{{ t('dashboard.final.supplierNetBalance') }}</dt>
+              <dd class="text-texte font-medium">
+                <MonoValue v-bind="workingCapitalCard.supplierParts" />
+              </dd>
+            </div>
+            <div class="bg-sable flex items-center justify-between gap-3 rounded-lg px-3 py-2">
+              <dt class="text-texte-2">{{ t('dashboard.final.transporterNetBalance') }}</dt>
+              <dd class="text-texte font-medium">
+                <MonoValue v-bind="workingCapitalCard.transporterParts" />
+              </dd>
+            </div>
+            <div class="bg-sable flex items-center justify-between gap-3 rounded-lg px-3 py-2">
+              <dt class="text-texte-2">{{ t('dashboard.final.otherDebts') }}</dt>
+              <dd class="text-texte font-medium">
+                <MonoValue v-bind="workingCapitalCard.otherDebtsParts" />
               </dd>
             </div>
           </dl>

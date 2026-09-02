@@ -89,6 +89,15 @@ const summary: DashboardSummary = {
       other: '100000.00',
     },
   },
+  working_capital: {
+    capital: '5000000.00',
+    treasury_available: '17000000.00',
+    customer_receivables: '1000000.00',
+    supplier_net_balance: '2000000.00',
+    transporter_net_balance: '-500000.00',
+    other_debts: '300000.00',
+    total: '19200000.00',
+  },
   company_stock: {
     total_quantity: '80000.00',
     trips_count: 2,
@@ -453,6 +462,14 @@ describe('DashboardView', () => {
       .findAllComponents({ name: 'RouterLink' })
       .find((link) => link.text() === 'Voir le détail')
     expect(stockLink?.props('to')).toEqual({ name: 'company-stock' })
+  })
+
+  it('renders the fond de roulement section', async () => {
+    const wrapper = mount(DashboardView, { global: { plugins: [makeRouter()] } })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Fond de roulement')
+    expect(wrapper.text()).toContain('19 200 000 XOF')
   })
 
   it('keeps action work prominent, live trips compact, and period detail collapsed', async () => {

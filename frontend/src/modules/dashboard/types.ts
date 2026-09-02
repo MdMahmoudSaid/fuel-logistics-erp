@@ -101,6 +101,20 @@ export interface DashboardSummary {
       other: string
     }
   }
+  // "Fond de roulement" (working capital) - a broader financial view than
+  // financial_summary.current_treasury_balance: treasury + customer
+  // receivables + signed net supplier/transporter balances - customs/
+  // transit/fee debts. capital is informational only (not summed into
+  // total). Point-in-time, like debts/party_balances above.
+  working_capital: {
+    capital: string
+    treasury_available: string
+    customer_receivables: string
+    supplier_net_balance: string
+    transporter_net_balance: string
+    other_debts: string
+    total: string
+  }
   company_stock: {
     total_quantity: string
     trips_count: number
