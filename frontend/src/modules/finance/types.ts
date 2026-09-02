@@ -457,6 +457,23 @@ export interface ShareholderWithdrawal {
   updated_at: string
 }
 
+export interface ShareholderContribution {
+  id: number
+  shareholder: number
+  shareholder_detail: ShareholderBrief | null
+  amount: string
+  date: string
+  bank_account: number | null
+  cash_account: number | null
+  reference: string
+  notes: string
+  proof_url: string | null
+  recorded_by: number | null
+  recorded_by_detail: UserBrief | null
+  created_at: string
+  updated_at: string
+}
+
 // GET /api/shareholders/{id}/ledger/ (ShareholderLedgerService.get_shareholder_summary)
 export interface ShareholderLedgerShare {
   id: number

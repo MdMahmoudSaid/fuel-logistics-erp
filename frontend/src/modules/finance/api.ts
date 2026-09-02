@@ -11,6 +11,7 @@ import type {
   PartyBalance,
   PartyType,
   Shareholder,
+  ShareholderContribution,
   ShareholderLedger,
   ShareholderLoan,
   ShareholderProfitDistribution,
@@ -231,9 +232,30 @@ export const shareholderLoanResource = createResourceApi<ShareholderLoan>('/shar
 export const shareholderWithdrawalResource = createResourceApi<ShareholderWithdrawal>(
   '/shareholder-withdrawals/',
 )
+export const shareholderContributionResource = createResourceApi<ShareholderContribution>(
+  '/shareholder-contributions/',
+)
 export const shareholderDistributionResource = createResourceApi<ShareholderProfitDistribution>(
   '/shareholder-distributions/',
 )
+
+export function createShareholderContribution(payload: {
+  shareholder: number
+  bank_account?: number | null
+  cash_account?: number | null
+  amount: string
+  date: string
+  reference?: string
+  notes?: string
+  attachment: File
+}): Promise<ShareholderContribution> {
+  const { attachment, ...fields } = payload
+  return apiClient
+    .post<ShareholderContribution>('/shareholder-contributions/', buildAdvanceForm(fields, attachment), {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    .then((r) => r.data)
+}
 
 export function fetchShareholderLedger(shareholderId: number): Promise<ShareholderLedger> {
   return apiClient
@@ -245,10 +267,9 @@ export function fetchShareholderLedger(shareholderId: number): Promise<Sharehold
 // Read-only, indicative current-profit split - never stored, never gates
 // a withdrawal. `from`/`to` are optional; omitted, the backend defaults to
 // the period since the last VALIDATED distribution (or all-time if none).
-export function fetchShareholderProfitPreview(params?: {
-  from?: string
-  to?: string
-}): Promise<ShareholderProfitPreview> {
+export function fetchShareholderProfitPreview(
+  params?: Record<string, string | undefined>,
+): Promise<ShareholderProfitPreview> {
   return apiClient
     .get<ShareholderProfitPreview>('/shareholders/profit-preview/', { params })
     .then((r) => r.data)
