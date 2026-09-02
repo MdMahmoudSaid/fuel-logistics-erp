@@ -140,7 +140,7 @@ function nextAction(trip: Trip) {
 
 <template>
   <div class="space-y-4">
-    <div class="flex items-center justify-between">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <h1 class="font-display text-2xl leading-none font-semibold uppercase">
         {{ t('trips.title') }}
       </h1>

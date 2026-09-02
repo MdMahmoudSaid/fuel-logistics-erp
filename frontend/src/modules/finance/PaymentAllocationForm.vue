@@ -243,7 +243,7 @@ async function onSubmit() {
       class="border-ligne space-y-4 rounded-xl border bg-surface p-6"
       @submit.prevent="onSubmit"
     >
-      <div class="grid grid-cols-2 gap-4">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div class="space-y-1.5">
           <label class="text-texte-2 text-sm font-medium" for="customer">{{
             t('finance.payment.customer')
@@ -333,7 +333,7 @@ async function onSubmit() {
 
       <div
         v-if="form.destination === 'BANK' || form.destination === 'CASH'"
-        class="border-ligne grid grid-cols-2 gap-4 border-t pt-4"
+        class="border-ligne grid grid-cols-1 md:grid-cols-2 gap-4 border-t pt-4"
       >
         <div v-if="form.destination === 'BANK'" class="space-y-1.5">
           <label class="text-texte-2 text-sm font-medium" for="bank_account">{{

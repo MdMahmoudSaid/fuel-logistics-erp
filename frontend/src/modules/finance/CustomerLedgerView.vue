@@ -80,11 +80,11 @@ function badgeVariant(status: string) {
 
 <template>
   <div class="max-w-4xl space-y-6">
-    <div class="flex items-center justify-between">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <h1 class="font-display text-2xl leading-none font-semibold uppercase">
         {{ t('finance.customerLedger.title', { name: ledger?.customer.name ?? '…' }) }}
       </h1>
-      <div class="flex gap-2">
+      <div class="flex flex-wrap gap-2">
         <Button v-if="ledger" variant="primary" @click="showPaymentModal = true">
           {{ t('finance.customerLedger.newPayment') }}
         </Button>
@@ -141,112 +141,116 @@ function badgeVariant(status: string) {
       </section>
 
       <Card :title="t('finance.customerLedger.invoices')">
-        <table class="w-full text-start text-sm">
-          <thead>
-            <tr class="border-ligne text-texte-2 border-b">
-              <th class="px-2 py-1.5 font-medium">
-                {{ t('finance.customerLedger.table.invoice') }}
-              </th>
-              <th class="px-2 py-1.5 font-medium">
-                {{ t('finance.customerLedger.table.issued') }}
-              </th>
-              <th class="px-2 py-1.5 font-medium text-right">
-                {{ t('finance.customerLedger.table.total') }}
-              </th>
-              <th class="px-2 py-1.5 font-medium text-right">
-                {{ t('finance.customerLedger.table.outstanding') }}
-              </th>
-              <th class="px-2 py-1.5 font-medium">
-                {{ t('finance.customerLedger.table.status') }}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="invoice in ledger.invoices"
-              :key="invoice.id"
-              class="border-ligne hover:bg-sable cursor-pointer border-b last:border-0"
-              @click="router.push({ name: 'invoice-detail', params: { id: invoice.id } })"
-            >
-              <td class="text-texte px-2 py-1.5 font-medium">{{ invoice.invoice_number }}</td>
-              <td class="px-2 py-1.5">{{ invoice.issued_date }}</td>
-              <td class="px-2 py-1.5 text-right">
-                {{ formatMoney(invoice.total_amount) }}
-              </td>
-              <td class="text-texte px-2 py-1.5 text-right font-medium">
-                {{ formatMoney(invoice.outstanding) }}
-              </td>
-              <td class="px-2 py-1.5">
-                <Badge :variant="badgeVariant(invoice.status)">
-                  {{ t(`invoiceStatus.${invoice.status}`) }}
-                </Badge>
-              </td>
-            </tr>
-            <tr v-if="ledger.invoices.length === 0">
-              <td colspan="5" class="text-texte-3 px-2 py-4 text-center">
-                {{ t('finance.customerLedger.noInvoices') }}
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <div class="overflow-x-auto">
+          <table class="w-full text-start text-sm">
+            <thead>
+              <tr class="border-ligne text-texte-2 border-b">
+                <th class="px-2 py-1.5 font-medium">
+                  {{ t('finance.customerLedger.table.invoice') }}
+                </th>
+                <th class="px-2 py-1.5 font-medium">
+                  {{ t('finance.customerLedger.table.issued') }}
+                </th>
+                <th class="px-2 py-1.5 font-medium text-right">
+                  {{ t('finance.customerLedger.table.total') }}
+                </th>
+                <th class="px-2 py-1.5 font-medium text-right">
+                  {{ t('finance.customerLedger.table.outstanding') }}
+                </th>
+                <th class="px-2 py-1.5 font-medium">
+                  {{ t('finance.customerLedger.table.status') }}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="invoice in ledger.invoices"
+                :key="invoice.id"
+                class="border-ligne hover:bg-sable cursor-pointer border-b last:border-0"
+                @click="router.push({ name: 'invoice-detail', params: { id: invoice.id } })"
+              >
+                <td class="text-texte px-2 py-1.5 font-medium">{{ invoice.invoice_number }}</td>
+                <td class="px-2 py-1.5">{{ invoice.issued_date }}</td>
+                <td class="px-2 py-1.5 text-right">
+                  {{ formatMoney(invoice.total_amount) }}
+                </td>
+                <td class="text-texte px-2 py-1.5 text-right font-medium">
+                  {{ formatMoney(invoice.outstanding) }}
+                </td>
+                <td class="px-2 py-1.5">
+                  <Badge :variant="badgeVariant(invoice.status)">
+                    {{ t(`invoiceStatus.${invoice.status}`) }}
+                  </Badge>
+                </td>
+              </tr>
+              <tr v-if="ledger.invoices.length === 0">
+                <td colspan="5" class="text-texte-3 px-2 py-4 text-center">
+                  {{ t('finance.customerLedger.noInvoices') }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </Card>
 
       <Card :title="t('finance.customerLedger.payments')">
-        <table class="w-full text-start text-sm">
-          <thead>
-            <tr class="border-ligne text-texte-2 border-b">
-              <th class="px-2 py-1.5 font-medium">
-                {{ t('finance.customerLedger.paymentsTable.date') }}
-              </th>
-              <th class="px-2 py-1.5 font-medium">
-                {{ t('finance.customerLedger.paymentsTable.method') }}
-              </th>
-              <th class="px-2 py-1.5 font-medium">
-                {{ t('finance.customerLedger.paymentsTable.indirect') }}
-              </th>
-              <th class="px-2 py-1.5 font-medium">
-                {{ t('finance.customerLedger.paymentsTable.reference') }}
-              </th>
-              <th class="px-2 py-1.5 font-medium text-right">
-                {{ t('finance.customerLedger.paymentsTable.amount') }}
-              </th>
-              <th class="px-2 py-1.5 font-medium">Justificatif</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="payment in ledger.payments"
-              :key="payment.id"
-              class="border-ligne border-b last:border-0"
-            >
-              <td class="px-2 py-1.5">{{ payment.payment_date }}</td>
-              <td class="px-2 py-1.5">{{ t(`paymentMethod.${payment.method}`) }}</td>
-              <td class="px-2 py-1.5">
-                {{ payment.is_indirect ? t('common.yes') : t('common.no') }}
-              </td>
-              <td class="px-2 py-1.5">{{ payment.reference || '—' }}</td>
-              <td class="text-texte px-2 py-1.5 text-right font-medium">
-                <MonoValue :value="formatMoney(payment.amount)" />
-              </td>
-              <td class="px-2 py-1.5">
-                <button
-                  v-if="payment.proof_url"
-                  type="button"
-                  class="text-bitume underline"
-                  @click="previewUrl = payment.proof_url"
-                >
-                  Voir justificatif
-                </button>
-                <span v-else class="text-texte-3">—</span>
-              </td>
-            </tr>
-            <tr v-if="ledger.payments.length === 0">
-              <td colspan="6" class="text-texte-3 px-2 py-4 text-center">
-                {{ t('finance.customerLedger.noPayments') }}
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <div class="overflow-x-auto">
+          <table class="w-full text-start text-sm">
+            <thead>
+              <tr class="border-ligne text-texte-2 border-b">
+                <th class="px-2 py-1.5 font-medium">
+                  {{ t('finance.customerLedger.paymentsTable.date') }}
+                </th>
+                <th class="px-2 py-1.5 font-medium">
+                  {{ t('finance.customerLedger.paymentsTable.method') }}
+                </th>
+                <th class="px-2 py-1.5 font-medium">
+                  {{ t('finance.customerLedger.paymentsTable.indirect') }}
+                </th>
+                <th class="px-2 py-1.5 font-medium">
+                  {{ t('finance.customerLedger.paymentsTable.reference') }}
+                </th>
+                <th class="px-2 py-1.5 font-medium text-right">
+                  {{ t('finance.customerLedger.paymentsTable.amount') }}
+                </th>
+                <th class="px-2 py-1.5 font-medium">Justificatif</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="payment in ledger.payments"
+                :key="payment.id"
+                class="border-ligne border-b last:border-0"
+              >
+                <td class="px-2 py-1.5">{{ payment.payment_date }}</td>
+                <td class="px-2 py-1.5">{{ t(`paymentMethod.${payment.method}`) }}</td>
+                <td class="px-2 py-1.5">
+                  {{ payment.is_indirect ? t('common.yes') : t('common.no') }}
+                </td>
+                <td class="px-2 py-1.5">{{ payment.reference || '—' }}</td>
+                <td class="text-texte px-2 py-1.5 text-right font-medium">
+                  <MonoValue :value="formatMoney(payment.amount)" />
+                </td>
+                <td class="px-2 py-1.5">
+                  <button
+                    v-if="payment.proof_url"
+                    type="button"
+                    class="text-bitume underline"
+                    @click="previewUrl = payment.proof_url"
+                  >
+                    Voir justificatif
+                  </button>
+                  <span v-else class="text-texte-3">—</span>
+                </td>
+              </tr>
+              <tr v-if="ledger.payments.length === 0">
+                <td colspan="6" class="text-texte-3 px-2 py-4 text-center">
+                  {{ t('finance.customerLedger.noPayments') }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </Card>
     </template>
 

@@ -128,11 +128,11 @@ const filteredTransactions = computed(() =>
 
 <template>
   <div class="max-w-7xl space-y-6">
-    <div class="flex items-center justify-between">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <h1 class="font-display text-2xl leading-none font-semibold uppercase">
         {{ t('finance.treasuryLedger.title') }}
       </h1>
-      <div class="flex gap-2">
+      <div class="flex flex-wrap gap-2">
         <Button variant="primary" @click="showDebtPaymentModal = true">
           {{ t('finance.treasuryLedger.newPayment') }}
         </Button>

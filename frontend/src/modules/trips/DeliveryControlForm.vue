@@ -179,7 +179,7 @@ async function onSubmit() {
     </h2>
     <p v-if="error" class="text-critique text-sm">{{ error }}</p>
 
-    <div class="grid grid-cols-2 gap-4">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div class="space-y-1.5">
         <span class="text-texte-2 text-sm font-medium">{{
           t('trips.delivery.loadedQuantity')
@@ -249,7 +249,7 @@ async function onSubmit() {
 
     <div
       v-if="hasReceivedInput"
-      class="border-ligne grid grid-cols-2 gap-4 rounded-lg border bg-sable p-3 text-sm"
+      class="border-ligne grid grid-cols-1 md:grid-cols-2 gap-4 rounded-lg border bg-sable p-3 text-sm"
     >
       <div>
         <span class="text-texte-2">{{ t('trips.delivery.lossEstimate') }}</span>

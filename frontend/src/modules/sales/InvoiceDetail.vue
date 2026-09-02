@@ -146,7 +146,7 @@ function formatDateTime(value: string) {
 
 <template>
   <div class="max-w-2xl space-y-6">
-    <div class="flex items-center justify-between">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <h1 class="font-display text-2xl leading-none font-semibold uppercase">
         {{ t('sales.invoiceDetail.title', { number: invoice?.invoice_number ?? '' }) }}
       </h1>
@@ -187,7 +187,7 @@ function formatDateTime(value: string) {
         </div>
         <p v-if="validateError" class="text-critique text-sm">{{ validateError }}</p>
 
-        <div class="grid grid-cols-2 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <span class="text-texte-2">{{ t('sales.invoiceDetail.customer') }}</span>
             <p class="text-texte font-medium">
@@ -243,7 +243,7 @@ function formatDateTime(value: string) {
 
         <template v-if="isDraft && canEdit">
           <p v-if="saveError" class="text-critique text-sm">{{ saveError }}</p>
-          <div class="grid grid-cols-2 gap-4">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="space-y-1">
               <label class="text-texte-2 text-sm font-medium" for="total_amount">{{
                 t('sales.invoiceDetail.totalAmount')
@@ -360,43 +360,45 @@ function formatDateTime(value: string) {
       </Card>
 
       <Card :title="t('sales.invoiceDetail.payments')">
-        <table class="w-full text-start text-sm">
-          <thead>
-            <tr class="border-ligne text-texte-2 border-b">
-              <th class="px-2 py-1.5 font-medium">{{ t('sales.invoiceDetail.paymentDate') }}</th>
-              <th class="px-2 py-1.5 font-medium">{{ t('sales.invoiceDetail.method') }}</th>
-              <th class="px-2 py-1.5 font-medium">{{ t('sales.invoiceDetail.reference') }}</th>
-              <th class="px-2 py-1.5 text-end font-medium">{{ t('sales.invoiceDetail.amount') }}</th>
-              <th class="px-2 py-1.5 font-medium">{{ t('sales.invoiceDetail.proof') }}</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="payment in invoice.payments" :key="payment.id" class="border-ligne border-b last:border-0">
-              <td class="px-2 py-1.5">{{ payment.payment_date }}</td>
-              <td class="px-2 py-1.5">{{ t(`paymentMethod.${payment.method}`) }}</td>
-              <td class="px-2 py-1.5">{{ payment.reference || '—' }}</td>
-              <td class="px-2 py-1.5 text-end">
-                <MonoValue :value="formatMoney(payment.amount)" />
-              </td>
-              <td class="px-2 py-1.5">
-                <button
-                  v-if="payment.proof_url"
-                  type="button"
-                  class="text-bitume underline"
-                  @click="previewUrl = payment.proof_url"
-                >
-                  {{ t('sales.invoiceDetail.viewProof') }}
-                </button>
-                <span v-else class="text-texte-3">—</span>
-              </td>
-            </tr>
-            <tr v-if="invoice.payments.length === 0">
-              <td colspan="5" class="text-texte-3 px-2 py-4 text-center">
-                {{ t('sales.invoiceDetail.noPayments') }}
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <div class="overflow-x-auto">
+          <table class="w-full text-start text-sm">
+            <thead>
+              <tr class="border-ligne text-texte-2 border-b">
+                <th class="px-2 py-1.5 font-medium">{{ t('sales.invoiceDetail.paymentDate') }}</th>
+                <th class="px-2 py-1.5 font-medium">{{ t('sales.invoiceDetail.method') }}</th>
+                <th class="px-2 py-1.5 font-medium">{{ t('sales.invoiceDetail.reference') }}</th>
+                <th class="px-2 py-1.5 text-end font-medium">{{ t('sales.invoiceDetail.amount') }}</th>
+                <th class="px-2 py-1.5 font-medium">{{ t('sales.invoiceDetail.proof') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="payment in invoice.payments" :key="payment.id" class="border-ligne border-b last:border-0">
+                <td class="px-2 py-1.5">{{ payment.payment_date }}</td>
+                <td class="px-2 py-1.5">{{ t(`paymentMethod.${payment.method}`) }}</td>
+                <td class="px-2 py-1.5">{{ payment.reference || '—' }}</td>
+                <td class="px-2 py-1.5 text-end">
+                  <MonoValue :value="formatMoney(payment.amount)" />
+                </td>
+                <td class="px-2 py-1.5">
+                  <button
+                    v-if="payment.proof_url"
+                    type="button"
+                    class="text-bitume underline"
+                    @click="previewUrl = payment.proof_url"
+                  >
+                    {{ t('sales.invoiceDetail.viewProof') }}
+                  </button>
+                  <span v-else class="text-texte-3">—</span>
+                </td>
+              </tr>
+              <tr v-if="invoice.payments.length === 0">
+                <td colspan="5" class="text-texte-3 px-2 py-4 text-center">
+                  {{ t('sales.invoiceDetail.noPayments') }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </Card>
 
       <Modal

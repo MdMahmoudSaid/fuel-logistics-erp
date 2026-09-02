@@ -182,7 +182,7 @@ function badgeVariant(status: TripStatus) {
     </div>
 
     <form
-      class="border-ligne grid grid-cols-2 gap-4 rounded-xl border bg-surface p-6"
+      class="border-ligne grid grid-cols-1 md:grid-cols-2 gap-4 rounded-xl border bg-surface p-6"
       @submit.prevent="onSubmit"
     >
       <div class="space-y-1.5">
@@ -306,40 +306,42 @@ function badgeVariant(status: TripStatus) {
         </Button>
       </div>
 
-      <table class="w-full text-left text-sm">
-        <thead>
-          <tr class="border-ligne text-texte-2 border-b">
-            <th class="px-2 py-1.5 font-medium">{{ t('sales.orderForm.table.reference') }}</th>
-            <th class="px-2 py-1.5 font-medium">{{ t('sales.orderForm.table.truck') }}</th>
-            <th class="px-2 py-1.5 font-medium text-right">
-              {{ t('sales.orderForm.table.quantity') }}
-            </th>
-            <th class="px-2 py-1.5 font-medium">{{ t('sales.orderForm.table.status') }}</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="trip in trips"
-            :key="trip.id"
-            class="border-ligne hover:bg-sable cursor-pointer border-b last:border-0"
-            @click="router.push({ name: 'trip-detail', params: { id: trip.id } })"
-          >
-            <td class="text-texte px-2 py-1.5 font-medium">{{ trip.reference }}</td>
-            <td class="px-2 py-1.5">{{ trip.truck_detail?.internal_id }}</td>
-            <td class="px-2 py-1.5 text-right">
-              {{ formatQuantity(trip.quantity_loaded) }}
-            </td>
-            <td class="px-2 py-1.5">
-              <Badge :variant="badgeVariant(trip.status)">{{ tripStatusLabel(trip.status) }}</Badge>
-            </td>
-          </tr>
-          <tr v-if="!trips.length">
-            <td colspan="4" class="text-texte-3 px-2 py-4 text-center">
-              {{ t('sales.orderForm.noTrips') }}
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-sm">
+          <thead>
+            <tr class="border-ligne text-texte-2 border-b">
+              <th class="px-2 py-1.5 font-medium">{{ t('sales.orderForm.table.reference') }}</th>
+              <th class="px-2 py-1.5 font-medium">{{ t('sales.orderForm.table.truck') }}</th>
+              <th class="px-2 py-1.5 font-medium text-right">
+                {{ t('sales.orderForm.table.quantity') }}
+              </th>
+              <th class="px-2 py-1.5 font-medium">{{ t('sales.orderForm.table.status') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="trip in trips"
+              :key="trip.id"
+              class="border-ligne hover:bg-sable cursor-pointer border-b last:border-0"
+              @click="router.push({ name: 'trip-detail', params: { id: trip.id } })"
+            >
+              <td class="text-texte px-2 py-1.5 font-medium">{{ trip.reference }}</td>
+              <td class="px-2 py-1.5">{{ trip.truck_detail?.internal_id }}</td>
+              <td class="px-2 py-1.5 text-right">
+                {{ formatQuantity(trip.quantity_loaded) }}
+              </td>
+              <td class="px-2 py-1.5">
+                <Badge :variant="badgeVariant(trip.status)">{{ tripStatusLabel(trip.status) }}</Badge>
+              </td>
+            </tr>
+            <tr v-if="!trips.length">
+              <td colspan="4" class="text-texte-3 px-2 py-4 text-center">
+                {{ t('sales.orderForm.noTrips') }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </section>
   </div>
 </template>

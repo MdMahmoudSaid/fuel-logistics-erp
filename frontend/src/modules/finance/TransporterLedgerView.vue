@@ -77,11 +77,11 @@ function badgeVariant(status: string) {
 
 <template>
   <div class="max-w-4xl space-y-6">
-    <div class="flex items-center justify-between">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <h1 class="font-display text-2xl leading-none font-semibold uppercase">
         {{ t('finance.transporterLedger.title', { name: ledger?.transporter.name ?? '…' }) }}
       </h1>
-      <div class="flex gap-2">
+      <div class="flex flex-wrap gap-2">
         <Button
           v-if="ledger && Number(ledger.summary.net_balance) < 0"
           variant="primary"
@@ -171,147 +171,153 @@ function badgeVariant(status: string) {
       </Card>
 
       <Card :title="t('finance.transporterLedger.settlementsByTrip')">
-        <table class="w-full text-start text-sm">
-          <thead>
-            <tr class="border-ligne text-texte-2 border-b">
-              <th class="px-2 py-1.5 font-medium">
-                {{ t('finance.transporterLedger.table.trip') }}
-              </th>
-              <th class="px-2 py-1.5 font-medium text-right">
-                {{ t('finance.transporterLedger.table.base') }}
-              </th>
-              <th class="px-2 py-1.5 font-medium text-right">
-                {{ t('finance.transporterLedger.table.deduction') }}
-              </th>
-              <th class="px-2 py-1.5 font-medium text-right">
-                {{ t('finance.transporterLedger.table.net') }}
-              </th>
-              <th class="px-2 py-1.5 font-medium">
-                {{ t('finance.transporterLedger.table.status') }}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="payment in ledger.payments"
-              :key="payment.id"
-              class="border-ligne border-b last:border-0"
-            >
-              <td class="text-texte px-2 py-1.5 font-medium">{{ payment.trip_reference }}</td>
-              <td class="px-2 py-1.5 text-right">
-                <MonoValue :value="formatMoney(payment.base_amount)" />
-              </td>
-              <td class="px-2 py-1.5 text-right text-red-600">
-                <MonoValue
-                  class="text-critique"
-                  :value="'− ' + formatMoney(payment.deduction_amount)"
-                />
-                <p v-if="payment.deduction_label" class="text-texte-3 mt-1 text-xs">
-                  {{ payment.deduction_label }}
-                </p>
-              </td>
-              <td class="text-texte px-2 py-1.5 text-right font-medium">
-                <MonoValue :value="formatMoney(payment.net_amount)" />
-              </td>
-              <td class="px-2 py-1.5">
-                <Badge :variant="badgeVariant(payment.status)">
-                  {{ t(`settlementStatus.${payment.status}`) }}
-                </Badge>
-              </td>
-            </tr>
-            <tr v-if="ledger.payments.length === 0">
-              <td colspan="5" class="text-texte-3 px-2 py-4 text-center">
-                {{ t('finance.transporterLedger.noSettlements') }}
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <div class="overflow-x-auto">
+          <table class="w-full text-start text-sm">
+            <thead>
+              <tr class="border-ligne text-texte-2 border-b">
+                <th class="px-2 py-1.5 font-medium">
+                  {{ t('finance.transporterLedger.table.trip') }}
+                </th>
+                <th class="px-2 py-1.5 font-medium text-right">
+                  {{ t('finance.transporterLedger.table.base') }}
+                </th>
+                <th class="px-2 py-1.5 font-medium text-right">
+                  {{ t('finance.transporterLedger.table.deduction') }}
+                </th>
+                <th class="px-2 py-1.5 font-medium text-right">
+                  {{ t('finance.transporterLedger.table.net') }}
+                </th>
+                <th class="px-2 py-1.5 font-medium">
+                  {{ t('finance.transporterLedger.table.status') }}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="payment in ledger.payments"
+                :key="payment.id"
+                class="border-ligne border-b last:border-0"
+              >
+                <td class="text-texte px-2 py-1.5 font-medium">{{ payment.trip_reference }}</td>
+                <td class="px-2 py-1.5 text-right">
+                  <MonoValue :value="formatMoney(payment.base_amount)" />
+                </td>
+                <td class="px-2 py-1.5 text-right text-red-600">
+                  <MonoValue
+                    class="text-critique"
+                    :value="'− ' + formatMoney(payment.deduction_amount)"
+                  />
+                  <p v-if="payment.deduction_label" class="text-texte-3 mt-1 text-xs">
+                    {{ payment.deduction_label }}
+                  </p>
+                </td>
+                <td class="text-texte px-2 py-1.5 text-right font-medium">
+                  <MonoValue :value="formatMoney(payment.net_amount)" />
+                </td>
+                <td class="px-2 py-1.5">
+                  <Badge :variant="badgeVariant(payment.status)">
+                    {{ t(`settlementStatus.${payment.status}`) }}
+                  </Badge>
+                </td>
+              </tr>
+              <tr v-if="ledger.payments.length === 0">
+                <td colspan="5" class="text-texte-3 px-2 py-4 text-center">
+                  {{ t('finance.transporterLedger.noSettlements') }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </Card>
 
       <Card :title="t('finance.transporterLedger.advances')">
-        <table class="w-full text-start text-sm">
-          <thead>
-            <tr class="border-ligne text-texte-2 border-b">
-              <th class="px-2 py-1.5 font-medium">
-                {{ t('finance.transporterLedger.advancesTable.date') }}
-              </th>
-              <th class="px-2 py-1.5 font-medium">
-                {{ t('finance.transporterLedger.advancesTable.reference') }}
-              </th>
-              <th class="px-2 py-1.5 font-medium">
-                {{ t('finance.transporterLedger.advancesTable.settled') }}
-              </th>
-              <th class="px-2 py-1.5 font-medium text-right">
-                {{ t('finance.transporterLedger.advancesTable.amount') }}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="advance in ledger.advances"
-              :key="advance.id"
-              class="border-ligne border-b last:border-0"
-            >
-              <td class="px-2 py-1.5">{{ advance.date }}</td>
-              <td class="px-2 py-1.5">{{ advance.reference || '—' }}</td>
-              <td class="px-2 py-1.5">{{ advance.settled ? t('common.yes') : t('common.no') }}</td>
-              <td class="text-texte px-2 py-1.5 text-right font-medium">
-                <MonoValue :value="formatMoney(advance.amount)" />
-              </td>
-            </tr>
-            <tr v-if="ledger.advances.length === 0">
-              <td colspan="4" class="text-texte-3 px-2 py-4 text-center">
-                {{ t('finance.transporterLedger.noAdvances') }}
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <div class="overflow-x-auto">
+          <table class="w-full text-start text-sm">
+            <thead>
+              <tr class="border-ligne text-texte-2 border-b">
+                <th class="px-2 py-1.5 font-medium">
+                  {{ t('finance.transporterLedger.advancesTable.date') }}
+                </th>
+                <th class="px-2 py-1.5 font-medium">
+                  {{ t('finance.transporterLedger.advancesTable.reference') }}
+                </th>
+                <th class="px-2 py-1.5 font-medium">
+                  {{ t('finance.transporterLedger.advancesTable.settled') }}
+                </th>
+                <th class="px-2 py-1.5 font-medium text-right">
+                  {{ t('finance.transporterLedger.advancesTable.amount') }}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="advance in ledger.advances"
+                :key="advance.id"
+                class="border-ligne border-b last:border-0"
+              >
+                <td class="px-2 py-1.5">{{ advance.date }}</td>
+                <td class="px-2 py-1.5">{{ advance.reference || '—' }}</td>
+                <td class="px-2 py-1.5">{{ advance.settled ? t('common.yes') : t('common.no') }}</td>
+                <td class="text-texte px-2 py-1.5 text-right font-medium">
+                  <MonoValue :value="formatMoney(advance.amount)" />
+                </td>
+              </tr>
+              <tr v-if="ledger.advances.length === 0">
+                <td colspan="4" class="text-texte-3 px-2 py-4 text-center">
+                  {{ t('finance.transporterLedger.noAdvances') }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </Card>
 
       <Card :title="t('finance.partyLedger.entriesTitle')">
-        <table class="w-full text-start text-sm">
-          <thead>
-            <tr class="border-ligne text-texte-2 border-b">
-              <th class="px-3 py-2.5 font-medium">{{ t('finance.partyLedger.table.date') }}</th>
-              <th class="px-3 py-2.5 font-medium">{{ t('finance.partyLedger.table.type') }}</th>
-              <th class="px-3 py-2.5 font-medium">
-                {{ t('finance.partyLedger.table.reference') }}
-              </th>
-              <th class="px-3 py-2.5 text-end font-medium">
-                {{ t('finance.partyLedger.table.amount') }}
-              </th>
-              <th class="px-3 py-2.5 font-medium">{{ t('finance.partyLedger.table.proof') }}</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="(entry, index) in ledger.entries"
-              :key="index"
-              class="border-ligne border-b last:border-0"
-            >
-              <td class="px-3 py-2.5">{{ entry.date }}</td>
-              <td class="px-3 py-2.5">{{ t(`finance.partyLedger.entryTypes.${entry.type}`) }}</td>
-              <td class="px-3 py-2.5">{{ entry.reference || '—' }}</td>
-              <td class="px-3 py-2.5 text-end"><MonoValue :value="formatMoney(entry.amount)" /></td>
-              <td class="px-3 py-2.5">
-                <button
-                  v-if="entry.proof_url"
-                  type="button"
-                  class="text-bitume underline"
-                  @click="previewUrl = entry.proof_url"
-                >
-                  {{ t('finance.partyLedger.viewProof') }}
-                </button>
-                <span v-else class="text-texte-3">—</span>
-              </td>
-            </tr>
-            <tr v-if="ledger.entries.length === 0">
-              <td colspan="5" class="text-texte-3 px-3 py-8 text-center">
-                {{ t('finance.partyLedger.noEntries') }}
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <div class="overflow-x-auto">
+          <table class="w-full text-start text-sm">
+            <thead>
+              <tr class="border-ligne text-texte-2 border-b">
+                <th class="px-3 py-2.5 font-medium">{{ t('finance.partyLedger.table.date') }}</th>
+                <th class="px-3 py-2.5 font-medium">{{ t('finance.partyLedger.table.type') }}</th>
+                <th class="px-3 py-2.5 font-medium">
+                  {{ t('finance.partyLedger.table.reference') }}
+                </th>
+                <th class="px-3 py-2.5 text-end font-medium">
+                  {{ t('finance.partyLedger.table.amount') }}
+                </th>
+                <th class="px-3 py-2.5 font-medium">{{ t('finance.partyLedger.table.proof') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="(entry, index) in ledger.entries"
+                :key="index"
+                class="border-ligne border-b last:border-0"
+              >
+                <td class="px-3 py-2.5">{{ entry.date }}</td>
+                <td class="px-3 py-2.5">{{ t(`finance.partyLedger.entryTypes.${entry.type}`) }}</td>
+                <td class="px-3 py-2.5">{{ entry.reference || '—' }}</td>
+                <td class="px-3 py-2.5 text-end"><MonoValue :value="formatMoney(entry.amount)" /></td>
+                <td class="px-3 py-2.5">
+                  <button
+                    v-if="entry.proof_url"
+                    type="button"
+                    class="text-bitume underline"
+                    @click="previewUrl = entry.proof_url"
+                  >
+                    {{ t('finance.partyLedger.viewProof') }}
+                  </button>
+                  <span v-else class="text-texte-3">—</span>
+                </td>
+              </tr>
+              <tr v-if="ledger.entries.length === 0">
+                <td colspan="5" class="text-texte-3 px-3 py-8 text-center">
+                  {{ t('finance.partyLedger.noEntries') }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </Card>
     </template>
 

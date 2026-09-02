@@ -302,103 +302,105 @@ function onDateRangeChange(value: DateRangeValue) {
       </section>
 
       <section class="border-ligne overflow-auto rounded-xl border bg-white">
-        <table class="w-full text-start text-sm">
-          <thead>
-            <tr class="border-ligne text-texte-2 border-b">
-              <th class="px-3 py-2.5 font-medium">{{ t('finance.profit.table.tripReference') }}</th>
-              <th class="px-3 py-2.5 font-medium">{{ t('finance.profit.table.client') }}</th>
-              <th class="px-3 py-2.5 font-medium">{{ t('finance.profit.table.product') }}</th>
-              <th class="px-3 py-2.5 text-end font-medium">
-                {{ t('finance.profit.table.quantityLoaded') }}
-              </th>
-              <th class="px-3 py-2.5 text-end font-medium">
-                {{ t('finance.profit.table.quantityInvoiced') }}
-              </th>
-              <th class="px-3 py-2.5 text-end font-medium">
-                {{ t('finance.profit.table.transporterLossQuantity') }}
-              </th>
-              <th class="px-3 py-2.5 text-end font-medium">
-                {{ t('finance.profit.table.transporterLossIndemnity') }}
-              </th>
-              <th class="px-3 py-2.5 text-end font-medium">
-                {{ t('finance.profit.table.supplierUnitPrice') }}
-              </th>
-              <th class="px-3 py-2.5 text-end font-medium">
-                {{ t('finance.profit.table.realTotalCost') }}
-              </th>
-              <th class="px-3 py-2.5 text-end font-medium">
-                {{ t('finance.profit.table.unitSellingPrice') }}
-              </th>
-              <th class="px-3 py-2.5 text-end font-medium">
-                {{ t('finance.profit.table.unitProfit') }}
-              </th>
-              <th class="px-3 py-2.5 text-end font-medium">
-                {{ t('finance.profit.table.totalProfit') }}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="row in rows"
-              :key="row.trip_reference"
-              class="border-ligne border-b last:border-0"
-            >
-              <td class="px-3 py-2.5">{{ row.trip_reference }}</td>
-              <td class="px-3 py-2.5">{{ row.client || '—' }}</td>
-              <td class="px-3 py-2.5">{{ row.product }}</td>
-              <td class="px-3 py-2.5 text-end">
-                <MonoValue :value="formatQuantity(num(row.quantity_loaded))" />
-              </td>
-              <td class="px-3 py-2.5 text-end">
-                <MonoValue :value="formatQuantity(num(row.quantity_invoiced))" />
-              </td>
-              <td class="px-3 py-2.5 text-end">
-                <MonoValue :value="formatQuantity(num(row.transporter_loss_quantity))" />
-              </td>
-              <td class="px-3 py-2.5 text-end">
-                <MonoValue :value="formatMoney(num(row.transporter_loss_indemnity))" />
-              </td>
-              <td class="px-3 py-2.5 text-end">
-                <MonoValue :value="formatUnitMoney(num(row.supplier_unit_price))" />
-              </td>
-              <td class="px-3 py-2.5 text-end">
-                <MonoValue :value="formatMoney(num(row.real_total_cost))" />
-              </td>
-              <td class="px-3 py-2.5 text-end">
-                <MonoValue :value="formatUnitMoney(num(row.unit_selling_price))" />
-              </td>
-              <td class="px-3 py-2.5 text-end">
-                <MonoValue
-                  :value="formatUnitMoney(num(row.unit_profit))"
-                  :class="
-                    num(row.unit_profit) > 0
-                      ? 'text-livre'
-                      : num(row.unit_profit) < 0
-                        ? 'text-critique'
-                        : ''
-                  "
-                />
-              </td>
-              <td class="px-3 py-2.5 text-end">
-                <MonoValue
-                  :value="formatMoney(num(row.current_margin))"
-                  :class="
-                    num(row.current_margin) > 0
-                      ? 'text-livre'
-                      : num(row.current_margin) < 0
-                        ? 'text-critique'
-                        : ''
-                  "
-                />
-              </td>
-            </tr>
-            <tr v-if="rows.length === 0">
-              <td colspan="12" class="text-texte-3 px-3 py-8 text-center">
-                {{ t('masterData.noRecords') }}
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <div class="overflow-x-auto">
+          <table class="w-full text-start text-sm">
+            <thead>
+              <tr class="border-ligne text-texte-2 border-b">
+                <th class="px-3 py-2.5 font-medium">{{ t('finance.profit.table.tripReference') }}</th>
+                <th class="px-3 py-2.5 font-medium">{{ t('finance.profit.table.client') }}</th>
+                <th class="px-3 py-2.5 font-medium">{{ t('finance.profit.table.product') }}</th>
+                <th class="px-3 py-2.5 text-end font-medium">
+                  {{ t('finance.profit.table.quantityLoaded') }}
+                </th>
+                <th class="px-3 py-2.5 text-end font-medium">
+                  {{ t('finance.profit.table.quantityInvoiced') }}
+                </th>
+                <th class="px-3 py-2.5 text-end font-medium">
+                  {{ t('finance.profit.table.transporterLossQuantity') }}
+                </th>
+                <th class="px-3 py-2.5 text-end font-medium">
+                  {{ t('finance.profit.table.transporterLossIndemnity') }}
+                </th>
+                <th class="px-3 py-2.5 text-end font-medium">
+                  {{ t('finance.profit.table.supplierUnitPrice') }}
+                </th>
+                <th class="px-3 py-2.5 text-end font-medium">
+                  {{ t('finance.profit.table.realTotalCost') }}
+                </th>
+                <th class="px-3 py-2.5 text-end font-medium">
+                  {{ t('finance.profit.table.unitSellingPrice') }}
+                </th>
+                <th class="px-3 py-2.5 text-end font-medium">
+                  {{ t('finance.profit.table.unitProfit') }}
+                </th>
+                <th class="px-3 py-2.5 text-end font-medium">
+                  {{ t('finance.profit.table.totalProfit') }}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="row in rows"
+                :key="row.trip_reference"
+                class="border-ligne border-b last:border-0"
+              >
+                <td class="px-3 py-2.5">{{ row.trip_reference }}</td>
+                <td class="px-3 py-2.5">{{ row.client || '—' }}</td>
+                <td class="px-3 py-2.5">{{ row.product }}</td>
+                <td class="px-3 py-2.5 text-end">
+                  <MonoValue :value="formatQuantity(num(row.quantity_loaded))" />
+                </td>
+                <td class="px-3 py-2.5 text-end">
+                  <MonoValue :value="formatQuantity(num(row.quantity_invoiced))" />
+                </td>
+                <td class="px-3 py-2.5 text-end">
+                  <MonoValue :value="formatQuantity(num(row.transporter_loss_quantity))" />
+                </td>
+                <td class="px-3 py-2.5 text-end">
+                  <MonoValue :value="formatMoney(num(row.transporter_loss_indemnity))" />
+                </td>
+                <td class="px-3 py-2.5 text-end">
+                  <MonoValue :value="formatUnitMoney(num(row.supplier_unit_price))" />
+                </td>
+                <td class="px-3 py-2.5 text-end">
+                  <MonoValue :value="formatMoney(num(row.real_total_cost))" />
+                </td>
+                <td class="px-3 py-2.5 text-end">
+                  <MonoValue :value="formatUnitMoney(num(row.unit_selling_price))" />
+                </td>
+                <td class="px-3 py-2.5 text-end">
+                  <MonoValue
+                    :value="formatUnitMoney(num(row.unit_profit))"
+                    :class="
+                      num(row.unit_profit) > 0
+                        ? 'text-livre'
+                        : num(row.unit_profit) < 0
+                          ? 'text-critique'
+                          : ''
+                    "
+                  />
+                </td>
+                <td class="px-3 py-2.5 text-end">
+                  <MonoValue
+                    :value="formatMoney(num(row.current_margin))"
+                    :class="
+                      num(row.current_margin) > 0
+                        ? 'text-livre'
+                        : num(row.current_margin) < 0
+                          ? 'text-critique'
+                          : ''
+                    "
+                  />
+                </td>
+              </tr>
+              <tr v-if="rows.length === 0">
+                <td colspan="12" class="text-texte-3 px-3 py-8 text-center">
+                  {{ t('masterData.noRecords') }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </section>
     </template>
   </div>

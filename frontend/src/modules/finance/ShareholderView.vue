@@ -446,49 +446,51 @@ async function onViewLedger() {
         </div>
       </template>
 
-      <table class="w-full text-start text-sm">
-        <thead>
-          <tr class="border-ligne text-texte-2 border-b">
-            <th class="px-3 py-2.5 font-medium">{{ t('masterData.fields.name') }}</th>
-            <th class="px-3 py-2.5 text-end font-medium">
-              {{ t('masterData.fields.participationPercent') }}
-            </th>
-            <th class="px-3 py-2.5 text-end font-medium">
-              {{ t('masterData.fields.contribution') }}
-            </th>
-            <th class="px-3 py-2.5 font-medium">{{ t('masterData.fields.phone') }}</th>
-            <th class="px-3 py-2.5 font-medium">{{ t('masterData.fields.active') }}</th>
-            <th class="px-3 py-2.5"></th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="s in shareholders" :key="s.id" class="border-ligne border-b last:border-0">
-            <td class="px-3 py-2.5">{{ s.name }}</td>
-            <td class="px-3 py-2.5 text-end">
-              <MonoValue :value="`${s.participation_percent}%`" />
-            </td>
-            <td class="px-3 py-2.5 text-end">
-              <MonoValue :value="formatMoney(s.contribution)" />
-            </td>
-            <td class="px-3 py-2.5">{{ s.phone || '—' }}</td>
-            <td class="px-3 py-2.5">
-              <Badge :variant="s.is_active ? 'livre' : 'neutre'">
-                {{ s.is_active ? t('masterData.statusActive') : t('masterData.statusInactive') }}
-              </Badge>
-            </td>
-            <td class="px-3 py-2.5 text-end">
-              <Button variant="ghost" @click="openEditShareholder(s)">{{
-                t('masterData.edit')
-              }}</Button>
-            </td>
-          </tr>
-          <tr v-if="shareholders.length === 0">
-            <td colspan="6" class="text-texte-3 px-3 py-8 text-center">
-              {{ t('masterData.noRecords') }}
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <div class="overflow-x-auto">
+        <table class="w-full text-start text-sm">
+          <thead>
+            <tr class="border-ligne text-texte-2 border-b">
+              <th class="px-3 py-2.5 font-medium">{{ t('masterData.fields.name') }}</th>
+              <th class="px-3 py-2.5 text-end font-medium">
+                {{ t('masterData.fields.participationPercent') }}
+              </th>
+              <th class="px-3 py-2.5 text-end font-medium">
+                {{ t('masterData.fields.contribution') }}
+              </th>
+              <th class="px-3 py-2.5 font-medium">{{ t('masterData.fields.phone') }}</th>
+              <th class="px-3 py-2.5 font-medium">{{ t('masterData.fields.active') }}</th>
+              <th class="px-3 py-2.5"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="s in shareholders" :key="s.id" class="border-ligne border-b last:border-0">
+              <td class="px-3 py-2.5">{{ s.name }}</td>
+              <td class="px-3 py-2.5 text-end">
+                <MonoValue :value="`${s.participation_percent}%`" />
+              </td>
+              <td class="px-3 py-2.5 text-end">
+                <MonoValue :value="formatMoney(s.contribution)" />
+              </td>
+              <td class="px-3 py-2.5">{{ s.phone || '—' }}</td>
+              <td class="px-3 py-2.5">
+                <Badge :variant="s.is_active ? 'livre' : 'neutre'">
+                  {{ s.is_active ? t('masterData.statusActive') : t('masterData.statusInactive') }}
+                </Badge>
+              </td>
+              <td class="px-3 py-2.5 text-end">
+                <Button variant="ghost" @click="openEditShareholder(s)">{{
+                  t('masterData.edit')
+                }}</Button>
+              </td>
+            </tr>
+            <tr v-if="shareholders.length === 0">
+              <td colspan="6" class="text-texte-3 px-3 py-8 text-center">
+                {{ t('masterData.noRecords') }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </Card>
 
     <!-- Section 2: Profit distributions -->
@@ -498,7 +500,7 @@ async function onViewLedger() {
     >
       <p v-if="distributionError" class="text-critique mb-3 text-sm">{{ distributionError }}</p>
 
-      <form class="mb-5 grid grid-cols-4 gap-3" @submit.prevent="onCreateDistribution">
+      <form class="mb-5 grid grid-cols-1 md:grid-cols-4 gap-3" @submit.prevent="onCreateDistribution">
         <div class="space-y-1.5">
           <label class="text-texte-2 text-sm font-medium" for="period_start">
             {{ t('finance.shareholder.distribution.periodStart') }}
@@ -544,80 +546,83 @@ async function onViewLedger() {
         </div>
       </form>
 
-      <table class="w-full text-start text-sm">
-        <thead>
-          <tr class="border-ligne text-texte-2 border-b">
-            <th class="px-3 py-2.5 font-medium">
-              {{ t('finance.shareholder.distribution.period') }}
-            </th>
-            <th class="px-3 py-2.5 text-end font-medium">
-              {{ t('finance.shareholder.distribution.totalProfit') }}
-            </th>
-            <th class="px-3 py-2.5 font-medium">
-              {{ t('finance.shareholder.distribution.status') }}
-            </th>
-            <th class="px-3 py-2.5"></th>
-          </tr>
-        </thead>
-        <tbody>
-          <template v-for="d in distributions" :key="d.id">
-            <tr
-              class="border-ligne hover:bg-sable cursor-pointer border-b"
-              @click="toggleExpandDistribution(d.id)"
-            >
-              <td class="px-3 py-2.5">{{ d.period_start }} — {{ d.period_end }}</td>
-              <td class="px-3 py-2.5 text-end">
-                <MonoValue :value="formatMoney(d.total_profit)" />
-              </td>
-              <td class="px-3 py-2.5">
-                <Badge :variant="d.status === 'VALIDATED' ? 'livre' : 'transit'">
-                  {{ t(`finance.shareholder.distribution.statusValues.${d.status}`) }}
-                </Badge>
-              </td>
-              <td class="px-3 py-2.5 text-end">
-                <Button
-                  v-if="d.status === 'DRAFT'"
-                  variant="ghost"
-                  @click.stop="onValidateDistribution(d)"
-                >
-                  {{ t('finance.shareholder.distribution.validate') }}
-                </Button>
-              </td>
+      <div class="overflow-x-auto">
+        <table class="w-full text-start text-sm">
+          <thead>
+            <tr class="border-ligne text-texte-2 border-b">
+              <th class="px-3 py-2.5 font-medium">
+                {{ t('finance.shareholder.distribution.period') }}
+              </th>
+              <th class="px-3 py-2.5 text-end font-medium">
+                {{ t('finance.shareholder.distribution.totalProfit') }}
+              </th>
+              <th class="px-3 py-2.5 font-medium">
+                {{ t('finance.shareholder.distribution.status') }}
+              </th>
+              <th class="px-3 py-2.5"></th>
             </tr>
-            <tr v-if="expandedDistributionId === d.id" class="border-ligne border-b bg-sable/40">
-              <td colspan="4" class="px-3 py-3">
-                <table class="w-full text-start text-sm">
-                  <thead>
-                    <tr class="text-texte-2">
-                      <th class="px-3 py-1.5 font-medium">
-                        {{ t('finance.shareholder.distribution.shareholder') }}
-                      </th>
-                      <th class="px-3 py-1.5 text-end font-medium">
-                        {{ t('finance.shareholder.distribution.percent') }}
-                      </th>
-                      <th class="px-3 py-1.5 text-end font-medium">
-                        {{ t('finance.shareholder.distribution.amountDue') }}
-                      </th>
-                      <th class="px-3 py-1.5 text-end font-medium">
-                        {{ t('finance.shareholder.distribution.remainingDue') }}
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="share in d.shares" :key="share.id">
-                      <td class="px-3 py-1.5">{{ share.shareholder_detail?.name }}</td>
-                      <td class="px-3 py-1.5 text-end">
-                        <MonoValue :value="`${share.percent_snapshot}%`" />
-                      </td>
-                      <td class="px-3 py-1.5 text-end">
-                        <MonoValue :value="formatMoney(share.amount_due)" />
-                      </td>
-                      <td class="px-3 py-1.5 text-end">
-                        <MonoValue :value="formatMoney(share.remaining_due)" />
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
+          </thead>
+          <tbody>
+            <template v-for="d in distributions" :key="d.id">
+              <tr
+                class="border-ligne hover:bg-sable cursor-pointer border-b"
+                @click="toggleExpandDistribution(d.id)"
+              >
+                <td class="px-3 py-2.5">{{ d.period_start }} — {{ d.period_end }}</td>
+                <td class="px-3 py-2.5 text-end">
+                  <MonoValue :value="formatMoney(d.total_profit)" />
+                </td>
+                <td class="px-3 py-2.5">
+                  <Badge :variant="d.status === 'VALIDATED' ? 'livre' : 'transit'">
+                    {{ t(`finance.shareholder.distribution.statusValues.${d.status}`) }}
+                  </Badge>
+                </td>
+                <td class="px-3 py-2.5 text-end">
+                  <Button
+                    v-if="d.status === 'DRAFT'"
+                    variant="ghost"
+                    @click.stop="onValidateDistribution(d)"
+                  >
+                    {{ t('finance.shareholder.distribution.validate') }}
+                  </Button>
+                </td>
+              </tr>
+              <tr v-if="expandedDistributionId === d.id" class="border-ligne border-b bg-sable/40">
+                <td colspan="4" class="px-3 py-3">
+                  <div class="overflow-x-auto">
+                    <table class="w-full text-start text-sm">
+                      <thead>
+                        <tr class="text-texte-2">
+                          <th class="px-3 py-1.5 font-medium">
+                            {{ t('finance.shareholder.distribution.shareholder') }}
+                          </th>
+                          <th class="px-3 py-1.5 text-end font-medium">
+                            {{ t('finance.shareholder.distribution.percent') }}
+                          </th>
+                          <th class="px-3 py-1.5 text-end font-medium">
+                            {{ t('finance.shareholder.distribution.amountDue') }}
+                          </th>
+                          <th class="px-3 py-1.5 text-end font-medium">
+                            {{ t('finance.shareholder.distribution.remainingDue') }}
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr v-for="share in d.shares" :key="share.id">
+                          <td class="px-3 py-1.5">{{ share.shareholder_detail?.name }}</td>
+                          <td class="px-3 py-1.5 text-end">
+                            <MonoValue :value="`${share.percent_snapshot}%`" />
+                          </td>
+                          <td class="px-3 py-1.5 text-end">
+                            <MonoValue :value="formatMoney(share.amount_due)" />
+                          </td>
+                          <td class="px-3 py-1.5 text-end">
+                            <MonoValue :value="formatMoney(share.remaining_due)" />
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
               </td>
             </tr>
           </template>
@@ -628,13 +633,14 @@ async function onViewLedger() {
           </tr>
         </tbody>
       </table>
+      </div>
     </Card>
 
     <!-- Section 3: Loans between associates -->
     <Card v-if="activeTab === 'loans'" :title="t('finance.shareholder.loan.title')">
       <p v-if="loanError" class="text-critique mb-3 text-sm">{{ loanError }}</p>
 
-      <form class="mb-5 grid grid-cols-4 gap-3" @submit.prevent="onCreateLoan">
+      <form class="mb-5 grid grid-cols-1 md:grid-cols-4 gap-3" @submit.prevent="onCreateLoan">
         <div class="space-y-1.5">
           <label class="text-texte-2 text-sm font-medium" for="lender">
             {{ t('finance.shareholder.loan.lender') }}
@@ -706,61 +712,63 @@ async function onViewLedger() {
         </div>
       </form>
 
-      <table class="w-full text-start text-sm">
-        <thead>
-          <tr class="border-ligne text-texte-2 border-b">
-            <th class="px-3 py-2.5 font-medium">{{ t('finance.shareholder.loan.lender') }}</th>
-            <th class="px-3 py-2.5 font-medium">{{ t('finance.shareholder.loan.borrower') }}</th>
-            <th class="px-3 py-2.5 text-end font-medium">
-              {{ t('finance.shareholder.loan.amount') }}
-            </th>
-            <th class="px-3 py-2.5 text-end font-medium">
-              {{ t('finance.shareholder.loan.remaining') }}
-            </th>
-            <th class="px-3 py-2.5 font-medium">{{ t('finance.shareholder.loan.status') }}</th>
-            <th class="px-3 py-2.5 font-medium">
-              {{ t('finance.shareholder.loan.recordRepayment') }}
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="loan in loans" :key="loan.id" class="border-ligne border-b last:border-0">
-            <td class="px-3 py-2.5">{{ loan.lender_detail?.name }}</td>
-            <td class="px-3 py-2.5">{{ loan.borrower_detail?.name }}</td>
-            <td class="px-3 py-2.5 text-end">
-              <MonoValue :value="formatMoney(loan.amount)" />
-            </td>
-            <td class="px-3 py-2.5 text-end">
-              <MonoValue :value="formatMoney(loan.remaining_amount)" />
-            </td>
-            <td class="px-3 py-2.5">
-              <Badge :variant="loanStatusVariant(loan.status)">
-                {{ t(`finance.shareholder.loan.statusValues.${loan.status}`) }}
-              </Badge>
-            </td>
-            <td class="px-3 py-2.5">
-              <div v-if="loan.status !== 'REPAID'" class="flex items-center gap-2">
-                <input
-                  v-model="repaymentInput[loan.id]"
-                  type="number"
-                  step="0.01"
-                  min="0.01"
-                  :placeholder="t('finance.shareholder.loan.repaymentAmount')"
-                  class="border-ligne-forte h-10 w-28 rounded-lg border bg-white px-2 text-sm focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-                />
-                <Button variant="ghost" @click="onRecordRepayment(loan)">
-                  {{ t('common.save') }}
-                </Button>
-              </div>
-            </td>
-          </tr>
-          <tr v-if="loans.length === 0">
-            <td colspan="6" class="text-texte-3 px-3 py-8 text-center">
-              {{ t('masterData.noRecords') }}
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <div class="overflow-x-auto">
+        <table class="w-full text-start text-sm">
+          <thead>
+            <tr class="border-ligne text-texte-2 border-b">
+              <th class="px-3 py-2.5 font-medium">{{ t('finance.shareholder.loan.lender') }}</th>
+              <th class="px-3 py-2.5 font-medium">{{ t('finance.shareholder.loan.borrower') }}</th>
+              <th class="px-3 py-2.5 text-end font-medium">
+                {{ t('finance.shareholder.loan.amount') }}
+              </th>
+              <th class="px-3 py-2.5 text-end font-medium">
+                {{ t('finance.shareholder.loan.remaining') }}
+              </th>
+              <th class="px-3 py-2.5 font-medium">{{ t('finance.shareholder.loan.status') }}</th>
+              <th class="px-3 py-2.5 font-medium">
+                {{ t('finance.shareholder.loan.recordRepayment') }}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="loan in loans" :key="loan.id" class="border-ligne border-b last:border-0">
+              <td class="px-3 py-2.5">{{ loan.lender_detail?.name }}</td>
+              <td class="px-3 py-2.5">{{ loan.borrower_detail?.name }}</td>
+              <td class="px-3 py-2.5 text-end">
+                <MonoValue :value="formatMoney(loan.amount)" />
+              </td>
+              <td class="px-3 py-2.5 text-end">
+                <MonoValue :value="formatMoney(loan.remaining_amount)" />
+              </td>
+              <td class="px-3 py-2.5">
+                <Badge :variant="loanStatusVariant(loan.status)">
+                  {{ t(`finance.shareholder.loan.statusValues.${loan.status}`) }}
+                </Badge>
+              </td>
+              <td class="px-3 py-2.5">
+                <div v-if="loan.status !== 'REPAID'" class="flex items-center gap-2">
+                  <input
+                    v-model="repaymentInput[loan.id]"
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    :placeholder="t('finance.shareholder.loan.repaymentAmount')"
+                    class="border-ligne-forte h-10 w-28 rounded-lg border bg-white px-2 text-sm focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+                  />
+                  <Button variant="ghost" @click="onRecordRepayment(loan)">
+                    {{ t('common.save') }}
+                  </Button>
+                </div>
+              </td>
+            </tr>
+            <tr v-if="loans.length === 0">
+              <td colspan="6" class="text-texte-3 px-3 py-8 text-center">
+                {{ t('masterData.noRecords') }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </Card>
 
     <!-- Section 4: Shareholder withdrawals -->
@@ -770,7 +778,7 @@ async function onViewLedger() {
     >
       <p v-if="withdrawalError" class="text-critique mb-3 text-sm">{{ withdrawalError }}</p>
 
-      <form class="mb-5 grid grid-cols-4 gap-3" @submit.prevent="onCreateWithdrawal">
+      <form class="mb-5 grid grid-cols-1 md:grid-cols-4 gap-3" @submit.prevent="onCreateWithdrawal">
         <div class="space-y-1.5">
           <label class="text-texte-2 text-sm font-medium" for="wd_shareholder">
             {{ t('finance.shareholder.withdrawal.shareholder') }}
@@ -874,33 +882,35 @@ async function onViewLedger() {
         </div>
       </form>
 
-      <table class="w-full text-start text-sm">
-        <thead>
-          <tr class="border-ligne text-texte-2 border-b">
-            <th class="px-3 py-2.5 font-medium">
-              {{ t('finance.shareholder.withdrawal.shareholder') }}
-            </th>
-            <th class="px-3 py-2.5 font-medium">{{ t('finance.shareholder.withdrawal.date') }}</th>
-            <th class="px-3 py-2.5 text-end font-medium">
-              {{ t('finance.shareholder.withdrawal.amount') }}
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="w in withdrawals" :key="w.id" class="border-ligne border-b last:border-0">
-            <td class="px-3 py-2.5">{{ w.shareholder_detail?.name }}</td>
-            <td class="px-3 py-2.5">{{ w.date }}</td>
-            <td class="px-3 py-2.5 text-end">
-              <MonoValue :value="formatMoney(w.amount)" />
-            </td>
-          </tr>
-          <tr v-if="withdrawals.length === 0">
-            <td colspan="3" class="text-texte-3 px-3 py-8 text-center">
-              {{ t('masterData.noRecords') }}
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <div class="overflow-x-auto">
+        <table class="w-full text-start text-sm">
+          <thead>
+            <tr class="border-ligne text-texte-2 border-b">
+              <th class="px-3 py-2.5 font-medium">
+                {{ t('finance.shareholder.withdrawal.shareholder') }}
+              </th>
+              <th class="px-3 py-2.5 font-medium">{{ t('finance.shareholder.withdrawal.date') }}</th>
+              <th class="px-3 py-2.5 text-end font-medium">
+                {{ t('finance.shareholder.withdrawal.amount') }}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="w in withdrawals" :key="w.id" class="border-ligne border-b last:border-0">
+              <td class="px-3 py-2.5">{{ w.shareholder_detail?.name }}</td>
+              <td class="px-3 py-2.5">{{ w.date }}</td>
+              <td class="px-3 py-2.5 text-end">
+                <MonoValue :value="formatMoney(w.amount)" />
+              </td>
+            </tr>
+            <tr v-if="withdrawals.length === 0">
+              <td colspan="3" class="text-texte-3 px-3 py-8 text-center">
+                {{ t('masterData.noRecords') }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </Card>
 
     <!-- Section 5: Per-shareholder ledger -->
@@ -938,7 +948,7 @@ async function onViewLedger() {
           </Button>
         </div>
 
-        <section class="mb-5 grid grid-cols-5 gap-4">
+        <section class="mb-5 grid grid-cols-1 md:grid-cols-5 gap-4">
           <div class="border-ligne rounded-xl border p-4">
             <p class="text-texte-2 text-xs">{{ t('finance.shareholder.ledger.totalDue') }}</p>
             <MonoValue
@@ -985,50 +995,54 @@ async function onViewLedger() {
           </div>
         </section>
 
-        <div class="grid grid-cols-2 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <h3 class="text-texte-2 mb-2 text-sm font-medium">
               {{ t('finance.shareholder.ledger.loansLent') }}
             </h3>
-            <table class="w-full text-start text-sm">
-              <tbody>
-                <tr v-for="loan in ledger.loans_lent" :key="loan.id" class="border-ligne border-b">
-                  <td class="px-2 py-1.5">{{ loan.borrower_name }}</td>
-                  <td class="px-2 py-1.5 text-end">
-                    <MonoValue :value="formatMoney(loan.remaining_amount)" />
-                  </td>
-                </tr>
-                <tr v-if="ledger.loans_lent.length === 0">
-                  <td class="text-texte-3 px-2 py-4 text-center">
-                    {{ t('masterData.noRecords') }}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+            <div class="overflow-x-auto">
+              <table class="w-full text-start text-sm">
+                <tbody>
+                  <tr v-for="loan in ledger.loans_lent" :key="loan.id" class="border-ligne border-b">
+                    <td class="px-2 py-1.5">{{ loan.borrower_name }}</td>
+                    <td class="px-2 py-1.5 text-end">
+                      <MonoValue :value="formatMoney(loan.remaining_amount)" />
+                    </td>
+                  </tr>
+                  <tr v-if="ledger.loans_lent.length === 0">
+                    <td class="text-texte-3 px-2 py-4 text-center">
+                      {{ t('masterData.noRecords') }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
           <div>
             <h3 class="text-texte-2 mb-2 text-sm font-medium">
               {{ t('finance.shareholder.ledger.loansBorrowed') }}
             </h3>
-            <table class="w-full text-start text-sm">
-              <tbody>
-                <tr
-                  v-for="loan in ledger.loans_borrowed"
-                  :key="loan.id"
-                  class="border-ligne border-b"
-                >
-                  <td class="px-2 py-1.5">{{ loan.lender_name }}</td>
-                  <td class="px-2 py-1.5 text-end">
-                    <MonoValue :value="formatMoney(loan.remaining_amount)" />
-                  </td>
-                </tr>
-                <tr v-if="ledger.loans_borrowed.length === 0">
-                  <td class="text-texte-3 px-2 py-4 text-center">
-                    {{ t('masterData.noRecords') }}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+            <div class="overflow-x-auto">
+              <table class="w-full text-start text-sm">
+                <tbody>
+                  <tr
+                    v-for="loan in ledger.loans_borrowed"
+                    :key="loan.id"
+                    class="border-ligne border-b"
+                  >
+                    <td class="px-2 py-1.5">{{ loan.lender_name }}</td>
+                    <td class="px-2 py-1.5 text-end">
+                      <MonoValue :value="formatMoney(loan.remaining_amount)" />
+                    </td>
+                  </tr>
+                  <tr v-if="ledger.loans_borrowed.length === 0">
+                    <td class="text-texte-3 px-2 py-4 text-center">
+                      {{ t('masterData.noRecords') }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </template>
@@ -1036,9 +1050,11 @@ async function onViewLedger() {
 
     <div
       v-if="showShareholderForm"
-      class="fixed inset-0 z-30 flex items-center justify-center bg-black/40"
+      class="fixed inset-0 z-30 flex items-center justify-center bg-black/40 p-4"
     >
-      <div class="bg-surface border-ligne w-full max-w-md rounded-xl border p-6">
+      <div
+        class="bg-surface border-ligne max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl border p-6"
+      >
         <h2 class="font-display mb-4 text-lg leading-none font-semibold uppercase">
           {{ editingShareholderId === null ? t('masterData.new') : t('masterData.edit') }}
           {{ t('finance.shareholder.listTitle') }}

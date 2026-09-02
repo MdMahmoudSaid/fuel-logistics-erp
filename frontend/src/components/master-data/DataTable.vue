@@ -21,10 +21,14 @@ const { t } = useI18n()
 </script>
 
 <template>
-  <table class="w-full text-start text-sm">
+  <table class="w-full min-w-max text-start text-sm">
     <thead>
       <tr class="border-ligne text-texte-2 border-b">
-        <th v-for="col in columns" :key="col.key" class="px-3 py-2.5 font-medium">
+        <th
+          v-for="col in columns"
+          :key="col.key"
+          class="px-3 py-2.5 font-medium whitespace-nowrap"
+        >
           {{ col.label }}
         </th>
         <th class="px-3 py-2.5" />
@@ -36,7 +40,7 @@ const { t } = useI18n()
         :key="String(row.id)"
         class="border-ligne hover:bg-sable border-b last:border-0"
       >
-        <td v-for="col in columns" :key="col.key" class="px-3 py-2.5">
+        <td v-for="col in columns" :key="col.key" class="px-3 py-2.5 whitespace-nowrap">
           <template v-if="col.type === 'checkbox'">
             {{ row[col.key] ? t('masterData.statusActive') : t('masterData.statusInactive') }}
           </template>

@@ -351,7 +351,7 @@ const cessionProofUrl = computed(() => trip.value?.cession_letter_detail?.docume
 
 <template>
   <div class="max-w-3xl space-y-6">
-    <div class="flex items-center justify-between">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <h1 class="font-display text-2xl leading-none font-semibold uppercase">
         {{ t('trips.detail.title', { reference: trip?.reference ?? '' }) }}
       </h1>
@@ -364,7 +364,7 @@ const cessionProofUrl = computed(() => trip.value?.cession_letter_detail?.docume
     <p v-else-if="loading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
     <template v-else-if="trip">
-      <section class="border-ligne grid grid-cols-2 gap-4 rounded-xl border bg-white p-4 text-sm">
+      <section class="border-ligne grid grid-cols-1 md:grid-cols-2 gap-4 rounded-xl border bg-white p-4 text-sm">
         <div>
           <span class="text-texte-2">{{ t('trips.detail.status') }}</span>
           <p class="mt-1">
@@ -724,9 +724,9 @@ const cessionProofUrl = computed(() => trip.value?.cession_letter_detail?.docume
 
       <div
         v-if="showExpenseForm"
-        class="fixed inset-0 z-30 flex items-center justify-center bg-black/40"
+        class="fixed inset-0 z-30 flex items-center justify-center bg-black/40 p-4"
       >
-        <div class="w-full max-w-lg">
+        <div class="max-h-[90vh] w-full max-w-lg overflow-y-auto">
           <ExpenseForm
             :preset-allocation="{ kind: 'trip', objectId: trip.id, label: trip.reference }"
             :title="automaticExpense?.title"
@@ -741,9 +741,9 @@ const cessionProofUrl = computed(() => trip.value?.cession_letter_detail?.docume
 
       <div
         v-if="showTransportPaymentForm"
-        class="fixed inset-0 z-30 flex items-center justify-center bg-black/40"
+        class="fixed inset-0 z-30 flex items-center justify-center bg-black/40 p-4"
       >
-        <div class="w-full max-w-lg">
+        <div class="max-h-[90vh] w-full max-w-lg overflow-y-auto">
           <TransportPaymentForm
             :title="automaticTransportTitle ?? undefined"
             :trip-id="trip.id"
@@ -759,9 +759,9 @@ const cessionProofUrl = computed(() => trip.value?.cession_letter_detail?.docume
 
       <div
         v-if="showAssignCustomerForm"
-        class="fixed inset-0 z-30 flex items-center justify-center bg-black/40"
+        class="fixed inset-0 z-30 flex items-center justify-center bg-black/40 p-4"
       >
-        <div class="w-full max-w-lg">
+        <div class="max-h-[90vh] w-full max-w-lg overflow-y-auto">
           <AssignCustomerForm
             :trip-id="trip.id"
             :trip-reference="trip.reference"

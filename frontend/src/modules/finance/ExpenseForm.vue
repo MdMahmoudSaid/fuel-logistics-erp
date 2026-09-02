@@ -299,7 +299,7 @@ async function onSubmit() {
       class="border-ligne space-y-4 rounded-xl border bg-surface p-6"
       @submit.prevent="onSubmit"
     >
-      <div class="grid grid-cols-2 gap-4">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <h2 v-if="title" class="font-display col-span-2 text-sm font-semibold uppercase">
           {{ title }}
         </h2>
@@ -441,7 +441,7 @@ async function onSubmit() {
         <p class="text-texte-2 text-sm">
           {{ t('finance.expense.paidByCustomerHint') }}
         </p>
-        <div class="grid grid-cols-2 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div class="space-y-1.5">
             <label class="text-texte-2 text-sm font-medium" for="indirect_customer">{{
               t('finance.expense.customer')
@@ -481,7 +481,7 @@ async function onSubmit() {
           <h2 class="font-display text-sm font-semibold uppercase">
             {{ t('finance.expense.treasuryPayment') }}
           </h2>
-          <div class="grid grid-cols-2 gap-4">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="space-y-1.5">
               <label class="text-texte-2 text-sm font-medium" for="treasury_account_kind">
                 {{ t('finance.expense.accountType') }}

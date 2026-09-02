@@ -372,47 +372,49 @@ function plainCellValue(row: Record<string, unknown>, field: string): string {
     <p v-else-if="loading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
     <section v-else-if="report" class="border-ligne overflow-auto rounded-xl border bg-white">
-      <table class="w-full text-left text-sm">
-        <thead>
-          <tr class="border-ligne text-texte-2 border-b">
-            <th v-for="field in report.fields" :key="field" class="px-3 py-2.5 font-medium">
-              {{ fieldLabel(field) }}
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="(row, index) in report.rows"
-            :key="index"
-            class="border-ligne border-b last:border-0"
-          >
-            <td v-for="field in report.fields" :key="field" class="px-3 py-2.5">
-              <Badge
-                v-if="fieldKind(field) === 'badge'"
-                :variant="badgeVariant(enumNamespace(field), String(row[field]))"
-              >
-                {{ enumLabel(field, row) }}
-              </Badge>
-              <span v-else-if="fieldKind(field) === 'enum'">{{ enumLabel(field, row) }}</span>
-              <span v-else-if="fieldKind(field) === 'money'" :class="moneyToneClass(field, row)">
-                {{ moneyCellValue(field, row) }}
-              </span>
-              <span v-else-if="fieldKind(field) === 'unitMoney'">{{
-                unitMoneyCellValue(field, row)
-              }}</span>
-              <span v-else-if="fieldKind(field) === 'quantity'">{{
-                quantityCellValue(field, row)
-              }}</span>
-              <span v-else>{{ plainCellValue(row, field) }}</span>
-            </td>
-          </tr>
-          <tr v-if="report.rows.length === 0">
-            <td :colspan="report.fields.length" class="text-texte-3 px-3 py-8 text-center">
-              {{ t('reports.noData') }}
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-sm">
+          <thead>
+            <tr class="border-ligne text-texte-2 border-b">
+              <th v-for="field in report.fields" :key="field" class="px-3 py-2.5 font-medium">
+                {{ fieldLabel(field) }}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="(row, index) in report.rows"
+              :key="index"
+              class="border-ligne border-b last:border-0"
+            >
+              <td v-for="field in report.fields" :key="field" class="px-3 py-2.5">
+                <Badge
+                  v-if="fieldKind(field) === 'badge'"
+                  :variant="badgeVariant(enumNamespace(field), String(row[field]))"
+                >
+                  {{ enumLabel(field, row) }}
+                </Badge>
+                <span v-else-if="fieldKind(field) === 'enum'">{{ enumLabel(field, row) }}</span>
+                <span v-else-if="fieldKind(field) === 'money'" :class="moneyToneClass(field, row)">
+                  {{ moneyCellValue(field, row) }}
+                </span>
+                <span v-else-if="fieldKind(field) === 'unitMoney'">{{
+                  unitMoneyCellValue(field, row)
+                }}</span>
+                <span v-else-if="fieldKind(field) === 'quantity'">{{
+                  quantityCellValue(field, row)
+                }}</span>
+                <span v-else>{{ plainCellValue(row, field) }}</span>
+              </td>
+            </tr>
+            <tr v-if="report.rows.length === 0">
+              <td :colspan="report.fields.length" class="text-texte-3 px-3 py-8 text-center">
+                {{ t('reports.noData') }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </section>
   </div>
 </template>

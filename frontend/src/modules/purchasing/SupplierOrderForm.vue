@@ -212,7 +212,7 @@ function goToNewCession() {
     <p v-if="error" class="text-critique text-sm">{{ error }}</p>
 
     <form
-      class="border-ligne grid grid-cols-2 gap-4 rounded-xl border bg-surface p-6"
+      class="border-ligne grid grid-cols-1 md:grid-cols-2 gap-4 rounded-xl border bg-surface p-6"
       @submit.prevent="onSubmit"
     >
       <div class="space-y-1.5">
@@ -472,41 +472,43 @@ function goToNewCession() {
         </Button>
       </div>
 
-      <table class="w-full text-left text-sm">
-        <thead>
-          <tr class="border-ligne text-texte-2 border-b">
-            <th class="px-2 py-1.5 font-medium">{{ t('purchasing.orderForm.table.reference') }}</th>
-            <th class="px-2 py-1.5 font-medium text-right">
-              {{ t('purchasing.orderForm.table.authorized') }}
-            </th>
-            <th class="px-2 py-1.5 font-medium text-right">
-              {{ t('purchasing.orderForm.table.remaining') }}
-            </th>
-            <th class="px-2 py-1.5 font-medium">{{ t('purchasing.orderForm.table.status') }}</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="cession in order?.cessions ?? []"
-            :key="cession.id"
-            class="border-ligne border-b last:border-0"
-          >
-            <td class="px-2 py-1.5">{{ cession.reference }}</td>
-            <td class="px-2 py-1.5 text-right">
-              {{ formatQuantity(cession.authorized_quantity) }}
-            </td>
-            <td class="px-2 py-1.5 text-right">
-              {{ formatQuantity(cession.remaining_quantity) }}
-            </td>
-            <td class="px-2 py-1.5">{{ t(`cessionStatus.${cession.status}`) }}</td>
-          </tr>
-          <tr v-if="!order?.cessions?.length">
-            <td colspan="4" class="text-texte-3 px-2 py-4 text-center">
-              {{ t('purchasing.orderForm.noCessions') }}
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-sm">
+          <thead>
+            <tr class="border-ligne text-texte-2 border-b">
+              <th class="px-2 py-1.5 font-medium">{{ t('purchasing.orderForm.table.reference') }}</th>
+              <th class="px-2 py-1.5 font-medium text-right">
+                {{ t('purchasing.orderForm.table.authorized') }}
+              </th>
+              <th class="px-2 py-1.5 font-medium text-right">
+                {{ t('purchasing.orderForm.table.remaining') }}
+              </th>
+              <th class="px-2 py-1.5 font-medium">{{ t('purchasing.orderForm.table.status') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="cession in order?.cessions ?? []"
+              :key="cession.id"
+              class="border-ligne border-b last:border-0"
+            >
+              <td class="px-2 py-1.5">{{ cession.reference }}</td>
+              <td class="px-2 py-1.5 text-right">
+                {{ formatQuantity(cession.authorized_quantity) }}
+              </td>
+              <td class="px-2 py-1.5 text-right">
+                {{ formatQuantity(cession.remaining_quantity) }}
+              </td>
+              <td class="px-2 py-1.5">{{ t(`cessionStatus.${cession.status}`) }}</td>
+            </tr>
+            <tr v-if="!order?.cessions?.length">
+              <td colspan="4" class="text-texte-3 px-2 py-4 text-center">
+                {{ t('purchasing.orderForm.noCessions') }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </section>
   </div>
 </template>

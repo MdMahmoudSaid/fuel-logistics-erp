@@ -54,7 +54,7 @@ onMounted(load)
 
 <template>
   <div class="space-y-4">
-    <div class="flex items-center justify-between">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <h1 class="font-display text-2xl leading-none font-semibold uppercase">{{ t('roles.title') }}</h1>
       <Button variant="primary" @click="openCreate">{{ t('roles.add') }}</Button>
     </div>
@@ -87,8 +87,13 @@ onMounted(load)
       </table>
     </div>
 
-    <div v-if="showForm" class="fixed inset-0 z-30 flex items-center justify-center bg-black/40">
-      <div class="bg-surface border-ligne w-full max-w-lg rounded-xl border p-6">
+    <div
+      v-if="showForm"
+      class="fixed inset-0 z-30 flex items-center justify-center bg-black/40 p-4"
+    >
+      <div
+        class="bg-surface border-ligne max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border p-6"
+      >
         <h2 class="font-display mb-4 text-lg leading-none font-semibold uppercase">
           {{ editingId === null ? t('roles.newRole') : t('roles.editRole') }}
         </h2>

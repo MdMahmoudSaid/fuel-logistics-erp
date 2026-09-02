@@ -119,9 +119,9 @@ onMounted(load)
 
 <template>
   <div class="space-y-4">
-    <div class="flex items-center justify-between">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <h1 class="font-display text-2xl leading-none font-semibold uppercase">{{ title }}</h1>
-      <div class="flex items-center gap-4">
+      <div class="flex flex-wrap items-center gap-4">
         <label v-if="hasActiveField" class="text-texte-2 flex items-center gap-2 text-sm">
           <input v-model="showInactive" type="checkbox" class="accent-orange" />
           {{ t('masterData.showInactive') }}
@@ -142,8 +142,13 @@ onMounted(load)
       />
     </div>
 
-    <div v-if="showForm" class="fixed inset-0 z-30 flex items-center justify-center bg-black/40">
-      <div class="bg-surface border-ligne w-full max-w-md rounded-xl border p-6">
+    <div
+      v-if="showForm"
+      class="fixed inset-0 z-30 flex items-center justify-center bg-black/40 p-4"
+    >
+      <div
+        class="bg-surface border-ligne max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl border p-6"
+      >
         <h2 class="font-display mb-4 text-lg leading-none font-semibold uppercase">
           {{ editingId === null ? t('masterData.new') : t('masterData.edit') }} {{ title }}
         </h2>

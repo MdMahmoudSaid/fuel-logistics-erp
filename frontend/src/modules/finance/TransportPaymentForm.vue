@@ -72,7 +72,7 @@ async function onSubmit() {
         {{ title ?? t('finance.transportPayment.title') }}
       </h2>
 
-      <div class="grid grid-cols-2 gap-4">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div class="space-y-1.5">
           <span class="text-texte-2 text-sm font-medium">{{
             t('finance.transportPayment.trip')

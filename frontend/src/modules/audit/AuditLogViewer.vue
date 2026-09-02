@@ -94,84 +94,87 @@ function badgeVariant(action: string) {
     <p v-else-if="loading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
     <section v-else class="border-ligne overflow-auto rounded-xl border bg-white">
-      <table class="w-full text-left text-sm">
-        <thead>
-          <tr class="border-ligne text-texte-2 border-b">
-            <th class="font-display px-3 py-2.5 text-xs font-medium tracking-wide uppercase">
-              {{ t('auditLog.timestamp') }}
-            </th>
-            <th class="font-display px-3 py-2.5 text-xs font-medium tracking-wide uppercase">
-              {{ t('auditLog.action') }}
-            </th>
-            <th class="font-display px-3 py-2.5 text-xs font-medium tracking-wide uppercase">
-              {{ t('auditLog.module') }}
-            </th>
-            <th class="font-display px-3 py-2.5 text-xs font-medium tracking-wide uppercase">
-              {{ t('auditLog.object') }}
-            </th>
-            <th class="font-display px-3 py-2.5 text-xs font-medium tracking-wide uppercase">
-              {{ t('auditLog.user') }}
-            </th>
-            <th class="px-3 py-2.5"></th>
-          </tr>
-        </thead>
-        <tbody>
-          <template v-for="log in logs" :key="log.id">
-            <tr
-              class="border-ligne hover:bg-sable cursor-pointer border-b last:border-0"
-              @click="toggle(log.id)"
-            >
-              <td class="px-3 py-2.5">
-                <MonoValue :value="new Date(log.timestamp).toLocaleString()" align="left" />
-              </td>
-              <td class="px-3 py-2.5">
-                <Badge :variant="badgeVariant(log.action)">{{ actionLabel(log.action) }}</Badge>
-              </td>
-              <td class="px-3 py-2.5">{{ moduleLabel(log.summary.module_key) }}</td>
-              <td class="px-3 py-2.5">{{ objectLabel(log) }}</td>
-              <td class="px-3 py-2.5">{{ log.user_email || '—' }}</td>
-              <td class="text-texte-3 px-3 py-2.5">{{ expandedId === log.id ? '▲' : '▼' }}</td>
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-sm">
+          <thead>
+            <tr class="border-ligne text-texte-2 border-b">
+              <th class="font-display px-3 py-2.5 text-xs font-medium tracking-wide uppercase">
+                {{ t('auditLog.timestamp') }}
+              </th>
+              <th class="font-display px-3 py-2.5 text-xs font-medium tracking-wide uppercase">
+                {{ t('auditLog.action') }}
+              </th>
+              <th class="font-display px-3 py-2.5 text-xs font-medium tracking-wide uppercase">
+                {{ t('auditLog.module') }}
+              </th>
+              <th class="font-display px-3 py-2.5 text-xs font-medium tracking-wide uppercase">
+                {{ t('auditLog.object') }}
+              </th>
+              <th class="font-display px-3 py-2.5 text-xs font-medium tracking-wide uppercase">
+                {{ t('auditLog.user') }}
+              </th>
+              <th class="px-3 py-2.5"></th>
             </tr>
-            <tr v-if="expandedId === log.id" class="border-ligne bg-sable border-b last:border-0">
-              <td colspan="6" class="px-4 py-3">
-                <dl
-                  v-if="log.summary.amount || log.summary.account_label || log.summary.related_party"
-                  class="mb-3 grid grid-cols-3 gap-3 text-xs"
-                >
-                  <div v-if="log.summary.amount">
-                    <dt class="text-texte-3">{{ t('auditLog.amount') }}</dt>
-                    <dd class="text-texte font-medium">{{ formatMoney(log.summary.amount) }}</dd>
+          </thead>
+          <tbody>
+            <template v-for="log in logs" :key="log.id">
+              <tr
+                class="border-ligne hover:bg-sable cursor-pointer border-b last:border-0"
+                @click="toggle(log.id)"
+              >
+                <td class="px-3 py-2.5">
+                  <MonoValue :value="new Date(log.timestamp).toLocaleString()" align="left" />
+                </td>
+                <td class="px-3 py-2.5">
+                  <Badge :variant="badgeVariant(log.action)">{{ actionLabel(log.action) }}</Badge>
+                </td>
+                <td class="px-3 py-2.5">{{ moduleLabel(log.summary.module_key) }}</td>
+                <td class="px-3 py-2.5">{{ objectLabel(log) }}</td>
+                <td class="px-3 py-2.5">{{ log.user_email || '—' }}</td>
+                <td class="text-texte-3 px-3 py-2.5">{{ expandedId === log.id ? '▲' : '▼' }}</td>
+              </tr>
+              <tr v-if="expandedId === log.id" class="border-ligne bg-sable border-b last:border-0">
+                <td colspan="6" class="px-4 py-3">
+                  <dl
+                    v-if="log.summary.amount || log.summary.account_label || log.summary.related_party"
+                    class="mb-3 grid grid-cols-3 gap-3 text-xs"
+                  >
+                    <div v-if="log.summary.amount">
+                      <dt class="text-texte-3">{{ t('auditLog.amount') }}</dt>
+                      <dd class="text-texte font-medium">{{ formatMoney(log.summary.amount) }}</dd>
+                    </div>
+                    <div v-if="log.summary.account_label">
+                      <dt class="text-texte-3">{{ t('auditLog.account') }}</dt>
+                      <dd class="text-texte font-medium">{{ log.summary.account_label }}</dd>
+                    </div>
+                    <div v-if="log.summary.related_party">
+                      <dt class="text-texte-3">{{ t('auditLog.relatedParty') }}</dt>
+                      <dd class="text-texte font-medium">{{ log.summary.related_party }}</dd>
+                    </div>
+                  </dl>
+                  <p v-if="diffKeys(log).length === 0" class="text-texte-3 text-xs">
+                    {{ t('auditLog.noChanges') }}
+                  </p>
+                  <div v-else class="overflow-x-auto">
+                    <table class="w-full text-xs">
+                      <thead>
+                        <tr class="text-texte-3">
+                          <th class="py-1 text-left font-medium">{{ t('auditLog.field') }}</th>
+                          <th class="py-1 text-left font-medium">{{ t('auditLog.previous') }}</th>
+                          <th class="py-1 text-left font-medium">{{ t('auditLog.new') }}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr v-for="key in diffKeys(log)" :key="key">
+                          <td class="text-texte-2 py-1 pr-4 font-medium">{{ key }}</td>
+                          <td class="text-critique py-1 pr-4 line-through">
+                            {{ formatValue(log.previous_value?.[key]) }}
+                          </td>
+                          <td class="text-livre-texte py-1">{{ formatValue(log.new_value?.[key]) }}</td>
+                        </tr>
+                      </tbody>
+                    </table>
                   </div>
-                  <div v-if="log.summary.account_label">
-                    <dt class="text-texte-3">{{ t('auditLog.account') }}</dt>
-                    <dd class="text-texte font-medium">{{ log.summary.account_label }}</dd>
-                  </div>
-                  <div v-if="log.summary.related_party">
-                    <dt class="text-texte-3">{{ t('auditLog.relatedParty') }}</dt>
-                    <dd class="text-texte font-medium">{{ log.summary.related_party }}</dd>
-                  </div>
-                </dl>
-                <p v-if="diffKeys(log).length === 0" class="text-texte-3 text-xs">
-                  {{ t('auditLog.noChanges') }}
-                </p>
-                <table v-else class="w-full text-xs">
-                  <thead>
-                    <tr class="text-texte-3">
-                      <th class="py-1 text-left font-medium">{{ t('auditLog.field') }}</th>
-                      <th class="py-1 text-left font-medium">{{ t('auditLog.previous') }}</th>
-                      <th class="py-1 text-left font-medium">{{ t('auditLog.new') }}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="key in diffKeys(log)" :key="key">
-                      <td class="text-texte-2 py-1 pr-4 font-medium">{{ key }}</td>
-                      <td class="text-critique py-1 pr-4 line-through">
-                        {{ formatValue(log.previous_value?.[key]) }}
-                      </td>
-                      <td class="text-livre-texte py-1">{{ formatValue(log.new_value?.[key]) }}</td>
-                    </tr>
-                  </tbody>
-                </table>
                 <p v-if="log.reason" class="text-texte-2 mt-2 text-xs">
                   {{ t('auditLog.reason') }} {{ log.reason }}
                 </p>
@@ -185,6 +188,7 @@ function badgeVariant(action: string) {
           </tr>
         </tbody>
       </table>
+      </div>
     </section>
   </div>
 </template>

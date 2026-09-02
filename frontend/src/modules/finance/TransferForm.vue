@@ -87,7 +87,7 @@ async function onSubmit() {
       class="border-ligne space-y-4 rounded-xl border bg-surface p-6"
       @submit.prevent="onSubmit"
     >
-      <div class="grid grid-cols-2 gap-4">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div class="space-y-1.5">
           <label class="text-texte-2 text-sm font-medium" for="source_type">{{
             t('finance.transfer.fromAccountType')

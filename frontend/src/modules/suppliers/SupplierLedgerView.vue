@@ -76,11 +76,11 @@ function proofUrl(order: SupplierLedger['orders'][number]) {
 
 <template>
   <div class="max-w-4xl space-y-6">
-    <div class="flex items-center justify-between">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <h1 class="font-display text-2xl leading-none font-semibold uppercase">
         {{ t('purchasing.supplierLedger.title', { name: ledger?.supplier.name ?? '…' }) }}
       </h1>
-      <div class="flex gap-2">
+      <div class="flex flex-wrap gap-2">
         <Button
           v-if="ledger && Number(ledger.summary.net_balance) < 0"
           variant="primary"
@@ -152,214 +152,222 @@ function proofUrl(order: SupplierLedger['orders'][number]) {
       </section>
 
       <Card :title="t('purchasing.supplierLedger.reliquatByProduct')">
-        <table class="w-full text-start text-sm">
-          <thead>
-            <tr class="border-ligne text-texte-2 border-b">
-              <th class="px-3 py-2.5 font-medium">{{ t('purchasing.supplierLedger.product') }}</th>
-              <th class="px-3 py-2.5 text-end font-medium">
-                {{ t('purchasing.supplierLedger.totalReliquat') }}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="item in ledger.reliquat_summary"
-              :key="item.product_id"
-              class="border-ligne border-b last:border-0"
-            >
-              <td class="px-3 py-2.5">{{ item.product_name }}</td>
-              <td class="px-3 py-2.5 text-end">
-                <MonoValue
-                  :class="Number(item.total_reliquat) <= 0 ? 'text-critique' : 'text-texte'"
-                  :value="formatQuantity(item.total_reliquat)"
-                />
-              </td>
-            </tr>
-            <tr v-if="ledger.reliquat_summary.length === 0">
-              <td colspan="2" class="text-texte-3 px-3 py-8 text-center">
-                {{ t('purchasing.supplierLedger.noPurchaseHistory') }}
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <div class="overflow-x-auto">
+          <table class="w-full text-start text-sm">
+            <thead>
+              <tr class="border-ligne text-texte-2 border-b">
+                <th class="px-3 py-2.5 font-medium">{{ t('purchasing.supplierLedger.product') }}</th>
+                <th class="px-3 py-2.5 text-end font-medium">
+                  {{ t('purchasing.supplierLedger.totalReliquat') }}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="item in ledger.reliquat_summary"
+                :key="item.product_id"
+                class="border-ligne border-b last:border-0"
+              >
+                <td class="px-3 py-2.5">{{ item.product_name }}</td>
+                <td class="px-3 py-2.5 text-end">
+                  <MonoValue
+                    :class="Number(item.total_reliquat) <= 0 ? 'text-critique' : 'text-texte'"
+                    :value="formatQuantity(item.total_reliquat)"
+                  />
+                </td>
+              </tr>
+              <tr v-if="ledger.reliquat_summary.length === 0">
+                <td colspan="2" class="text-texte-3 px-3 py-8 text-center">
+                  {{ t('purchasing.supplierLedger.noPurchaseHistory') }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </Card>
 
       <Card :title="t('purchasing.supplierLedger.purchaseHistory')">
-        <table class="w-full text-start text-sm">
-          <thead>
-            <tr class="border-ligne text-texte-2 border-b">
-              <th class="px-3 py-2.5 font-medium">
-                {{ t('purchasing.supplierLedger.table.reference') }}
-              </th>
-              <th class="px-3 py-2.5 font-medium">
-                {{ t('purchasing.supplierLedger.table.product') }}
-              </th>
-              <th class="px-3 py-2.5 font-medium">
-                {{ t('purchasing.supplierLedger.table.date') }}
-              </th>
-              <th class="px-3 py-2.5 text-end font-medium">
-                {{ t('purchasing.supplierLedger.table.purchased') }}
-              </th>
-              <th class="px-3 py-2.5 text-end font-medium">
-                {{ t('purchasing.supplierLedger.table.reliquat') }}
-              </th>
-              <th class="px-3 py-2.5 font-medium">
-                {{ t('purchasing.supplierLedger.table.status') }}
-              </th>
-              <th class="px-3 py-2.5 font-medium">
-                {{ t('purchasing.supplierLedger.table.proof') }}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="order in ledger.orders"
-              :key="order.id"
-              class="border-ligne hover:bg-sable cursor-pointer border-b last:border-0"
-              @click="router.push({ name: 'supplier-order-detail', params: { id: order.id } })"
-            >
-              <td class="px-3 py-2.5"><MonoValue :value="order.reference" align="left" /></td>
-              <td class="px-3 py-2.5">{{ order.product_detail?.name }}</td>
-              <td class="px-3 py-2.5">{{ order.purchase_date }}</td>
-              <td class="px-3 py-2.5 text-end">
-                <MonoValue :value="formatQuantity(order.quantity_litres)" />
-              </td>
-              <td class="px-3 py-2.5 text-end">
-                <MonoValue
-                  :class="Number(order.reliquat) <= 0 ? 'text-critique' : 'text-texte'"
-                  :value="formatQuantity(order.reliquat)"
-                />
-              </td>
-              <td class="px-3 py-2.5">
-                <Badge :variant="badgeVariant(order.status)">{{
-                  t(`supplierOrderStatus.${order.status}`)
-                }}</Badge>
-              </td>
-              <td class="px-3 py-2.5">
-                <button
-                  v-if="proofUrl(order)"
-                  type="button"
-                  class="text-bitume underline"
-                  @click.stop="previewUrl = proofUrl(order)"
-                >
-                  {{ t('purchasing.supplierLedger.viewProof') }}
-                </button>
-                <span v-else class="text-texte-3">—</span>
-              </td>
-            </tr>
-            <tr v-if="ledger.orders.length === 0">
-              <td colspan="7" class="text-texte-3 px-3 py-8 text-center">
-                {{ t('purchasing.supplierLedger.noPurchaseHistory') }}
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <div class="overflow-x-auto">
+          <table class="w-full text-start text-sm">
+            <thead>
+              <tr class="border-ligne text-texte-2 border-b">
+                <th class="px-3 py-2.5 font-medium">
+                  {{ t('purchasing.supplierLedger.table.reference') }}
+                </th>
+                <th class="px-3 py-2.5 font-medium">
+                  {{ t('purchasing.supplierLedger.table.product') }}
+                </th>
+                <th class="px-3 py-2.5 font-medium">
+                  {{ t('purchasing.supplierLedger.table.date') }}
+                </th>
+                <th class="px-3 py-2.5 text-end font-medium">
+                  {{ t('purchasing.supplierLedger.table.purchased') }}
+                </th>
+                <th class="px-3 py-2.5 text-end font-medium">
+                  {{ t('purchasing.supplierLedger.table.reliquat') }}
+                </th>
+                <th class="px-3 py-2.5 font-medium">
+                  {{ t('purchasing.supplierLedger.table.status') }}
+                </th>
+                <th class="px-3 py-2.5 font-medium">
+                  {{ t('purchasing.supplierLedger.table.proof') }}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="order in ledger.orders"
+                :key="order.id"
+                class="border-ligne hover:bg-sable cursor-pointer border-b last:border-0"
+                @click="router.push({ name: 'supplier-order-detail', params: { id: order.id } })"
+              >
+                <td class="px-3 py-2.5"><MonoValue :value="order.reference" align="left" /></td>
+                <td class="px-3 py-2.5">{{ order.product_detail?.name }}</td>
+                <td class="px-3 py-2.5">{{ order.purchase_date }}</td>
+                <td class="px-3 py-2.5 text-end">
+                  <MonoValue :value="formatQuantity(order.quantity_litres)" />
+                </td>
+                <td class="px-3 py-2.5 text-end">
+                  <MonoValue
+                    :class="Number(order.reliquat) <= 0 ? 'text-critique' : 'text-texte'"
+                    :value="formatQuantity(order.reliquat)"
+                  />
+                </td>
+                <td class="px-3 py-2.5">
+                  <Badge :variant="badgeVariant(order.status)">{{
+                    t(`supplierOrderStatus.${order.status}`)
+                  }}</Badge>
+                </td>
+                <td class="px-3 py-2.5">
+                  <button
+                    v-if="proofUrl(order)"
+                    type="button"
+                    class="text-bitume underline"
+                    @click.stop="previewUrl = proofUrl(order)"
+                  >
+                    {{ t('purchasing.supplierLedger.viewProof') }}
+                  </button>
+                  <span v-else class="text-texte-3">—</span>
+                </td>
+              </tr>
+              <tr v-if="ledger.orders.length === 0">
+                <td colspan="7" class="text-texte-3 px-3 py-8 text-center">
+                  {{ t('purchasing.supplierLedger.noPurchaseHistory') }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </Card>
 
       <Card :title="t('purchasing.supplierLedger.paymentsAndAdvances')">
-        <table class="w-full text-start text-sm">
-          <thead>
-            <tr class="border-ligne text-texte-2 border-b">
-              <th class="px-3 py-2.5 font-medium">
-                {{ t('purchasing.supplierLedger.paymentsTable.date') }}
-              </th>
-              <th class="px-3 py-2.5 font-medium">
-                {{ t('purchasing.supplierLedger.paymentsTable.method') }}
-              </th>
-              <th class="px-3 py-2.5 font-medium">
-                {{ t('purchasing.supplierLedger.paymentsTable.reference') }}
-              </th>
-              <th class="px-3 py-2.5 font-medium">
-                {{ t('purchasing.supplierLedger.paymentsTable.advance') }}
-              </th>
-              <th class="px-3 py-2.5 text-end font-medium">
-                {{ t('purchasing.supplierLedger.paymentsTable.amount') }}
-              </th>
-              <th class="px-3 py-2.5 font-medium">
-                {{ t('purchasing.supplierLedger.paymentsTable.proof') }}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="payment in ledger.payments"
-              :key="payment.id"
-              class="border-ligne border-b last:border-0"
-            >
-              <td class="px-3 py-2.5">{{ payment.payment_date }}</td>
-              <td class="px-3 py-2.5">{{ t(`paymentMethod.${payment.method}`) }}</td>
-              <td class="px-3 py-2.5">{{ payment.reference || '—' }}</td>
-              <td class="px-3 py-2.5">
-                {{ payment.is_advance ? t('common.yes') : t('common.no') }}
-              </td>
-              <td class="px-3 py-2.5 text-end">
-                <MonoValue :value="formatMoney(payment.amount)" />
-              </td>
-              <td class="px-3 py-2.5">
-                <button
-                  v-if="payment.proof_url"
-                  type="button"
-                  class="text-bitume underline"
-                  @click="previewUrl = payment.proof_url"
-                >
-                  {{ t('purchasing.supplierLedger.viewProof') }}
-                </button>
-                <span v-else class="text-texte-3">—</span>
-              </td>
-            </tr>
-            <tr v-if="ledger.payments.length === 0">
-              <td colspan="6" class="text-texte-3 px-3 py-8 text-center">
-                {{ t('purchasing.supplierLedger.noPayments') }}
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <div class="overflow-x-auto">
+          <table class="w-full text-start text-sm">
+            <thead>
+              <tr class="border-ligne text-texte-2 border-b">
+                <th class="px-3 py-2.5 font-medium">
+                  {{ t('purchasing.supplierLedger.paymentsTable.date') }}
+                </th>
+                <th class="px-3 py-2.5 font-medium">
+                  {{ t('purchasing.supplierLedger.paymentsTable.method') }}
+                </th>
+                <th class="px-3 py-2.5 font-medium">
+                  {{ t('purchasing.supplierLedger.paymentsTable.reference') }}
+                </th>
+                <th class="px-3 py-2.5 font-medium">
+                  {{ t('purchasing.supplierLedger.paymentsTable.advance') }}
+                </th>
+                <th class="px-3 py-2.5 text-end font-medium">
+                  {{ t('purchasing.supplierLedger.paymentsTable.amount') }}
+                </th>
+                <th class="px-3 py-2.5 font-medium">
+                  {{ t('purchasing.supplierLedger.paymentsTable.proof') }}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="payment in ledger.payments"
+                :key="payment.id"
+                class="border-ligne border-b last:border-0"
+              >
+                <td class="px-3 py-2.5">{{ payment.payment_date }}</td>
+                <td class="px-3 py-2.5">{{ t(`paymentMethod.${payment.method}`) }}</td>
+                <td class="px-3 py-2.5">{{ payment.reference || '—' }}</td>
+                <td class="px-3 py-2.5">
+                  {{ payment.is_advance ? t('common.yes') : t('common.no') }}
+                </td>
+                <td class="px-3 py-2.5 text-end">
+                  <MonoValue :value="formatMoney(payment.amount)" />
+                </td>
+                <td class="px-3 py-2.5">
+                  <button
+                    v-if="payment.proof_url"
+                    type="button"
+                    class="text-bitume underline"
+                    @click="previewUrl = payment.proof_url"
+                  >
+                    {{ t('purchasing.supplierLedger.viewProof') }}
+                  </button>
+                  <span v-else class="text-texte-3">—</span>
+                </td>
+              </tr>
+              <tr v-if="ledger.payments.length === 0">
+                <td colspan="6" class="text-texte-3 px-3 py-8 text-center">
+                  {{ t('purchasing.supplierLedger.noPayments') }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </Card>
 
       <Card :title="t('finance.partyLedger.entriesTitle')">
-        <table class="w-full text-start text-sm">
-          <thead>
-            <tr class="border-ligne text-texte-2 border-b">
-              <th class="px-3 py-2.5 font-medium">{{ t('finance.partyLedger.table.date') }}</th>
-              <th class="px-3 py-2.5 font-medium">{{ t('finance.partyLedger.table.type') }}</th>
-              <th class="px-3 py-2.5 font-medium">
-                {{ t('finance.partyLedger.table.reference') }}
-              </th>
-              <th class="px-3 py-2.5 text-end font-medium">
-                {{ t('finance.partyLedger.table.amount') }}
-              </th>
-              <th class="px-3 py-2.5 font-medium">{{ t('finance.partyLedger.table.proof') }}</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="(entry, index) in ledger.entries"
-              :key="index"
-              class="border-ligne border-b last:border-0"
-            >
-              <td class="px-3 py-2.5">{{ entry.date }}</td>
-              <td class="px-3 py-2.5">{{ t(`finance.partyLedger.entryTypes.${entry.type}`) }}</td>
-              <td class="px-3 py-2.5">{{ entry.reference || '—' }}</td>
-              <td class="px-3 py-2.5 text-end"><MonoValue :value="formatMoney(entry.amount)" /></td>
-              <td class="px-3 py-2.5">
-                <button
-                  v-if="entry.proof_url"
-                  type="button"
-                  class="text-bitume underline"
-                  @click="previewUrl = entry.proof_url"
-                >
-                  {{ t('purchasing.supplierLedger.viewProof') }}
-                </button>
-                <span v-else class="text-texte-3">—</span>
-              </td>
-            </tr>
-            <tr v-if="ledger.entries.length === 0">
-              <td colspan="5" class="text-texte-3 px-3 py-8 text-center">
-                {{ t('finance.partyLedger.noEntries') }}
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <div class="overflow-x-auto">
+          <table class="w-full text-start text-sm">
+            <thead>
+              <tr class="border-ligne text-texte-2 border-b">
+                <th class="px-3 py-2.5 font-medium">{{ t('finance.partyLedger.table.date') }}</th>
+                <th class="px-3 py-2.5 font-medium">{{ t('finance.partyLedger.table.type') }}</th>
+                <th class="px-3 py-2.5 font-medium">
+                  {{ t('finance.partyLedger.table.reference') }}
+                </th>
+                <th class="px-3 py-2.5 text-end font-medium">
+                  {{ t('finance.partyLedger.table.amount') }}
+                </th>
+                <th class="px-3 py-2.5 font-medium">{{ t('finance.partyLedger.table.proof') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="(entry, index) in ledger.entries"
+                :key="index"
+                class="border-ligne border-b last:border-0"
+              >
+                <td class="px-3 py-2.5">{{ entry.date }}</td>
+                <td class="px-3 py-2.5">{{ t(`finance.partyLedger.entryTypes.${entry.type}`) }}</td>
+                <td class="px-3 py-2.5">{{ entry.reference || '—' }}</td>
+                <td class="px-3 py-2.5 text-end"><MonoValue :value="formatMoney(entry.amount)" /></td>
+                <td class="px-3 py-2.5">
+                  <button
+                    v-if="entry.proof_url"
+                    type="button"
+                    class="text-bitume underline"
+                    @click="previewUrl = entry.proof_url"
+                  >
+                    {{ t('purchasing.supplierLedger.viewProof') }}
+                  </button>
+                  <span v-else class="text-texte-3">—</span>
+                </td>
+              </tr>
+              <tr v-if="ledger.entries.length === 0">
+                <td colspan="5" class="text-texte-3 px-3 py-8 text-center">
+                  {{ t('finance.partyLedger.noEntries') }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </Card>
     </template>
 
