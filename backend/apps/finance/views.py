@@ -18,6 +18,7 @@ from .models import (
     CustomerPayment,
     Expense,
     Shareholder,
+    ShareholderContribution,
     ShareholderLoan,
     ShareholderProfitDistribution,
     ShareholderWithdrawal,
@@ -34,6 +35,7 @@ from .serializers import (
     CustomerPaymentSerializer,
     ExpenseSerializer,
     IndirectSettlementRequestSerializer,
+    ShareholderContributionSerializer,
     ShareholderLoanSerializer,
     ShareholderProfitDistributionSerializer,
     ShareholderSerializer,
@@ -471,6 +473,27 @@ class ShareholderWithdrawalViewSet(viewsets.ModelViewSet):
     filterset_fields = ["shareholder", "profit_share"]
     permission_classes = [HasModulePermission]
     module = "shareholders"
+
+    def destroy(self, request, *args, **kwargs):
+        raise MethodNotAllowed("DELETE", detail=_NO_HARD_DELETE_DETAIL)
+
+
+class ShareholderContributionViewSet(viewsets.ModelViewSet):
+    queryset = ShareholderContribution.objects.select_related(
+        "shareholder", "bank_account", "cash_account", "recorded_by"
+    ).all()
+    serializer_class = ShareholderContributionSerializer
+    filterset_fields = ["shareholder"]
+    permission_classes = [HasModulePermission]
+    module = "shareholders"
+
+    def check_permissions(self, request):
+        # The shareholders module has no "cancel" action (see
+        # 0005_seed_shareholder_permissions migration), so destroy() will
+        # always raise MethodNotAllowed. Skip the permission check here to
+        # let that exception be raised instead of returning 403.
+        if self.action != "destroy":
+            super().check_permissions(request)
 
     def destroy(self, request, *args, **kwargs):
         raise MethodNotAllowed("DELETE", detail=_NO_HARD_DELETE_DETAIL)

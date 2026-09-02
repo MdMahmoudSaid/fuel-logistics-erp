@@ -6,6 +6,7 @@ from .views import (
     CashAccountViewSet,
     CustomerPaymentViewSet,
     ExpenseViewSet,
+    ShareholderContributionViewSet,
     ShareholderLoanViewSet,
     ShareholderProfitDistributionViewSet,
     ShareholderViewSet,
@@ -35,5 +36,8 @@ router.register(
 )
 router.register("shareholder-loans", ShareholderLoanViewSet, basename="shareholderloan")
 router.register("shareholder-withdrawals", ShareholderWithdrawalViewSet, basename="shareholderwithdrawal")
+router.register(
+    "shareholder-contributions", ShareholderContributionViewSet, basename="shareholdercontribution"
+)
 
 urlpatterns = router.urls
