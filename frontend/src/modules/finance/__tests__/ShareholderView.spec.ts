@@ -43,10 +43,12 @@ vi.mock('../api', () => ({
   shareholderLoanResource: { list: vi.fn(async () => emptyList()) },
   shareholderWithdrawalResource: { list: vi.fn(async () => emptyList()) },
   shareholderDistributionResource: { list: vi.fn(async () => emptyList()) },
+  shareholderContributionResource: { list: vi.fn(async () => emptyList()) },
   fetchShareholderLedger: (...args: unknown[]) => fetchShareholderLedger(...args),
   fetchShareholderProfitPreview: (...args: unknown[]) => fetchShareholderProfitPreview(...args),
   validateShareholderDistribution: vi.fn(),
   recordShareholderLoanRepayment: vi.fn(),
+  createShareholderContribution: vi.fn(),
 }))
 
 vi.mock('@/api/resource', () => ({
@@ -161,5 +163,21 @@ describe('ShareholderView', () => {
     expect(arabic.text()).toContain('الربح الحالي الإرشادي')
     expect(arabic.text()).not.toContain('Résumé')
     expect(arabic.text()).not.toContain('Bénéfice indicatif actuel')
+  })
+
+  it('opens the contribution form from the associates tab', async () => {
+    const wrapper = mount(ShareholderView)
+    await flushPromises()
+
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Associés')!
+      .trigger('click')
+    await flushPromises()
+
+    await wrapper.find('[data-testid="new-contribution-button"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findComponent({ name: 'ContributionForm' }).exists()).toBe(true)
   })
 })

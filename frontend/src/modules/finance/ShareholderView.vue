@@ -31,9 +31,11 @@ import type {
 import Badge from '@/components/ui/Badge.vue'
 import Button from '@/components/ui/Button.vue'
 import Card from '@/components/ui/Card.vue'
+import Modal from '@/components/ui/Modal.vue'
 import MonoValue from '@/components/ui/MonoValue.vue'
 import EntityForm from '@/components/master-data/EntityForm.vue'
 import type { FieldSchema } from '@/components/master-data/types'
+import ContributionForm from './ContributionForm.vue'
 import { formatMoney } from '@/utils/currency'
 
 const { t } = useI18n()
@@ -265,6 +267,13 @@ function loanStatusVariant(status: string) {
   return 'neutre' as const
 }
 
+// --- Section 1b: Capital contributions --------------------------------------
+// Opens Task 6's ContributionForm.vue in a Modal, either unlocked (from the
+// associates list) or locked to a specific shareholder (from their ledger).
+
+const showContributionForm = ref(false)
+const showLedgerContributionForm = ref(false)
+
 // --- Section 4: Withdrawals --------------------------------------------------
 
 const withdrawals = ref<ShareholderWithdrawal[]>([])
@@ -425,7 +434,16 @@ async function onViewLedger() {
     <!-- Section 1: Shareholders -->
     <Card v-if="activeTab === 'associates'" :title="t('finance.shareholder.listTitle')">
       <template #actions>
-        <Button variant="primary" @click="openCreateShareholder">{{ t('masterData.add') }}</Button>
+        <div class="flex gap-2">
+          <Button
+            data-testid="new-contribution-button"
+            variant="secondary"
+            @click="showContributionForm = true"
+          >
+            {{ t('finance.contributionForm.title') }}
+          </Button>
+          <Button variant="primary" @click="openCreateShareholder">{{ t('masterData.add') }}</Button>
+        </div>
       </template>
 
       <table class="w-full text-start text-sm">
@@ -910,6 +928,16 @@ async function onViewLedger() {
       <p v-else-if="ledgerLoading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
       <template v-else-if="ledger">
+        <div class="mb-4 flex justify-end">
+          <Button
+            data-testid="new-contribution-button-ledger"
+            variant="secondary"
+            @click="showLedgerContributionForm = true"
+          >
+            {{ t('finance.contributionForm.title') }}
+          </Button>
+        </div>
+
         <section class="mb-5 grid grid-cols-5 gap-4">
           <div class="border-ligne rounded-xl border p-4">
             <p class="text-texte-2 text-xs">{{ t('finance.shareholder.ledger.totalDue') }}</p>
@@ -1024,5 +1052,36 @@ async function onViewLedger() {
         />
       </div>
     </div>
+
+    <Modal
+      v-if="showContributionForm"
+      :title="t('finance.contributionForm.title')"
+      max-width="max-w-2xl"
+      @close="showContributionForm = false"
+    >
+      <ContributionForm
+        @success="showContributionForm = false"
+        @cancel="showContributionForm = false"
+      />
+    </Modal>
+
+    <Modal
+      v-if="showLedgerContributionForm && ledger"
+      :title="t('finance.contributionForm.title')"
+      max-width="max-w-2xl"
+      @close="showLedgerContributionForm = false"
+    >
+      <ContributionForm
+        :initial-shareholder-id="ledger.shareholder.id"
+        lock-shareholder
+        @success="
+          () => {
+            showLedgerContributionForm = false
+            loadLedger(ledger!.shareholder.id)
+          }
+        "
+        @cancel="showLedgerContributionForm = false"
+      />
+    </Modal>
   </div>
 </template>
