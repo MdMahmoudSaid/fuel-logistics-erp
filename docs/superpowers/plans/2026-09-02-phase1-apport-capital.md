@@ -117,7 +117,7 @@ def test_shareholder_contribution_amount_must_be_positive():
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd backend && python manage.py test apps.finance.test_contributions -v 2`
+Run: `cd backend && /Users/mohamed/Downloads/fuel-logistics-erp/backend/.venv/bin/python -m pytest apps/finance/test_contributions.py -v`
 Expected: FAIL with `ImportError`/`AttributeError` — `ShareholderContribution` does not exist yet.
 
 - [ ] **Step 3: Add the model**
@@ -190,15 +190,15 @@ class ShareholderContribution(AuditableModel, TimeStampedModel):
 
 - [ ] **Step 4: Generate and apply the migration**
 
-Run: `cd backend && python manage.py makemigrations finance`
+Run: `cd backend && /Users/mohamed/Downloads/fuel-logistics-erp/backend/.venv/bin/python manage.py makemigrations finance`
 Expected: creates `apps/finance/migrations/0013_shareholdercontribution.py`. Open it and confirm it only adds the new model/table/constraints/indexes — no changes to any other model.
 
-Run: `cd backend && python manage.py migrate finance`
+Run: `cd backend && /Users/mohamed/Downloads/fuel-logistics-erp/backend/.venv/bin/python manage.py migrate finance`
 Expected: applies cleanly.
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `cd backend && python manage.py test apps.finance.test_contributions -v 2`
+Run: `cd backend && /Users/mohamed/Downloads/fuel-logistics-erp/backend/.venv/bin/python -m pytest apps/finance/test_contributions.py -v`
 Expected: PASS (2 tests).
 
 - [ ] **Step 6: Commit**
@@ -316,7 +316,7 @@ def test_get_total_capital_sums_opening_balance_and_contributions():
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd backend && python manage.py test apps.finance.test_contributions -v 2`
+Run: `cd backend && /Users/mohamed/Downloads/fuel-logistics-erp/backend/.venv/bin/python -m pytest apps/finance/test_contributions.py -v`
 Expected: FAIL — `ImportError: cannot import name 'ShareholderContributionError'`.
 
 - [ ] **Step 3: Implement the service**
@@ -405,7 +405,7 @@ Confirm `Document` (`from apps.documents.models import Document`) and `Sum` (`fr
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd backend && python manage.py test apps.finance.test_contributions -v 2`
+Run: `cd backend && /Users/mohamed/Downloads/fuel-logistics-erp/backend/.venv/bin/python -m pytest apps/finance/test_contributions.py -v`
 Expected: PASS (6 tests total).
 
 - [ ] **Step 5: Commit**
@@ -503,7 +503,7 @@ def test_contribution_api_rejects_update_and_hard_delete():
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd backend && python manage.py test apps.finance.test_contributions -v 2`
+Run: `cd backend && /Users/mohamed/Downloads/fuel-logistics-erp/backend/.venv/bin/python -m pytest apps/finance/test_contributions.py -v`
 Expected: FAIL — 404s (no URL registered yet)/`ImportError`.
 
 - [ ] **Step 3: Implement the serializer**
@@ -635,12 +635,12 @@ router.register(
 
 - [ ] **Step 3: Run all contribution tests**
 
-Run: `cd backend && python manage.py test apps.finance.test_contributions -v 2`
+Run: `cd backend && /Users/mohamed/Downloads/fuel-logistics-erp/backend/.venv/bin/python -m pytest apps/finance/test_contributions.py -v`
 Expected: PASS (all 9 tests from Tasks 1-4).
 
 - [ ] **Step 4: Run the full finance test suite to check for regressions**
 
-Run: `cd backend && python manage.py test apps.finance -v 1`
+Run: `cd backend && /Users/mohamed/Downloads/fuel-logistics-erp/backend/.venv/bin/python -m pytest apps/finance -q`
 Expected: PASS, same pass count as before this phase plus the 9 new tests — no existing test broken.
 
 - [ ] **Step 5: Commit**
