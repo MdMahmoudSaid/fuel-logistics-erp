@@ -83,7 +83,18 @@ class ReportViewSet(viewsets.ViewSet):
         params = {
             key: value
             for key, value in request.query_params.items()
-            if key not in {"export", "range", "from", "to"}
+            if key
+            not in {
+                "export",
+                "preset",
+                "range",
+                "start_date",
+                "end_date",
+                "from",
+                "to",
+                "start",
+                "end",
+            }
         }
         date_from, date_to = resolve_date_range(request.query_params)
         if date_from:

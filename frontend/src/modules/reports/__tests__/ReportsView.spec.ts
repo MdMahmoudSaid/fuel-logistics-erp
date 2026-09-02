@@ -98,7 +98,10 @@ describe('ReportsView', () => {
 
     // DateRangeFilter emits its default preset ("month") on mount, so that's
     // already folded into the params by the time "Run report" is clicked.
-    expect(downloadReportExport).toHaveBeenCalledWith('trip-report', 'pdf', { range: 'month' })
+    expect(downloadReportExport).toHaveBeenCalledWith('trip-report', 'pdf', {
+      preset: 'month',
+      range: 'month',
+    })
   })
 
   it('calls window.print for the Imprimer button', async () => {

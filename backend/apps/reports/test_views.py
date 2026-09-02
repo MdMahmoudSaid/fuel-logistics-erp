@@ -136,6 +136,87 @@ def test_dashboard_summary_filters_by_explicit_date_range():
 
 
 @pytest.mark.django_db
+def test_dashboard_summary_period_cards_accept_start_date_end_date_aliases():
+    admin_user = User.objects.create_superuser(phone="+222DASHPERA", pin="1234")
+    jan = _make_full_trip("DASHPERA", admin_user)
+    jan["trip"].loading_date = "2026-01-10"
+    jan["trip"].save(update_fields=["loading_date"])
+
+    sep = _make_full_trip("DASHPERB", admin_user)
+    sep["trip"].loading_date = "2026-09-01"
+    sep["trip"].save(update_fields=["loading_date"])
+
+    cash = CashAccount.objects.create(name="Dash Period Cash")
+    CustomerPayment.objects.create(
+        customer=jan["customer"],
+        amount=Decimal("1000.00"),
+        payment_date="2026-01-10",
+        method=CustomerPayment.Method.CASH,
+        cash_account=cash,
+        recorded_by=admin_user,
+    )
+    CustomerPayment.objects.create(
+        customer=sep["customer"],
+        amount=Decimal("2000.00"),
+        payment_date="2026-09-01",
+        method=CustomerPayment.Method.CASH,
+        cash_account=cash,
+        recorded_by=admin_user,
+    )
+    Expense.objects.create(
+        category=Expense.Category.OTHER,
+        amount=Decimal("100.00"),
+        calculation_method=Expense.CalculationMethod.FIXED,
+        date="2026-01-10",
+        status=Expense.Status.PAID,
+    )
+    Expense.objects.create(
+        category=Expense.Category.OTHER,
+        amount=Decimal("200.00"),
+        calculation_method=Expense.CalculationMethod.FIXED,
+        date="2026-09-01",
+        status=Expense.Status.PAID,
+    )
+
+    client = APIClient()
+    client.force_authenticate(admin_user)
+
+    jan_response = client.get(
+        "/api/dashboard/summary/",
+        {"preset": "custom", "start_date": "2026-01-01", "end_date": "2026-01-31"},
+    )
+    sep_response = client.get(
+        "/api/dashboard/summary/",
+        {"preset": "custom", "start_date": "2026-09-01", "end_date": "2026-09-01"},
+    )
+    wide_response = client.get(
+        "/api/dashboard/summary/",
+        {"preset": "custom", "start_date": "2026-01-01", "end_date": "2026-09-01"},
+    )
+
+    assert jan_response.status_code == 200, jan_response.data
+    assert sep_response.status_code == 200, sep_response.data
+    assert wide_response.status_code == 200, wide_response.data
+
+    assert jan_response.data["operations"]["trips_count"] == 1
+    assert jan_response.data["financial_summary"]["period_revenue"] == str(jan["sale"].subtotal)
+    assert jan_response.data["financial_summary"]["period_collections"] == "1000.00"
+    assert jan_response.data["financial_summary"]["period_paid_expenses"] == "100.00"
+
+    assert sep_response.data["operations"]["trips_count"] == 1
+    assert sep_response.data["financial_summary"]["period_revenue"] == str(sep["sale"].subtotal)
+    assert sep_response.data["financial_summary"]["period_collections"] == "2000.00"
+    assert sep_response.data["financial_summary"]["period_paid_expenses"] == "200.00"
+
+    assert wide_response.data["operations"]["trips_count"] == 2
+    assert wide_response.data["financial_summary"]["period_revenue"] == str(
+        jan["sale"].subtotal + sep["sale"].subtotal
+    )
+    assert wide_response.data["financial_summary"]["period_collections"] == "3000.00"
+    assert wide_response.data["financial_summary"]["period_paid_expenses"] == "300.00"
+
+
+@pytest.mark.django_db
 def test_dashboard_summary_includes_shareholders_summary_section():
     """Design doc 2026-08-26-benefices-associes-refinement-design.md:
     dashboard shows a summary only - current profit, total withdrawn,
@@ -626,6 +707,47 @@ def test_dashboard_summary_exposes_final_business_sections():
 
     action_items = response.data["action_items"]
     assert any(item["kind"] == "company_stock_without_customer" for item in action_items)
+
+
+@pytest.mark.django_db
+def test_margin_report_endpoint_filters_rows_with_start_date_end_date_aliases():
+    admin_user = User.objects.create_superuser(phone="+222MARGVWA", pin="1234")
+    jan = _make_full_trip("MARGVWA", admin_user)
+    jan["trip"].loading_date = "2026-01-10"
+    jan["trip"].save(update_fields=["loading_date"])
+    sep = _make_full_trip("MARGVWB", admin_user)
+    sep["trip"].loading_date = "2026-09-01"
+    sep["trip"].save(update_fields=["loading_date"])
+
+    client = APIClient()
+    client.force_authenticate(admin_user)
+
+    jan_response = client.get(
+        "/api/reports/margin-report/",
+        {"preset": "custom", "start_date": "2026-01-01", "end_date": "2026-01-31"},
+    )
+    sep_response = client.get(
+        "/api/reports/margin-report/",
+        {"preset": "custom", "start_date": "2026-09-01", "end_date": "2026-09-01"},
+    )
+    wide_response = client.get(
+        "/api/reports/margin-report/",
+        {"preset": "custom", "start_date": "2026-01-01", "end_date": "2026-09-01"},
+    )
+
+    assert jan_response.status_code == 200, jan_response.data
+    assert sep_response.status_code == 200, sep_response.data
+    assert wide_response.status_code == 200, wide_response.data
+    assert [row["trip_reference"] for row in jan_response.data["rows"]] == [
+        jan["trip"].reference
+    ]
+    assert [row["trip_reference"] for row in sep_response.data["rows"]] == [
+        sep["trip"].reference
+    ]
+    assert {row["trip_reference"] for row in wide_response.data["rows"]} == {
+        jan["trip"].reference,
+        sep["trip"].reference,
+    }
 
 
 @pytest.mark.django_db

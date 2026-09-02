@@ -98,6 +98,94 @@ describe('ProfitView', () => {
     expect(wrapper.text()).toContain('2 250 000 XOF')
   })
 
+  it('refetches the trip table with ISO start_date and end_date when custom dates change', async () => {
+    fetchReport.mockImplementation(async (_reportType, params) => ({
+      report_type: 'margin-report',
+      fields: [],
+      rows:
+        params?.start_date === '2026-09-01' && params?.end_date === '2026-09-01'
+          ? [
+              {
+                trip_reference: 'TRIP-SEP',
+                client: 'Client Septembre',
+                product: 'Gasoil',
+                quantity: '1000.00',
+                quantity_loaded: '1000.00',
+                quantity_invoiced: '1000.00',
+                transporter_loss_quantity: '0.00',
+                transporter_loss_indemnity: '0.00',
+                supplier_unit_price: '500.0000',
+                transport_cost: '0.00',
+                customs_cost: '0.00',
+                transit_cost: '0.00',
+                border_cost: '0.00',
+                loading_cost: '0.00',
+                additional_costs: '0.00',
+                real_total_cost: '600000.00',
+                unit_cost: '600.0000',
+                unit_selling_price: '650.0000',
+                unit_profit: '50.0000',
+                current_margin: '50000.00',
+              },
+            ]
+          : [
+              {
+                trip_reference: 'TRIP-JAN',
+                client: 'Client Janvier',
+                product: 'Gasoil',
+                quantity: '1000.00',
+                quantity_loaded: '1000.00',
+                quantity_invoiced: '1000.00',
+                transporter_loss_quantity: '0.00',
+                transporter_loss_indemnity: '0.00',
+                supplier_unit_price: '500.0000',
+                transport_cost: '0.00',
+                customs_cost: '0.00',
+                transit_cost: '0.00',
+                border_cost: '0.00',
+                loading_cost: '0.00',
+                additional_costs: '0.00',
+                real_total_cost: '620000.00',
+                unit_cost: '620.0000',
+                unit_selling_price: '650.0000',
+                unit_profit: '30.0000',
+                current_margin: '30000.00',
+              },
+            ],
+    }))
+    const wrapper = mount(ProfitView)
+    await flushPromises()
+    expect(wrapper.text()).toContain('TRIP-JAN')
+    expect(wrapper.text()).toContain('30 000 XOF')
+
+    await wrapper.find('select').setValue('custom')
+    await flushPromises()
+    const inputs = wrapper.findAll('input[type="date"]')
+    await inputs[0]!.setValue('2026-09-01')
+    await inputs[1]!.setValue('2026-09-01')
+    await flushPromises()
+
+    expect(fetchReport).toHaveBeenLastCalledWith(
+      'margin-report',
+      expect.objectContaining({
+        preset: 'custom',
+        start_date: '2026-09-01',
+        end_date: '2026-09-01',
+      }),
+    )
+    expect(fetchShareholderProfitPreview).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        preset: 'custom',
+        start_date: '2026-09-01',
+        end_date: '2026-09-01',
+      }),
+    )
+    expect(wrapper.text()).toContain('TRIP-SEP')
+    expect(wrapper.text()).toContain('50 000 XOF')
+    expect(wrapper.text()).not.toContain('TRIP-JAN')
+    expect(wrapper.text()).not.toContain('30 000 XOF')
+  })
+
   it('clarifies accounting, received, and distributable profit meanings', async () => {
     const wrapper = mount(ProfitView)
     await flushPromises()

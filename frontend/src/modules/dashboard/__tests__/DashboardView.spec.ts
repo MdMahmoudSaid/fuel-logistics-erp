@@ -344,7 +344,7 @@ describe('DashboardView', () => {
     const wrapper = mount(DashboardView, { global: { plugins: [makeRouter()] } })
     await flushPromises()
 
-    expect(fetchDashboardSummary).toHaveBeenCalledWith({ range: 'month' })
+    expect(fetchDashboardSummary).toHaveBeenCalledWith({ preset: 'month', range: 'month' })
     expect(wrapper.text()).toContain('Opérations')
     expect(wrapper.text()).toContain('Carburant')
     expect(wrapper.text()).toContain('Ventes')
@@ -364,6 +364,48 @@ describe('DashboardView', () => {
     expect(wrapper.text()).toContain('Bank 1')
     expect(wrapper.text()).toContain('Montant total des caisses')
     expect(wrapper.text()).toContain('Caisse 1')
+  })
+
+  it('refetches dashboard period figures with ISO start_date and end_date when custom dates change', async () => {
+    const customSummary: DashboardSummary = {
+      ...summary,
+      financial_summary: {
+        ...summary.financial_summary,
+        period_revenue: '222222.00',
+        period_collections: '333333.00',
+        period_paid_expenses: '44444.00',
+        period_accounting_profit: '123456.00',
+      },
+    }
+    fetchDashboardSummary.mockImplementation(async (params) =>
+      params.start_date === '2026-01-01' && params.end_date === '2026-09-01'
+        ? customSummary
+        : summary,
+    )
+    const wrapper = mount(DashboardView, { global: { plugins: [makeRouter()] } })
+    await flushPromises()
+
+    await wrapper.find('select').setValue('custom')
+    await flushPromises()
+    const inputs = wrapper.findAll('input[type="date"]')
+    await inputs[0]!.setValue('2026-01-01')
+    await inputs[1]!.setValue('2026-09-01')
+    await flushPromises()
+
+    expect(fetchDashboardSummary).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        preset: 'custom',
+        start_date: '2026-01-01',
+        end_date: '2026-09-01',
+      }),
+    )
+    const financialCards = wrapper.findAll('[data-test="financial-kpi-card"]')
+    expect(financialCards.map((card) => card.text())).toEqual([
+      expect.stringContaining('222 222 XOF'),
+      expect.stringContaining('333 333 XOF'),
+      expect.stringContaining('44 444 XOF'),
+      expect.stringContaining('123 456 XOF'),
+    ])
   })
 
   it('refetches fresh balances when the dashboard is re-entered after a payment', async () => {

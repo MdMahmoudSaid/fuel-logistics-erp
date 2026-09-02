@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // Shared date-range filter (docs/PHASE_6_PLAN.md Etape 7): predefined
-// periods plus a custom from/to pair, emitting the same shape the backend
-// dashboard/report endpoints already accept (?range=|&from=&to=).
+// periods plus a custom from/to pair, emitting canonical
+// preset/start_date/end_date keys and legacy range/from/to aliases accepted
+// by dashboard/report endpoints.
 import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { DateRangeValue } from './date-range'
@@ -23,9 +24,15 @@ const to = ref('')
 
 function apply() {
   if (selected.value === 'custom') {
-    emit('change', { from: from.value || undefined, to: to.value || undefined })
+    emit('change', {
+      preset: 'custom',
+      start_date: from.value || undefined,
+      end_date: to.value || undefined,
+      from: from.value || undefined,
+      to: to.value || undefined,
+    })
   } else {
-    emit('change', { range: selected.value })
+    emit('change', { preset: selected.value, range: selected.value })
   }
 }
 

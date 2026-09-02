@@ -9,7 +9,7 @@
 // Nothing here recomputes a cost or margin formula - CA/supplier-cost
 // totals below are trivial quantity x price sums, not business
 // invariants.
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import DateRangeFilter from '@/components/DateRangeFilter.vue'
 import type { DateRangeValue } from '@/components/date-range'
@@ -103,9 +103,9 @@ async function loadRows() {
   }
 }
 
-async function loadPreview() {
+async function loadPreview(params: Record<string, string | undefined>) {
   try {
-    preview.value = await fetchShareholderProfitPreview()
+    preview.value = await fetchShareholderProfitPreview(params)
   } catch {
     preview.value = null
   }
@@ -113,12 +113,10 @@ async function loadPreview() {
 
 function onDateRangeChange(value: DateRangeValue) {
   dateRange.value = value
+  const params: Record<string, string | undefined> = { ...value }
   loadRows()
+  loadPreview(params)
 }
-
-onMounted(() => {
-  loadPreview()
-})
 </script>
 
 <template>
