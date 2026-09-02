@@ -1013,3 +1013,66 @@ class ShareholderWithdrawal(AuditableModel, TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.shareholder}: {self.amount} ({self.date})"
+
+
+class ShareholderContribution(AuditableModel, TimeStampedModel):
+    """Real cash injected into the company by a shareholder/associate
+    (Phase 1, docs/superpowers/specs/2026-09-02-business-corrections-6-phases-design.md).
+
+    Mirrors SupplierAdvance rather than ShareholderWithdrawal: the proof
+    document is mandatory here (a capital injection is a notable, real
+    money-in event), so creation goes through
+    ShareholderContributionService.record_contribution, copied from
+    AdvanceService.create_supplier_advance rather than routed through
+    FinancePostingService (which only fits flows where the document stays
+    optional). Never contributes to
+    ShareholderLedgerService.get_available_balance() or
+    ShareholderStatementQuery's running balance - it is capital, not
+    distributable profit.
+    """
+
+    shareholder = models.ForeignKey(
+        Shareholder, on_delete=models.PROTECT, related_name="contributions"
+    )
+    amount = models.DecimalField(max_digits=16, decimal_places=2)
+    date = models.DateField()
+    bank_account = models.ForeignKey(
+        BankAccount, on_delete=models.PROTECT, null=True, blank=True,
+        related_name="shareholder_contributions",
+    )
+    cash_account = models.ForeignKey(
+        CashAccount, on_delete=models.PROTECT, null=True, blank=True,
+        related_name="shareholder_contributions",
+    )
+    reference = models.CharField(max_length=100, blank=True)
+    notes = models.TextField(blank=True)
+    document = models.ForeignKey(
+        "documents.Document", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="shareholder_contributions",
+    )
+    recorded_by = models.ForeignKey(
+        "accounts.User", on_delete=models.PROTECT, related_name="shareholder_contributions_recorded"
+    )
+
+    class Meta:
+        ordering = ["-date", "-id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0),
+                name="finance_shareholdercontribution_amount_positive",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(bank_account__isnull=True) | models.Q(cash_account__isnull=True),
+                name="finance_shareholdercontribution_single_account",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(bank_account__isnull=False) | models.Q(cash_account__isnull=False),
+                name="finance_shareholdercontribution_requires_account",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["shareholder", "date"], name="finance_shrcontrib_date_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.shareholder}: {self.amount} ({self.date})"
