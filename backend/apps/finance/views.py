@@ -487,14 +487,6 @@ class ShareholderContributionViewSet(viewsets.ModelViewSet):
     permission_classes = [HasModulePermission]
     module = "shareholders"
 
-    def check_permissions(self, request):
-        # The shareholders module has no "cancel" action (see
-        # 0005_seed_shareholder_permissions migration), so destroy() will
-        # always raise MethodNotAllowed. Skip the permission check here to
-        # let that exception be raised instead of returning 403.
-        if self.action != "destroy":
-            super().check_permissions(request)
-
     def destroy(self, request, *args, **kwargs):
         raise MethodNotAllowed("DELETE", detail=_NO_HARD_DELETE_DETAIL)
 

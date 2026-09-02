@@ -211,4 +211,8 @@ def test_contribution_api_rejects_update_and_hard_delete():
     assert patch_response.status_code == 400
 
     delete_response = client.delete(f"/api/shareholder-contributions/{contribution.id}/")
-    assert delete_response.status_code == 405
+    # destroy() raises MethodNotAllowed, but HasModulePermission rejects "destroy" (mapped to "cancel",
+    # a permission no role has on the "shareholders" module — see 0005_seed_shareholder_permissions)
+    # before destroy() is ever reached, so the actual response is 403, not 405. Matches
+    # ShareholderWithdrawalViewSet's identical (if latent) behavior.
+    assert delete_response.status_code == 403
