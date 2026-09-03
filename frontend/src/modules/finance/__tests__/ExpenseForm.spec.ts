@@ -89,13 +89,20 @@ describe('ExpenseForm', () => {
     vi.clearAllMocks()
   })
 
-  it('loads categories from the API and can create a new one inline', async () => {
+  // Bug fix (2026-09-03 recette manuelle): "Depenses generales" (no
+  // presetAllocation at all) must only ever offer general/custom
+  // categories - a trip system category like "Douane" has no business
+  // appearing here, mirroring the symmetric rule already enforced for
+  // trip-fee mode below.
+  it('loads only general categories from the API (never trip system ones) and can create a new one inline', async () => {
     const wrapper = mount(ExpenseForm)
     await flushPromises()
 
-    expect(listExpenseCategories).toHaveBeenCalled()
-    expect(wrapper.find('#category').text()).toContain('Douane')
+    expect(listExpenseCategories).toHaveBeenCalledWith(
+      expect.objectContaining({ is_system: false }),
+    )
     expect(wrapper.find('#category').text()).toContain('Internet')
+    expect(wrapper.find('#category').text()).not.toContain('Douane')
 
     await wrapper.find('[data-test="create-expense-category-toggle"]').trigger('click')
     await wrapper.find('#new_expense_category_name').setValue('Frais WiFi')
@@ -224,7 +231,12 @@ describe('ExpenseForm', () => {
   })
 
   it('lets a manually added line be removed', async () => {
-    const wrapper = mount(ExpenseForm)
+    // Repartition (allocation lines) only renders for trip-fee mode now -
+    // a general expense never offers this UI at all (see the dedicated
+    // "hides Repartition optionnelle" test above).
+    const wrapper = mount(ExpenseForm, {
+      props: { presetAllocation: { kind: 'trip', objectId: 42, label: 'TRIP-042' } },
+    })
     await flushPromises()
 
     const addLineButton = wrapper.findAll('button').find((button) => button.text() === '+ Ajouter une ligne')
@@ -250,19 +262,38 @@ describe('ExpenseForm', () => {
     expect(options.map((o) => o.element.value)).toEqual(['PER_LITRE', 'PER_TRUCK'])
   })
 
-  it('offers every calculation method for a general (non-trip) expense', async () => {
+  // Bug fix (2026-09-03 recette manuelle): a general expense (Depenses
+  // generales, no presetAllocation) is never a trip fee, so it must never
+  // expose "Methode de calcul" at all - the submitted value is always
+  // forced to MANUAL regardless of whatever the (hidden) field held.
+  it('hides Methode de calcul entirely for a general (non-trip) expense and forces MANUAL on submit', async () => {
     const wrapper = mount(ExpenseForm)
     await flushPromises()
 
-    const options = wrapper.find('#calculation_method').findAll('option')
-    expect(options.map((o) => o.element.value)).toEqual([
-      'FIXED',
-      'PER_LITRE',
-      'PERCENTAGE',
-      'PER_ORDER',
-      'PER_TRUCK',
-      'MANUAL',
-    ])
+    expect(wrapper.find('#calculation_method').exists()).toBe(false)
+
+    await wrapper.find('#amount').setValue('100000')
+    await wrapper.find('#date').setValue('2026-08-25')
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createExpense).toHaveBeenCalledWith(
+      expect.objectContaining({ calculation_method: 'MANUAL' }),
+    )
+  })
+
+  // Bug fix (2026-09-03 recette manuelle): the "Repartition optionnelle"
+  // allocation-lines UI is trip-fee-only machinery - a general expense has
+  // no business splitting itself across trips/trucks/customers, so the
+  // whole section (including "+ Ajouter une ligne") must not render.
+  it('hides Repartition optionnelle entirely for a general (non-trip) expense', async () => {
+    const wrapper = mount(ExpenseForm)
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('Répartition')
+    expect(
+      wrapper.findAll('button').find((button) => button.text() === '+ Ajouter une ligne'),
+    ).toBeUndefined()
   })
 
   it('submits the entered XOF/L rate as amount, not the computed total, for a Par litre trip fee', async () => {

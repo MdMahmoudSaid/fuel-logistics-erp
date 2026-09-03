@@ -4300,6 +4300,137 @@ def _admin_client(suffix):
 
 
 @pytest.mark.django_db
+def test_payable_debt_for_per_litre_trip_fee_uses_allocated_total_not_raw_rate(finance_client):
+    """Bug fix (2026-09-03 recette manuelle): Transit at 10 XOF/L on a
+    trip that loaded 45 000 L must show as a 450 000 XOF payable debt
+    (Depenses generales monitoring, Journal tresorerie payment form) - it
+    was showing 10 XOF, the raw per-litre rate (Expense.amount), instead
+    of the real allocated total."""
+    trip, _ = _make_trip_for_deduction("PAYABLEPERLITRE")
+    trip_content_type_id = ContentType.objects.get_for_model(Trip).id
+
+    response = finance_client.post(
+        "/api/expenses/",
+        {
+            "category": "transit",
+            "amount": "10.00",
+            "calculation_method": "PER_LITRE",
+            "date": "2026-09-02",
+            "allocations": [
+                {
+                    "content_type": trip_content_type_id,
+                    "object_id": trip.id,
+                    "allocated_amount": "1.00",
+                }
+            ],
+        },
+        format="json",
+    )
+    assert response.status_code == 201, response.data
+    expected_total = Decimal("10.00") * trip.quantity_loaded
+
+    rows = ControlledDebtPaymentService.get_payable_debts("transit")
+
+    assert rows[0]["remaining_amount"] == expected_total
+    assert rows[0]["lines"][0]["total_amount"] == expected_total
+    assert rows[0]["lines"][0]["remaining_amount"] == expected_total
+
+
+@pytest.mark.django_db
+def test_payable_debt_for_per_truck_trip_fee_uses_raw_amount_unmultiplied(finance_client):
+    trip, _ = _make_trip_for_deduction("PAYABLEPERTRUCK")
+    trip_content_type_id = ContentType.objects.get_for_model(Trip).id
+
+    response = finance_client.post(
+        "/api/expenses/",
+        {
+            "category": "transit",
+            "amount": "50000.00",
+            "calculation_method": "PER_TRUCK",
+            "date": "2026-09-02",
+            "allocations": [
+                {
+                    "content_type": trip_content_type_id,
+                    "object_id": trip.id,
+                    "allocated_amount": "1.00",
+                }
+            ],
+        },
+        format="json",
+    )
+    assert response.status_code == 201, response.data
+
+    rows = ControlledDebtPaymentService.get_payable_debts("transit")
+
+    assert rows[0]["remaining_amount"] == Decimal("50000.00")
+
+
+@pytest.mark.django_db
+def test_payable_debt_status_transitions_to_partially_paid_for_per_litre_fee(treasury_user):
+    """Bug fix (2026-09-03 recette manuelle): _sync_expense_status used to
+    compare the (now allocation-aware) remaining_amount against the raw
+    Expense.amount - for a PER_LITRE fee that comparison denominator was
+    still the per-litre rate, so a real partial payment against the true
+    total never actually flipped the status to PARTIALLY_PAID."""
+    trip, _ = _make_trip_for_deduction("SYNCSTATUS")
+    bank = BankAccount.objects.create(
+        name="Bank Sync Status", opening_balance=Decimal("1000000.00")
+    )
+    expense = Expense.objects.create(
+        category=Expense.Category.TRANSIT,
+        amount=Decimal("10.00"),
+        calculation_method=Expense.CalculationMethod.PER_LITRE,
+        date="2026-09-02",
+    )
+    ExpenseAllocation.objects.create(
+        expense=expense,
+        content_type=ContentType.objects.get_for_model(Trip),
+        object_id=trip.id,
+        allocated_amount=Decimal("10.00") * trip.quantity_loaded,
+    )
+    total = Decimal("10.00") * trip.quantity_loaded
+    half_payment = (total / 2).quantize(Decimal("0.01"))
+
+    ControlledDebtPaymentService.record_payment(
+        debt_type=ControlledDebtPaymentService.TRANSIT,
+        debt_id=0,
+        bank_account_id=bank.id,
+        amount=half_payment,
+        date="2026-09-02",
+        reference="",
+        actor=treasury_user,
+    )
+
+    expense.refresh_from_db()
+    assert expense.status == Expense.Status.PARTIALLY_PAID
+
+
+@pytest.mark.django_db
+def test_general_expense_never_appears_in_trip_fee_payable_debts_by_amount(finance_client):
+    """Companion to the Phase 4 fix (test_unallocated_general_expense_never_shows_as_trip_other_debt) -
+    here specifically checking a general expense with an amount that could
+    be mistaken for a trip-fee debt never shows up in any trip-fee bucket,
+    by category (Internet has no category bucket at all) and confirming
+    its own amount is untouched."""
+    unallocated = Expense.objects.create(
+        category="internet",
+        amount=Decimal("100000.00"),
+        calculation_method=Expense.CalculationMethod.MANUAL,
+        date="2026-09-02",
+    )
+
+    for debt_type in ["customs", "transit", "road_transit", "border", "loading", "trip_other"]:
+        rows = ControlledDebtPaymentService.get_payable_debts(debt_type)
+        all_expense_ids = {
+            line["id"] for row in rows for line in row.get("lines", [])
+        }
+        assert unallocated.id not in all_expense_ids
+
+    unallocated.refresh_from_db()
+    assert unallocated.amount == Decimal("100000.00")
+
+
+@pytest.mark.django_db
 def test_trip_fee_per_litre_total_is_rate_times_quantity_loaded(finance_client):
     trip, _ = _make_trip_for_deduction("PERLITRE")
     trip_content_type_id = ContentType.objects.get_for_model(Trip).id

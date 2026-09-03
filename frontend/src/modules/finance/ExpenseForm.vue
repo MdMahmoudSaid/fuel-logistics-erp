@@ -73,6 +73,14 @@ interface AccountOption {
 // "Manuel" isn't even a valid choice once presetAllocation targets a trip.
 const isTripAllocation = computed(() => props.presetAllocation?.kind === 'trip')
 
+// Bug fix (2026-09-03 recette manuelle): "Depenses generales" (opened by
+// ExpensesView.vue with no presetAllocation at all) must be a strictly
+// separate mode from a trip fee - it never shows trip system categories,
+// never exposes "Methode de calcul" (always submitted as MANUAL), and
+// never offers the "Repartition" allocation-lines UI (always submitted
+// with zero allocations). Trip-fee mode stays exactly as before.
+const isGeneralExpenseMode = computed(() => !props.presetAllocation)
+
 const form = ref<ExpenseFormState>({
   category: props.editingExpense?.category ?? props.initialCategory ?? 'other',
   amount: props.editingExpense?.amount ?? '',
@@ -106,9 +114,12 @@ const TRIP_SYSTEM_CATEGORY_CODES = [
 ]
 
 function fallbackCategories(): ExpenseCategoryOption[] {
-  return EXPENSE_CATEGORIES.filter(
-    (category) => !isTripAllocation.value || TRIP_SYSTEM_CATEGORY_CODES.includes(category.value),
-  ).map((category, index) => ({
+  return EXPENSE_CATEGORIES.filter((category) => {
+    const isTripSystemCategory = TRIP_SYSTEM_CATEGORY_CODES.includes(category.value)
+    if (isTripAllocation.value) return isTripSystemCategory
+    if (isGeneralExpenseMode.value) return !isTripSystemCategory
+    return true
+  }).map((category, index) => ({
     id: -(index + 1),
     name: t(`expenseCategory.${category.value}`),
     code: category.value,
@@ -122,6 +133,7 @@ async function loadCategories() {
   try {
     const params: Record<string, unknown> = { is_active: true }
     if (isTripAllocation.value) params.is_system = true
+    else if (isGeneralExpenseMode.value) params.is_system = false
     categories.value = (await expenseCategoryResource.list(params)).results
   } catch {
     categories.value = fallbackCategories()
@@ -263,13 +275,18 @@ async function onSubmit() {
   saving.value = true
   error.value = ''
   try {
+    // Bug fix (2026-09-03 recette manuelle): general-expense mode must
+    // never submit a trip calculation method or any allocation, no matter
+    // what the (hidden) form/lines state happens to hold.
+    const calculationMethod = isGeneralExpenseMode.value ? 'MANUAL' : form.value.calculation_method
+
     if (paidByCustomerDirectly.value) {
       await recordIndirectExpense({
         customer: Number(indirectForm.value.customer),
         invoice: indirectForm.value.invoice ? Number(indirectForm.value.invoice) : null,
         category: form.value.category,
         amount: form.value.amount,
-        calculation_method: form.value.calculation_method,
+        calculation_method: calculationMethod,
         date: form.value.date,
         notes: form.value.notes,
       })
@@ -277,17 +294,19 @@ async function onSubmit() {
       return
     }
 
-    const allocations: ExpenseAllocationInput[] = lines.value
-      .filter((line) => line.kind && line.objectId !== null && line.allocatedAmount)
-      .map((line) => ({
-        content_type: allocatableTypes.value[line.kind as AllocatableKind] ?? null,
-        object_id: line.objectId,
-        // For a trip allocation under PER_LITRE/PER_TRUCK the backend
-        // recomputes this authoritatively from amount + the trip's
-        // quantity_loaded (Phase 5) - this only satisfies the required-
-        // field validator, it is never trusted as-is in that case.
-        allocated_amount: line.allocatedAmount,
-      }))
+    const allocations: ExpenseAllocationInput[] = isGeneralExpenseMode.value
+      ? []
+      : lines.value
+          .filter((line) => line.kind && line.objectId !== null && line.allocatedAmount)
+          .map((line) => ({
+            content_type: allocatableTypes.value[line.kind as AllocatableKind] ?? null,
+            object_id: line.objectId,
+            // For a trip allocation under PER_LITRE/PER_TRUCK the backend
+            // recomputes this authoritatively from amount + the trip's
+            // quantity_loaded (Phase 5) - this only satisfies the required-
+            // field validator, it is never trusted as-is in that case.
+            allocated_amount: line.allocatedAmount,
+          }))
 
     const paymentFields = props.showTreasuryPayment
       ? {
@@ -305,7 +324,7 @@ async function onSubmit() {
     const payload = {
       category: form.value.category,
       amount: form.value.amount,
-      calculation_method: form.value.calculation_method,
+      calculation_method: calculationMethod,
       date: form.value.date,
       notes: form.value.notes,
       allocations,
@@ -392,7 +411,7 @@ async function onSubmit() {
           </div>
         </div>
 
-        <div class="space-y-1.5">
+        <div v-if="!isGeneralExpenseMode" class="space-y-1.5">
           <label class="text-texte-2 text-sm font-medium" for="calculation_method">{{
             t('finance.expense.calculationMethod')
           }}</label>
@@ -565,58 +584,60 @@ async function onSubmit() {
           </div>
         </div>
 
-        <div
-          v-if="perLitreMode"
-          class="border-ligne flex items-center justify-between rounded-lg border bg-fond px-3.5 py-2.5 text-sm"
-        >
-          <span class="text-texte-2">{{ t('finance.expense.perLitreCalculation') }}</span>
-          <span class="text-texte font-medium">
-            {{ formatQuantity(perLitreQuantity ?? 0) }} × {{ formatUnitMoney(form.amount || 0) }} =
-            {{ formatMoney(perLitreTotal || 0) }}
-          </span>
-        </div>
-        <div
-          v-if="perTruckMode"
-          class="border-ligne flex items-center justify-between rounded-lg border bg-fond px-3.5 py-2.5 text-sm"
-        >
-          <span class="text-texte-2">{{ t('finance.expense.perTruckCalculation') }}</span>
-          <span class="text-texte font-medium">
-            {{ formatMoney(form.amount || 0) }} / {{ formatQuantity(perLitreQuantity ?? 0) }} =
-            {{ perTruckUnitCost }} XOF/L
-          </span>
-        </div>
-        <div class="flex items-center justify-between">
-          <h2 class="font-display text-sm font-semibold uppercase">
-            {{ t('finance.expense.allocationOptional') }}
-          </h2>
-          <button
-            v-if="!perLitreMode && !perTruckMode"
-            type="button"
-            class="text-texte-2 hover:text-texte text-sm"
-            @click="addLine"
+        <template v-if="!isGeneralExpenseMode">
+          <div
+            v-if="perLitreMode"
+            class="border-ligne flex items-center justify-between rounded-lg border bg-fond px-3.5 py-2.5 text-sm"
           >
-            {{ t('finance.expense.addLine') }}
-          </button>
-        </div>
-        <p class="text-texte-3 text-xs">
-          {{ t('finance.expense.allocationHint') }}
-        </p>
-        <div v-for="(line, index) in lines" :key="index" class="flex items-start gap-2">
-          <EntityAllocationPicker
-            :model-value="line"
-            :locked="lockedFirstLine && index === 0"
-            class="flex-1"
-            @update:model-value="lines[index] = $event"
-          />
-          <button
-            v-if="!(lockedFirstLine && index === 0)"
-            type="button"
-            class="text-critique mt-3 text-sm hover:brightness-90"
-            @click="removeLine(index)"
+            <span class="text-texte-2">{{ t('finance.expense.perLitreCalculation') }}</span>
+            <span class="text-texte font-medium">
+              {{ formatQuantity(perLitreQuantity ?? 0) }} × {{ formatUnitMoney(form.amount || 0) }} =
+              {{ formatMoney(perLitreTotal || 0) }}
+            </span>
+          </div>
+          <div
+            v-if="perTruckMode"
+            class="border-ligne flex items-center justify-between rounded-lg border bg-fond px-3.5 py-2.5 text-sm"
           >
-            {{ t('finance.expense.remove') }}
-          </button>
-        </div>
+            <span class="text-texte-2">{{ t('finance.expense.perTruckCalculation') }}</span>
+            <span class="text-texte font-medium">
+              {{ formatMoney(form.amount || 0) }} / {{ formatQuantity(perLitreQuantity ?? 0) }} =
+              {{ perTruckUnitCost }} XOF/L
+            </span>
+          </div>
+          <div class="flex items-center justify-between">
+            <h2 class="font-display text-sm font-semibold uppercase">
+              {{ t('finance.expense.allocationOptional') }}
+            </h2>
+            <button
+              v-if="!perLitreMode && !perTruckMode"
+              type="button"
+              class="text-texte-2 hover:text-texte text-sm"
+              @click="addLine"
+            >
+              {{ t('finance.expense.addLine') }}
+            </button>
+          </div>
+          <p class="text-texte-3 text-xs">
+            {{ t('finance.expense.allocationHint') }}
+          </p>
+          <div v-for="(line, index) in lines" :key="index" class="flex items-start gap-2">
+            <EntityAllocationPicker
+              :model-value="line"
+              :locked="lockedFirstLine && index === 0"
+              class="flex-1"
+              @update:model-value="lines[index] = $event"
+            />
+            <button
+              v-if="!(lockedFirstLine && index === 0)"
+              type="button"
+              class="text-critique mt-3 text-sm hover:brightness-90"
+              @click="removeLine(index)"
+            >
+              {{ t('finance.expense.remove') }}
+            </button>
+          </div>
+        </template>
       </div>
 
       <div class="flex justify-end gap-2">

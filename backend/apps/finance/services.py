@@ -1342,19 +1342,31 @@ class ControlledDebtPaymentService:
     @classmethod
     def describe_expense(cls, expense) -> dict:
         paid = cls._paid_for_source(Expense, expense.id)
+        allocations = list(expense.allocations.all())
         trip_labels = [
             allocation.content_object.reference
-            for allocation in expense.allocations.all()
+            for allocation in allocations
             if getattr(allocation.content_object, "reference", None)
         ]
         label_suffix = f" - {', '.join(trip_labels)}" if trip_labels else ""
+        # Bug fix (2026-09-03 recette manuelle): expense.amount is the raw
+        # input value - for a PER_LITRE trip fee that's the XOF/L rate, not
+        # the total (TripCostService/ExpenseSerializer._resolve_allocated_amount
+        # already compute the real total into ExpenseAllocation.allocated_amount
+        # at creation time, exactly for this reason). A debt/payable-debt
+        # total must always be the sum of what's actually allocated - only
+        # falls back to expense.amount for a not-yet-allocated expense
+        # (e.g. a customs invoice recorded before being split across
+        # trips), which has no allocations to sum in the first place.
+        allocated_total = sum((a.allocated_amount for a in allocations), ZERO)
+        total_amount = allocated_total if allocations else expense.amount
         return {
             "id": expense.id,
             "debt_type": cls._debt_type_for_expense(expense),
             "label": f"{expense.get_category_display()} {expense.date}{label_suffix}",
-            "total_amount": expense.amount,
+            "total_amount": total_amount,
             "paid_amount": paid,
-            "remaining_amount": expense.amount - paid,
+            "remaining_amount": total_amount - paid,
             "status": expense.status,
         }
 
@@ -1391,10 +1403,20 @@ class ControlledDebtPaymentService:
 
     @classmethod
     def _sync_expense_status(cls, expense):
-        remaining = cls.describe_expense(expense)["remaining_amount"]
+        # Bug fix (2026-09-03 recette manuelle): remaining_amount and
+        # total_amount must come from the same describe_expense() call -
+        # comparing the (now correctly allocation-aware) remaining_amount
+        # against the raw expense.amount broke PARTIALLY_PAID detection
+        # for a PER_LITRE/PER_TRUCK trip fee (e.g. Transit at 10 XOF/L: a
+        # 50 000 XOF partial payment against a 100 000 XOF real total left
+        # `remaining (50 000) < expense.amount (10)` False, so the status
+        # never left UNPAID).
+        described = cls.describe_expense(expense)
+        remaining = described["remaining_amount"]
+        total_amount = described["total_amount"]
         if remaining <= ZERO:
             status = Expense.Status.PAID
-        elif remaining < expense.amount:
+        elif remaining < total_amount:
             status = Expense.Status.PARTIALLY_PAID
         else:
             status = expense.status
