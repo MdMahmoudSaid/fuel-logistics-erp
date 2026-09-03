@@ -435,7 +435,15 @@ class TripWorkflowService:
         if target_status == Trip.Status.CANCELLED:
             TripCancellationService.reverse_trip_financials(trip, actor)
 
-        if target_status in Trip.TERMINAL_STATUSES or target_status == Trip.Status.STOCKED:
+        # Bug fix (2026-09-03 recette manuelle): was
+        # "TERMINAL_STATUSES or STOCKED" - a second, independent definition
+        # of "which statuses free the truck" that had drifted from
+        # Trip.NON_OCCUPYING_STATUSES (the one TruckAvailabilityService
+        # actually queries against) and incorrectly included STOCKED - a
+        # trip's fuel sitting in company stock is not the same as the
+        # truck having completed a delivery. Reusing the same set here
+        # keeps both in permanent agreement.
+        if target_status in Trip.NON_OCCUPYING_STATUSES:
             # Only release the truck if it has no other active trip - an
             # admin-forced concurrent assignment (plan Section 1.D) can leave
             # a second active trip on the same truck.

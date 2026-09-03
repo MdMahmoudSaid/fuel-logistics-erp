@@ -464,7 +464,83 @@ def test_workflow_blocks_client_statuses_without_customer_and_routes_to_company_
     assert trip.destination_type == Trip.DestinationType.COMPANY_STOCK
     assert trip.client_id is None
     assert not Sale.objects.filter(trip=trip).exists()
-    assert TruckAvailabilityService.is_truck_available(truck.id) is True
+    # Bug fix (2026-09-03 recette manuelle): STOCKED used to free the
+    # truck (Trip.NON_OCCUPYING_STATUSES included it) - the client's rule
+    # is that fuel sitting in company stock does not mean the truck has
+    # completed a delivery, so it stays occupied until DELIVERED (or a
+    # terminal status).
+    assert TruckAvailabilityService.is_truck_available(truck.id) is False
+
+
+@pytest.mark.django_db
+def test_new_trip_on_truck_with_existing_stocked_trip_is_rejected_without_force():
+    """Bug fix (2026-09-03 recette manuelle): a truck whose only trip has
+    reached STOCKED (fuel sitting in company stock) must not be offered
+    for a brand-new assignment - it hasn't actually completed a delivery
+    yet."""
+    fx = _setup_fixtures("STOCK-REJECT")
+    truck = _make_truck("TRK-STOCK-REJECT")
+    trip = _make_trip(fx, truck, "TRIP-STOCK-REJECT-001")
+    for target in [
+        Trip.Status.SENT_FOR_LOADING, Trip.Status.LOADING, Trip.Status.LOADED,
+        Trip.Status.ROAD_TRANSIT, Trip.Status.IN_TRANSIT, Trip.Status.BORDER,
+        Trip.Status.CUSTOMS,
+    ]:
+        TripWorkflowService.transition_trip(trip.id, target, fx["admin_user"])
+    for target in COMPANY_STOCK_SEQUENCE_AFTER_CUSTOMS:
+        TripWorkflowService.transition_trip(trip.id, target, fx["admin_user"])
+    trip.refresh_from_db()
+    assert trip.status == Trip.Status.STOCKED
+
+    serializer = TripSerializer(
+        data=_trip_payload(fx, truck, "TRIP-STOCK-REJECT-002"),
+        context={"request": _FakeRequest(fx["admin_user"])},
+    )
+
+    assert not serializer.is_valid()
+    assert "truck" in serializer.errors
+
+
+@pytest.mark.django_db
+def test_new_trip_on_truck_with_delivered_trip_is_allowed():
+    fx = _setup_fixtures("DELIVERED-ALLOW")
+    truck = _make_truck("TRK-DELIVERED-ALLOW")
+    trip = _make_trip(fx, truck, "TRIP-DELIVERED-ALLOW-001")
+    trip.client = Customer.objects.create(name="Delivered Allow Client")
+    trip.destination_type = Trip.DestinationType.CUSTOMER
+    trip.save(update_fields=["client", "destination_type", "updated_at"])
+    for target in FULL_SEQUENCE_AFTER_ASSIGNED[:-1]:  # stop at DELIVERED
+        TripWorkflowService.transition_trip(trip.id, target, fx["admin_user"])
+    trip.refresh_from_db()
+    assert trip.status == Trip.Status.DELIVERED
+
+    serializer = TripSerializer(
+        data=_trip_payload(
+            fx, truck, "TRIP-DELIVERED-ALLOW-002", transporter=truck.owner_transporter_id
+        ),
+        context={"request": _FakeRequest(fx["admin_user"])},
+    )
+
+    assert serializer.is_valid(), serializer.errors
+
+
+@pytest.mark.django_db
+def test_new_trip_on_truck_with_cancelled_trip_is_allowed():
+    fx = _setup_fixtures("CANCEL-ALLOW")
+    truck = _make_truck("TRK-CANCEL-ALLOW")
+    trip = _make_trip(fx, truck, "TRIP-CANCEL-ALLOW-001")
+    TripWorkflowService.transition_trip(trip.id, Trip.Status.CANCELLED, fx["admin_user"])
+    trip.refresh_from_db()
+    assert trip.status == Trip.Status.CANCELLED
+
+    serializer = TripSerializer(
+        data=_trip_payload(
+            fx, truck, "TRIP-CANCEL-ALLOW-002", transporter=truck.owner_transporter_id
+        ),
+        context={"request": _FakeRequest(fx["admin_user"])},
+    )
+
+    assert serializer.is_valid(), serializer.errors
 
 
 @pytest.mark.django_db

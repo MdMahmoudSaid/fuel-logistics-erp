@@ -56,7 +56,15 @@ class Trip(TimeStampedModel):
     # DELIVERED -> COMPLETED step yet. Deliberately NOT folded into
     # TERMINAL_STATUSES, which other rules (is_active(), CANCELLABLE_FROM,
     # the active status board) rely on staying just {COMPLETED, CANCELLED}.
-    NON_OCCUPYING_STATUSES = TERMINAL_STATUSES | {Status.DELIVERED, Status.STOCKED}
+    #
+    # Bug fix (2026-09-03 recette manuelle): STOCKED used to also be
+    # included here, freeing the truck the moment a trip reached "stock
+    # entreprise / stocke" - but a trip's fuel sitting in company stock is
+    # not the same as the truck having actually completed a delivery. The
+    # client's rule: a truck stays occupied through every active status
+    # (including STOCKED/GOING_TO_CLIENT/ARRIVED_AT_CLIENT/
+    # QUANTITY_CONTROL) - only DELIVERED (or a terminal status) frees it.
+    NON_OCCUPYING_STATUSES = TERMINAL_STATUSES | {Status.DELIVERED}
 
     class DestinationType(models.TextChoices):
         """Makes the "no client, no customer order" state a first-class,
