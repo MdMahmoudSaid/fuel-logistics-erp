@@ -956,8 +956,8 @@
       },
       "preview": {
         "badge": "Indicative",
-        "notice": "Current indicative profit — not yet officially distributed",
-        "summaryLabel": "Current indicative profit"
+        "notice": "Net indicative profit — not yet officially distributed",
+        "summaryLabel": "Net indicative profit"
       }
     },
     "profit": {

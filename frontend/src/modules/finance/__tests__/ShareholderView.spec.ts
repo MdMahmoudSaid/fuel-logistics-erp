@@ -73,13 +73,20 @@ describe('ShareholderView', () => {
     fetchShareholderProfitPreview.mockResolvedValue({
       period_start: '2026-08-01',
       period_end: null,
+      // Bug fix (2026-09-03 recette manuelle): operational_profit
+      // (900 000) and net_profit (750 000, after 150 000 of general
+      // expenses paid) are intentionally different here so a test can
+      // tell apart a banner/share wired to the wrong one.
       current_profit: '900000.00',
+      operational_profit: '900000.00',
+      general_expenses_paid: '150000.00',
+      net_profit: '750000.00',
       shareholders: [
         {
           shareholder_id: 1,
           name: 'Ahmed',
           participation_percent: '100.00',
-          indicative_share: '900000.00',
+          indicative_share: '750000.00',
         },
       ],
     })
@@ -115,7 +122,25 @@ describe('ShareholderView', () => {
 
     expect(fetchShareholderProfitPreview).toHaveBeenCalled()
     expect(wrapper.text()).toContain('Indicatif')
-    expect(wrapper.text()).toContain('900 000 XOF')
+    expect(wrapper.text()).toContain('750 000 XOF')
+  })
+
+  // Bug fix (2026-09-03 recette manuelle): the banner used to show
+  // preview.current_profit (== operational_profit, 900 000 here) - it must
+  // now show preview.net_profit (750 000), matching the same net basis
+  // already used by the per-shareholder indicative_share cards right
+  // below it, so the two never contradict each other on this page.
+  it('shows net profit (not operational profit) in the banner, consistent with the per-shareholder shares', async () => {
+    const wrapper = mount(ShareholderView)
+    await flushPromises()
+
+    const banner = wrapper.findAll('.border-ecart').at(0)
+    expect(banner!.text()).toContain('750 000 XOF')
+    expect(banner!.text()).not.toContain('900 000 XOF')
+    // The per-shareholder share (Ahmed, 100%) must equal the banner's net
+    // figure, not the operational one.
+    expect(banner!.text()).toContain('Ahmed (100.00%):')
+    expect(wrapper.text()).not.toContain('900 000 XOF')
   })
 
   it("loads a shareholder's ledger and shows the combined available_balance", async () => {
@@ -161,9 +186,9 @@ describe('ShareholderView', () => {
 
     expect(english.text()).toContain('Summary')
     expect(english.text()).toContain('Associates')
-    expect(english.text()).toContain('Current indicative profit')
+    expect(english.text()).toContain('Net indicative profit')
     expect(english.text()).not.toContain('Résumé')
-    expect(english.text()).not.toContain('Bénéfice indicatif actuel')
+    expect(english.text()).not.toContain('Bénéfice net indicatif')
 
     english.unmount()
     i18n.global.locale.value = 'ar'
@@ -172,9 +197,9 @@ describe('ShareholderView', () => {
 
     expect(arabic.text()).toContain('ملخص')
     expect(arabic.text()).toContain('الشركاء')
-    expect(arabic.text()).toContain('الربح الحالي الإرشادي')
+    expect(arabic.text()).toContain('الربح الصافي الإرشادي')
     expect(arabic.text()).not.toContain('Résumé')
-    expect(arabic.text()).not.toContain('Bénéfice indicatif actuel')
+    expect(arabic.text()).not.toContain('Bénéfice net indicatif')
   })
 
   it('shows total_contributed (capital apporte) in the associates table, distinct from the static contribution field', async () => {

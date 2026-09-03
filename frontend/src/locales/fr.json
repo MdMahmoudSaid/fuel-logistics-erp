@@ -958,8 +958,8 @@
       },
       "preview": {
         "badge": "Indicatif",
-        "notice": "Bénéfice actuel indicatif — non distribué officiellement",
-        "summaryLabel": "Bénéfice indicatif actuel"
+        "notice": "Bénéfice net indicatif — non distribué officiellement",
+        "summaryLabel": "Bénéfice net indicatif"
       }
     },
     "profit": {

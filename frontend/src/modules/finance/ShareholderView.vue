@@ -404,7 +404,13 @@ async function onViewLedger() {
     </div>
 
     <!-- Live profit preview: read-only, clearly marked as indicative - it
-         never gates a withdrawal and is never a stored distribution. -->
+         never gates a withdrawal and is never a stored distribution.
+         Bug fix (2026-09-03 recette manuelle): shows the NET profit (after
+         general expenses paid), same basis as row.indicative_share below
+         and as the page Benefices banner - showing the raw operational
+         profit here used to contradict the per-shareholder cards, which
+         were already net-profit-based. Operational profit stays visible
+         only on the page Benefices, as its own separate indicator. -->
     <div v-if="preview" class="border-ecart bg-ecart-tint rounded-xl border p-4">
       <div class="flex flex-wrap items-center justify-between gap-2">
         <div class="flex items-center gap-2">
@@ -413,7 +419,7 @@ async function onViewLedger() {
         </div>
         <MonoValue
           class="text-lg font-semibold"
-          :value="formatMoney(preview.current_profit)"
+          :value="formatMoney(preview.net_profit)"
         />
       </div>
       <div v-if="preview.shareholders.length" class="mt-3 flex flex-wrap gap-4">
