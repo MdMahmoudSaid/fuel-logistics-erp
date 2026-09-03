@@ -95,14 +95,14 @@ async function onCessionChange() {
     : null
 }
 
-// Phase 6 (docs/superpowers/specs/2026-09-02-business-corrections-6-phases-
-// design.md): transporter is derived from the truck, not independently
-// chosen - EXTERNAL always carries truck.owner_transporter (readonly here,
-// re-validated server-side), COMPANY_OWNED never has one.
-const isExternalTruck = computed(() => selectedTruck.value?.ownership_type === 'EXTERNAL')
-const isCompanyOwnedTruck = computed(
-  () => selectedTruck.value?.ownership_type === 'COMPANY_OWNED',
-)
+// Bug fix (2026-09-03 recette manuelle): transporter is derived from the
+// truck, not independently chosen, in every case now - every truck
+// (EXTERNAL or COMPANY_OWNED) always carries a real
+// truck.owner_transporter (a real one, or the seeded internal "Flotte
+// propre" row - see Truck.save()), readonly here and re-validated
+// server-side either way. Replaces Phase 6's original EXTERNAL-only
+// derivation, which left the field blank for a company-owned truck.
+const hasSelectedTruck = computed(() => selectedTruck.value !== null)
 const lockedTransporterName = computed(
   () =>
     allTransporters.value.find((tr) => tr.id === selectedTruck.value?.owner_transporter)?.name ??
@@ -113,10 +113,7 @@ function onTruckChange() {
   const truck = trucks.value.find((t) => t.id === Number(form.value.truck))
   selectedTruck.value = truck ?? null
   if (!truck) return
-  form.value.transporter =
-    truck.ownership_type === 'EXTERNAL' && truck.owner_transporter
-      ? String(truck.owner_transporter)
-      : ''
+  form.value.transporter = truck.owner_transporter ? String(truck.owner_transporter) : ''
   if (truck.default_driver) form.value.driver = String(truck.default_driver)
 }
 
@@ -318,17 +315,13 @@ async function onSubmit() {
           <label class="text-texte-2 text-sm font-medium" for="transporter">{{
             t('trips.newForm.transporter')
           }}</label>
-          <!-- Phase 6: derived from the truck, never independently chosen -
-               EXTERNAL shows the derived name readonly, COMPANY_OWNED shows
-               no field at all (no transporter to pick). -->
+          <!-- Bug fix (2026-09-03 recette manuelle): derived from the
+               truck, never independently chosen, once a truck is picked -
+               every truck now always has a real owner_transporter (real,
+               or the seeded internal one for a company-owned truck), so
+               the readonly derived name shows in both cases. -->
           <p
-            v-if="isCompanyOwnedTruck"
-            class="border-ligne-forte text-texte-2 flex h-12 w-full items-center rounded-lg border bg-fond px-3.5 text-sm"
-          >
-            {{ t('trips.newForm.companyOwnedNoTransporter') }}
-          </p>
-          <p
-            v-else-if="isExternalTruck"
+            v-if="hasSelectedTruck"
             id="transporter"
             class="border-ligne-forte text-texte flex h-12 w-full items-center rounded-lg border bg-fond px-3.5 text-sm"
           >

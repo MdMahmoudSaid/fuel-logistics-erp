@@ -97,6 +97,10 @@ export interface TruckBrief {
 export interface TransporterBrief {
   id: number
   name: string
+  // Bug fix (2026-09-03 recette manuelle): the seeded "Flotte propre /
+  // Interne" transporter, standing in for a company-owned truck's trip -
+  // never a real payee (no TransportPayment/commission popup for it).
+  is_internal?: boolean
 }
 
 export interface DriverBrief {

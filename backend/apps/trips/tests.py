@@ -2292,16 +2292,21 @@ def test_trip_serializer_rejects_transporter_mismatched_with_external_truck():
 
 
 @pytest.mark.django_db
-def test_trip_serializer_forces_null_transporter_for_company_owned_truck():
+def test_trip_serializer_derives_internal_transporter_for_company_owned_truck():
+    """Bug fix (2026-09-03 recette manuelle): reverses the original Phase 6
+    behavior (was: transporter forced to None) - a COMPANY_OWNED truck's
+    owner_transporter is now always the seeded internal transporter
+    (Truck.save()), so the trip derives that, same as any other truck."""
     fx = _setup_fixtures("CO-NULL")
-    truck = _make_truck("TRK-CO-NULL")  # COMPANY_OWNED by default, no transporter
+    truck = _make_truck("TRK-CO-NULL")  # COMPANY_OWNED by default
 
     serializer = TripSerializer(
         data=_trip_payload(fx, truck, "TRIP-CO-NULL-001", **{"transporter": None}),
         context={"request": _FakeRequest(fx["admin_user"])},
     )
     assert serializer.is_valid(), serializer.errors
-    assert serializer.validated_data["transporter"] is None
+    assert serializer.validated_data["transporter"] == truck.owner_transporter
+    assert serializer.validated_data["transporter"].is_internal is True
 
 
 @pytest.mark.django_db
@@ -2389,6 +2394,94 @@ def test_transport_payment_rejected_for_company_owned_truck_trip():
         {
             "trip": trip.id,
             "transporter": fx["transporter"].id,
+            "calculation_method": "FIXED",
+            "base_amount": "500000.00",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "transporteur externe" in str(response.data)
+
+
+@pytest.mark.django_db
+def test_company_owned_truck_with_derived_internal_transporter_creates_no_chargeable_deduction():
+    """Bug fix (2026-09-03 recette manuelle): same guarantee as
+    test_company_owned_truck_chargeable_loss_creates_no_transport_deduction,
+    but exercising the real path (truck.owner_transporter auto-derived to
+    the seeded internal transporter, not a trip created with
+    transporter=None directly) - proves the is_internal check in
+    DeliveryService.sync_transport_shortage_deduction actually fires."""
+    fx = _fixtures_with_customer("CO-INTLOSS")
+    truck = _make_truck("TRK-CO-INTLOSS")
+    assert truck.owner_transporter.is_internal is True
+    trip = Trip.objects.create(
+        reference="TRIP-CO-INTLOSS-001",
+        truck=truck,
+        transporter=truck.owner_transporter,
+        supplier=fx["supplier"],
+        supplier_order=fx["supplier_order"],
+        cession_letter=fx["cession"],
+        product=fx["product"],
+        quantity_loaded=Decimal("45000.00"),
+        client=fx["customer"],
+        destination_type=Trip.DestinationType.CUSTOMER,
+        loading_date="2026-08-18",
+        bl_reference="BL-CO-INTLOSS-001",
+        created_by=fx["admin_user"],
+    )
+    _advance_to_quantity_control(trip, fx["admin_user"])
+    ProductSellingPriceHistory.objects.create(
+        product=fx["product"],
+        customer=fx["customer"],
+        price=Decimal("650.0000"),
+        changed_by=fx["admin_user"],
+    )
+    LossToleranceConfig.objects.create(
+        tolerance_litres=Decimal("100.00"), updated_by=fx["admin_user"]
+    )
+
+    control = DeliveryService.record_delivery(
+        trip_id=trip.id,
+        received_qty=Decimal("44850.00"),  # 150 L short, 50 L chargeable
+        control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE,
+        controller=fx["admin_user"],
+    )
+
+    trip.refresh_from_db()
+    assert control.chargeable_loss_quantity == Decimal("50.00")
+    assert not TransportDeduction.objects.filter(trip=trip).exists()
+
+
+@pytest.mark.django_db
+def test_transport_payment_rejected_for_internal_transporter_trip():
+    """Same as test_transport_payment_rejected_for_company_owned_truck_trip,
+    but the trip's transporter is the real, auto-derived internal one, not
+    None - proves TransportPaymentSerializer.validate()'s is_internal check
+    fires, not just its trip.transporter_id is None fallback."""
+    fx = _setup_fixtures("CO-INTPAYREJECT")
+    truck = _make_truck("TRK-CO-INTPAYREJECT")
+    trip = Trip.objects.create(
+        reference="TRIP-CO-INTPAYREJECT-001",
+        truck=truck,
+        transporter=truck.owner_transporter,
+        supplier=fx["supplier"],
+        supplier_order=fx["supplier_order"],
+        cession_letter=fx["cession"],
+        product=fx["product"],
+        quantity_loaded=Decimal("45000.00"),
+        loading_date="2026-08-18",
+        bl_reference="BL-CO-INTPAYREJECT-001",
+        created_by=fx["admin_user"],
+    )
+
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+    response = client.post(
+        "/api/transport-payments/",
+        {
+            "trip": trip.id,
+            "transporter": truck.owner_transporter.id,
             "calculation_method": "FIXED",
             "base_amount": "500000.00",
         },

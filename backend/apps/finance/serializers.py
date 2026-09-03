@@ -508,10 +508,13 @@ class TransportPaymentSerializer(serializers.ModelSerializer):
             "unit_price_per_litre", getattr(self.instance, "unit_price_per_litre", None)
         )
 
-        # Phase 6 (docs/superpowers/specs/2026-09-02-business-corrections-6-
-        # phases-design.md): a company-owned truck's trip has no
-        # transporter, so no transport payment can ever be posted against it.
-        if trip and trip.transporter_id is None:
+        # Bug fix (2026-09-03 recette manuelle): a company-owned truck's
+        # trip is now linked to the seeded internal transporter (never
+        # None) rather than left blank, but it still must never receive a
+        # real transport payment - flotte propre has no external debt to
+        # settle. trip.transporter_id is None is kept as a defensive
+        # fallback for any trip that predates this fix.
+        if trip and (trip.transporter_id is None or trip.transporter.is_internal):
             raise serializers.ValidationError(
                 "Ce trajet n'a pas de transporteur externe, aucun paiement "
                 "transport n'est possible."

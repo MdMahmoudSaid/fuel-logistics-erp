@@ -73,11 +73,13 @@ class Trip(TimeStampedModel):
     truck = models.ForeignKey(
         "transport.Truck", on_delete=models.PROTECT, related_name="trips"
     )
-    # Phase 6 (docs/superpowers/specs/2026-09-02-business-corrections-6-
-    # phases-design.md): null only for a COMPANY_OWNED truck - no artificial
-    # "internal transporter" is ever created for the company's own fleet.
-    # An EXTERNAL truck's trip always has one, auto-derived from
-    # truck.owner_transporter (TripSerializer._validate_and_derive_transporter).
+    # Bug fix (2026-09-03 recette manuelle): always auto-derived from
+    # truck.owner_transporter (TripSerializer._validate_and_derive_transporter)
+    # - every Truck now has one, real for EXTERNAL or the seeded
+    # is_internal=True row for COMPANY_OWNED (reverses Phase 6's original
+    # "no artificial internal transporter" rule). Stays null=True at the DB
+    # level only for backward compatibility with trips created before this
+    # fix; application code never creates a new one without a transporter.
     transporter = models.ForeignKey(
         "transport.Transporter",
         on_delete=models.PROTECT,

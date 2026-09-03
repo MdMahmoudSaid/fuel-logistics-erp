@@ -78,12 +78,16 @@ const COMPANY_OWNED_TRUCK = {
   capacity_litres: '45000.00',
   status: 'AVAILABLE',
   ownership_type: 'COMPANY_OWNED',
-  owner_transporter: null,
+  // Bug fix (2026-09-03 recette manuelle): every truck now always has an
+  // owner_transporter - COMPANY_OWNED gets the seeded internal one
+  // (Truck.save(), backend), never null.
+  owner_transporter: 12,
   default_driver: null,
 }
 
 const AVAILABLE_TRANSPORTER = { id: 10, name: 'Diallo Transport' }
 const BUSY_TRANSPORTER = { id: 11, name: 'Sow Transport' }
+const INTERNAL_TRANSPORTER = { id: 12, name: 'Flotte propre / Interne', is_internal: true }
 
 function paginated<T>(results: T[]) {
   return { count: results.length, next: null, previous: null, results }
@@ -101,7 +105,7 @@ vi.mock('@/api/resource', () => ({
       if (basePath === '/transporters/') {
         const transporters = params?.available
           ? [AVAILABLE_TRANSPORTER]
-          : [AVAILABLE_TRANSPORTER, BUSY_TRANSPORTER]
+          : [AVAILABLE_TRANSPORTER, BUSY_TRANSPORTER, INTERNAL_TRANSPORTER]
         return paginated(transporters)
       }
       return paginated([])
@@ -182,7 +186,11 @@ describe('TripForm', () => {
     expect(wrapper.find('#transporter').text()).toContain('Diallo Transport')
   })
 
-  it('shows no transporter field when a COMPANY_OWNED truck is selected', async () => {
+  // Bug fix (2026-09-03 recette manuelle): a COMPANY_OWNED truck now
+  // always carries the seeded internal transporter too, shown readonly the
+  // same way an EXTERNAL truck's real transporter is - reverses the
+  // original Phase 6 "no field at all" behavior.
+  it('shows the internal transporter readonly when a COMPANY_OWNED truck is selected', async () => {
     const router = makeRouter()
     await router.isReady()
     const wrapper = mount(TripForm, { global: { plugins: [router] } })
@@ -192,10 +200,10 @@ describe('TripForm', () => {
     await flushPromises()
 
     expect(wrapper.find('select#transporter').exists()).toBe(false)
-    expect(wrapper.text()).toContain('Camion société — aucun transporteur')
+    expect(wrapper.text()).toContain('Flotte propre / Interne')
   })
 
-  it('submits transporter: null for a company-owned truck trip', async () => {
+  it('submits the derived internal transporter for a company-owned truck trip', async () => {
     const router = makeRouter()
     await router.isReady()
     const wrapper = mount(TripForm, { global: { plugins: [router] } })
@@ -211,7 +219,7 @@ describe('TripForm', () => {
     await wrapper.find('form').trigger('submit.prevent')
     await flushPromises()
 
-    expect(createTrip).toHaveBeenCalledWith(expect.objectContaining({ transporter: null }))
+    expect(createTrip).toHaveBeenCalledWith(expect.objectContaining({ transporter: 12 }))
   })
 
   it('submits the derived transporter for an external truck trip', async () => {

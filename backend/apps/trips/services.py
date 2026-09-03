@@ -635,12 +635,15 @@ class DeliveryService:
     def sync_transport_shortage_deduction(
         *, trip: Trip, received_qty: Decimal, unit_selling_price: Decimal
     ) -> None:
-        # Phase 6 (docs/superpowers/specs/2026-09-02-business-corrections-6-
-        # phases-design.md): a company-owned truck's trip has no
-        # transporter to charge - a chargeable shortfall is a plain
-        # unrecovered loss (reflected only in the lower delivered quantity),
-        # never a TransportDeduction.
-        if trip.transporter_id is None:
+        # Bug fix (2026-09-03 recette manuelle): a company-owned truck's
+        # trip is now linked to the seeded internal transporter (never
+        # None - see Trip.transporter docstring), but it still must never
+        # be charged for a shortfall - a chargeable shortfall on it is a
+        # plain unrecovered loss (reflected only in the lower delivered
+        # quantity), never a TransportDeduction. trip.transporter_id is
+        # None is kept as a defensive fallback for any trip that predates
+        # this fix.
+        if trip.transporter_id is None or trip.transporter.is_internal:
             return
 
         missing_quantity = (trip.quantity_loaded - received_qty).quantize(Decimal("0.01"))

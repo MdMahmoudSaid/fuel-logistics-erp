@@ -9,6 +9,16 @@ class Transporter(TimeStampedModel):
     phone = models.CharField(max_length=30, blank=True)
     address = models.CharField(max_length=255, blank=True)
     is_active = models.BooleanField(default=True)
+    # Bug fix (2026-09-03 recette manuelle): every Truck must be linked to
+    # a transporter, even when it belongs to the company - rather than
+    # leaving Truck.owner_transporter/Trip.transporter null for that case
+    # (Phase 6's original rule), a single is_internal=True row ("Flotte
+    # propre / Interne", seeded by migration) stands in for the company's
+    # own fleet. Never gets a real TransportPayment/TransportDeduction
+    # posted against it (see DeliveryService.sync_transport_shortage_deduction,
+    # TransportPaymentSerializer.validate) - kept purely for traceability/
+    # display, exactly like a real transporter would show on a trip.
+    is_internal = models.BooleanField(default=False)
 
     class Meta:
         ordering = ["name"]
@@ -50,8 +60,15 @@ class Truck(TimeStampedModel):
     ownership_type = models.CharField(
         max_length=20, choices=OwnershipType.choices, default=OwnershipType.COMPANY_OWNED
     )
+    # Bug fix (2026-09-03 recette manuelle): mandatory in every case now -
+    # EXTERNAL keeps its real transporter, COMPANY_OWNED gets the seeded
+    # is_internal=True row (TruckSerializer.validate() auto-assigns it when
+    # left blank). PROTECT rather than the previous SET_NULL: a transporter
+    # can no longer be deleted out from under a truck now that the field is
+    # required (see the migration that adds this field for the
+    # backfill of any pre-existing COMPANY_OWNED truck left null).
     owner_transporter = models.ForeignKey(
-        Transporter, null=True, blank=True, on_delete=models.SET_NULL, related_name="trucks"
+        Transporter, on_delete=models.PROTECT, related_name="trucks"
     )
     default_driver = models.ForeignKey(
         Driver, null=True, blank=True, on_delete=models.SET_NULL, related_name="trucks"
@@ -62,6 +79,19 @@ class Truck(TimeStampedModel):
 
     class Meta:
         ordering = ["internal_id"]
+
+    def save(self, *args, **kwargs):
+        # Bug fix (2026-09-03 recette manuelle): defends the "no truck
+        # without a transporter" invariant at the model layer, not just in
+        # TruckSerializer - a COMPANY_OWNED truck created directly (a
+        # script, the Django admin, a test fixture) gets the seeded
+        # internal transporter here too, so the DB's NOT NULL constraint on
+        # owner_transporter is never the first place this gets caught.
+        # EXTERNAL stays unassisted - there is no sane default external
+        # transporter, so that case is expected to fail loudly instead.
+        if self.owner_transporter_id is None and self.ownership_type == self.OwnershipType.COMPANY_OWNED:
+            self.owner_transporter = Transporter.objects.get(is_internal=True)
+        super().save(*args, **kwargs)
 
     def __str__(self) -> str:
         return self.internal_id

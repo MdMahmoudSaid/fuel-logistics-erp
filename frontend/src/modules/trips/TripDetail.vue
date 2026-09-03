@@ -282,10 +282,12 @@ const automaticExpenseByStatus: Partial<Record<TripStatus, { title: string; cate
 function openAutomaticFeePopup(targetStatus: TripStatus) {
   if (!canManageExpenses.value || !trip.value) return
   if (targetStatus === 'SENT_FOR_LOADING') {
-    // Phase 6: a company-owned truck's trip has no transporter, so no
-    // commission is ever due (docs/superpowers/specs/2026-09-02-business-
-    // corrections-6-phases-design.md).
-    if (!trip.value.transporter) return
+    // Bug fix (2026-09-03 recette manuelle): a company-owned truck's trip
+    // is now linked to the seeded internal transporter rather than left
+    // blank (Truck.save()), so `!trip.value.transporter` alone no longer
+    // detects "flotte propre" - no commission is ever due for it either
+    // way, so the popup must still be skipped.
+    if (!trip.value.transporter || trip.value.transporter_detail?.is_internal) return
     automaticTransportTitle.value = t('trips.detail.autoExpense.transporterCommission')
     showTransportPaymentForm.value = true
     return
@@ -644,7 +646,7 @@ const cessionProofUrl = computed(() => trip.value?.cession_letter_detail?.docume
               {{ t('trips.detail.addExpense') }}
             </Button>
             <Button
-              v-if="canManageExpenses && trip.transporter"
+              v-if="canManageExpenses && trip.transporter && !trip.transporter_detail?.is_internal"
               variant="ghost"
               @click=";(automaticTransportTitle = null), (showTransportPaymentForm = true)"
             >

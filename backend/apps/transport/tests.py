@@ -34,7 +34,10 @@ def test_transporter_crud_via_api(ops_client):
 
     listed = ops_client.get("/api/transporters/")
     assert listed.status_code == 200
-    assert listed.data["count"] == 1
+    # 1 created here + the seeded is_internal=True "Flotte propre / Interne"
+    # row (migration 0004_truck_owner_transporter_mandatory, bug fix
+    # 2026-09-03 recette manuelle).
+    assert listed.data["count"] == 2
 
     transporter_id = created.data["id"]
     retrieved = ops_client.get(f"/api/transporters/{transporter_id}/")
@@ -74,7 +77,10 @@ def test_truck_defaults_to_available_status():
         capacity_litres="45000.00",
     )
     assert truck.status == Truck.Status.AVAILABLE
-    assert truck.owner_transporter is None
+    # Bug fix (2026-09-03 recette manuelle): COMPANY_OWNED (the default
+    # ownership_type) auto-assigns the seeded internal transporter on
+    # save() rather than staying null - see Truck.save().
+    assert truck.owner_transporter.is_internal is True
 
 
 @pytest.mark.django_db
@@ -220,7 +226,11 @@ def test_external_truck_with_owner_transporter_is_accepted(ops_client):
 
 
 @pytest.mark.django_db
-def test_company_owned_truck_without_owner_transporter_is_accepted(ops_client):
+def test_company_owned_truck_without_owner_transporter_auto_assigns_internal(ops_client):
+    """Bug fix (2026-09-03 recette manuelle): reverses the original Phase 6
+    rule (was: accepted with owner_transporter left null) - every truck
+    must be linked to a transporter now, so a COMPANY_OWNED truck posted
+    without one gets the seeded internal transporter instead."""
     response = ops_client.post(
         "/api/trucks/",
         {
@@ -232,7 +242,30 @@ def test_company_owned_truck_without_owner_transporter_is_accepted(ops_client):
         },
     )
     assert response.status_code == 201, response.data
-    assert response.data["owner_transporter"] is None
+    assert response.data["owner_transporter"] is not None
+
+
+@pytest.mark.django_db
+def test_external_truck_cannot_be_assigned_the_internal_transporter(ops_client):
+    """Bug fix (2026-09-03 recette manuelle): the seeded "Flotte propre /
+    Interne" transporter stands in for the company's own fleet - assigning
+    it to a real EXTERNAL truck would silently hide a real transporter
+    relationship, so it's rejected the same way a missing transporter is."""
+    internal = Transporter.objects.get(is_internal=True)
+
+    response = ops_client.post(
+        "/api/trucks/",
+        {
+            "internal_id": "TRK-EXT-INTERNAL",
+            "tractor_registration": "ZZ-999-SN",
+            "tanker_registration": "YY-888-SN",
+            "capacity_litres": "45000.00",
+            "ownership_type": "EXTERNAL",
+            "owner_transporter": internal.id,
+        },
+    )
+    assert response.status_code == 400
+    assert "owner_transporter" in response.data
 
 
 @pytest.mark.django_db
