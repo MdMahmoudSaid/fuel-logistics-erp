@@ -58,6 +58,8 @@ const summary: DashboardSummary = {
     period_revenue: '14580000.00',
     period_collections: '500000.00',
     period_paid_expenses: '600000.00',
+    period_treasury_in: '500000.00',
+    period_treasury_out: '600000.00',
     period_accounting_profit: '1957500.00',
     current_treasury_balance: '6200000.00',
   },

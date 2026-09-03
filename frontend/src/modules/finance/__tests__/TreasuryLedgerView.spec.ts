@@ -30,7 +30,7 @@ const dashboardSummary = vi.fn(async () => ({
 }))
 
 vi.mock('@/modules/dashboard/api', () => ({
-  fetchDashboardSummary: (...args: unknown[]) => dashboardSummary(...args),
+  fetchDashboardSummary: () => dashboardSummary(),
 }))
 
 describe('TreasuryLedgerView', () => {
