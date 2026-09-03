@@ -81,8 +81,25 @@ const newCategoryName = ref('')
 const categoryError = ref('')
 const savingCategory = ref(false)
 
+// Bug fix (2026-09-03 recette manuelle): the trip-fee popup (opened with
+// a presetAllocation of kind "trip") must only ever offer the 6 system
+// trip categories - a custom general category like "Internet" created on
+// the Depenses generales page has no business appearing here, and used to
+// show up because this list was never filtered. Matches the backend's own
+// is_system=True set (apps/finance/migrations/0014_expensecategory.py).
+const TRIP_SYSTEM_CATEGORY_CODES = [
+  'customs',
+  'transit',
+  'road_transit',
+  'road',
+  'loading',
+  'transport',
+]
+
 function fallbackCategories(): ExpenseCategoryOption[] {
-  return EXPENSE_CATEGORIES.map((category, index) => ({
+  return EXPENSE_CATEGORIES.filter(
+    (category) => !isTripAllocation.value || TRIP_SYSTEM_CATEGORY_CODES.includes(category.value),
+  ).map((category, index) => ({
     id: -(index + 1),
     name: t(`expenseCategory.${category.value}`),
     code: category.value,
@@ -94,7 +111,9 @@ function fallbackCategories(): ExpenseCategoryOption[] {
 
 async function loadCategories() {
   try {
-    categories.value = (await expenseCategoryResource.list({ is_active: true })).results
+    const params: Record<string, unknown> = { is_active: true }
+    if (isTripAllocation.value) params.is_system = true
+    categories.value = (await expenseCategoryResource.list(params)).results
   } catch {
     categories.value = fallbackCategories()
   }
@@ -316,7 +335,7 @@ async function onSubmit() {
               {{ c.name }}
             </option>
           </select>
-          <div class="space-y-2">
+          <div v-if="!isTripAllocation" class="space-y-2">
             <button
               v-if="!creatingCategory"
               type="button"

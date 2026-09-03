@@ -10,29 +10,33 @@ const fetchAllocatableTypes = vi.fn(async () => ({
   supplier: 15,
   transporter: 16,
 }))
-const listExpenseCategories = vi.fn(async () => ({
-  count: 2,
-  next: null,
-  previous: null,
-  results: [
-    {
-      id: 1,
-      name: 'Douane',
-      code: 'customs',
-      is_system: true,
-      is_active: true,
-      display_order: 0,
-    },
-    {
-      id: 2,
-      name: 'Internet',
-      code: 'internet',
-      is_system: false,
-      is_active: true,
-      display_order: 10,
-    },
-  ],
-}))
+const ALL_TEST_CATEGORIES = [
+  {
+    id: 1,
+    name: 'Douane',
+    code: 'customs',
+    is_system: true,
+    is_active: true,
+    display_order: 0,
+  },
+  {
+    id: 2,
+    name: 'Internet',
+    code: 'internet',
+    is_system: false,
+    is_active: true,
+    display_order: 10,
+  },
+]
+// Mirrors the real backend's filterset_fields = ["is_system", "is_active"]
+// (apps/finance/views.py ExpenseCategoryViewSet) so tests can assert on
+// what ExpenseForm actually requests, not just what it renders.
+const listExpenseCategories = vi.fn(async (params: Record<string, unknown> = {}) => {
+  const results = ALL_TEST_CATEGORIES.filter(
+    (category) => params.is_system === undefined || category.is_system === params.is_system,
+  )
+  return { count: results.length, next: null, previous: null, results }
+})
 const createExpenseCategory = vi.fn(async (payload: Record<string, unknown>) => ({
   id: 3,
   name: payload.name,
@@ -57,7 +61,7 @@ const listCashAccounts = vi.fn(async () => ({
 
 vi.mock('../api', () => ({
   expenseResource: { create: (payload: Record<string, unknown>) => createExpense(payload) },
-  expenseCategoryResource: { list: () => listExpenseCategories() },
+  expenseCategoryResource: { list: (params?: Record<string, unknown>) => listExpenseCategories(params) },
   createExpenseCategory: (payload: Record<string, unknown>) => createExpenseCategory(payload),
   fetchAllocatableTypes: () => fetchAllocatableTypes(),
   fetchCustomerLedger: vi.fn(),
@@ -131,6 +135,24 @@ describe('ExpenseForm', () => {
     expect(createExpense).toHaveBeenCalledWith(expect.objectContaining({ allocations: [] }))
     expect(Number(createExpense.mock.calls[0][0].amount)).toBe(100000)
     expect(wrapper.emitted('success')).toEqual([[null]])
+  })
+
+  // Bug fix (2026-09-03 recette manuelle): a custom general category
+  // (e.g. "Internet", created on the Depenses generales page) must never
+  // appear in the trip-fee popup, and a user must not be able to create
+  // one from there either.
+  it('only offers system trip categories when allocated to a trip, and hides category creation', async () => {
+    const wrapper = mount(ExpenseForm, {
+      props: { presetAllocation: { kind: 'trip', objectId: 42, label: 'TRIP-042' } },
+    })
+    await flushPromises()
+
+    expect(listExpenseCategories).toHaveBeenCalledWith(
+      expect.objectContaining({ is_system: true }),
+    )
+    expect(wrapper.find('#category').text()).toContain('Douane')
+    expect(wrapper.find('#category').text()).not.toContain('Internet')
+    expect(wrapper.find('[data-test="create-expense-category-toggle"]').exists()).toBe(false)
   })
 
   it('pre-seeds a locked trip allocation line when presetAllocation is given, and resolves its content_type on submit', async () => {
