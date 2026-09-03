@@ -195,6 +195,63 @@ def test_contribution_api_create_succeeds_with_attachment():
 
 
 @pytest.mark.django_db
+def test_shareholder_list_exposes_total_contributed():
+    """Bug fix (2026-09-03 recette manuelle): the Associes page's
+    "contribution" column reads Shareholder.contribution (a static
+    opening-balance figure set at creation, never touched by a new
+    ShareholderContribution) - so a real 10M XOF apport looked invisible
+    there even though the treasury was correctly updated. total_contributed
+    is the new, live field the frontend must use instead."""
+    admin_user = _make_admin("CONTRIB-LIST-1")
+    shareholder = _make_shareholder("CONTRIB-LIST-1")
+    other = _make_shareholder("CONTRIB-LIST-1B")
+    bank = BankAccount.objects.create(name="Bank I", opening_balance=Decimal("0.00"))
+    client = _authed_client(admin_user)
+
+    list_before = client.get("/api/shareholders/")
+    row_before = next(r for r in list_before.data["results"] if r["id"] == shareholder.id)
+    assert row_before["total_contributed"] == "0.00"
+    assert row_before["contribution"] == "0.00"
+
+    ShareholderContributionService.record_contribution(
+        shareholder_id=shareholder.id, amount=Decimal("10000000.00"), date="2026-09-02",
+        actor=admin_user, attachment=_proof_file(), bank_account_id=bank.id,
+    )
+
+    list_after = client.get("/api/shareholders/")
+    row_after = next(r for r in list_after.data["results"] if r["id"] == shareholder.id)
+    assert row_after["total_contributed"] == "10000000.00"
+    # Static opening-balance field is untouched by a new contribution.
+    assert row_after["contribution"] == "0.00"
+    other_row = next(r for r in list_after.data["results"] if r["id"] == other.id)
+    assert other_row["total_contributed"] == "0.00"
+
+
+@pytest.mark.django_db
+def test_shareholder_ledger_exposes_total_contributed_without_mixing_into_available_balance():
+    """total_contributed must show the real apport, but never move
+    available_balance (capital is not distributable profit - design doc
+    2026-09-02-business-corrections-6-phases-design.md Phase 1)."""
+    admin_user = _make_admin("CONTRIB-LEDGER-1")
+    shareholder = _make_shareholder("CONTRIB-LEDGER-1")
+    bank = BankAccount.objects.create(name="Bank J", opening_balance=Decimal("0.00"))
+    client = _authed_client(admin_user)
+
+    before = client.get(f"/api/shareholders/{shareholder.id}/ledger/")
+    assert before.data["total_contributed"] == "0.00"
+    assert before.data["available_balance"] == "0.00"
+
+    ShareholderContributionService.record_contribution(
+        shareholder_id=shareholder.id, amount=Decimal("10000000.00"), date="2026-09-02",
+        actor=admin_user, attachment=_proof_file(), bank_account_id=bank.id,
+    )
+
+    after = client.get(f"/api/shareholders/{shareholder.id}/ledger/")
+    assert after.data["total_contributed"] == "10000000.00"
+    assert after.data["available_balance"] == "0.00"
+
+
+@pytest.mark.django_db
 def test_contribution_api_rejects_update_and_hard_delete():
     admin_user = _make_admin("CONTRIB-API-3")
     shareholder = _make_shareholder("CONTRIB-API-3")

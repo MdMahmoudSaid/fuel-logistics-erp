@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
+from django.db.models import Sum
 from django.utils.text import slugify
 from rest_framework import serializers
 
@@ -926,12 +927,34 @@ class ShareholderBriefSerializer(serializers.ModelSerializer):
 
 
 class ShareholderSerializer(serializers.ModelSerializer):
+    # Real cash actually put in via ShareholderContribution (Phase 1),
+    # distinct from `contribution` (a historical opening-balance figure set
+    # at Shareholder creation, never updated by new contributions - see
+    # spec 2026-09-02-business-corrections-6-phases-design.md Phase 1).
+    # Annotated on ShareholderViewSet.queryset; falls back to a live
+    # aggregate when the serializer is used without that annotation (e.g.
+    # nested elsewhere) so this field is never silently wrong.
+    total_contributed = serializers.SerializerMethodField()
+
     class Meta:
         model = Shareholder
         fields = [
-            "id", "name", "participation_percent", "contribution", "phone", "notes", "is_active",
-            "created_at", "updated_at",
+            "id", "name", "participation_percent", "contribution", "total_contributed",
+            "phone", "notes", "is_active", "created_at", "updated_at",
         ]
+
+    def get_total_contributed(self, obj) -> str:
+        annotated = getattr(obj, "total_contributed", None)
+        value = (
+            annotated
+            if annotated is not None
+            else obj.contributions.aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
+        )
+        # Match every other DecimalField on this serializer (DRF renders
+        # those as strings) - a SerializerMethodField doesn't get that
+        # coercion for free, and this value feeds straight into a money
+        # display on the frontend.
+        return str(value.quantize(Decimal("0.01")))
         read_only_fields = ["id", "created_at", "updated_at"]
 
     def validate(self, data):

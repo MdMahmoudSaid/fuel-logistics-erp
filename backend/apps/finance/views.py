@@ -1,4 +1,8 @@
+from decimal import Decimal
+
 from django.contrib.contenttypes.models import ContentType
+from django.db.models import Sum
+from django.db.models.functions import Coalesce
 from rest_framework import status as http_status
 from rest_framework import viewsets
 from rest_framework.decorators import action
@@ -413,7 +417,13 @@ class TreasuryTransactionViewSet(viewsets.ModelViewSet):
 
 
 class ShareholderViewSet(viewsets.ModelViewSet):
-    queryset = Shareholder.objects.all()
+    # total_contributed annotated here (rather than a per-row aggregate in
+    # the serializer) so the Associes list page doesn't run N extra queries
+    # to show each shareholder's real capital apporte (bug fix, 2026-09-03
+    # recette manuelle - see ShareholderSerializer.total_contributed).
+    queryset = Shareholder.objects.annotate(
+        total_contributed=Coalesce(Sum("contributions__amount"), Decimal("0.00"))
+    )
     serializer_class = ShareholderSerializer
     filterset_fields = ["is_active"]
     permission_classes = [HasModulePermission]

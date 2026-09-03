@@ -258,6 +258,63 @@ class TripCostService:
         return trip
 
 
+class TripCancellationService:
+    """Reverses every financial side effect a Trip accumulated, called by
+    TripWorkflowService.transition_trip right before a trip is marked
+    CANCELLED (bug fix, 2026-09-03 recette manuelle: cancelling a trip used
+    to leave its fees/transport debt fully active - see the "Phase 3 has no
+    reversal flow yet" note this replaces, below).
+
+    Deliberately does NOT touch `trip.supplier_order`: a SupplierOrder is a
+    purchasing document that can supply several trips (its reliquat is
+    shared, guide purchasing docs) - it is not owned exclusively by this
+    trip, so cancelling one trip must never alter another trip's fuel debt
+    or consume/release its advance. Only the two records this trip
+    exclusively owns - its allocated Expense fees and its own
+    TransportPayment - are reversed here.
+    """
+
+    @staticmethod
+    @transaction.atomic
+    def reverse_trip_financials(trip: Trip, actor) -> None:
+        # Imported lazily to avoid a circular import at module load time
+        # (apps.finance.services -> apps.reports.queries.margin_report ->
+        # apps.reports.services.profit -> apps.trips.services) - same
+        # pattern already used by TransportPayment.save() in
+        # apps.finance.models for the identical reason.
+        from apps.finance.services import (
+            ExpensePostingService,
+            TransportPaymentCancellationService,
+        )
+
+        content_type = ContentType.objects.get_for_model(Trip)
+        allocations = (
+            ExpenseAllocation.objects.filter(content_type=content_type, object_id=trip.id)
+            .select_related("expense")
+        )
+        seen_expense_ids = set()
+        for allocation in allocations:
+            expense = allocation.expense
+            if expense.id in seen_expense_ids or expense.status == Expense.Status.CANCELLED:
+                continue
+            seen_expense_ids.add(expense.id)
+            if expense.status == Expense.Status.UNPAID:
+                # cancel_paid_expense() rejects UNPAID (meant for a direct,
+                # single-expense cancel request where "just delete it
+                # instead" is the right answer) - here the trip itself is
+                # being cancelled, so the unpaid fee must go with it.
+                Expense.objects.filter(pk=expense.pk).update(
+                    status=Expense.Status.CANCELLED, updated_at=timezone.now()
+                )
+            else:
+                ExpensePostingService.cancel_paid_expense(expense, actor)
+
+        for payment in TransportPayment.objects.filter(trip=trip).exclude(
+            status=TransportPayment.Status.CANCELLED
+        ):
+            TransportPaymentCancellationService.cancel_transport_payment(payment, actor)
+
+
 class TripWorkflowService:
     """Owns every Trip.status mutation (docs/PHASE_3_PLAN.md Etape 4;
     guide Section 6.8: "Do not allow arbitrary trip.status = ...; trigger
@@ -284,9 +341,12 @@ class TripWorkflowService:
 
     # "Statuts eligibles (avant livraison) -> CANCELLED": every forward-path
     # status up to (but excluding) DELIVERED - once delivered, the trip is
-    # commercially real and Phase 3 has no reversal flow yet (guide Section 17
-    # favours reversal over silent mutation past that point; that reversal
-    # flow is a later phase's job, not this one's).
+    # commercially real (has a Sale) and there is still no reversal flow for
+    # that (guide Section 17 favours reversal over silent mutation past that
+    # point; a post-delivery reversal is a separate, larger feature - Sale/
+    # Invoice/stock unwind - not just financial reversal). Every status here
+    # is pre-Sale, so TripCancellationService.reverse_trip_financials only
+    # ever needs to reverse fees/transport debt, never a Sale.
     CANCELLABLE_FROM = set(FORWARD_TRANSITIONS.keys()) - {Trip.Status.DELIVERED}
 
     @classmethod
@@ -371,6 +431,9 @@ class TripWorkflowService:
             changed_by=actor,
             notes=notes,
         )
+
+        if target_status == Trip.Status.CANCELLED:
+            TripCancellationService.reverse_trip_financials(trip, actor)
 
         if target_status in Trip.TERMINAL_STATUSES or target_status == Trip.Status.STOCKED:
             # Only release the truck if it has no other active trip - an

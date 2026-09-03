@@ -508,6 +508,11 @@ class TransportPayment(TimeStampedModel):
         PARTIALLY_PAID = "PARTIALLY_PAID", "Partially paid"
         PAID = "PAID", "Paid"
         DEDUCTION_APPLIED = "DEDUCTION_APPLIED", "Deduction applied"
+        # Bug fix (2026-09-03 recette manuelle): set by
+        # TransportPaymentCancellationService.cancel_transport_payment when
+        # the underlying Trip is cancelled - never a hard delete, so the
+        # payment stays auditable and is excluded from open-debt totals.
+        CANCELLED = "CANCELLED", "Cancelled"
 
     trip = models.ForeignKey(
         "trips.Trip", on_delete=models.PROTECT, related_name="transport_payments"

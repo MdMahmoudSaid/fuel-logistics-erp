@@ -217,6 +217,44 @@ def test_dashboard_summary_period_cards_accept_start_date_end_date_aliases():
 
 
 @pytest.mark.django_db
+def test_dashboard_summary_treasury_in_out_counts_shareholder_contribution():
+    """Bug fix (2026-09-03 recette manuelle): the Journal de tresorerie
+    "Entrees / sorties" card used to be sourced from
+    period_collections/period_paid_expenses, which only ever look at
+    CustomerPayment/paid Expense rows - a ShareholderContribution posts
+    only a TreasuryTransaction (MONEY_IN), so it appeared in the journal's
+    transaction list but never moved the card. period_treasury_in/out must
+    aggregate TreasuryTransaction directly so the card matches the list."""
+    from apps.finance.services import ShareholderContributionService
+
+    admin_user = _make_admin("DASHTRIN")
+    bank = BankAccount.objects.create(name="Bank Treasury Card", opening_balance=Decimal("0.00"))
+    shareholder = Shareholder.objects.create(name="Assoc TreasuryCard", participation_percent=Decimal("100"))
+
+    ShareholderContributionService.record_contribution(
+        shareholder_id=shareholder.id,
+        amount=Decimal("10000000.00"),
+        date="2026-09-03",
+        actor=admin_user,
+        attachment=SimpleUploadedFile("proof.jpg", b"filedata", content_type="image/jpeg"),
+        bank_account_id=bank.id,
+    )
+
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    response = client.get(
+        "/api/dashboard/summary/",
+        {"preset": "custom", "start_date": "2026-09-01", "end_date": "2026-09-30"},
+    )
+
+    assert response.status_code == 200, response.data
+    assert response.data["financial_summary"]["period_treasury_in"] == "10000000.00"
+    assert response.data["financial_summary"]["period_treasury_out"] == "0.00"
+    # Untouched by this fix - still CustomerPayment/Expense-only.
+    assert response.data["financial_summary"]["period_collections"] == "0.00"
+
+
+@pytest.mark.django_db
 def test_dashboard_summary_includes_shareholders_summary_section():
     """Design doc 2026-08-26-benefices-associes-refinement-design.md:
     dashboard shows a summary only - current profit, total withdrawn,

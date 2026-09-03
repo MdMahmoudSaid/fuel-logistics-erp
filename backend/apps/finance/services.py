@@ -286,6 +286,55 @@ class ExpensePostingService:
         return expense
 
 
+class TransportPaymentCancellationError(ValueError):
+    """Raised when a TransportPayment cannot be cancelled as requested."""
+
+
+class TransportPaymentCancellationService:
+    """Cancels a TransportPayment (bug fix, 2026-09-03 recette manuelle -
+    trip cancellation must reverse every financial side effect the trip
+    generated). Mirrors ExpensePostingService.cancel_paid_expense's shape:
+    reverses whatever really left treasury (never a flat `net_amount`,
+    which can already be net of a consumed advance) and releases any
+    TransporterAdvance consumption - never a silent delete of a payment
+    that already had accounting impact.
+    """
+
+    @staticmethod
+    @transaction.atomic
+    def cancel_transport_payment(payment: TransportPayment, actor) -> TransportPayment:
+        payment = TransportPayment.objects.select_for_update().get(pk=payment.pk)
+        if payment.status == TransportPayment.Status.CANCELLED:
+            raise TransportPaymentCancellationError("Ce paiement transport est deja annule.")
+
+        content_type = ContentType.objects.get_for_model(TransportPayment)
+        paid_transactions = TreasuryTransaction.objects.filter(
+            source_content_type=content_type,
+            source_object_id=payment.id,
+            type=TreasuryTransaction.Type.MONEY_OUT,
+        )
+        paid_amount = paid_transactions.aggregate(total=Sum("amount"))["total"] or ZERO
+        if paid_amount > ZERO:
+            original = paid_transactions.order_by("id").first()
+            TreasuryTransaction.objects.create(
+                bank_account=original.bank_account,
+                cash_account=original.cash_account,
+                type=TreasuryTransaction.Type.MONEY_IN,
+                amount=paid_amount,
+                date=timezone.localdate(),
+                note=f"Annulation paiement transport #{payment.id}",
+                source_content_type=content_type,
+                source_object_id=payment.id,
+                recorded_by=actor,
+            )
+
+        AdvanceConsumptionService.reverse_for_transport_payment(payment)
+
+        payment.status = TransportPayment.Status.CANCELLED
+        payment.save(update_fields=["status", "updated_at"])
+        return payment
+
+
 class FinancePostingService:
     """Posts a direct CustomerPayment to company treasury (Task 4, client
     modifications plan; docs/PHASE_5_PLAN.md conventions Etape 6: separate
@@ -573,6 +622,20 @@ class AdvanceConsumptionService:
         content_type = ContentType.objects.get_for_model(order.__class__)
         AdvanceConsumption.objects.filter(
             debt_content_type=content_type, debt_object_id=order.id, reversed_at__isnull=True
+        ).update(reversed_at=timezone.now())
+
+    @classmethod
+    @transaction.atomic
+    def reverse_for_transport_payment(cls, payment) -> None:
+        """Same as reverse_for_supplier_order, for a TransportPayment -
+        bug fix (2026-09-03 recette manuelle): cancelling a Trip must
+        release any TransporterAdvance its TransportPayment consumed
+        (consume_for_transport_payment runs unconditionally on save(), so
+        even a never-paid PLANNED payment can already hold a consumption).
+        Called by TransportPaymentCancellationService.cancel_transport_payment."""
+        content_type = ContentType.objects.get_for_model(payment.__class__)
+        AdvanceConsumption.objects.filter(
+            debt_content_type=content_type, debt_object_id=payment.id, reversed_at__isnull=True
         ).update(reversed_at=timezone.now())
 
     @classmethod
@@ -1073,7 +1136,7 @@ class ControlledDebtPaymentService:
     def _open_transport_payments(cls, transporter, *, for_update=False):
         queryset = (
             TransportPayment.objects.filter(transporter=transporter)
-            .exclude(status=TransportPayment.Status.PAID)
+            .exclude(status__in=[TransportPayment.Status.PAID, TransportPayment.Status.CANCELLED])
             .select_related("trip", "transporter")
             .order_by("created_at", "id")
         )
@@ -1814,6 +1877,21 @@ class ShareholderLedgerService:
             .order_by("-date", "-id")
         )
 
+        # Bug fix (2026-09-03 recette manuelle): a ShareholderContribution
+        # (Phase 1) was only ever visible via its TreasuryTransaction - the
+        # Associes page had no way to show what a given shareholder had
+        # actually put into the company. Deliberately kept out of
+        # total_amount_due/remaining_due/available_balance above: capital
+        # is not distributable profit (see ShareholderContribution model
+        # docstring). The detailed history itself is fetched separately by
+        # the frontend from GET /api/shareholder-contributions/?shareholder=
+        # (already exists, already serializes proof_url/accounts/etc.) -
+        # total_contributed here is just the one aggregate this summary
+        # needs to show alongside remaining_due/available_balance.
+        total_contributed = (
+            shareholder.contributions.aggregate(total=Sum("amount"))["total"] or ZERO
+        )
+
         return {
             "shareholder": {
                 "id": shareholder.id,
@@ -1841,6 +1919,7 @@ class ShareholderLedgerService:
             "loans_borrowed": loans_borrowed,
             "loans_lent": loans_lent,
             "net_loan_balance": net_loan_balance,
+            "total_contributed": total_contributed,
             "withdrawals": [
                 {
                     "id": w.id,

@@ -19,6 +19,7 @@ from apps.finance.models import (
     ShareholderProfitShare,
     ShareholderWithdrawal,
     TransportPayment,
+    TreasuryTransaction,
 )
 from apps.finance.services import (
     ControlledDebtPaymentService,
@@ -218,12 +219,45 @@ class DashboardViewSet(viewsets.ViewSet):
             period_collections = period_collections.filter(payment_date__lte=date_to)
 
         paid_expenses = expenses.filter(status=Expense.Status.PAID)
+
+        # Journal de tresorerie "Entrees / sorties" card (bug fix,
+        # docs/superpowers/specs/2026-09-02-business-corrections-6-phases-
+        # design.md follow-up): period_collections/period_paid_expenses
+        # above only ever reflect CustomerPayment/paid Expense rows, so a
+        # ShareholderContribution (or any other flow that posts straight to
+        # TreasuryTransaction with no CustomerPayment/Expense behind it) was
+        # invisible to that card even though it appears in the journal's
+        # transaction list. period_treasury_in/out aggregate the same
+        # TreasuryTransaction rows the journal list itself shows, so the
+        # card can never disagree with the visible lines. is_transfer rows
+        # are excluded - moving cash between the company's own bank/cash
+        # accounts is not a real inflow/outflow.
+        treasury_movements = TreasuryTransaction.objects.filter(is_transfer=False)
+        if date_from:
+            treasury_movements = treasury_movements.filter(date__gte=date_from)
+        if date_to:
+            treasury_movements = treasury_movements.filter(date__lte=date_to)
+        period_treasury_in = (
+            treasury_movements.filter(type=TreasuryTransaction.Type.MONEY_IN).aggregate(
+                total=Sum("amount")
+            )["total"]
+            or ZERO
+        )
+        period_treasury_out = (
+            treasury_movements.filter(type=TreasuryTransaction.Type.MONEY_OUT).aggregate(
+                total=Sum("amount")
+            )["total"]
+            or ZERO
+        )
+
         financial_summary = {
             "period_revenue": sales["revenue"],
             "period_collections": period_collections.aggregate(total=Sum("amount"))["total"]
             or ZERO,
             "period_paid_expenses": paid_expenses.aggregate(total=Sum("amount"))["total"]
             or ZERO,
+            "period_treasury_in": period_treasury_in,
+            "period_treasury_out": period_treasury_out,
             "period_accounting_profit": profit["total_margin"],
             "current_treasury_balance": treasury_balance,
         }
