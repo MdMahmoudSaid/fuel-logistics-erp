@@ -24,6 +24,7 @@ import type {
   AllocatableTypeMap,
   CustomerBrief,
   CustomerLedgerInvoice,
+  Expense,
   ExpenseAllocationInput,
   ExpenseCalculationMethod,
   ExpenseCategory,
@@ -42,6 +43,13 @@ const props = defineProps<{
   perLitreQuantity?: string
   showTreasuryPayment?: boolean
   title?: string
+  // Bug fix (2026-09-03 recette manuelle): "Frais du trajet" fees had no
+  // way to be corrected once created, short of cancelling a paid one - an
+  // UNPAID fee (the only status this is ever passed for) should be a
+  // plain overwrite, same as any other draft-state record. When set, this
+  // form pre-fills from the expense and PATCHes it instead of POSTing a
+  // new one.
+  editingExpense?: Expense | null
 }>()
 const emit = defineEmits<{ success: [customerId: number | null]; cancel: [] }>()
 const { t } = useI18n()
@@ -66,13 +74,14 @@ interface AccountOption {
 const isTripAllocation = computed(() => props.presetAllocation?.kind === 'trip')
 
 const form = ref<ExpenseFormState>({
-  category: props.initialCategory ?? 'other',
-  amount: '',
+  category: props.editingExpense?.category ?? props.initialCategory ?? 'other',
+  amount: props.editingExpense?.amount ?? '',
   calculation_method:
+    props.editingExpense?.calculation_method ??
     props.initialCalculationMethod ??
     ((isTripAllocation.value ? 'PER_LITRE' : 'MANUAL') as ExpenseCalculationMethod),
-  date: new Date().toISOString().slice(0, 10),
-  notes: '',
+  date: props.editingExpense?.date ?? new Date().toISOString().slice(0, 10),
+  notes: props.editingExpense?.notes ?? '',
 })
 
 const categories = ref<ExpenseCategoryOption[]>([])
@@ -148,7 +157,9 @@ function emptyDraft(): AllocationDraft {
 }
 
 const lines = ref<AllocationDraft[]>(
-  props.presetAllocation ? [{ ...props.presetAllocation, allocatedAmount: '' }] : [],
+  props.presetAllocation
+    ? [{ ...props.presetAllocation, allocatedAmount: props.editingExpense?.amount ?? '' }]
+    : [],
 )
 const lockedFirstLine = Boolean(props.presetAllocation)
 
@@ -291,7 +302,7 @@ async function onSubmit() {
         }
       : {}
 
-    await expenseResource.create({
+    const payload = {
       category: form.value.category,
       amount: form.value.amount,
       calculation_method: form.value.calculation_method,
@@ -299,7 +310,12 @@ async function onSubmit() {
       notes: form.value.notes,
       allocations,
       ...paymentFields,
-    })
+    }
+    if (props.editingExpense) {
+      await expenseResource.update(props.editingExpense.id, payload)
+    } else {
+      await expenseResource.create(payload)
+    }
     emit('success', null)
   } catch (e) {
     const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail

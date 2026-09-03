@@ -202,7 +202,17 @@ class ExpenseViewSet(viewsets.ModelViewSet):
         return queryset
 
     def destroy(self, request, *args, **kwargs):
-        raise MethodNotAllowed("DELETE", detail=_NO_HARD_DELETE_DETAIL)
+        # Bug fix (2026-09-03 recette manuelle): an UNPAID Expense has no
+        # accounting impact yet (no TreasuryTransaction, no
+        # IndirectSettlement CustomerPayment) - a hard delete is safe and
+        # was always the intended behavior (Phase 5 design doc: "Non paye:
+        # modification/suppression autorisee sans changement"), unlike
+        # every other model sharing _NO_HARD_DELETE_DETAIL. PAID/
+        # PARTIALLY_PAID/CANCELLED still go through /cancel/ only.
+        expense = self.get_object()
+        if expense.status != Expense.Status.UNPAID:
+            raise MethodNotAllowed("DELETE", detail=_NO_HARD_DELETE_DETAIL)
+        return super().destroy(request, *args, **kwargs)
 
     @action(detail=True, methods=["post"])
     def cancel(self, request, pk=None):

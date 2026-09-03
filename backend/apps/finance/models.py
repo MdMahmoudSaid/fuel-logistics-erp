@@ -675,6 +675,14 @@ class Expense(AuditableModel, TimeStampedModel):
             or self.category
         )
 
+    def is_locked_for_deletion(self) -> bool:
+        # Bug fix (2026-09-03 recette manuelle): an UNPAID expense has no
+        # accounting impact yet - same "genuine draft state" carve-out as
+        # TransportDeduction.is_locked_for_deletion above. Anything past
+        # UNPAID (PAID/PARTIALLY_PAID/CANCELLED) stays hard-delete-blocked
+        # by AuditableModel's default - only /cancel/ may unwind those.
+        return self.status != self.Status.UNPAID
+
 
 class ExpenseAllocation(TimeStampedModel):
     """Split of one Expense's amount across one or more operational

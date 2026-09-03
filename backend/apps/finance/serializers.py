@@ -755,18 +755,31 @@ class ExpenseSerializer(serializers.ModelSerializer):
         return expense
 
     def update(self, instance, validated_data):
+        # Bug fix (2026-09-03 recette manuelle): "allocations" in
+        # validated_data (checked before popping) distinguishes "the
+        # client sent a new allocation list, replace it" from "allocations
+        # wasn't touched in this PATCH, leave the existing rows alone" -
+        # popping first and defaulting to [] made every edit that included
+        # allocations *append* a duplicate ExpenseAllocation row instead of
+        # overwriting the existing one, doubling the trip's allocated
+        # amount. Only reachable for an UNPAID expense in practice -
+        # validate() already blocks touching "allocations" once
+        # PAID/PARTIALLY_PAID.
+        replace_allocations = "allocations" in validated_data
         allocations = validated_data.pop("allocations", [])
         expense = super().update(instance, validated_data)
-        for item in allocations:
-            ExpenseAllocation.objects.create(
-                expense=expense,
-                **{
-                    **item,
-                    "allocated_amount": self._resolve_allocated_amount(
-                        item, expense.calculation_method, expense.amount
-                    ),
-                },
-            )
+        if replace_allocations:
+            expense.allocations.all().delete()
+            for item in allocations:
+                ExpenseAllocation.objects.create(
+                    expense=expense,
+                    **{
+                        **item,
+                        "allocated_amount": self._resolve_allocated_amount(
+                            item, expense.calculation_method, expense.amount
+                        ),
+                    },
+                )
         return expense
 
 

@@ -3,6 +3,9 @@ import { mount, flushPromises } from '@vue/test-utils'
 import ExpenseForm from '../ExpenseForm.vue'
 
 const createExpense = vi.fn(async (payload: Record<string, unknown>) => ({ id: 1, ...payload }))
+const updateExpense = vi.fn(
+  async (id: number, payload: Record<string, unknown>) => ({ id, ...payload }),
+)
 const fetchAllocatableTypes = vi.fn(async () => ({
   trip: 12,
   truck: 13,
@@ -60,7 +63,10 @@ const listCashAccounts = vi.fn(async () => ({
 }))
 
 vi.mock('../api', () => ({
-  expenseResource: { create: (payload: Record<string, unknown>) => createExpense(payload) },
+  expenseResource: {
+    create: (payload: Record<string, unknown>) => createExpense(payload),
+    update: (id: number, payload: Record<string, unknown>) => updateExpense(id, payload),
+  },
   expenseCategoryResource: { list: (params?: Record<string, unknown>) => listExpenseCategories(params) },
   createExpenseCategory: (payload: Record<string, unknown>) => createExpenseCategory(payload),
   fetchAllocatableTypes: () => fetchAllocatableTypes(),
@@ -309,5 +315,41 @@ describe('ExpenseForm', () => {
       expect.objectContaining({ calculation_method: 'PER_TRUCK' }),
     )
     expect(Number(createExpense.mock.calls[0][0].amount)).toBe(10000)
+  })
+
+  // Bug fix (2026-09-03 recette manuelle): an UNPAID trip fee can now be
+  // corrected in place instead of only being cancellable once paid.
+  it('pre-fills from editingExpense and PATCHes instead of POSTing', async () => {
+    const wrapper = mount(ExpenseForm, {
+      props: {
+        presetAllocation: { kind: 'trip', objectId: 42, label: 'TRIP-042' },
+        editingExpense: {
+          id: 99,
+          category: 'customs',
+          amount: '12000.00',
+          calculation_method: 'PER_LITRE',
+          date: '2026-08-25',
+          status: 'UNPAID',
+          paid_by_customer_directly: false,
+          notes: 'note existante',
+          allocations_detail: [],
+          created_at: '',
+          updated_at: '',
+        },
+      },
+    })
+    await flushPromises()
+
+    expect((wrapper.find('#amount').element as HTMLInputElement).value).toBe('12000.00')
+    expect((wrapper.find('#date').element as HTMLInputElement).value).toBe('2026-08-25')
+
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(updateExpense).toHaveBeenCalledWith(
+      99,
+      expect.objectContaining({ amount: '12000.00' }),
+    )
+    expect(createExpense).not.toHaveBeenCalled()
   })
 })

@@ -460,11 +460,18 @@ def test_draft_invoice_can_be_hard_deleted_and_logged():
 
 @pytest.mark.django_db
 def test_creating_an_expense_writes_a_create_audit_log_and_cannot_be_hard_deleted():
+    # Bug fix (2026-09-03 recette manuelle): PAID here, not the default
+    # UNPAID - Expense.is_locked_for_deletion() now carves out UNPAID as a
+    # genuine "no accounting impact yet" draft state (its own dedicated
+    # test: apps/finance/tests.py::test_unpaid_expense_can_be_hard_deleted),
+    # same pattern as TransportDeduction's DRAFT carve-out. This test
+    # covers everything past that point, which still stays blocked.
     expense = Expense.objects.create(
         category=Expense.Category.ROAD,
         amount=Decimal("50000.00"),
         calculation_method=Expense.CalculationMethod.MANUAL,
         date="2026-08-18",
+        status=Expense.Status.PAID,
     )
 
     assert _audit_logs_for(expense).filter(action=AuditLog.Action.CREATE).exists()

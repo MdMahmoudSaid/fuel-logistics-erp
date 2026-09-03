@@ -157,6 +157,7 @@ function tripAllocation(expense: Expense) {
 async function onExpenseSaved() {
   showExpenseForm.value = false
   automaticExpense.value = null
+  editingExpense.value = null
   await Promise.all([loadExpenses(), loadMargin()])
 }
 
@@ -171,6 +172,34 @@ async function onCancelExpense(expense: Expense) {
     expensesError.value = translateApiError(detail) || t('trips.detail.expensesLoadError')
   } finally {
     cancellingExpenseId.value = null
+  }
+}
+
+// Bug fix (2026-09-03 recette manuelle): "Frais du trajet" had no way to
+// correct a mistake short of cancelling a paid fee - an UNPAID fee is a
+// plain draft (Expense.is_locked_for_deletion(), backend) and can now be
+// edited (PATCH, overwrites in place) or hard-deleted outright.
+const editingExpense = ref<Expense | null>(null)
+const deletingExpenseId = ref<number | null>(null)
+
+function onEditExpense(expense: Expense) {
+  editingExpense.value = expense
+  automaticExpense.value = null
+  showExpenseForm.value = true
+}
+
+async function onDeleteExpense(expense: Expense) {
+  if (!window.confirm(t('trips.detail.deleteExpenseConfirm'))) return
+  deletingExpenseId.value = expense.id
+  expensesError.value = ''
+  try {
+    await expenseResource.remove(expense.id)
+    await Promise.all([loadExpenses(), loadMargin()])
+  } catch (e) {
+    const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+    expensesError.value = translateApiError(detail) || t('trips.detail.expensesLoadError')
+  } finally {
+    deletingExpenseId.value = null
   }
 }
 
@@ -627,6 +656,23 @@ const cessionProofUrl = computed(() => trip.value?.cession_letter_detail?.docume
                 >
                   {{ t('trips.detail.cancelExpense') }}
                 </button>
+                <div v-if="canManageExpenses && expense.status === 'UNPAID'" class="flex gap-2">
+                  <button
+                    type="button"
+                    class="text-bitume text-xs hover:brightness-90"
+                    @click="onEditExpense(expense)"
+                  >
+                    {{ t('trips.detail.editExpense') }}
+                  </button>
+                  <button
+                    type="button"
+                    class="text-critique text-xs hover:brightness-90 disabled:opacity-50"
+                    :disabled="deletingExpenseId === expense.id"
+                    @click="onDeleteExpense(expense)"
+                  >
+                    {{ t('trips.detail.deleteExpense') }}
+                  </button>
+                </div>
               </div>
             </li>
             <li
@@ -745,8 +791,9 @@ const cessionProofUrl = computed(() => trip.value?.cession_letter_detail?.docume
             :initial-category="automaticExpense?.category"
             :initial-calculation-method="automaticExpense ? 'PER_LITRE' : undefined"
             :per-litre-quantity="trip.quantity_loaded"
+            :editing-expense="editingExpense"
             @success="onExpenseSaved"
-            @cancel=";(showExpenseForm = false), (automaticExpense = null)"
+            @cancel=";(showExpenseForm = false), (automaticExpense = null), (editingExpense = null)"
           />
         </div>
       </div>

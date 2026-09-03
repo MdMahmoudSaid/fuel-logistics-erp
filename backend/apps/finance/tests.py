@@ -4427,6 +4427,105 @@ def test_unpaid_trip_fee_can_be_edited_freely_with_no_treasury_movement(finance_
 
 
 @pytest.mark.django_db
+def test_unpaid_trip_fee_edit_replaces_allocation_instead_of_duplicating_it(finance_client):
+    """Bug fix (2026-09-03 recette manuelle): PATCHing a new allocations
+    list used to *append* a second ExpenseAllocation row instead of
+    replacing the existing one, silently doubling the trip's allocated
+    amount every time a fee was edited."""
+    trip, _ = _make_trip_for_deduction("EDITALLOC")
+    expense = Expense.objects.create(
+        category=Expense.Category.CUSTOMS,
+        amount=Decimal("100.00"),
+        calculation_method=Expense.CalculationMethod.PER_LITRE,
+        date="2026-09-02",
+        status=Expense.Status.UNPAID,
+    )
+    ExpenseAllocation.objects.create(
+        expense=expense,
+        content_type=ContentType.objects.get_for_model(Trip),
+        object_id=trip.id,
+        allocated_amount=Decimal("100.00") * trip.quantity_loaded,
+    )
+
+    trip_content_type_id = ContentType.objects.get_for_model(Trip).id
+    response = finance_client.patch(
+        f"/api/expenses/{expense.id}/",
+        {
+            "amount": "150.00",
+            "allocations": [
+                {
+                    "content_type": trip_content_type_id,
+                    "object_id": trip.id,
+                    "allocated_amount": "1.00",
+                }
+            ],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200, response.data
+    expense.refresh_from_db()
+    assert expense.allocations.count() == 1
+    allocation = expense.allocations.get()
+    assert allocation.allocated_amount == Decimal("150.00") * trip.quantity_loaded
+
+
+@pytest.mark.django_db
+def test_unpaid_expense_can_be_hard_deleted():
+    """Bug fix (2026-09-03 recette manuelle): ExpenseViewSet.destroy() used
+    to unconditionally reject every DELETE (_NO_HARD_DELETE_DETAIL,
+    shared with every money-touching model), even though an UNPAID expense
+    has no accounting impact yet - Phase 5's own design doc says deletion
+    stays allowed for UNPAID ("comportement actuel conserve"). destroy is
+    gated on the "cancel" permission tier (HasModulePermission.ACTION_MAP),
+    same as every other hard-delete-blocked viewset - needs an admin
+    client, not the plain finance_client fixture."""
+    finance_client, _admin_user = _admin_client("DELUNPAIDA")
+    trip, _ = _make_trip_for_deduction("DELUNPAIDB")
+    expense = Expense.objects.create(
+        category=Expense.Category.CUSTOMS,
+        amount=Decimal("100000.00"),
+        calculation_method=Expense.CalculationMethod.FIXED,
+        date="2026-09-02",
+        status=Expense.Status.UNPAID,
+    )
+    ExpenseAllocation.objects.create(
+        expense=expense,
+        content_type=ContentType.objects.get_for_model(Trip),
+        object_id=trip.id,
+        allocated_amount=Decimal("100000.00"),
+    )
+
+    response = finance_client.delete(f"/api/expenses/{expense.id}/")
+
+    assert response.status_code == 204
+    assert not Expense.objects.filter(pk=expense.id).exists()
+    assert not ExpenseAllocation.objects.filter(expense_id=expense.id).exists()
+
+    from apps.trips.services import TripCostService
+
+    assert TripCostService.calculate_trip_cost_basis(trip)["expenses_by_category"] == {}
+
+
+@pytest.mark.django_db
+def test_paid_or_partially_paid_expense_cannot_be_hard_deleted():
+    finance_client, _admin_user = _admin_client("DELPAID")
+    for status in (Expense.Status.PAID, Expense.Status.PARTIALLY_PAID):
+        expense = Expense.objects.create(
+            category=Expense.Category.RENT,
+            amount=Decimal("50000.00"),
+            calculation_method=Expense.CalculationMethod.MANUAL,
+            date="2026-09-02",
+            status=status,
+        )
+
+        response = finance_client.delete(f"/api/expenses/{expense.id}/")
+
+        assert response.status_code == 405, (status, response.data)
+        assert Expense.objects.filter(pk=expense.id).exists()
+
+
+@pytest.mark.django_db
 def test_paid_expense_rejects_amount_modification(finance_client):
     expense = Expense.objects.create(
         category=Expense.Category.RENT,

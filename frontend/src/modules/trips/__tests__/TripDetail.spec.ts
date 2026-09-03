@@ -159,6 +159,8 @@ function makeMargin(overrides: Partial<Extract<TripMargin, { available: true }>>
 let expensesToReturn: Expense[] = []
 let transportPaymentsToReturn: TransportPayment[] = []
 const createExpense = vi.fn(async (_payload: Record<string, unknown>) => ({}))
+const updateExpense = vi.fn(async (_id: number, _payload: Record<string, unknown>) => ({}))
+const removeExpense = vi.fn(async (_id: number) => undefined)
 const cancelExpense = vi.fn(async (_id: number) => ({}))
 const createTransportPayment = vi.fn(async (_payload: Record<string, unknown>) => ({}))
 const expenseList = vi.fn(async (_params: Record<string, unknown>) => ({
@@ -179,6 +181,8 @@ vi.mock('@/modules/finance/api', () => ({
   expenseResource: {
     list: (params: Record<string, unknown>) => expenseList(params),
     create: (payload: Record<string, unknown>) => createExpense(payload),
+    update: (id: number, payload: Record<string, unknown>) => updateExpense(id, payload),
+    remove: (id: number) => removeExpense(id),
   },
   cancelExpense: (id: number) => cancelExpense(id),
   transportPaymentResource: {
@@ -342,6 +346,69 @@ describe('TripDetail expenses section', () => {
     const wrapper = await mountAt()
 
     expect(wrapper.findAll('button').find((b) => b.text() === 'Annuler')).toBeUndefined()
+  })
+
+  // Bug fix (2026-09-03 recette manuelle): an UNPAID fee can now be
+  // corrected (edit, overwrite in place) or removed outright, instead of
+  // only being cancellable once paid.
+  it('shows Modifier/Supprimer for an unpaid fee, not for a paid one', async () => {
+    setUser({ operations: ['view'], finance: ['view', 'create'] })
+    expensesToReturn = [makeExpense({ id: 6, status: 'UNPAID' })]
+
+    const wrapper = await mountAt()
+
+    expect(wrapper.findAll('button').find((b) => b.text() === 'Modifier')).toBeDefined()
+    expect(wrapper.findAll('button').find((b) => b.text() === 'Supprimer')).toBeDefined()
+
+    expensesToReturn = [makeExpense({ id: 6, status: 'PAID' })]
+    const paidWrapper = await mountAt()
+    expect(paidWrapper.findAll('button').find((b) => b.text() === 'Modifier')).toBeUndefined()
+    expect(paidWrapper.findAll('button').find((b) => b.text() === 'Supprimer')).toBeUndefined()
+  })
+
+  it('opens the edit form pre-filled when Modifier is clicked, and PATCHes on save', async () => {
+    setUser({ operations: ['view'], finance: ['view', 'create'] })
+    expensesToReturn = [makeExpense({ id: 7, status: 'UNPAID', amount: '90000.00' })]
+
+    const wrapper = await mountAt()
+    await wrapper.findAll('button').find((b) => b.text() === 'Modifier')!.trigger('click')
+    await flushPromises()
+
+    const amountInput = wrapper.find('#amount').element as HTMLInputElement
+    expect(amountInput.value).toBe('90000.00')
+
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(updateExpense).toHaveBeenCalledWith(7, expect.objectContaining({ amount: '90000.00' }))
+    expect(createExpense).not.toHaveBeenCalled()
+  })
+
+  it('deletes an unpaid fee after confirmation and reloads the list', async () => {
+    setUser({ operations: ['view'], finance: ['view', 'create'] })
+    expensesToReturn = [makeExpense({ id: 8, status: 'UNPAID' })]
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    const wrapper = await mountAt()
+    expect(expenseList).toHaveBeenCalledTimes(1)
+
+    await wrapper.findAll('button').find((b) => b.text() === 'Supprimer')!.trigger('click')
+    await flushPromises()
+
+    expect(removeExpense).toHaveBeenCalledWith(8)
+    expect(expenseList).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not delete an unpaid fee when the confirmation is declined', async () => {
+    setUser({ operations: ['view'], finance: ['view', 'create'] })
+    expensesToReturn = [makeExpense({ id: 9, status: 'UNPAID' })]
+    vi.spyOn(window, 'confirm').mockReturnValue(false)
+
+    const wrapper = await mountAt()
+    await wrapper.findAll('button').find((b) => b.text() === 'Supprimer')!.trigger('click')
+    await flushPromises()
+
+    expect(removeExpense).not.toHaveBeenCalled()
   })
 
   it('cancels a paid trip fee and reloads the expenses list', async () => {
