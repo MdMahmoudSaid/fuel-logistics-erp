@@ -296,6 +296,34 @@ def test_dashboard_summary_includes_shareholders_summary_section():
 
 
 @pytest.mark.django_db
+def test_dashboard_summary_shareholders_section_includes_profit_after_capital():
+    """Backlog 'Resultat apres capital': dashboard must expose the same
+    total_capital_contributed/profit_after_capital figures as the
+    Benefices page's profit-preview endpoint - same formula, same source
+    (ShareholderProfitPreviewService.get_preview), never a second one."""
+    admin_user = _make_admin("DASHPAC")
+    fx = _make_full_trip("DASHPAC", admin_user)
+    Shareholder.objects.create(
+        name="Dash PAC", participation_percent=Decimal("100"), contribution=Decimal("400000.00")
+    )
+
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    # shareholders_summary is a point-in-time snapshot, never scoped by
+    # date_from/date_to (see the section's own comment in dashboard.py) -
+    # no range query params here, matching that contract.
+    response = client.get("/api/dashboard/summary/")
+
+    assert response.status_code == 200, response.data
+    summary = response.data["shareholders_summary"]
+    current_profit = Decimal(summary["current_profit"])
+    assert summary["total_capital_contributed"] == "400000.00"
+    assert Decimal(summary["profit_after_capital"]) == current_profit - Decimal("400000.00")
+    # Fixture sanity: there really is a sold trip driving current_profit.
+    assert fx["sale"] is not None
+
+
+@pytest.mark.django_db
 def test_dashboard_summary_requires_reports_permission():
     role = _make_role_without_reports("DASH")
     user = User.objects.create_user(phone="+2220000013", pin="1234", role=role)

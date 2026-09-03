@@ -5,11 +5,13 @@ from decimal import Decimal
 
 import pytest
 from django.contrib.contenttypes.models import ContentType
+from django.core.files.uploadedfile import SimpleUploadedFile
 
 from apps.accounts.models import Role, User
 from apps.core.models import Product
 from apps.customers.models import Customer
 from apps.finance.models import (
+    BankAccount,
     CashAccount,
     CustomerPayment,
     Expense,
@@ -24,6 +26,7 @@ from apps.finance.models import (
     TreasuryTransaction,
 )
 from apps.finance.services import (
+    ShareholderContributionService,
     ShareholderDistributionService,
     ShareholderLedgerService,
     ShareholderProfitPreviewService,
@@ -629,6 +632,57 @@ def test_general_expenses_paid_ignores_unpaid_and_allocated_expenses():
     )
 
     assert preview["general_expenses_paid"] == paid.amount
+
+
+@pytest.mark.django_db
+def test_profit_after_capital_equals_net_profit_when_no_capital_contributed():
+    admin_user = _make_admin("PAC-NOCAP")
+    _make_full_trip("PAC-NOCAP", admin_user)
+    Shareholder.objects.create(
+        name="PAC No Cap", participation_percent=Decimal("100"), contribution=Decimal("0.00")
+    )
+
+    preview = ShareholderProfitPreviewService.get_preview(
+        date_from="2026-08-01", date_to="2026-08-31"
+    )
+
+    assert preview["total_capital_contributed"] == Decimal("0.00")
+    assert preview["profit_after_capital"] == preview["net_profit"]
+
+
+@pytest.mark.django_db
+def test_profit_after_capital_subtracts_total_capital_contributed():
+    admin_user = _make_admin("PAC-CAP")
+    _make_full_trip("PAC-CAP", admin_user)
+    Shareholder.objects.create(
+        name="PAC Cap A", participation_percent=Decimal("60"), contribution=Decimal("2000000.00")
+    )
+    Shareholder.objects.create(
+        name="PAC Cap B", participation_percent=Decimal("40"), contribution=Decimal("500000.00")
+    )
+    bank = BankAccount.objects.create(name="PAC Bank", opening_balance=Decimal("0.00"))
+    contributor = Shareholder.objects.create(
+        name="PAC Cap C", participation_percent=Decimal("0"), contribution=Decimal("0.00")
+    )
+    ShareholderContributionService.record_contribution(
+        shareholder_id=contributor.id,
+        amount=Decimal("1000000.00"),
+        date="2026-08-10",
+        actor=admin_user,
+        attachment=SimpleUploadedFile("proof.jpg", b"fake-bytes", content_type="image/jpeg"),
+        bank_account_id=bank.id,
+    )
+
+    preview = ShareholderProfitPreviewService.get_preview(
+        date_from="2026-08-01", date_to="2026-08-31"
+    )
+
+    assert preview["total_capital_contributed"] == Decimal("3500000.00")
+    assert preview["profit_after_capital"] == (
+        preview["net_profit"] - Decimal("3500000.00")
+    )
+    # net_profit itself must stay exactly what it was before capital ever entered the picture.
+    assert preview["net_profit"] == preview["operational_profit"]
 
 
 # ---------------------------------------------------------------------------

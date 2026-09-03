@@ -191,8 +191,16 @@ class DashboardViewSet(viewsets.ViewSet):
         # above, not scoped by date_from/date_to. The Benefices page
         # (Actionnaires/Associes) stays the single detailed source; the
         # dashboard never breaks this down per trip or per shareholder.
+        # Single call, fields reused below - avoids a second, possibly
+        # divergent computation of total_capital_contributed/
+        # profit_after_capital alongside the one the Benefices page's
+        # profit-preview endpoint already uses (ShareholderProfitPreviewService
+        # is the sole owner of that formula).
+        profit_preview = ShareholderProfitPreviewService.get_preview()
         shareholders_summary = {
-            "current_profit": ShareholderProfitPreviewService.get_preview()["current_profit"],
+            "current_profit": profit_preview["current_profit"],
+            "total_capital_contributed": profit_preview["total_capital_contributed"],
+            "profit_after_capital": profit_preview["profit_after_capital"],
             "total_withdrawn": ShareholderWithdrawal.objects.aggregate(total=Sum("amount"))[
                 "total"
             ]

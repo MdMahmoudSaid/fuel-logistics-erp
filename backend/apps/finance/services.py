@@ -2025,6 +2025,17 @@ class ShareholderProfitPreviewService:
         )
         net_profit = operational_profit - general_expenses_paid
 
+        # "Resultat apres capital" backlog: total_capital_contributed reuses
+        # ShareholderContributionService.get_total_capital() verbatim (opening
+        # Shareholder.contribution balances + posted ShareholderContribution
+        # rows) - no second capital query path. profit_after_capital is a
+        # purely additive, informational figure; it must never feed
+        # indicative_share (still net_profit-based below) or
+        # ShareholderProfitDistribution, per the explicit product decision to
+        # keep distributions on net_profit only.
+        total_capital_contributed = ShareholderContributionService.get_total_capital()
+        profit_after_capital = net_profit - total_capital_contributed
+
         # Bug fix (2026-09-03 recette manuelle, page Benefices): the
         # distributable amount must be the net profit (after general
         # expenses actually paid), never the raw operational/current
@@ -2049,6 +2060,8 @@ class ShareholderProfitPreviewService:
             "operational_profit": operational_profit,
             "general_expenses_paid": general_expenses_paid,
             "net_profit": net_profit,
+            "total_capital_contributed": total_capital_contributed,
+            "profit_after_capital": profit_after_capital,
             "shareholders": shareholders,
         }
 
