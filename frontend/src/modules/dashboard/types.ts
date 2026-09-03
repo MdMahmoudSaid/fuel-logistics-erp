@@ -60,6 +60,8 @@ export interface DashboardSummary {
   // per shareholder.
   shareholders_summary: {
     current_profit: string
+    total_capital_contributed: string
+    profit_after_capital: string
     total_withdrawn: string
     remaining_undistributed: string
     open_loans_total: string

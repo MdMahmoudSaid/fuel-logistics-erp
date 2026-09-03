@@ -186,7 +186,9 @@
       "debtOther": "أخرى",
       "shareholdersWithdrawn": "إجمالي المسحوب",
       "shareholdersRemaining": "الربح المتبقي غير الموزع",
-      "shareholdersOpenLoans": "السلف المفتوحة"
+      "shareholdersOpenLoans": "السلف المفتوحة",
+      "shareholdersCapitalContributed": "إجمالي رأس المال المُقدَّم",
+      "shareholdersProfitAfterCapital": "النتيجة بعد رأس المال"
     },
     "viewDetails": "عرض التفاصيل",
     "viewAll": "عرض الكل"
@@ -972,6 +974,10 @@
       "generalExpensesPaidHelp": "مصروفات غير مرتبطة برحلة، مدفوعة فعلياً خلال الفترة (إيجار، رواتب، إلخ).",
       "netProfit": "الربح الصافي",
       "netProfitHelp": "الربح التشغيلي ناقص المصروفات العامة المدفوعة خلال الفترة.",
+      "totalCapitalContributed": "إجمالي رأس المال المُقدَّم",
+      "totalCapitalContributedHelp": "الأرصدة الافتتاحية للشركاء بالإضافة إلى جميع مساهمات رأس المال المسجلة.",
+      "profitAfterCapital": "النتيجة بعد رأس المال",
+      "profitAfterCapitalHelp": "الربح الصافي ناقص إجمالي رأس المال المُقدَّم. للعلم فقط — لا يُستخدم أبدًا كأساس للتوزيع على الشركاء.",
       "receivedProfit": "الربح المحصّل",
       "receivedProfitHelp": "الجزء المحصل فعلياً عند توفر بيانات التحصيل.",
       "distributableProfit": "الربح القابل للتوزيع",

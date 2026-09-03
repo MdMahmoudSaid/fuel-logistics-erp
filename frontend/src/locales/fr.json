@@ -186,7 +186,9 @@
       "debtOther": "Autres",
       "shareholdersWithdrawn": "Total retiré",
       "shareholdersRemaining": "Bénéfice restant non retiré",
-      "shareholdersOpenLoans": "Avances ouvertes"
+      "shareholdersOpenLoans": "Avances ouvertes",
+      "shareholdersCapitalContributed": "Capital total apporté",
+      "shareholdersProfitAfterCapital": "Résultat après capital"
     },
     "viewDetails": "Voir le détail",
     "viewAll": "Voir tous"
@@ -974,6 +976,10 @@
       "generalExpensesPaidHelp": "Dépenses non liées à un trajet, réellement payées sur la période (loyer, salaires, etc.).",
       "netProfit": "Bénéfice net",
       "netProfitHelp": "Bénéfice opérationnel moins les dépenses générales payées sur la période.",
+      "totalCapitalContributed": "Capital total apporté",
+      "totalCapitalContributedHelp": "Solde d'ouverture des associés plus tous les apports en capital enregistrés.",
+      "profitAfterCapital": "Résultat après capital",
+      "profitAfterCapitalHelp": "Bénéfice net moins le capital total apporté. Indicatif uniquement — ne sert jamais de base à la répartition aux associés.",
       "receivedProfit": "Bénéfice encaissé",
       "receivedProfitHelp": "Partie réellement encaissée si les encaissements sont disponibles.",
       "distributableProfit": "Bénéfice distribuable",

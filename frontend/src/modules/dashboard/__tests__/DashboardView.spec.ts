@@ -48,6 +48,8 @@ const summary: DashboardSummary = {
   },
   shareholders_summary: {
     current_profit: '900000.00',
+    total_capital_contributed: '400000.00',
+    profit_after_capital: '500000.00',
     total_withdrawn: '300000.00',
     remaining_undistributed: '600000.00',
     open_loans_total: '50000.00',
@@ -513,6 +515,15 @@ describe('DashboardView', () => {
 
     expect(wrapper.text()).toContain('Fond de roulement')
     expect(wrapper.text()).toContain('19 200 000 XOF')
+  })
+
+  it('shows total capital contributed and profit after capital in the shareholders section', async () => {
+    const wrapper = mount(DashboardView, { global: { plugins: [makeRouter()] } })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Résultat après capital')
+    expect(wrapper.text()).toContain('400 000 XOF')
+    expect(wrapper.text()).toContain('500 000 XOF')
   })
 
   it('keeps action work prominent, live trips compact, and period detail collapsed', async () => {

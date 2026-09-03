@@ -983,6 +983,28 @@ const compactEnRouteTrips = computed(() => enRouteTrips.value.slice(0, 5))
                 />
               </dd>
             </div>
+            <div class="border-ligne flex justify-between border-t pt-1">
+              <dt class="text-texte-2">
+                {{ t('dashboard.fields.shareholdersCapitalContributed') }}
+              </dt>
+              <dd class="text-texte font-medium">
+                <MonoValue
+                  v-bind="
+                    formatMoneyParts(summary.shareholders_summary.total_capital_contributed)
+                  "
+                />
+              </dd>
+            </div>
+            <div class="flex justify-between">
+              <dt class="text-texte-2">
+                {{ t('dashboard.fields.shareholdersProfitAfterCapital') }}
+              </dt>
+              <dd class="text-texte font-medium">
+                <MonoValue
+                  v-bind="formatMoneyParts(summary.shareholders_summary.profit_after_capital)"
+                />
+              </dd>
+            </div>
           </dl>
         </section>
       </div>

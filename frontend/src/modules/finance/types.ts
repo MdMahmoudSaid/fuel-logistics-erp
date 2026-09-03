@@ -583,5 +583,9 @@ export interface ShareholderProfitPreview {
   operational_profit: string
   general_expenses_paid: string
   net_profit: string
+  // "Resultat apres capital" backlog: informational only, never feeds
+  // indicative_share (still net_profit-based) or a distribution's total_profit.
+  total_capital_contributed: string
+  profit_after_capital: string
   shareholders: ShareholderProfitPreviewShare[]
 }

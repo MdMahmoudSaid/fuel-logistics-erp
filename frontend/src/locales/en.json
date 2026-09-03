@@ -186,7 +186,9 @@
       "debtOther": "Other",
       "shareholdersWithdrawn": "Total withdrawn",
       "shareholdersRemaining": "Remaining undistributed profit",
-      "shareholdersOpenLoans": "Open loans"
+      "shareholdersOpenLoans": "Open loans",
+      "shareholdersCapitalContributed": "Total capital contributed",
+      "shareholdersProfitAfterCapital": "Profit after capital"
     },
     "viewDetails": "View details",
     "viewAll": "View all"
@@ -972,6 +974,10 @@
       "generalExpensesPaidHelp": "Non-trip expenses actually paid during the period (rent, salaries, etc.).",
       "netProfit": "Net profit",
       "netProfitHelp": "Operational profit minus general expenses paid during the period.",
+      "totalCapitalContributed": "Total capital contributed",
+      "totalCapitalContributedHelp": "Shareholders' opening balances plus all recorded capital contributions.",
+      "profitAfterCapital": "Profit after capital",
+      "profitAfterCapitalHelp": "Net profit minus total capital contributed. Informational only — never used as the basis for distributions to shareholders.",
       "receivedProfit": "Received profit",
       "receivedProfitHelp": "Part actually collected when collection data is available.",
       "distributableProfit": "Distributable profit",

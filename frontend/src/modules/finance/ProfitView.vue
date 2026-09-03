@@ -282,6 +282,38 @@ function onDateRangeChange(value: DateRangeValue) {
         </div>
       </section>
 
+      <!-- "Resultat apres capital" backlog: informational only, sourced from
+           the same preview as the cards above - never recomputed here, never
+           a basis for shareholder distributions (those stay net_profit-based,
+           see distributionNote below). -->
+      <section v-if="preview" class="grid gap-3 sm:grid-cols-2">
+        <div data-test="profit-after-capital-card" class="border-ligne rounded-lg border bg-white p-4 shadow-sm">
+          <p class="text-texte-2 text-xs font-medium tracking-wide uppercase">
+            {{ t('finance.profit.totalCapitalContributed') }}
+          </p>
+          <p class="text-texte-2 mt-1 text-sm">
+            {{ t('finance.profit.totalCapitalContributedHelp') }}
+          </p>
+          <MonoValue
+            class="mt-2 text-lg font-semibold"
+            align="left"
+            :value="formatMoney(preview.total_capital_contributed)"
+          />
+          <p class="text-texte-2 mt-3 text-xs font-medium tracking-wide uppercase">
+            {{ t('finance.profit.profitAfterCapital') }}
+          </p>
+          <p class="text-texte-2 mt-1 text-sm">
+            {{ t('finance.profit.profitAfterCapitalHelp') }}
+          </p>
+          <MonoValue
+            class="mt-2 text-lg font-semibold"
+            :class="Number(preview.profit_after_capital) < 0 ? 'text-critique' : 'text-livre'"
+            align="left"
+            :value="formatMoney(preview.profit_after_capital)"
+          />
+        </div>
+      </section>
+
       <p class="border-ligne bg-sable text-texte rounded-lg border px-4 py-3 text-sm">
         {{ t('finance.profit.distributionNote') }}
       </p>

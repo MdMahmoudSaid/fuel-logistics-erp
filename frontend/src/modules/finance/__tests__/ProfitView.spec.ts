@@ -29,6 +29,8 @@ describe('ProfitView', () => {
       operational_profit: '900000.00',
       general_expenses_paid: '150000.00',
       net_profit: '750000.00',
+      total_capital_contributed: '100000.00',
+      profit_after_capital: '650000.00',
       shareholders: [],
     })
     fetchReport.mockResolvedValue({
@@ -116,6 +118,17 @@ describe('ProfitView', () => {
     const banner = wrapper.findAll('.border-ecart').at(0)
     expect(banner!.text()).toContain('750 000 XOF')
     expect(banner!.text()).not.toContain('900 000 XOF')
+  })
+
+  it('shows total capital contributed and profit after capital, informational only', async () => {
+    const wrapper = mount(ProfitView)
+    await flushPromises()
+    await flushPromises()
+
+    const card = wrapper.find('[data-test="profit-after-capital-card"]')
+    expect(card.exists()).toBe(true)
+    expect(card.text()).toContain('100 000 XOF')
+    expect(card.text()).toContain('650 000 XOF')
   })
 
   it('refetches the trip table with ISO start_date and end_date when custom dates change', async () => {
