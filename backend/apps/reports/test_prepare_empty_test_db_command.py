@@ -130,7 +130,6 @@ def test_prepare_empty_test_db_resets_domain_data_to_zero_without_admin():
     assert LossToleranceConfig.objects.count() == 0
     assert Supplier.objects.count() == 0
     assert Customer.objects.count() == 0
-    assert Transporter.objects.count() == 0
     assert Truck.objects.count() == 0
     assert BankAccount.objects.count() == 0
     assert CashAccount.objects.count() == 0
@@ -140,10 +139,28 @@ def test_prepare_empty_test_db_resets_domain_data_to_zero_without_admin():
     assert CessionLetter.objects.count() == 0
     assert CustomerOrder.objects.count() == 0
     assert CustomerPayment.objects.count() == 0
-    assert ExpenseCategory.objects.count() == 0
     assert Shareholder.objects.count() == 0
     assert ShareholderContribution.objects.count() == 0
     assert not ExpenseCategory.objects.filter(pk=old_category.pk).exists()
+
+    # Bug fix (2026-09-03 recette manuelle): these two are never truly
+    # zero after a reset - both are required system infrastructure with
+    # no UI path to recreate them (ExpenseCategory.is_system=True rows
+    # power the trip-fee popup and ControlledDebtPaymentService's category
+    # buckets; the is_internal=True Transporter is required by
+    # Truck.save() for every COMPANY_OWNED truck). The old transporter and
+    # custom category created above are still gone - only the required
+    # system rows get recreated, nothing user-created survives.
+    assert Transporter.objects.count() == 1
+    internal_transporter = Transporter.objects.get()
+    assert internal_transporter.is_internal is True
+    assert internal_transporter.pk != old_transporter.pk
+
+    system_categories = ExpenseCategory.objects.filter(is_system=True)
+    assert set(system_categories.values_list("code", flat=True)) == {
+        "customs", "transit", "road_transit", "transport", "loading", "road",
+    }
+    assert ExpenseCategory.objects.exclude(is_system=True).count() == 0
 
 
 @pytest.mark.django_db

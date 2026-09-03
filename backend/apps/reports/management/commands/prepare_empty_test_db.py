@@ -69,10 +69,25 @@ class Command(BaseCommand):
 
         with transaction.atomic():
             self._delete_all_test_data()
+            self._reseed_required_system_rows()
             admin = self._create_admin() if options["with_admin"] else None
             counts = self._domain_counts()
 
-        ignored_counts = {"users"} if admin else set()
+        # Bug fix (2026-09-03 recette manuelle): expense_categories and
+        # transporters are never truly zero after this reset anymore -
+        # _reseed_required_system_rows() recreates the is_system=True
+        # ExpenseCategory rows (customs/transit/road_transit/road/loading/
+        # transport - hardcoded elsewhere by code string, e.g.
+        # ControlledDebtPaymentService, and impossible to recreate through
+        # the UI, which only lets a user create non-system categories) and
+        # the single is_internal=True Transporter ("Flotte propre /
+        # Interne" - Truck.save() requires it for every COMPANY_OWNED
+        # truck and there is no UI path to mark a transporter internal
+        # either). Both are always-ignored counts now, same treatment as
+        # "users" when --with-admin recreates one.
+        ignored_counts = {"expense_categories", "transporters"} | (
+            {"users"} if admin else set()
+        )
         remaining = {
             name: count
             for name, count in counts.items()
@@ -87,6 +102,13 @@ class Command(BaseCommand):
         self.stdout.write("=== Base vide prete ===")
         self.stdout.write(f"Base verifiee: {connection.settings_dict.get('NAME')}")
         self.stdout.write("Donnees metier: 0")
+        self.stdout.write(
+            f"Categories systeme recreees: {ExpenseCategory.objects.filter(is_system=True).count()}"
+        )
+        self.stdout.write(
+            "Transporteur interne recree: "
+            + (Transporter.objects.get(is_internal=True).name)
+        )
         self.stdout.write(f"Utilisateurs: {User.objects.count()}")
         if admin:
             self.stdout.write(f"Admin cree: {admin.phone} / PIN 1234")
@@ -167,6 +189,27 @@ class Command(BaseCommand):
             User,
         ]:
             model.objects.all().delete()
+
+    def _reseed_required_system_rows(self):
+        # Bug fix (2026-09-03 recette manuelle): mirrors the exact seed
+        # data of finance/migrations/0014_expensecategory.py and
+        # transport/migrations/0004_truck_owner_transporter_mandatory.py -
+        # RunPython data migrations only ever run once (on first apply),
+        # never again just because the rows they created were later
+        # deleted, so this reset must recreate them itself.
+        system_categories = [
+            ("customs", "Customs", 0),
+            ("transit", "Transit", 2),
+            ("road_transit", "Road transit", 3),
+            ("transport", "Transport", 4),
+            ("loading", "Loading", 5),
+            ("road", "Road", 7),
+        ]
+        for code, name, display_order in system_categories:
+            ExpenseCategory.objects.create(
+                code=code, name=name, is_system=True, display_order=display_order
+            )
+        Transporter.objects.create(name="Flotte propre / Interne", is_internal=True)
 
     def _create_admin(self):
         admin_permissions = {module: Role.ACTIONS for module in Role.MODULES}
