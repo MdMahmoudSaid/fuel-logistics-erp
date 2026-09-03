@@ -66,6 +66,35 @@ const trips: Trip[] = [
     created_at: todayIso,
     updated_at: todayIso,
   },
+  {
+    id: 3,
+    reference: 'TRIP-CANCELLED',
+    truck: 3,
+    truck_detail: null,
+    transporter: 1,
+    transporter_detail: { id: 1, name: 'Transporteur 1' },
+    driver: null,
+    driver_detail: null,
+    supplier: 1,
+    supplier_detail: { id: 1, name: 'Supplier 1' },
+    supplier_order: 1,
+    cession_letter: 1,
+    product: 1,
+    product_detail: { id: 1, name: 'Gasoil', code: 'GO' },
+    quantity_loaded: '8000.00',
+    client: null,
+    client_detail: null,
+    customer_order: null,
+    destination_type: 'COMPANY_STOCK',
+    loading_date: todayIso,
+    bl_reference: 'BL-3',
+    status: 'CANCELLED',
+    notes: '',
+    created_by: null,
+    created_by_detail: null,
+    created_at: todayIso,
+    updated_at: todayIso,
+  },
 ]
 
 const tripList = vi.fn(async () => ({
@@ -118,6 +147,23 @@ describe('TripStatusBoard', () => {
     expect(stockChip?.classes()).not.toContain('bg-orange-tint')
     expect(wrapper.text()).toContain('TRIP-STOCK')
     expect(wrapper.text()).toContain('TRIP-TRANSIT')
+    // "Tous" = active trips only - a cancelled trip stays out of it (bug
+    // fix, 2026-09-03 recette manuelle: it now has its own "Annulés" tab
+    // instead of being simply unreachable).
+    expect(wrapper.text()).not.toContain('TRIP-CANCELLED')
+  })
+
+  it('shows only cancelled trips under the Annulés filter', async () => {
+    const { wrapper } = await mountAt('/trips')
+
+    const cancelledChip = wrapper.findAll('button').find((button) => button.text() === 'Annulés')
+    expect(cancelledChip).toBeTruthy()
+    await cancelledChip!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('TRIP-CANCELLED')
+    expect(wrapper.text()).not.toContain('TRIP-STOCK')
+    expect(wrapper.text()).not.toContain('TRIP-TRANSIT')
   })
 
   it('opens /company-stock with only company stock trips visible', async () => {

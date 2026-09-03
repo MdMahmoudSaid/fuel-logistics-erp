@@ -343,6 +343,7 @@
       "expensesLoadError": "Could not load this trip's expenses.",
       "cancelExpense": "Cancel",
       "expenseCancelled": "Cancelled fee",
+      "transportPaymentCancelled": "Cancelled transport payment",
       "addTransportFee": "+ Add transport fee (per litre)",
       "margin": "Trip profitability",
       "marginUnavailable": "Available once delivery is confirmed.",
@@ -935,6 +936,20 @@
         "loansLent": "Loans lent",
         "loansBorrowed": "Loans borrowed",
         "availableBalance": "Available balance"
+      },
+      "totalContributed": "Capital contributed",
+      "capital": {
+        "title": "Capital",
+        "totalContributed": "Capital contributed (total)",
+        "help": "Cash actually injected by the shareholder — separate from distributable profit.",
+        "date": "Date",
+        "amount": "Amount",
+        "account": "Account",
+        "reference": "Reference",
+        "notes": "Note",
+        "proof": "Proof",
+        "viewProof": "View",
+        "empty": "No capital contribution recorded for this shareholder yet."
       },
       "preview": {
         "badge": "Indicative",

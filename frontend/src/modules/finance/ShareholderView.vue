@@ -14,6 +14,7 @@ import {
   fetchShareholderLedger,
   fetchShareholderProfitPreview,
   recordShareholderLoanRepayment,
+  shareholderContributionResource,
   shareholderDistributionResource,
   shareholderLoanResource,
   shareholderResource,
@@ -22,6 +23,7 @@ import {
 } from './api'
 import type {
   Shareholder,
+  ShareholderContribution,
   ShareholderLedger,
   ShareholderLoan,
   ShareholderProfitDistribution,
@@ -352,11 +354,34 @@ const ledger = ref<ShareholderLedger | null>(null)
 const ledgerLoading = ref(false)
 const ledgerError = ref('')
 
+// Capital apporte history (bug fix, 2026-09-03 recette manuelle) - the
+// ledger endpoint only carries the total_contributed aggregate; the
+// itemized history comes straight from the existing
+// /api/shareholder-contributions/?shareholder= endpoint (already used by
+// ContributionForm's create flow), so this page never needs a second
+// backend representation of the same rows.
+const contributions = ref<ShareholderContribution[]>([])
+
+async function loadContributions(shareholderId: number) {
+  const data = await shareholderContributionResource.list({ shareholder: shareholderId })
+  contributions.value = [...data.results]
+}
+
+function contributionAccountLabel(c: ShareholderContribution): string {
+  if (c.bank_account) return bankAccounts.value.find((a) => a.id === c.bank_account)?.name ?? '—'
+  if (c.cash_account) return cashAccounts.value.find((a) => a.id === c.cash_account)?.name ?? '—'
+  return '—'
+}
+
 async function loadLedger(shareholderId: number) {
   ledgerLoading.value = true
   ledgerError.value = ''
   try {
-    ledger.value = await fetchShareholderLedger(shareholderId)
+    const [ledgerData] = await Promise.all([
+      fetchShareholderLedger(shareholderId),
+      loadContributions(shareholderId),
+    ])
+    ledger.value = ledgerData
   } catch {
     ledgerError.value = t('finance.shareholder.ledger.loadError')
   } finally {
@@ -457,6 +482,9 @@ async function onViewLedger() {
               <th class="px-3 py-2.5 text-end font-medium">
                 {{ t('masterData.fields.contribution') }}
               </th>
+              <th class="px-3 py-2.5 text-end font-medium">
+                {{ t('finance.shareholder.totalContributed') }}
+              </th>
               <th class="px-3 py-2.5 font-medium">{{ t('masterData.fields.phone') }}</th>
               <th class="px-3 py-2.5 font-medium">{{ t('masterData.fields.active') }}</th>
               <th class="px-3 py-2.5"></th>
@@ -471,6 +499,9 @@ async function onViewLedger() {
               <td class="px-3 py-2.5 text-end">
                 <MonoValue :value="formatMoney(s.contribution)" />
               </td>
+              <td class="px-3 py-2.5 text-end">
+                <MonoValue :value="formatMoney(s.total_contributed)" />
+              </td>
               <td class="px-3 py-2.5">{{ s.phone || '—' }}</td>
               <td class="px-3 py-2.5">
                 <Badge :variant="s.is_active ? 'livre' : 'neutre'">
@@ -484,7 +515,7 @@ async function onViewLedger() {
               </td>
             </tr>
             <tr v-if="shareholders.length === 0">
-              <td colspan="6" class="text-texte-3 px-3 py-8 text-center">
+              <td colspan="7" class="text-texte-3 px-3 py-8 text-center">
                 {{ t('masterData.noRecords') }}
               </td>
             </tr>
@@ -995,6 +1026,73 @@ async function onViewLedger() {
           </div>
         </section>
 
+        <!-- Capital apporte: deliberately its own section, never merged
+             into the totalDue/remainingDue/availableBalance cards above -
+             capital is not distributable profit (Phase 1 design doc). -->
+        <section class="border-ligne mb-5 rounded-xl border p-4">
+          <div class="mb-3 flex items-center justify-between">
+            <h3 class="text-texte font-semibold">{{ t('finance.shareholder.capital.title') }}</h3>
+            <MonoValue
+              class="text-lg font-semibold"
+              align="left"
+              :value="formatMoney(ledger.total_contributed)"
+            />
+          </div>
+          <p class="text-texte-3 mb-3 text-xs">{{ t('finance.shareholder.capital.help') }}</p>
+          <div class="overflow-x-auto">
+            <table class="w-full text-start text-sm">
+              <thead>
+                <tr class="border-ligne text-texte-2 border-b">
+                  <th class="px-2 py-1.5 font-medium">{{ t('finance.shareholder.capital.date') }}</th>
+                  <th class="px-2 py-1.5 text-end font-medium">
+                    {{ t('finance.shareholder.capital.amount') }}
+                  </th>
+                  <th class="px-2 py-1.5 font-medium">
+                    {{ t('finance.shareholder.capital.account') }}
+                  </th>
+                  <th class="px-2 py-1.5 font-medium">
+                    {{ t('finance.shareholder.capital.reference') }}
+                  </th>
+                  <th class="px-2 py-1.5 font-medium">{{ t('finance.shareholder.capital.notes') }}</th>
+                  <th class="px-2 py-1.5 font-medium">{{ t('finance.shareholder.capital.proof') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="c in contributions"
+                  :key="c.id"
+                  class="border-ligne border-b last:border-0"
+                >
+                  <td class="px-2 py-1.5">{{ c.date }}</td>
+                  <td class="px-2 py-1.5 text-end">
+                    <MonoValue :value="formatMoney(c.amount)" />
+                  </td>
+                  <td class="px-2 py-1.5">{{ contributionAccountLabel(c) }}</td>
+                  <td class="px-2 py-1.5">{{ c.reference || '—' }}</td>
+                  <td class="px-2 py-1.5">{{ c.notes || '—' }}</td>
+                  <td class="px-2 py-1.5">
+                    <a
+                      v-if="c.proof_url"
+                      :href="c.proof_url"
+                      target="_blank"
+                      rel="noopener"
+                      class="text-bitume underline"
+                    >
+                      {{ t('finance.shareholder.capital.viewProof') }}
+                    </a>
+                    <span v-else>—</span>
+                  </td>
+                </tr>
+                <tr v-if="contributions.length === 0">
+                  <td colspan="6" class="text-texte-3 px-2 py-4 text-center">
+                    {{ t('finance.shareholder.capital.empty') }}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <h3 class="text-texte-2 mb-2 text-sm font-medium">
@@ -1076,7 +1174,12 @@ async function onViewLedger() {
       @close="showContributionForm = false"
     >
       <ContributionForm
-        @success="showContributionForm = false"
+        @success="
+          () => {
+            showContributionForm = false
+            loadShareholders()
+          }
+        "
         @cancel="showContributionForm = false"
       />
     </Modal>

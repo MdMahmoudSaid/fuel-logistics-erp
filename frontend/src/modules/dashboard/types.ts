@@ -68,6 +68,8 @@ export interface DashboardSummary {
     period_revenue: string
     period_collections: string
     period_paid_expenses: string
+    period_treasury_in: string
+    period_treasury_out: string
     period_accounting_profit: string
     current_treasury_balance: string
   }

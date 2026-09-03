@@ -344,6 +344,7 @@
       "expensesLoadError": "Impossible de charger les frais de ce trajet.",
       "cancelExpense": "Annuler",
       "expenseCancelled": "Frais annulé",
+      "transportPaymentCancelled": "Paiement transport annulé",
       "addTransportFee": "+ Ajouter des frais de transport (au litre)",
       "margin": "Rentabilité du trajet",
       "marginUnavailable": "Disponible une fois la livraison confirmée.",
@@ -937,6 +938,20 @@
         "loansLent": "Avances prêtées",
         "loansBorrowed": "Avances empruntées",
         "availableBalance": "Solde disponible"
+      },
+      "totalContributed": "Capital apporté",
+      "capital": {
+        "title": "Capital",
+        "totalContributed": "Capital apporté (total)",
+        "help": "Argent réellement injecté par l'associé — distinct du bénéfice distribuable.",
+        "date": "Date",
+        "amount": "Montant",
+        "account": "Compte",
+        "reference": "Référence",
+        "notes": "Note",
+        "proof": "Justificatif",
+        "viewProof": "Voir",
+        "empty": "Aucun apport en capital enregistré pour cet associé."
       },
       "preview": {
         "badge": "Indicatif",

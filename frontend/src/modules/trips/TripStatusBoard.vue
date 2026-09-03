@@ -28,7 +28,13 @@ const error = ref('')
 // les trajets livrés/annulés ont leur propre historique (TripDetail, listes
 // camion/commande) plutôt que de s'accumuler ici indéfiniment.
 type BusinessFilter =
-  'all' | 'in-progress' | 'company-stock' | 'to-deliver' | 'to-control' | 'delivered'
+  | 'all'
+  | 'in-progress'
+  | 'company-stock'
+  | 'to-deliver'
+  | 'to-control'
+  | 'delivered'
+  | 'cancelled'
 
 const BUSINESS_FILTERS: { key: BusinessFilter; label: string }[] = [
   { key: 'all', label: 'Tous' },
@@ -37,6 +43,11 @@ const BUSINESS_FILTERS: { key: BusinessFilter; label: string }[] = [
   { key: 'to-deliver', label: 'À livrer' },
   { key: 'to-control', label: 'À contrôler' },
   { key: 'delivered', label: 'Livrés' },
+  // Bug fix (2026-09-03 recette manuelle): cancelled trips were previously
+  // only reachable by excluding them from "Tous" - there was no way to
+  // actually consult them. "Tous" stays active-trips-only (unchanged
+  // semantics, see filteredTrips below); this is their own, separate tab.
+  { key: 'cancelled', label: 'Annulés' },
 ]
 
 function filterFromRoute(): BusinessFilter {
@@ -111,6 +122,9 @@ const filteredTrips = computed(() => {
   }
   if (selectedFilter.value === 'delivered') {
     return trips.value.filter((t) => ['DELIVERED', 'COMPLETED'].includes(t.status))
+  }
+  if (selectedFilter.value === 'cancelled') {
+    return trips.value.filter((t) => t.status === 'CANCELLED')
   }
   return trips.value.filter((t) => t.status !== 'CANCELLED')
 })

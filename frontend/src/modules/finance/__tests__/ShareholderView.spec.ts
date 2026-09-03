@@ -12,38 +12,47 @@ import { i18n } from '@/i18n'
 
 const fetchShareholderLedger = vi.fn()
 const fetchShareholderProfitPreview = vi.fn()
+const shareholderResourceList = vi.fn()
+const shareholderContributionResourceList = vi.fn()
 
 function emptyList() {
   return { count: 0, next: null, previous: null, results: [] }
 }
 
+function shareholderListPayload() {
+  return {
+    count: 1,
+    next: null,
+    previous: null,
+    results: [
+      {
+        id: 1,
+        name: 'Ahmed',
+        participation_percent: '100.00',
+        contribution: '1000000.00',
+        total_contributed: '10000000.00',
+        phone: '',
+        notes: '',
+        is_active: true,
+        created_at: '',
+        updated_at: '',
+      },
+    ],
+  }
+}
+
 vi.mock('../api', () => ({
   shareholderResource: {
-    list: vi.fn(async () => ({
-      count: 1,
-      next: null,
-      previous: null,
-      results: [
-        {
-          id: 1,
-          name: 'Ahmed',
-          participation_percent: '100.00',
-          contribution: '1000000.00',
-          phone: '',
-          notes: '',
-          is_active: true,
-          created_at: '',
-          updated_at: '',
-        },
-      ],
-    })),
+    list: (...args: unknown[]) => shareholderResourceList(...args),
     create: vi.fn(),
     update: vi.fn(),
   },
   shareholderLoanResource: { list: vi.fn(async () => emptyList()) },
   shareholderWithdrawalResource: { list: vi.fn(async () => emptyList()) },
   shareholderDistributionResource: { list: vi.fn(async () => emptyList()) },
-  shareholderContributionResource: { list: vi.fn(async () => emptyList()) },
+  shareholderContributionResource: {
+    list: (...args: unknown[]) => shareholderContributionResourceList(...args),
+  },
   fetchShareholderLedger: (...args: unknown[]) => fetchShareholderLedger(...args),
   fetchShareholderProfitPreview: (...args: unknown[]) => fetchShareholderProfitPreview(...args),
   validateShareholderDistribution: vi.fn(),
@@ -59,6 +68,8 @@ describe('ShareholderView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     i18n.global.locale.value = 'fr'
+    shareholderResourceList.mockResolvedValue(shareholderListPayload())
+    shareholderContributionResourceList.mockResolvedValue(emptyList())
     fetchShareholderProfitPreview.mockResolvedValue({
       period_start: '2026-08-01',
       period_end: null,
@@ -78,6 +89,7 @@ describe('ShareholderView', () => {
       total_withdrawn: '400000.00',
       remaining_due: '600000.00',
       available_balance: '615000.00',
+      total_contributed: '10000000.00',
       shares: [],
       loans_borrowed: [],
       loans_lent: [
@@ -163,6 +175,77 @@ describe('ShareholderView', () => {
     expect(arabic.text()).toContain('الربح الحالي الإرشادي')
     expect(arabic.text()).not.toContain('Résumé')
     expect(arabic.text()).not.toContain('Bénéfice indicatif actuel')
+  })
+
+  it('shows total_contributed (capital apporte) in the associates table, distinct from the static contribution field', async () => {
+    const wrapper = mount(ShareholderView)
+    await flushPromises()
+
+    await wrapper.findAll('button').find((b) => b.text() === 'Associés')!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Capital apporté')
+    expect(wrapper.text()).toContain('10 000 000 XOF')
+  })
+
+  it('refreshes the shareholders list after recording a contribution from the associates tab (bug fix: capital stayed at 0 until reload)', async () => {
+    const wrapper = mount(ShareholderView)
+    await flushPromises()
+    shareholderResourceList.mockClear()
+
+    await wrapper.findAll('button').find((b) => b.text() === 'Associés')!.trigger('click')
+    await flushPromises()
+    await wrapper.find('[data-testid="new-contribution-button"]').trigger('click')
+    await flushPromises()
+
+    const form = wrapper.findComponent({ name: 'ContributionForm' })
+    expect(form.exists()).toBe(true)
+    form.vm.$emit('success')
+    await flushPromises()
+
+    expect(shareholderResourceList).toHaveBeenCalled()
+  })
+
+  it("shows the shareholder's capital contribution history in the ledger tab", async () => {
+    shareholderContributionResourceList.mockResolvedValue({
+      count: 1,
+      next: null,
+      previous: null,
+      results: [
+        {
+          id: 5,
+          shareholder: 1,
+          shareholder_detail: { id: 1, name: 'Ahmed', participation_percent: '100.00' },
+          amount: '10000000.00',
+          date: '2026-09-03',
+          bank_account: null,
+          cash_account: null,
+          reference: 'APPORT-1',
+          notes: 'Apport initial',
+          proof_url: 'https://example.test/proof.jpg',
+          recorded_by: null,
+          recorded_by_detail: null,
+          created_at: '',
+          updated_at: '',
+        },
+      ],
+    })
+
+    const wrapper = mount(ShareholderView)
+    await flushPromises()
+
+    await wrapper.findAll('button').find((b) => b.text() === 'Grand livre')!.trigger('click')
+    await flushPromises()
+    await wrapper.find('#ledger_shareholder').setValue('1')
+    await wrapper.findAll('button').find((b) => b.text() === 'Afficher')!.trigger('click')
+    await flushPromises()
+
+    expect(shareholderContributionResourceList).toHaveBeenCalledWith({ shareholder: 1 })
+    expect(wrapper.text()).toContain('Capital')
+    expect(wrapper.text()).toContain('APPORT-1')
+    // total_contributed (10 000 000) rendered once for the summary card and
+    // once again as the single history row's amount.
+    expect(wrapper.text().match(/10 000 000 XOF/g)?.length).toBe(2)
   })
 
   it('opens the contribution form from the associates tab', async () => {

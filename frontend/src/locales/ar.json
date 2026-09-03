@@ -343,6 +343,7 @@
       "expensesLoadError": "تعذر تحميل مصاريف هذه الرحلة.",
       "cancelExpense": "إلغاء",
       "expenseCancelled": "رسم ملغى",
+      "transportPaymentCancelled": "دفعة نقل ملغاة",
       "addTransportFee": "+ إضافة رسوم نقل (لكل لتر)",
       "margin": "ربحية الرحلة",
       "marginUnavailable": "متاحة بعد تأكيد التسليم.",
@@ -935,6 +936,20 @@
         "loansLent": "سلف ممنوحة",
         "loansBorrowed": "سلف مقترضة",
         "availableBalance": "الرصيد المتاح"
+      },
+      "totalContributed": "رأس المال المساهم به",
+      "capital": {
+        "title": "رأس المال",
+        "totalContributed": "إجمالي رأس المال المساهم به",
+        "help": "أموال حقيقية أودعها المساهم — منفصلة عن الأرباح القابلة للتوزيع.",
+        "date": "التاريخ",
+        "amount": "المبلغ",
+        "account": "الحساب",
+        "reference": "المرجع",
+        "notes": "ملاحظة",
+        "proof": "المستند",
+        "viewProof": "عرض",
+        "empty": "لا يوجد مساهمة رأس مال مسجلة لهذا المساهم."
       },
       "preview": {
         "badge": "إرشادي",

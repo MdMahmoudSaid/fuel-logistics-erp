@@ -131,7 +131,14 @@ export interface TransporterAdvance {
 
 export type TransportPaymentCalculationMethod = 'FIXED' | 'PER_LITRE' | 'PER_DAY' | 'NEGOTIATED'
 export type TransportPaymentStatus =
-  'PLANNED' | 'PAYABLE' | 'PARTIALLY_PAID' | 'PAID' | 'DEDUCTION_APPLIED'
+  | 'PLANNED'
+  | 'PAYABLE'
+  | 'PARTIALLY_PAID'
+  | 'PAID'
+  | 'DEDUCTION_APPLIED'
+  // Bug fix (2026-09-03 recette manuelle): set when the underlying Trip is
+  // cancelled - see TransportPaymentCancellationService (backend).
+  | 'CANCELLED'
 
 export interface TransportPayment {
   id: number
@@ -400,6 +407,11 @@ export interface Shareholder {
   name: string
   participation_percent: string
   contribution: string
+  // Real cash injected via ShareholderContribution (Phase 1), distinct
+  // from `contribution` above (a historical opening-balance figure set at
+  // creation, never updated by a new apport). Annotated by
+  // ShareholderViewSet, always present in list/detail responses.
+  total_contributed: string
   phone: string
   notes: string
   is_active: boolean
@@ -540,6 +552,9 @@ export interface ShareholderLedger {
   // borrower, a liability) - the single number that gates both a
   // withdrawal and lending money to another associate.
   available_balance: string
+  // Real cash injected via ShareholderContribution - never mixed into
+  // available_balance above (capital is not distributable profit).
+  total_contributed: string
   shares: ShareholderLedgerShare[]
   loans_borrowed: ShareholderLedgerLoan[]
   loans_lent: ShareholderLedgerLoan[]

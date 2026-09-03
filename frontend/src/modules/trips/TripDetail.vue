@@ -578,8 +578,18 @@ const cessionProofUrl = computed(() => trip.value?.cession_letter_detail?.docume
                   {{ formatUnitMoney(transportPaymentUnitPrice(payment)) }} ·
                   {{ formatQuantity(trip.quantity_loaded) }}
                 </p>
+                <p
+                  v-if="payment.status === 'CANCELLED'"
+                  class="text-critique text-xs font-medium"
+                >
+                  {{ t('trips.detail.transportPaymentCancelled') }}
+                </p>
               </div>
-              <MonoValue :value="formatMoney(payment.base_amount)" align="left" />
+              <MonoValue
+                :value="formatMoney(payment.base_amount)"
+                align="left"
+                :class="payment.status === 'CANCELLED' ? 'text-texte-3 line-through' : ''"
+              />
             </li>
             <li
               v-for="expense in expenses"

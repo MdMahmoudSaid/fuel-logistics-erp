@@ -17,13 +17,20 @@ vi.mock('../api', async (importOriginal) => {
   }
 })
 
+const dashboardSummary = vi.fn(async () => ({
+  finance: { treasury_balance: '0' },
+  bank_amounts: { total: '0' },
+  cash_amounts: { total: '0' },
+  financial_summary: {
+    period_collections: '0',
+    period_paid_expenses: '0',
+    period_treasury_in: '0',
+    period_treasury_out: '0',
+  },
+}))
+
 vi.mock('@/modules/dashboard/api', () => ({
-  fetchDashboardSummary: vi.fn(async () => ({
-    finance: { treasury_balance: '0' },
-    bank_amounts: { total: '0' },
-    cash_amounts: { total: '0' },
-    financial_summary: { period_collections: '0', period_paid_expenses: '0' },
-  })),
+  fetchDashboardSummary: (...args: unknown[]) => dashboardSummary(...args),
 }))
 
 describe('TreasuryLedgerView', () => {
@@ -47,5 +54,25 @@ describe('TreasuryLedgerView', () => {
     await flushPromises()
 
     expect(wrapper.findComponent({ name: 'UiModal' }).exists()).toBe(true)
+  })
+
+  it('renders the Entrées/sorties card from period_treasury_in/out, not collections/paid_expenses', async () => {
+    dashboardSummary.mockResolvedValueOnce({
+      finance: { treasury_balance: '10000000' },
+      bank_amounts: { total: '10000000' },
+      cash_amounts: { total: '0' },
+      financial_summary: {
+        period_collections: '0',
+        period_paid_expenses: '0',
+        period_treasury_in: '10000000',
+        period_treasury_out: '0',
+      },
+    })
+
+    const wrapper = mount(TreasuryLedgerView)
+    await flushPromises()
+
+    const text = wrapper.text()
+    expect(text).toContain('10 000 000')
   })
 })

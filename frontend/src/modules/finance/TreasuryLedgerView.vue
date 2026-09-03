@@ -88,8 +88,8 @@ async function load() {
     balance.value = Number(summary.finance.treasury_balance)
     bankBalance.value = Number(summary.bank_amounts.total)
     cashBalance.value = Number(summary.cash_amounts.total)
-    periodIn.value = Number(summary.financial_summary.period_collections)
-    periodOut.value = Number(summary.financial_summary.period_paid_expenses)
+    periodIn.value = Number(summary.financial_summary.period_treasury_in)
+    periodOut.value = Number(summary.financial_summary.period_treasury_out)
   } catch {
     error.value = t('finance.treasuryLedger.loadError')
   } finally {

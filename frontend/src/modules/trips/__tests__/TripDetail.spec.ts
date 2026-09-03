@@ -368,6 +368,18 @@ describe('TripDetail expenses section', () => {
     expect(wrapper.findAll('button').find((b) => b.text() === 'Annuler')).toBeUndefined()
   })
 
+  // Bug fix (2026-09-03 recette manuelle): a TransportPayment cancelled
+  // alongside its trip (TripCancellationService, backend) used to render
+  // as a plain, active-looking line - no different from a real debt.
+  it('shows a cancelled transport payment as cancelled, struck through', async () => {
+    setUser({ operations: ['view'], finance: ['view'] })
+    transportPaymentsToReturn = [makeTransportPayment({ status: 'CANCELLED' })]
+
+    const wrapper = await mountAt()
+
+    expect(wrapper.text()).toContain('Paiement transport annulé')
+  })
+
   it('shows transporter commission together with trip expenses', async () => {
     setUser({ operations: ['view'], finance: ['view'] })
     transportPaymentsToReturn = [makeTransportPayment()]
