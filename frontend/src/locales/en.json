@@ -884,6 +884,7 @@
         "periodStart": "Period start",
         "periodEnd": "Period end",
         "totalProfit": "Total profit",
+        "exceedsNetProfitWarning": "This amount exceeds the net indicative profit not yet distributed.",
         "create": "Create distribution",
         "period": "Period",
         "status": "Status",

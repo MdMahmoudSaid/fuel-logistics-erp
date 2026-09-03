@@ -884,6 +884,7 @@
         "periodStart": "بداية الفترة",
         "periodEnd": "نهاية الفترة",
         "totalProfit": "إجمالي الربح",
+        "exceedsNetProfitWarning": "هذا المبلغ يتجاوز الربح الصافي الإرشادي غير الموزع بعد.",
         "create": "إنشاء التوزيع",
         "period": "الفترة",
         "status": "الحالة",

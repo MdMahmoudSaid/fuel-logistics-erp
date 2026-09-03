@@ -104,8 +104,12 @@ async function loadPreview() {
     // Pre-fill (not lock) the distribution form's total_profit from the
     // same engine, so a manager isn't typing a number from memory - still
     // freely editable before submit.
+    // Bug fix (2026-09-03 recette manuelle): this used to default to
+    // preview.current_profit (operational profit, ignoring general
+    // expenses) - the distributable base must be net_profit, same figure
+    // as the banner above and the per-shareholder indicative_share cards.
     if (!distributionForm.value.total_profit && preview.value) {
-      distributionForm.value.total_profit = preview.value.current_profit
+      distributionForm.value.total_profit = preview.value.net_profit
     }
   } catch {
     preview.value = null
@@ -173,6 +177,20 @@ const distributionForm = ref({ period_start: today(), period_end: today(), total
 const distributionError = ref('')
 const savingDistribution = ref(false)
 const expandedDistributionId = ref<number | null>(null)
+
+// Bug fix (2026-09-03 recette manuelle): a manager can still freely type
+// any total_profit (the field stays an editable estimate, not locked to
+// the live engine - existing distributions predate any real trip/expense
+// data and rely on that), but a warning now surfaces when the entered
+// amount exceeds the net profit indicative figure shown in the banner
+// above, so an over-distribution is a deliberate, visible choice rather
+// than an accident.
+const distributionExceedsNetProfit = computed(() => {
+  if (!preview.value) return false
+  const entered = Number(distributionForm.value.total_profit)
+  const available = Number(preview.value.net_profit)
+  return Number.isFinite(entered) && entered > available
+})
 
 async function loadDistributions() {
   const data = await shareholderDistributionResource.list()
@@ -575,6 +593,9 @@ async function onViewLedger() {
             required
             class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           />
+          <p v-if="distributionExceedsNetProfit" class="text-critique text-xs">
+            {{ t('finance.shareholder.distribution.exceedsNetProfitWarning') }}
+          </p>
         </div>
         <div class="flex items-end">
           <Button type="submit" variant="primary" class="w-full" :loading="savingDistribution">

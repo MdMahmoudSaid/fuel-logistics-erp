@@ -886,6 +886,7 @@
         "periodStart": "Début de période",
         "periodEnd": "Fin de période",
         "totalProfit": "Bénéfice total",
+        "exceedsNetProfitWarning": "Ce montant dépasse le bénéfice net indicatif non distribué.",
         "create": "Créer la répartition",
         "period": "Période",
         "status": "Statut",

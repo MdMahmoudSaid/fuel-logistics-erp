@@ -14,6 +14,11 @@ const fetchShareholderLedger = vi.fn()
 const fetchShareholderProfitPreview = vi.fn()
 const shareholderResourceList = vi.fn()
 const shareholderContributionResourceList = vi.fn()
+const shareholderDistributionResourceCreate = vi.fn(async (payload: Record<string, unknown>) => ({
+  id: 1,
+  status: 'DRAFT',
+  ...payload,
+}))
 
 function emptyList() {
   return { count: 0, next: null, previous: null, results: [] }
@@ -49,7 +54,10 @@ vi.mock('../api', () => ({
   },
   shareholderLoanResource: { list: vi.fn(async () => emptyList()) },
   shareholderWithdrawalResource: { list: vi.fn(async () => emptyList()) },
-  shareholderDistributionResource: { list: vi.fn(async () => emptyList()) },
+  shareholderDistributionResource: {
+    list: vi.fn(async () => emptyList()),
+    create: (payload: Record<string, unknown>) => shareholderDistributionResourceCreate(payload),
+  },
   shareholderContributionResource: {
     list: (...args: unknown[]) => shareholderContributionResourceList(...args),
   },
@@ -74,19 +82,21 @@ describe('ShareholderView', () => {
       period_start: '2026-08-01',
       period_end: null,
       // Bug fix (2026-09-03 recette manuelle): operational_profit
-      // (900 000) and net_profit (750 000, after 150 000 of general
+      // (850 000) and net_profit (750 000, after 100 000 of general
       // expenses paid) are intentionally different here so a test can
-      // tell apart a banner/share wired to the wrong one.
-      current_profit: '900000.00',
-      operational_profit: '900000.00',
-      general_expenses_paid: '150000.00',
+      // tell apart a banner/share/distribution-default wired to the
+      // wrong one - matches the exact recette example (850 000 / 100 000
+      // / 750 000, 80% share -> 600 000).
+      current_profit: '850000.00',
+      operational_profit: '850000.00',
+      general_expenses_paid: '100000.00',
       net_profit: '750000.00',
       shareholders: [
         {
           shareholder_id: 1,
           name: 'Ahmed',
-          participation_percent: '100.00',
-          indicative_share: '750000.00',
+          participation_percent: '80.00',
+          indicative_share: '600000.00',
         },
       ],
     })
@@ -126,7 +136,7 @@ describe('ShareholderView', () => {
   })
 
   // Bug fix (2026-09-03 recette manuelle): the banner used to show
-  // preview.current_profit (== operational_profit, 900 000 here) - it must
+  // preview.current_profit (== operational_profit, 850 000 here) - it must
   // now show preview.net_profit (750 000), matching the same net basis
   // already used by the per-shareholder indicative_share cards right
   // below it, so the two never contradict each other on this page.
@@ -136,11 +146,74 @@ describe('ShareholderView', () => {
 
     const banner = wrapper.findAll('.border-ecart').at(0)
     expect(banner!.text()).toContain('750 000 XOF')
-    expect(banner!.text()).not.toContain('900 000 XOF')
-    // The per-shareholder share (Ahmed, 100%) must equal the banner's net
-    // figure, not the operational one.
-    expect(banner!.text()).toContain('Ahmed (100.00%):')
-    expect(wrapper.text()).not.toContain('900 000 XOF')
+    expect(banner!.text()).not.toContain('850 000 XOF')
+    // The per-shareholder share (Ahmed, 80%) must equal 600 000 (80% of
+    // net profit), not the operational one.
+    expect(banner!.text()).toContain('Ahmed (80.00%):')
+    expect(banner!.text()).toContain('600 000 XOF')
+    expect(wrapper.text()).not.toContain('850 000 XOF')
+  })
+
+  // Bug fix (2026-09-03 recette manuelle): the "Repartition des benefices"
+  // tab's "Benefice total" field used to default to preview.current_profit
+  // (operational, 850 000 here) - it must default to preview.net_profit
+  // (750 000), matching the banner and per-shareholder cards above.
+  it('pre-fills the distribution form total_profit with net profit, not operational profit', async () => {
+    const wrapper = mount(ShareholderView)
+    await flushPromises()
+
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Répartition des bénéfices')!
+      .trigger('click')
+    await flushPromises()
+
+    const totalProfitInput = wrapper.find('#total_profit').element as HTMLInputElement
+    expect(totalProfitInput.value).toBe('750000.00')
+    expect(totalProfitInput.value).not.toBe('850000.00')
+  })
+
+  it('creates a distribution using the net-profit default when submitted unchanged', async () => {
+    const wrapper = mount(ShareholderView)
+    await flushPromises()
+
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Répartition des bénéfices')!
+      .trigger('click')
+    await flushPromises()
+
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(shareholderDistributionResourceCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ total_profit: '750000.00' }),
+    )
+  })
+
+  // The field stays a freely editable estimate (a manager can still type
+  // any number), but a warning now surfaces when it exceeds the net
+  // profit not yet distributed, instead of silently allowing it.
+  it('warns when the entered total_profit exceeds the indicative net profit', async () => {
+    const wrapper = mount(ShareholderView)
+    await flushPromises()
+
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Répartition des bénéfices')!
+      .trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain(
+      'Ce montant dépasse le bénéfice net indicatif non distribué.',
+    )
+
+    await wrapper.find('#total_profit').setValue('900000')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain(
+      'Ce montant dépasse le bénéfice net indicatif non distribué.',
+    )
   })
 
   it("loads a shareholder's ledger and shows the combined available_balance", async () => {
