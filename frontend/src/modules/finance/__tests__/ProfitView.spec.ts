@@ -46,6 +46,7 @@ describe('ProfitView', () => {
         'transport_cost',
         'customs_cost',
         'transit_cost',
+        'road_transit_cost',
         'border_cost',
         'loading_cost',
         'additional_costs',
@@ -69,6 +70,7 @@ describe('ProfitView', () => {
           transport_cost: '2925000.00',
           customs_cost: '10125000.00',
           transit_cost: '450000.00',
+          road_transit_cost: '50000.00',
           border_cost: '200000.00',
           loading_cost: '100000.00',
           additional_costs: '50000.00',
@@ -98,6 +100,24 @@ describe('ProfitView', () => {
     expect(wrapper.text()).toContain('2 250 000 XOF')
   })
 
+  // Bug fix (2026-09-03 recette manuelle): the top banner used to show the
+  // operational profit (900 000 in this fixture) under a "Benefice actuel
+  // indicatif" label, confusable with net profit - it must now show the
+  // real distributable net profit (750 000) labelled "Bénéfice net
+  // indicatif".
+  it('shows net profit, not operational profit, in the top indicative banner', async () => {
+    const wrapper = mount(ProfitView)
+    await flushPromises()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Bénéfice net indicatif')
+    expect(wrapper.text()).not.toContain('Bénéfice actuel indicatif')
+
+    const banner = wrapper.findAll('.border-ecart').at(0)
+    expect(banner!.text()).toContain('750 000 XOF')
+    expect(banner!.text()).not.toContain('900 000 XOF')
+  })
+
   it('refetches the trip table with ISO start_date and end_date when custom dates change', async () => {
     fetchReport.mockImplementation(async (_reportType, params) => ({
       report_type: 'margin-report',
@@ -118,6 +138,7 @@ describe('ProfitView', () => {
                 transport_cost: '0.00',
                 customs_cost: '0.00',
                 transit_cost: '0.00',
+                road_transit_cost: '0.00',
                 border_cost: '0.00',
                 loading_cost: '0.00',
                 additional_costs: '0.00',
@@ -142,6 +163,7 @@ describe('ProfitView', () => {
                 transport_cost: '0.00',
                 customs_cost: '0.00',
                 transit_cost: '0.00',
+                road_transit_cost: '0.00',
                 border_cost: '0.00',
                 loading_cost: '0.00',
                 additional_costs: '0.00',
@@ -215,12 +237,35 @@ describe('ProfitView', () => {
     await flushPromises()
 
     const cards = wrapper.findAll('[data-test="profit-cost-card"]')
-    expect(cards).toHaveLength(8)
+    expect(cards).toHaveLength(9)
     expect(cards[0]!.classes()).toEqual(
       expect.arrayContaining(['border-ligne', 'rounded-lg', 'border', 'bg-white', 'p-4']),
     )
     expect(cards[0]!.find('svg').exists()).toBe(true)
     expect(cards[0]!.find('.font-mono.tabular-nums').exists()).toBe(true)
+  })
+
+  // Bug fix (2026-09-03 recette manuelle): "Transit routiere" (road_transit_
+  // cost) used to be silently folded into "Autres frais comptabilises" -
+  // it must now have its own dedicated card, and "Autres frais" must not
+  // include it anymore.
+  it('shows a dedicated Transit routiere card, separate from Autres frais', async () => {
+    const wrapper = mount(ProfitView)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Frais transit routière comptabilisés')
+
+    const cards = wrapper.findAll('[data-test="profit-cost-card"]')
+    const roadTransitCard = cards.find((card) =>
+      card.text().includes('Frais transit routière comptabilisés'),
+    )
+    expect(roadTransitCard).toBeDefined()
+    expect(roadTransitCard!.text()).toContain('50 000 XOF')
+
+    const otherCard = cards.find((card) => card.text().includes('Autres frais comptabilisés'))
+    expect(otherCard).toBeDefined()
+    expect(otherCard!.text()).toContain('50 000 XOF')
+    expect(otherCard!.text()).not.toContain('100 000 XOF')
   })
 
   it('shows an empty state when the period has no trips', async () => {
@@ -249,6 +294,7 @@ describe('ProfitView', () => {
           transport_cost: '0.00',
           customs_cost: '0.00',
           transit_cost: '0.00',
+          road_transit_cost: '0.00',
           border_cost: '0.00',
           loading_cost: '0.00',
           additional_costs: '0.00',
@@ -271,6 +317,7 @@ describe('ProfitView', () => {
           transport_cost: '0.00',
           customs_cost: '0.00',
           transit_cost: '0.00',
+          road_transit_cost: '0.00',
           border_cost: '0.00',
           loading_cost: '0.00',
           additional_costs: '0.00',
@@ -293,6 +340,7 @@ describe('ProfitView', () => {
           transport_cost: '0.00',
           customs_cost: '0.00',
           transit_cost: '0.00',
+          road_transit_cost: '0.00',
           border_cost: '0.00',
           loading_cost: '0.00',
           additional_costs: '0.00',

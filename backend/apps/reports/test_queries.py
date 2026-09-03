@@ -343,6 +343,10 @@ def test_margin_report_row_includes_expanded_cost_breakdown_fields():
     )
     _allocate_expense(trip, Expense.Category.CUSTOMS, Decimal("1200000.00"), "CUST")
     _allocate_expense(trip, Expense.Category.TRANSIT, Decimal("300000.00"), "TRANSIT")
+    # Bug fix (2026-09-03 recette manuelle): ROAD_TRANSIT ("Transit
+    # routiere") used to fall into additional_costs - it must now get its
+    # own road_transit_cost line, same treatment as ROAD/LOADING below.
+    _allocate_expense(trip, Expense.Category.ROAD_TRANSIT, Decimal("50000.00"), "ROADTRANSIT")
     _allocate_expense(trip, Expense.Category.ROAD, Decimal("50000.00"), "ROAD")
     _allocate_expense(trip, Expense.Category.LOADING, Decimal("40000.00"), "LOADING")
     _allocate_expense(trip, Expense.Category.OTHER, Decimal("20000.00"), "OTHER")
@@ -369,10 +373,11 @@ def test_margin_report_row_includes_expanded_cost_breakdown_fields():
     assert row["transport_cost"] == Decimal("800000.00")
     assert row["customs_cost"] == Decimal("1200000.00")
     assert row["transit_cost"] == Decimal("300000.00")
+    assert row["road_transit_cost"] == Decimal("50000.00")
     assert row["border_cost"] == Decimal("50000.00")
     assert row["loading_cost"] == Decimal("40000.00")
     # additional_costs = other only, excluding
-    # customs/transit/transport/road/loading
+    # customs/transit/road_transit/transport/road/loading
     assert row["additional_costs"] == Decimal("20000.00")
     assert row["unit_selling_price"] == trip.sale.unit_selling_price
 
@@ -448,6 +453,42 @@ def test_shareholder_profit_preview_matches_margin_report_current_margin_sum():
     assert ShareholderProfitDistribution.objects.count() == 0
     # Fixture sanity: the trip really has a sale to margin.
     assert fx["sale"] is not None
+
+
+# Bug fix (2026-09-03 recette manuelle, page Benefices): with no general
+# expenses in the period, net_profit == operational_profit == current_profit,
+# so the test above can't tell current_profit-based shares apart from
+# net_profit-based ones - this one adds a paid general expense specifically
+# to prove indicative_share is computed from net_profit, not the raw
+# operational/current profit (850 000 operational - 100 000 dep. generales
+# payees = 750 000 net -> repartition must start from 750 000).
+@pytest.mark.django_db
+def test_shareholder_profit_preview_indicative_share_uses_net_profit_not_operational():
+    admin_user = _make_admin("PREVIEWNET")
+    fx = _make_full_trip("PREVIEWNET", admin_user)
+    shareholder = Shareholder.objects.create(
+        name="Preview Net", participation_percent=Decimal("100")
+    )
+
+    from apps.reports.services.profit import TripProfitService
+
+    operational_profit = TripProfitService.get_cost_breakdown(fx["trip"])["margin"]
+    general_expense_paid = Decimal("100000.00")
+    _general_expense(general_expense_paid, "PREVIEWNET", fx["trip"].loading_date)
+    expected_net_profit = operational_profit - general_expense_paid
+
+    preview = ShareholderProfitPreviewService.get_preview()
+
+    assert preview["operational_profit"] == operational_profit
+    assert preview["net_profit"] == expected_net_profit
+    assert preview["net_profit"] != preview["operational_profit"]
+
+    share = next(
+        s for s in preview["shareholders"] if s["shareholder_id"] == shareholder.id
+    )
+    assert share["indicative_share"] == expected_net_profit.quantize(Decimal("0.01"))
+    # The old (buggy) basis would have given the operational figure instead.
+    assert share["indicative_share"] != operational_profit.quantize(Decimal("0.01"))
 
 
 @pytest.mark.django_db

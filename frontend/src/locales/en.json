@@ -963,7 +963,7 @@
     "profit": {
       "title": "Profit",
       "loadError": "Could not load the profit report.",
-      "currentProfit": "Current indicative profit (not distributed)",
+      "netProfitIndicative": "Net indicative profit (not distributed)",
       "periodProfit": "Profit for the period",
       "accountingProfit": "Operational profit",
       "accountingProfitHelp": "Trips only (sales - recorded costs), before general expenses.",
@@ -983,6 +983,7 @@
       "transportCost": "Transport cost (recorded)",
       "customsCost": "Customs fees (recorded)",
       "transitCost": "Transit fees (recorded)",
+      "roadTransitCost": "Road transit fees (recorded)",
       "borderCost": "Border fees (recorded)",
       "loadingCost": "Loading fees (recorded)",
       "otherCosts": "Other fees (recorded)",

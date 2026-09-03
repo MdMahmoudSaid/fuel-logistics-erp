@@ -37,6 +37,7 @@ interface MarginRow {
   transport_cost: string
   customs_cost: string
   transit_cost: string
+  road_transit_cost: string
   border_cost: string
   loading_cost: string
   additional_costs: string
@@ -70,6 +71,13 @@ const lossIndemnity = computed(() =>
 const transportCost = computed(() => rows.value.reduce((sum, r) => sum + num(r.transport_cost), 0))
 const customsCost = computed(() => rows.value.reduce((sum, r) => sum + num(r.customs_cost), 0))
 const transitCost = computed(() => rows.value.reduce((sum, r) => sum + num(r.transit_cost), 0))
+// Bug fix (2026-09-03 recette manuelle): road_transit_cost ("Transit
+// routiere") used to have no dedicated card and was silently folded into
+// additional_costs - it now gets its own card, same as transit/border/
+// loading below.
+const roadTransitCost = computed(() =>
+  rows.value.reduce((sum, r) => sum + num(r.road_transit_cost), 0),
+)
 const borderCost = computed(() => rows.value.reduce((sum, r) => sum + num(r.border_cost), 0))
 const loadingCost = computed(() => rows.value.reduce((sum, r) => sum + num(r.loading_cost), 0))
 const otherCosts = computed(() => rows.value.reduce((sum, r) => sum + num(r.additional_costs), 0))
@@ -79,6 +87,7 @@ const costs = computed(() => [
   { key: 'lossIndemnity', value: lossIndemnity.value, icon: 'circle-dollar-sign' as IconName },
   { key: 'customsCost', value: customsCost.value, icon: 'landmark' as IconName },
   { key: 'transitCost', value: transitCost.value, icon: 'route' as IconName },
+  { key: 'roadTransitCost', value: roadTransitCost.value, icon: 'route' as IconName },
   { key: 'borderCost', value: borderCost.value, icon: 'shield-check' as IconName },
   { key: 'loadingCost', value: loadingCost.value, icon: 'package' as IconName },
   { key: 'otherCosts', value: otherCosts.value, icon: 'file-text' as IconName },
@@ -125,17 +134,21 @@ function onDateRangeChange(value: DateRangeValue) {
       {{ t('finance.profit.title') }}
     </h1>
 
-    <!-- Live, indicative current profit - same read-only preview shown on
-         the Actionnaires/Associes page, never a stored figure. -->
+    <!-- Live, indicative NET profit - after general expenses actually
+         paid, the real distributable figure (bug fix 2026-09-03 recette
+         manuelle: this banner used to show the operational profit under a
+         "Benefice actuel" label, easily confused with net profit). Same
+         read-only preview shown on the Actionnaires/Associes page, never a
+         stored figure. -->
     <div v-if="preview" class="border-ecart bg-ecart-tint rounded-xl border p-4">
       <div class="flex flex-wrap items-center justify-between gap-2">
         <div class="flex items-center gap-2">
           <Badge variant="transit">{{ t('finance.shareholder.preview.badge') }}</Badge>
-          <p class="text-texte-2 text-sm">{{ t('finance.profit.currentProfit') }}</p>
+          <p class="text-texte-2 text-sm">{{ t('finance.profit.netProfitIndicative') }}</p>
         </div>
         <MonoValue
           class="text-lg font-semibold"
-          :value="formatMoney(preview.current_profit)"
+          :value="formatMoney(preview.net_profit)"
         />
       </div>
     </div>

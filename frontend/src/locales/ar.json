@@ -963,7 +963,7 @@
     "profit": {
       "title": "الأرباح",
       "loadError": "تعذر تحميل تقرير الأرباح.",
-      "currentProfit": "الربح الحالي الإرشادي (غير موزع)",
+      "netProfitIndicative": "الربح الصافي الإرشادي (غير موزع)",
       "periodProfit": "ربح الفترة",
       "accountingProfit": "الربح التشغيلي",
       "accountingProfitHelp": "ربح الرحلات فقط (المبيعات - التكاليف المسجلة)، قبل خصم المصروفات العامة.",
@@ -983,6 +983,7 @@
       "transportCost": "تكلفة النقل المحتسبة",
       "customsCost": "رسوم الجمارك المحتسبة",
       "transitCost": "رسوم العبور المحتسبة",
+      "roadTransitCost": "رسوم العبور البري المحتسبة",
       "borderCost": "رسوم الحدود المحتسبة",
       "loadingCost": "رسوم التحميل المحتسبة",
       "otherCosts": "رسوم أخرى محتسبة",

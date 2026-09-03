@@ -2025,13 +2025,18 @@ class ShareholderProfitPreviewService:
         )
         net_profit = operational_profit - general_expenses_paid
 
+        # Bug fix (2026-09-03 recette manuelle, page Benefices): the
+        # distributable amount must be the net profit (after general
+        # expenses actually paid), never the raw operational/current
+        # profit - a shareholder's indicative share otherwise ignored
+        # general expenses entirely, overstating what's really available.
         shareholders = [
             {
                 "shareholder_id": shareholder.id,
                 "name": shareholder.name,
                 "participation_percent": shareholder.participation_percent,
                 "indicative_share": (
-                    current_profit * shareholder.participation_percent / Decimal("100")
+                    net_profit * shareholder.participation_percent / Decimal("100")
                 ).quantize(Decimal("0.01")),
             }
             for shareholder in Shareholder.objects.filter(is_active=True)

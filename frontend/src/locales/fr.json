@@ -965,7 +965,7 @@
     "profit": {
       "title": "Bénéfices",
       "loadError": "Impossible de charger le rapport de bénéfices.",
-      "currentProfit": "Bénéfice actuel indicatif (non distribué)",
+      "netProfitIndicative": "Bénéfice net indicatif (non distribué)",
       "periodProfit": "Bénéfice de la période",
       "accountingProfit": "Bénéfice opérationnel",
       "accountingProfitHelp": "Bénéfice des trajets uniquement (ventes - coûts comptabilisés), avant dépenses générales.",
@@ -985,6 +985,7 @@
       "transportCost": "Coût transport comptabilisé",
       "customsCost": "Frais douane comptabilisés",
       "transitCost": "Frais transit comptabilisés",
+      "roadTransitCost": "Frais transit routière comptabilisés",
       "borderCost": "Frais frontière comptabilisés",
       "loadingCost": "Frais chargement comptabilisés",
       "otherCosts": "Autres frais comptabilisés",
