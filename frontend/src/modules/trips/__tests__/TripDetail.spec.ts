@@ -866,7 +866,7 @@ describe('TripDetail expenses section', () => {
     const wrapper = await mountAt()
 
     const text = wrapper.text()
-    expect(text).toContain('611 XOF/L')
-    expect(text).toContain('39 XOF/L')
+    expect(text).toContain('611,11 XOF/L')
+    expect(text).toContain('38,89 XOF/L')
   })
 })
