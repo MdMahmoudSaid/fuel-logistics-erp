@@ -59,7 +59,9 @@ FULL_SEQUENCE_AFTER_ASSIGNED = [
     Trip.Status.CUSTOMS,
     Trip.Status.GOING_TO_CLIENT,
     Trip.Status.ARRIVED_AT_CLIENT,
-    Trip.Status.QUANTITY_CONTROL,
+    # Client correction (2026-09-04 recette): QUANTITY_CONTROL is no longer
+    # a mandatory intermediate stop - a trip is delivered directly from
+    # ARRIVED_AT_CLIENT (see TripWorkflowService.FORWARD_TRANSITIONS).
     Trip.Status.DELIVERED,
     Trip.Status.COMPLETED,
 ]
@@ -192,9 +194,11 @@ def _advance_to_completed(trip, actor):
     return trip
 
 
-def _advance_to_quantity_control(trip, actor):
-    # Stop right before DELIVERED - the status DeliveryService.record_delivery
-    # itself must reach via TripWorkflowService.
+def _advance_to_arrived_at_client(trip, actor):
+    # Stop at ARRIVED_AT_CLIENT - DeliveryService.record_delivery itself
+    # transitions on to DELIVERED via TripWorkflowService (client
+    # correction, 2026-09-04 recette: no mandatory QUANTITY_CONTROL stop
+    # in between anymore).
     for target in FULL_SEQUENCE_AFTER_ASSIGNED[:-2]:
         if (
             target == Trip.Status.GOING_TO_CLIENT
@@ -425,6 +429,22 @@ def test_workflow_rejects_skipping_a_status():
 
     trip.refresh_from_db()
     assert trip.status == Trip.Status.ASSIGNED
+
+
+@pytest.mark.django_db
+def test_arrived_at_client_can_go_directly_to_delivered():
+    # Client correction (2026-09-04 recette): QUANTITY_CONTROL is no longer
+    # a mandatory gate between ARRIVED_AT_CLIENT and DELIVERED - a trip can
+    # be delivered directly, defaulting to "full quantity received, zero
+    # loss" (any real discrepancy is corrected later via a separate
+    # post-delivery verification flow, not implemented here).
+    fx = _fixtures_with_customer("ARRIVED-DIRECT")
+    trip = _deliverable_trip(fx, "TRIP-ARRIVED-DIRECT-001")
+    assert trip.status == Trip.Status.ARRIVED_AT_CLIENT
+
+    allowed = TripWorkflowService.get_allowed_targets(trip)
+    assert Trip.Status.DELIVERED in allowed
+    assert Trip.Status.QUANTITY_CONTROL not in allowed
 
 
 @pytest.mark.django_db
@@ -918,7 +938,8 @@ _FORWARD_SEQUENCE_STATUS_NAMES = [
     "CUSTOMS",
     "GOING_TO_CLIENT",
     "ARRIVED_AT_CLIENT",
-    "QUANTITY_CONTROL",
+    # Client correction (2026-09-04 recette): QUANTITY_CONTROL is no longer
+    # a mandatory intermediate stop before DELIVERED.
     "DELIVERED",
     "COMPLETED",
 ]
@@ -1219,8 +1240,30 @@ def _deliverable_trip(fx, reference, quantity=Decimal("45000.00")):
     trip = _make_trip(fx, truck, reference, quantity=quantity, customer_order=None)
     trip.client = fx["customer"]
     trip.save(update_fields=["client"])
-    _advance_to_quantity_control(trip, fx["admin_user"])
+    _advance_to_arrived_at_client(trip, fx["admin_user"])
     return trip
+
+
+@pytest.mark.django_db
+def test_record_delivery_defaults_received_qty_to_loaded_quantity():
+    # Client correction (2026-09-04 recette): received_qty is now optional -
+    # omitting it defaults to "full quantity received, zero loss" so a
+    # direct ARRIVED_AT_CLIENT -> DELIVERED confirmation needs no quantity
+    # control step at all.
+    fx = _fixtures_with_customer("DS-DEFAULT-QTY")
+    trip = _deliverable_trip(fx, "TRIP-DS-DEFAULT-QTY-001")
+
+    control = DeliveryService.record_delivery(
+        trip_id=trip.id,
+        control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE,
+        controller=fx["admin_user"],
+        unit_selling_price=Decimal("850.0000"),
+    )
+
+    assert control.received_quantity == trip.quantity_loaded
+    assert control.loss_quantity == Decimal("0.00")
+    assert control.chargeable_loss_quantity == Decimal("0.00")
 
 
 @pytest.mark.django_db
@@ -1453,7 +1496,7 @@ def test_delivery_service_blocks_anomaly_without_confirmation():
         )
 
     trip.refresh_from_db()
-    assert trip.status == Trip.Status.QUANTITY_CONTROL
+    assert trip.status == Trip.Status.ARRIVED_AT_CLIENT
     assert not DeliveryControl.objects.filter(trip=trip).exists()
 
 
@@ -1547,7 +1590,7 @@ def test_delivery_service_blocks_sale_below_cost_without_confirmation():
         )
 
     trip.refresh_from_db()
-    assert trip.status == Trip.Status.QUANTITY_CONTROL
+    assert trip.status == Trip.Status.ARRIVED_AT_CLIENT
     assert not DeliveryControl.objects.filter(trip=trip).exists()
     assert not Sale.objects.filter(trip=trip).exists()
 
@@ -1712,7 +1755,7 @@ def test_api_delivery_control_anomaly_rejected_422_then_confirmed_succeeds():
     assert rejected.status_code == 422, rejected.data
 
     trip.refresh_from_db()
-    assert trip.status == Trip.Status.QUANTITY_CONTROL
+    assert trip.status == Trip.Status.ARRIVED_AT_CLIENT
     assert not DeliveryControl.objects.filter(trip=trip).exists()
 
     confirmed = client.post(
@@ -1752,7 +1795,7 @@ def test_api_delivery_control_below_cost_rejected_422_then_confirmed_succeeds():
     assert rejected.status_code == 422, rejected.data
 
     trip.refresh_from_db()
-    assert trip.status == Trip.Status.QUANTITY_CONTROL
+    assert trip.status == Trip.Status.ARRIVED_AT_CLIENT
     assert not Sale.objects.filter(trip=trip).exists()
 
     confirmed = client.post(
@@ -1838,7 +1881,7 @@ def test_api_delivery_control_missing_price_returns_400():
 
     assert response.status_code == 400
     trip.refresh_from_db()
-    assert trip.status == Trip.Status.QUANTITY_CONTROL
+    assert trip.status == Trip.Status.ARRIVED_AT_CLIENT
 
 
 @pytest.mark.django_db
@@ -2130,7 +2173,7 @@ def test_assign_customer_for_sale_changes_destination_type_before_delivery():
     fx = _setup_fixtures("ASSIGN-PRE")
     truck = _make_truck("TRK-ASSIGN-PRE")
     trip = _make_trip(fx, truck, "TRIP-ASSIGN-PRE-001")
-    _advance_to_quantity_control(trip, fx["admin_user"])
+    _advance_to_arrived_at_client(trip, fx["admin_user"])
     customer = Customer.objects.create(name="Assign Client Pre")
 
     updated = TripCostService.assign_customer_for_sale(trip.id, customer.id, fx["admin_user"])
@@ -2417,7 +2460,7 @@ def test_company_owned_truck_chargeable_loss_creates_no_transport_deduction():
         bl_reference="BL-CO-LOSS-001",
         created_by=fx["admin_user"],
     )
-    _advance_to_quantity_control(trip, fx["admin_user"])
+    _advance_to_arrived_at_client(trip, fx["admin_user"])
     ProductSellingPriceHistory.objects.create(
         product=fx["product"],
         customer=fx["customer"],
@@ -2505,7 +2548,7 @@ def test_company_owned_truck_with_derived_internal_transporter_creates_no_charge
         bl_reference="BL-CO-INTLOSS-001",
         created_by=fx["admin_user"],
     )
-    _advance_to_quantity_control(trip, fx["admin_user"])
+    _advance_to_arrived_at_client(trip, fx["admin_user"])
     ProductSellingPriceHistory.objects.create(
         product=fx["product"],
         customer=fx["customer"],

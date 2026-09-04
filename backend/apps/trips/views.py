@@ -258,7 +258,7 @@ class TripViewSet(viewsets.ModelViewSet):
         try:
             control = DeliveryService.record_delivery(
                 trip_id=trip.id,
-                received_qty=data["received_quantity"],
+                received_qty=data.get("received_quantity"),
                 control_date=data["control_date"],
                 method=data["method"],
                 controller=request.user,

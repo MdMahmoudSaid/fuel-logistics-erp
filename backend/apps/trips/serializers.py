@@ -324,7 +324,8 @@ class DeliveryControlRequestSerializer(serializers.Serializer):
     """
 
     received_quantity = serializers.DecimalField(
-        max_digits=14, decimal_places=2, min_value=Decimal("0")
+        max_digits=14, decimal_places=2, min_value=Decimal("0"),
+        required=False, allow_null=True,
     )
     control_date = serializers.DateField()
     method = serializers.ChoiceField(choices=DeliveryControl.Method.choices)

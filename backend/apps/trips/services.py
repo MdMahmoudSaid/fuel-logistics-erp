@@ -332,7 +332,13 @@ class TripWorkflowService:
         Trip.Status.BORDER: Trip.Status.CUSTOMS,
         Trip.Status.CUSTOMS: Trip.Status.GOING_TO_CLIENT,
         Trip.Status.GOING_TO_CLIENT: Trip.Status.ARRIVED_AT_CLIENT,
-        Trip.Status.ARRIVED_AT_CLIENT: Trip.Status.QUANTITY_CONTROL,
+        # Client correction (2026-09-04 recette): quantity control is no
+        # longer a mandatory gate before delivery - a trip is delivered
+        # directly from ARRIVED_AT_CLIENT, defaulting to "full quantity
+        # received". The QUANTITY_CONTROL entry below stays mapped for any
+        # trip that predates this change and is still sitting at that
+        # status - it is otherwise unreachable going forward.
+        Trip.Status.ARRIVED_AT_CLIENT: Trip.Status.DELIVERED,
         Trip.Status.QUANTITY_CONTROL: Trip.Status.DELIVERED,
         Trip.Status.DELIVERED: Trip.Status.COMPLETED,
         Trip.Status.GOING_TO_COMPANY_STOCK: Trip.Status.ARRIVED_AT_COMPANY_STOCK,
@@ -508,7 +514,8 @@ class DeliveryService:
     @transaction.atomic
     def record_delivery(
         trip_id,
-        received_qty: Decimal,
+        *,
+        received_qty: Decimal | None = None,
         control_date,
         method,
         controller,
@@ -522,6 +529,13 @@ class DeliveryService:
         (guide Section 15). Creates DeliveryControl, an optional
         TransportDeduction (chargeable loss > 0 only) and the resulting
         Sale + DRAFT Invoice - all or nothing.
+
+        `received_qty` (client correction, 2026-09-04 recette): optional -
+        left None, it defaults to the trip's `quantity_loaded` ("full
+        quantity received, zero loss"). A trip now delivers directly from
+        ARRIVED_AT_CLIENT without a mandatory QUANTITY_CONTROL step; any
+        real-world discrepancy is corrected later via a separate
+        post-delivery verification flow, not this method.
 
         `unit_selling_price`, when given, comes from the delivery form's
         "Prix de vente unitaire" field: it's used directly for the Sale,
@@ -539,6 +553,9 @@ class DeliveryService:
         and ask for confirmation before retrying.
         """
         trip = Trip.objects.select_for_update().get(pk=trip_id)
+
+        if received_qty is None:
+            received_qty = trip.quantity_loaded
 
         if received_qty > trip.quantity_loaded and anomaly_confirmed_by is None:
             raise DeliveryAnomalyConfirmationRequired(
