@@ -719,11 +719,25 @@ class DeliveryService:
 
         # Bug fix (recette corrections Task 3, 2026-09-04): this previously
         # charged the transporter for the FULL missing quantity, ignoring
-        # LossToleranceConfig entirely. The loss within tolerance is a
-        # company-absorbed cost (never billable), matching
-        # DeliveryControl.chargeable_loss_quantity's own tolerance-aware
-        # computation - only the loss above tolerance is chargeable here.
-        tolerance = LossToleranceConfig.get_current_tolerance()
+        # tolerance entirely. The loss within tolerance is a company-absorbed
+        # cost (never billable), matching DeliveryControl.chargeable_loss_
+        # quantity's own tolerance-aware computation - only the loss above
+        # tolerance is chargeable here.
+        #
+        # Bug fix (recette corrections Task 3 review, 2026-09-04): use the
+        # tolerance already frozen on this trip's DeliveryControl
+        # (tolerance_quantity - "gel historique", see its docstring) rather
+        # than re-fetching LossToleranceConfig.get_current_tolerance() live.
+        # By the time this method runs - both from record_delivery (right
+        # after the DeliveryControl is created) and from
+        # record_client_verification (which requires one to already exist) -
+        # trip.delivery_control always exists. Fetching live here would let
+        # this method's TransportDeduction.chargeable_quantity drift from
+        # DeliveryControl.chargeable_loss_quantity if the global default
+        # tolerance changes between delivery and a later client verification,
+        # breaking the company_absorbed_loss_quantity + chargeable_loss_quantity
+        # == total loss invariant.
+        tolerance = trip.delivery_control.tolerance_quantity
         missing_quantity = max(
             (trip.quantity_loaded - received_qty) - tolerance, Decimal("0.00")
         ).quantize(Decimal("0.01"))

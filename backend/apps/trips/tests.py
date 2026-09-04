@@ -1398,6 +1398,20 @@ def test_delivery_service_syncs_transport_deduction_without_duplicates():
         calculation_method=TransportPayment.CalculationMethod.FIXED,
         base_amount=Decimal("700000.00"),
     )
+    # Recette corrections Task 3 review (2026-09-04): sync_transport_shortage_
+    # deduction now reads the tolerance frozen on trip.delivery_control rather
+    # than a live LossToleranceConfig fetch, so a DeliveryControl must exist
+    # before calling it directly - deliver with the default full-quantity/
+    # zero-loss received_qty (Task 2) purely to create one; the subsequent
+    # sync calls below (each with their own received_qty/unit_selling_price)
+    # are what's actually under test.
+    DeliveryService.record_delivery(
+        trip_id=trip.id,
+        control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE,
+        controller=fx["admin_user"],
+        unit_selling_price=Decimal("700.0000"),
+    )
 
     # Recette corrections Task 3 (2026-09-04): missing quantity is charged
     # net of the 100L default tolerance (300L missing -> 200L chargeable,
@@ -1592,6 +1606,18 @@ def test_sync_transport_shortage_deduction_respects_tolerance():
     LossToleranceConfig.objects.create(
         tolerance_litres=Decimal("100.00"), updated_by=fx["admin_user"]
     )
+    # Recette corrections Task 3 review (2026-09-04): sync_transport_shortage_
+    # deduction now reads the tolerance frozen on trip.delivery_control, so a
+    # DeliveryControl must exist first - deliver at full quantity/zero loss
+    # (Task 2's default) purely to freeze the 100L tolerance just configured
+    # above; the sync call below (with its own received_qty) is what's tested.
+    DeliveryService.record_delivery(
+        trip_id=trip.id,
+        control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE,
+        controller=fx["admin_user"],
+        unit_selling_price=Decimal("850.0000"),
+    )
 
     DeliveryService.sync_transport_shortage_deduction(
         trip=trip, received_qty=Decimal("44920.00"), unit_selling_price=Decimal("850.0000")
@@ -1607,6 +1633,13 @@ def test_sync_transport_shortage_deduction_charges_only_above_tolerance():
     trip = _deliverable_trip(fx, "TRIP-SYNC-OVERTOL-001")
     LossToleranceConfig.objects.create(
         tolerance_litres=Decimal("100.00"), updated_by=fx["admin_user"]
+    )
+    DeliveryService.record_delivery(
+        trip_id=trip.id,
+        control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE,
+        controller=fx["admin_user"],
+        unit_selling_price=Decimal("850.0000"),
     )
 
     DeliveryService.sync_transport_shortage_deduction(
@@ -1625,6 +1658,13 @@ def test_sync_transport_shortage_deduction_no_charge_at_exact_tolerance_boundary
     trip = _deliverable_trip(fx, "TRIP-SYNC-EXACTTOL-001")
     LossToleranceConfig.objects.create(
         tolerance_litres=Decimal("100.00"), updated_by=fx["admin_user"]
+    )
+    DeliveryService.record_delivery(
+        trip_id=trip.id,
+        control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE,
+        controller=fx["admin_user"],
+        unit_selling_price=Decimal("850.0000"),
     )
 
     DeliveryService.sync_transport_shortage_deduction(
