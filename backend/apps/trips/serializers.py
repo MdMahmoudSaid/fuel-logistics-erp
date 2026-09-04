@@ -298,6 +298,7 @@ class DeliveryControlSerializer(serializers.ModelSerializer):
             "method",
             "document",
             "notes",
+            "verified_at",
             "anomaly_confirmed_by",
             "anomaly_confirmed_by_detail",
             "anomaly_confirmed_at",
