@@ -194,6 +194,12 @@ export interface TripMarginBreakdown {
   quantity_invoiced: string
   transporter_loss_quantity: string
   transporter_loss_indemnity: string
+  // UI recette bug (2026-09-04): a post-delivery loss within tolerance is
+  // absorbed by the company (never billed to the transporter, never
+  // reflected in the frozen Sale.delivered_quantity) - always present,
+  // exactly "0.00" when there is no such loss.
+  company_absorbed_loss_quantity: string
+  company_absorbed_loss_amount: string
   revenue: string
   fuel_purchase_cost: string
   transport_cost: string

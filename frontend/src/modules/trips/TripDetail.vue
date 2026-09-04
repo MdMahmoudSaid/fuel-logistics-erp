@@ -239,6 +239,16 @@ async function loadMargin() {
   }
 }
 
+// UI recette bug (2026-09-04): backend exposes the absorbed amount and
+// quantity, not a separate per-litre rate - derived here purely for the
+// "100 L x 900 XOF/L" detail line, never used in any calculation.
+const companyAbsorbedLossUnitPrice = computed(() => {
+  if (!margin.value?.available) return 0
+  const quantity = Number(margin.value.company_absorbed_loss_quantity)
+  if (quantity <= 0) return 0
+  return Number(margin.value.company_absorbed_loss_amount) / quantity
+})
+
 onMounted(loadMargin)
 
 // docs/UI_REDESIGN_PLAN.md Etape 6.2: bloc "Jauges" (chargé/livré/écart).
@@ -757,6 +767,30 @@ const cessionProofUrl = computed(
             <dt class="text-texte-2">{{ t('trips.detail.transporterLossIndemnity') }}</dt>
             <dd>
               <MonoValue :value="formatMoney(margin.transporter_loss_indemnity)" align="left" />
+            </dd>
+          </div>
+          <div
+            v-if="Number(margin.company_absorbed_loss_amount) > 0"
+            data-test="company-absorbed-loss-row"
+            class="flex items-center justify-between py-2"
+          >
+            <dt class="text-texte-2">
+              {{ t('trips.detail.companyAbsorbedLoss') }}
+              <span class="text-texte-3 block text-xs">
+                {{
+                  t('trips.detail.companyAbsorbedLossDetail', {
+                    quantity: formatQuantity(margin.company_absorbed_loss_quantity),
+                    unitPrice: formatUnitMoney(companyAbsorbedLossUnitPrice),
+                  })
+                }}
+              </span>
+            </dt>
+            <dd>
+              <MonoValue
+                class="text-critique"
+                :value="`-${formatMoney(margin.company_absorbed_loss_amount)}`"
+                align="left"
+              />
             </dd>
           </div>
           <div class="flex items-center justify-between py-2">

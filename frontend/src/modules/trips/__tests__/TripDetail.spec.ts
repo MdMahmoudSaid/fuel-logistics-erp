@@ -166,6 +166,8 @@ function makeMargin(overrides: Partial<Extract<TripMargin, { available: true }>>
     quantity_invoiced: '44850.00',
     transporter_loss_quantity: '0.00',
     transporter_loss_indemnity: '0.00',
+    company_absorbed_loss_quantity: '0.00',
+    company_absorbed_loss_amount: '0.00',
     revenue: '29152500.00',
     fuel_purchase_cost: '27000000.00',
     transport_cost: '500000.00',
@@ -559,6 +561,67 @@ describe('TripDetail expenses section', () => {
     expect(text).toContain('-500 000 XOF')
     expect(text).toContain('-90 000 XOF')
     expect(text).toContain('1 562 500 XOF')
+  })
+
+  // UI recette bug (2026-09-04): the backend already computed
+  // company_absorbed_loss_amount/_quantity correctly (a post-delivery loss
+  // within the 100 L tolerance, absorbed by the company, already baked
+  // into margin) but the frontend never rendered a line for it - fixed by
+  // exposing the row only when the amount is > 0, client's own example.
+  it('shows a red "perte supportee par l\'entreprise" row when a loss within tolerance is absorbed', async () => {
+    setUser({ operations: ['view'], finance: ['view'] })
+    marginToReturn = makeMargin({
+      company_absorbed_loss_quantity: '100.00',
+      company_absorbed_loss_amount: '90000.00',
+      margin: '4730000.00',
+    })
+
+    const wrapper = await mountAt()
+
+    const row = wrapper.find('[data-test="company-absorbed-loss-row"]')
+    expect(row.exists()).toBe(true)
+    expect(row.text()).toContain('Perte supportée par l\'entreprise')
+    const text = row.text().replace(/[⁦⁩]/g, '')
+    expect(text).toContain('-90 000 XOF')
+    // detail: 100 L x 900,00 XOF/L (900 = 90000 / 100, derived, never sent by the backend)
+    expect(text).toContain('100 L')
+    expect(text).toContain('900,00 XOF/L')
+  })
+
+  it('hides the "perte supportee par l\'entreprise" row when there is no absorbed loss', async () => {
+    setUser({ operations: ['view'], finance: ['view'] })
+    marginToReturn = makeMargin({
+      company_absorbed_loss_quantity: '0.00',
+      company_absorbed_loss_amount: '0.00',
+    })
+
+    const wrapper = await mountAt()
+
+    expect(wrapper.find('[data-test="company-absorbed-loss-row"]').exists()).toBe(false)
+  })
+
+  it('shows only the company-absorbed part above the threshold, keeping the transporter part separate', async () => {
+    setUser({ operations: ['view'], finance: ['view'] })
+    // 150 L loss: 100 L tolerated (company-absorbed), 50 L chargeable
+    // (transporter) - the two parts must never overlap.
+    marginToReturn = makeMargin({
+      transporter_loss_quantity: '50.00',
+      transporter_loss_indemnity: '32500.00',
+      company_absorbed_loss_quantity: '100.00',
+      company_absorbed_loss_amount: '65000.00',
+    })
+
+    const wrapper = await mountAt()
+
+    const row = wrapper.find('[data-test="company-absorbed-loss-row"]')
+    expect(row.exists()).toBe(true)
+    const text = wrapper.text().replace(/[⁦⁩]/g, '')
+    // Company-absorbed: 100 L, -65 000 XOF.
+    expect(row.text().replace(/[⁦⁩]/g, '')).toContain('100 L')
+    expect(row.text().replace(/[⁦⁩]/g, '')).toContain('-65 000 XOF')
+    // Transporter part stays displayed separately, unaffected.
+    expect(text).toContain('50 L')
+    expect(text).toContain('32 500 XOF')
   })
 
   it('highlights a negative margin', async () => {

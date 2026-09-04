@@ -324,6 +324,61 @@ def test_margin_subtracts_company_absorbed_loss():
     expected_drop = Decimal("80.00") * Decimal("650.0000")
     assert breakdown_after["margin"] == (margin_before - expected_drop).quantize(Decimal("0.01"))
     assert breakdown_after["company_absorbed_loss_amount"] == expected_drop.quantize(Decimal("0.01"))
+    # UI recette bug (2026-09-04): company_absorbed_loss_quantity must be
+    # exposed too, so the frontend can show "80 L x 650 XOF/L" alongside the
+    # amount - it was computed internally but never returned before.
+    assert breakdown_after["company_absorbed_loss_quantity"] == Decimal("80.00")
+
+
+@pytest.mark.django_db
+def test_margin_breakdown_has_no_company_absorbed_loss_when_no_loss():
+    """UI recette bug (2026-09-04): a trip delivered at full quantity (no
+    client verification, or a verification confirming zero loss) must
+    expose company_absorbed_loss_amount/_quantity as exactly zero, not
+    missing - the frontend's "line shown only when > 0" rule depends on
+    the field always being present and comparable."""
+    trip, _admin_user = _make_delivered_trip_with_sale("NOLOSS")
+    breakdown = TripProfitService.get_cost_breakdown(trip)
+    assert breakdown["company_absorbed_loss_quantity"] == Decimal("0.00")
+    assert breakdown["company_absorbed_loss_amount"] == Decimal("0.00")
+
+
+@pytest.mark.django_db
+def test_margin_breakdown_above_threshold_splits_company_and_transporter_parts():
+    """UI recette bug (2026-09-04): a loss above the 100 L tolerance must
+    show ONLY the tolerated portion as company_absorbed_loss_* (capped at
+    the threshold), with the remainder staying entirely on the transporter
+    side (transporter_loss_quantity/transporter_loss_indemnity) - the two
+    must never overlap or double-count the same litres."""
+    trip, admin_user = _make_delivered_trip_with_sale("ABOVE-THRESHOLD")
+    DeliveryControl.objects.create(
+        trip=trip,
+        loaded_quantity=trip.quantity_loaded,
+        received_quantity=trip.quantity_loaded,
+        tolerance_quantity=Decimal("100.00"),
+        control_date="2026-08-18",
+        controller=admin_user,
+        method=DeliveryControl.Method.MANUAL_GAUGE,
+    )
+
+    DeliveryService.record_client_verification(
+        trip_id=trip.id,
+        received_qty=Decimal("44850.00"),  # 150 L loss: 100 L tolerated, 50 L chargeable
+        verified_at=date.today(),
+        actor=admin_user,
+    )
+
+    trip = Trip.objects.get(pk=trip.id)
+    breakdown = TripProfitService.get_cost_breakdown(trip)
+    # Sale.unit_selling_price for this trip is 650.0000.
+    assert breakdown["company_absorbed_loss_quantity"] == Decimal("100.00")
+    assert breakdown["company_absorbed_loss_amount"] == (
+        Decimal("100.00") * Decimal("650.0000")
+    ).quantize(Decimal("0.01"))
+    assert breakdown["transporter_loss_quantity"] == Decimal("50.00")
+    assert breakdown["transporter_loss_indemnity"] == (
+        Decimal("50.00") * Decimal("650.0000")
+    ).quantize(Decimal("0.01"))
 
 
 @pytest.mark.django_db

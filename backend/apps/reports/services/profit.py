@@ -157,13 +157,14 @@ class TripProfitService:
         # be subtracted from margin explicitly here, the only place a
         # DeliveryControl's real received quantity feeds profitability.
         delivery_control = getattr(trip, "delivery_control", None)
-        company_absorbed_loss_amount = (
-            (delivery_control.company_absorbed_loss_quantity * sale.unit_selling_price).quantize(
-                Decimal("0.01")
-            )
+        company_absorbed_loss_quantity = (
+            delivery_control.company_absorbed_loss_quantity
             if delivery_control is not None
             else Decimal("0.00")
         )
+        company_absorbed_loss_amount = (
+            company_absorbed_loss_quantity * sale.unit_selling_price
+        ).quantize(Decimal("0.01"))
 
         real_total_cost = cost_basis["total_cost"]
         margin = (
@@ -179,6 +180,7 @@ class TripProfitService:
             "quantity_invoiced": sale.delivered_quantity,
             "transporter_loss_quantity": transporter_loss_quantity,
             "transporter_loss_indemnity": transporter_loss_indemnity,
+            "company_absorbed_loss_quantity": company_absorbed_loss_quantity,
             "company_absorbed_loss_amount": company_absorbed_loss_amount,
             "revenue": revenue,
             "fuel_purchase_cost": cost_basis["fuel_purchase_cost"],

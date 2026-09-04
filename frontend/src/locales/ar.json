@@ -358,6 +358,8 @@
       "revenue": "رقم الأعمال",
       "transporterLossQuantity": "فاقد الناقل",
       "transporterLossIndemnity": "تعويض فاقد الناقل",
+      "companyAbsorbedLoss": "الخسارة المتحملة من الشركة",
+      "companyAbsorbedLossDetail": "{quantity} × {unitPrice}",
       "fuelPurchaseCost": "شراء الوقود",
       "transportCost": "تكلفة الناقل",
       "totalExpenses": "مصاريف إضافية",

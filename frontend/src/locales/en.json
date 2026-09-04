@@ -358,6 +358,8 @@
       "revenue": "Revenue",
       "transporterLossQuantity": "Transporter loss",
       "transporterLossIndemnity": "Transporter loss indemnity",
+      "companyAbsorbedLoss": "Loss absorbed by the company",
+      "companyAbsorbedLossDetail": "{quantity} × {unitPrice}",
       "fuelPurchaseCost": "Fuel purchase",
       "transportCost": "Transporter cost",
       "totalExpenses": "Other expenses",

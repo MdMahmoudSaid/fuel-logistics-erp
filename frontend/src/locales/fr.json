@@ -359,6 +359,8 @@
       "revenue": "Chiffre d'affaires",
       "transporterLossQuantity": "Perte transporteur",
       "transporterLossIndemnity": "Indemnisation perte transporteur",
+      "companyAbsorbedLoss": "Perte supportée par l'entreprise",
+      "companyAbsorbedLossDetail": "{quantity} × {unitPrice}",
       "fuelPurchaseCost": "Achat carburant",
       "transportCost": "Coût transporteur",
       "totalExpenses": "Frais annexes",
