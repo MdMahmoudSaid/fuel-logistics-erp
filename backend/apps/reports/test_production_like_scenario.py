@@ -139,7 +139,7 @@ class ScenarioReport:
         if any(row["label"] == "libelle deduction transporteur" for row in self.problems):
             print(
                 "- Harmoniser le libelle de deduction avec le libelle metier attendu: "
-                "'Manque quantite - TRIP-TEST-PERTE - 100 L x 900 XOF/L'."
+                "'Manque quantite - TRIP-TEST-PERTE - 50 L x 900 XOF/L'."
             )
         if not self.problems:
             print("- Conserver ce scenario comme test de regression automatise.")
@@ -378,7 +378,7 @@ def test_scenario_complet_production_like(capsys):
 
     control = DeliveryService.record_delivery(
         trip.id,
-        received_qty=D("44900.00"),
+        received_qty=D("44850.00"),
         control_date=TODAY,
         method=DeliveryControl.Method.MANUAL_GAUGE,
         controller=user,
@@ -391,40 +391,46 @@ def test_scenario_complet_production_like(capsys):
         f"Manque quantite - {trip.reference} - "
         f"{deduction.chargeable_quantity.quantize(D('1'))} L x {deduction.unit_price.quantize(D('1'))} XOF/L"
     )
+    # Recette corrections Task 3 (2026-09-04): 44 850 L recus (150 L de perte,
+    # au-dessus de la tolerance de 100 L par defaut - une valeur volontairement
+    # eloignee de la frontiere 100 L/100 L pour eviter tout cas limite), seuls
+    # les 50 L au-dela de la tolerance sont factures au transporteur
+    # (sync_transport_shortage_deduction ne facture plus la totalite du
+    # manquant, bug fixe dans ce meme commit).
     report.check("5. Controle quantite et perte", "quantite chargee", "source trajet", D("45000.00"), control.loaded_quantity)
-    report.check("5. Controle quantite et perte", "quantite recue", "saisie controle", D("44900.00"), control.received_quantity)
-    report.check("5. Controle quantite et perte", "perte", "45 000 - 44 900", D("100.00"), control.loss_quantity)
-    report.check("6. Deduction transporteur", "deduction montant", "100 x 900", money(90000), deduction.amount)
+    report.check("5. Controle quantite et perte", "quantite recue", "saisie controle", D("44850.00"), control.received_quantity)
+    report.check("5. Controle quantite et perte", "perte", "45 000 - 44 850", D("150.00"), control.loss_quantity)
+    report.check("6. Deduction transporteur", "deduction montant", "(150 - 100 tolerance) x 900", money(45000), deduction.amount)
     report.check("6. Deduction transporteur", "deduction liee au trajet", "trip reference", "TRIP-TEST-PERTE", deduction.trip.reference)
-    report.check("6. Deduction transporteur", "deduction dans paiement transport", "deduction_amount", money(90000), transport_payment.deduction_amount)
-    report.check("6. Deduction transporteur", "solde net transporteur avant reglement", "2 925 000 - 90 000", money(2835000), transport_payment.net_amount)
-    report.check("6. Deduction transporteur", "libelle deduction transporteur", "libelle attendu", "Manque quantite - TRIP-TEST-PERTE - 100 L x 900 XOF/L", deduction_label)
-    sync_shortage(trip=trip, received_qty=D("44900.00"), unit_selling_price=D("900.0000"))
+    report.check("6. Deduction transporteur", "deduction dans paiement transport", "deduction_amount", money(45000), transport_payment.deduction_amount)
+    report.check("6. Deduction transporteur", "solde net transporteur avant reglement", "2 925 000 - 45 000", money(2880000), transport_payment.net_amount)
+    report.check("6. Deduction transporteur", "libelle deduction transporteur", "libelle attendu", "Manque quantite - TRIP-TEST-PERTE - 50 L x 900 XOF/L", deduction_label)
+    sync_shortage(trip=trip, received_qty=D("44850.00"), unit_selling_price=D("900.0000"))
     report.check("6. Deduction transporteur", "anti doublon deduction", "count apres resauvegarde", 1, TransportDeduction.objects.filter(trip=trip).count())
     sync_shortage(trip=trip, received_qty=D("45000.00"), unit_selling_price=D("900.0000"))
     report.check("6. Deduction transporteur", "deduction remise a zero", "recu 45 000 => aucune deduction", 0, TransportDeduction.objects.filter(trip=trip).count())
     sync_shortage(trip=trip, received_qty=D("44800.00"), unit_selling_price=D("900.0000"))
     deduction = TransportDeduction.objects.get(trip=trip)
-    report.check("6. Deduction transporteur", "deduction ajustee 200 L", "200 x 900", money(180000), deduction.amount)
-    sync_shortage(trip=trip, received_qty=D("44900.00"), unit_selling_price=D("900.0000"))
+    report.check("6. Deduction transporteur", "deduction ajustee 100 L (200 L manquants - 100 L tolerance)", "(200 - 100 tolerance) x 900", money(90000), deduction.amount)
+    sync_shortage(trip=trip, received_qty=D("44850.00"), unit_selling_price=D("900.0000"))
     deduction = TransportDeduction.objects.get(trip=trip)
     transport_payment.refresh_from_db()
 
     invoice = Invoice.objects.get(sale__trip=trip)
     InvoiceService.validate_invoice(invoice.id, user)
     invoice.refresh_from_db()
-    report.check("7. Facture client", "quantite facturee", "quantite recue", D("44900.00"), invoice.sale.delivered_quantity)
-    report.check("7. Facture client", "facture client", "44 900 x 900", money(40410000), invoice.total_amount)
-    report.check("7. Facture client", "dette client", "facture - paiements", money(40410000), PaymentAllocationService.get_customer_outstanding(customer))
+    report.check("7. Facture client", "quantite facturee", "quantite recue", D("44850.00"), invoice.sale.delivered_quantity)
+    report.check("7. Facture client", "facture client", "44 850 x 900", money(40365000), invoice.total_amount)
+    report.check("7. Facture client", "dette client", "facture - paiements", money(40365000), PaymentAllocationService.get_customer_outstanding(customer))
     report.check("7. Facture client", "facture visible", "Invoice existe", 1, Invoice.objects.filter(sale__customer=customer).count())
 
     profit_breakdown = TripProfitService.get_cost_breakdown(trip)
     report.check("11. Benefices", "quantite chargee benefice", "source trajet", D("45000.00"), profit_breakdown["quantity_loaded"])
-    report.check("11. Benefices", "quantite recue facturee benefice", "source vente", D("44900.00"), profit_breakdown["quantity_invoiced"])
-    report.check("11. Benefices", "perte transporteur benefice", "45 000 - 44 900", D("100.00"), profit_breakdown["transporter_loss_quantity"])
-    report.check("11. Benefices", "indemnisation perte transporteur", "100 x 900", money(90000), profit_breakdown["transporter_loss_indemnity"])
+    report.check("11. Benefices", "quantite recue facturee benefice", "source vente", D("44850.00"), profit_breakdown["quantity_invoiced"])
+    report.check("11. Benefices", "perte transporteur benefice", "(45 000 - 44 850) - 100 tolerance", D("50.00"), profit_breakdown["transporter_loss_quantity"])
+    report.check("11. Benefices", "indemnisation perte transporteur", "50 x 900", money(45000), profit_breakdown["transporter_loss_indemnity"])
     report.check("11. Benefices", "cout total reel", "45 000 x 800", money(36000000), profit_breakdown["real_total_cost"])
-    report.check("11. Benefices", "benefice trajet", "40 410 000 + 90 000 - 36 000 000", money(4500000), profit_breakdown["margin"])
+    report.check("11. Benefices", "benefice trajet", "40 365 000 + 45 000 - 36 000 000", money(4410000), profit_breakdown["margin"])
     report.check("11. Benefices", "prix revient benefice", "800 XOF/L", D("800.00"), profit_breakdown["unit_cost"].quantize(D("0.01")))
     report.check("11. Benefices", "benefice par litre", "900 - 800", D("100.00"), profit_breakdown["unit_profit"].quantize(D("0.01")))
 
@@ -442,15 +448,15 @@ def test_scenario_complet_production_like(capsys):
     report.check("16. Tests de rejet", "paiement client sans justificatif refuse", "proof obligatoire", False, invalid_payment.is_valid())
     post_customer_payment(customer=customer, amount=money(20000000), bank=bank, invoice=invoice, user=user, reference="PAY-CUST-1")
     bank.refresh_from_db()
-    report.check("8. Paiements client", "solde client apres paiement partiel", "40 410 000 - 20 000 000", money(20410000), PaymentAllocationService.get_customer_outstanding(customer))
+    report.check("8. Paiements client", "solde client apres paiement partiel", "40 365 000 - 20 000 000", money(20365000), PaymentAllocationService.get_customer_outstanding(customer))
     report.check("8. Paiements client", "solde banque apres paiement partiel", "200 000 000 + 20 000 000", money(220000000), bank.current_balance)
     report.check("8. Paiements client", "justificatif paiement client", "Document lie", True, TreasuryTransaction.objects.filter(reference="PAY-CUST-1", document__isnull=False).exists())
-    post_customer_payment(customer=customer, amount=money(20410000), bank=bank, invoice=invoice, user=user, reference="PAY-CUST-2")
+    post_customer_payment(customer=customer, amount=money(20365000), bank=bank, invoice=invoice, user=user, reference="PAY-CUST-2")
     invoice.refresh_from_db()
     bank.refresh_from_db()
-    report.check("8. Paiements client", "solde client final", "40 410 000 - 40 410 000", money(0), PaymentAllocationService.get_customer_outstanding(customer))
+    report.check("8. Paiements client", "solde client final", "40 365 000 - 40 365 000", money(0), PaymentAllocationService.get_customer_outstanding(customer))
     report.check("8. Paiements client", "facture payee", "status PAID", Invoice.Status.PAID, invoice.status)
-    report.check("8. Paiements client", "solde banque apres encaissements", "200 000 000 + 40 410 000", money(240410000), bank.current_balance)
+    report.check("8. Paiements client", "solde banque apres encaissements", "200 000 000 + 40 365 000", money(240365000), bank.current_balance)
 
     ControlledDebtPaymentService.record_payment(
         debt_type=ControlledDebtPaymentService.SUPPLIER,
@@ -463,7 +469,7 @@ def test_scenario_complet_production_like(capsys):
     )
     bank.refresh_from_db()
     report.check("9. Paiements fournisseur / transporteur / douane / transit", "dette fournisseur apres partiel", "50 000 000 - 30 000 000", money(20000000), ControlledDebtPaymentService.describe_supplier(supplier)["remaining_amount"])
-    report.check("9. Paiements fournisseur / transporteur / douane / transit", "banque apres fournisseur partiel", "240 410 000 - 30 000 000", money(210410000), bank.current_balance)
+    report.check("9. Paiements fournisseur / transporteur / douane / transit", "banque apres fournisseur partiel", "240 365 000 - 30 000 000", money(210365000), bank.current_balance)
     ControlledDebtPaymentService.record_payment(
         debt_type=ControlledDebtPaymentService.SUPPLIER,
         debt_id=supplier.id,
@@ -475,26 +481,26 @@ def test_scenario_complet_production_like(capsys):
     )
     bank.refresh_from_db()
     report.check("9. Paiements fournisseur / transporteur / douane / transit", "dette fournisseur finale", "20 000 000 - 20 000 000", money(0), ControlledDebtPaymentService.describe_supplier(supplier)["remaining_amount"])
-    report.check("9. Paiements fournisseur / transporteur / douane / transit", "banque apres fournisseur final", "210 410 000 - 20 000 000", money(190410000), bank.current_balance)
+    report.check("9. Paiements fournisseur / transporteur / douane / transit", "banque apres fournisseur final", "210 365 000 - 20 000 000", money(190365000), bank.current_balance)
 
     transporter_debt_before = ControlledDebtPaymentService.describe_transporter(transporter)
-    report.check("9. Paiements fournisseur / transporteur / douane / transit", "solde transporteur avant reglement", "2 925 000 - 90 000", money(2835000), transporter_debt_before["remaining_amount"])
+    report.check("9. Paiements fournisseur / transporteur / douane / transit", "solde transporteur avant reglement", "2 925 000 - 45 000", money(2880000), transporter_debt_before["remaining_amount"])
     ControlledDebtPaymentService.record_payment(
         debt_type=ControlledDebtPaymentService.TRANSPORTER,
         debt_id=transporter.id,
         bank_account_id=bank.id,
-        amount=money(2835000),
+        amount=money(2880000),
         date=TODAY,
         reference="PAY-TRP-1",
         actor=user,
     )
     bank.refresh_from_db()
     transport_payment.refresh_from_db()
-    report.check("9. Paiements fournisseur / transporteur / douane / transit", "solde transporteur final", "2 835 000 - 2 835 000", money(0), ControlledDebtPaymentService.describe_transporter(transporter)["remaining_amount"])
+    report.check("9. Paiements fournisseur / transporteur / douane / transit", "solde transporteur final", "2 880 000 - 2 880 000", money(0), ControlledDebtPaymentService.describe_transporter(transporter)["remaining_amount"])
     report.check("9. Paiements fournisseur / transporteur / douane / transit", "transporteur brut gagne", "45 000 x 65", money(2925000), transport_payment.base_amount)
-    report.check("9. Paiements fournisseur / transporteur / douane / transit", "transporteur deductions", "100 x 900", money(90000), transport_payment.deduction_amount)
-    report.check("9. Paiements fournisseur / transporteur / douane / transit", "transporteur deja regle", "paiement effectue", money(2835000), TreasuryTransaction.objects.filter(source_object_id=transport_payment.id, amount=money(2835000)).first().amount)
-    report.check("9. Paiements fournisseur / transporteur / douane / transit", "banque apres transporteur", "190 410 000 - 2 835 000", money(187575000), bank.current_balance)
+    report.check("9. Paiements fournisseur / transporteur / douane / transit", "transporteur deductions", "50 x 900", money(45000), transport_payment.deduction_amount)
+    report.check("9. Paiements fournisseur / transporteur / douane / transit", "transporteur deja regle", "paiement effectue", money(2880000), TreasuryTransaction.objects.filter(source_object_id=transport_payment.id, amount=money(2880000)).first().amount)
+    report.check("9. Paiements fournisseur / transporteur / douane / transit", "banque apres transporteur", "190 365 000 - 2 880 000", money(187485000), bank.current_balance)
 
     ControlledDebtPaymentService.record_payment(
         debt_type=ControlledDebtPaymentService.TRANSIT,
@@ -515,21 +521,21 @@ def test_scenario_complet_production_like(capsys):
         actor=user,
     )
     bank.refresh_from_db()
-    report.check("9. Paiements fournisseur / transporteur / douane / transit", "banque apres transit douane", "187 575 000 - 450 000 - 10 125 000", money(177000000), bank.current_balance)
+    report.check("9. Paiements fournisseur / transporteur / douane / transit", "banque apres transit douane", "187 485 000 - 450 000 - 10 125 000", money(176910000), bank.current_balance)
     report.check("9. Paiements fournisseur / transporteur / douane / transit", "dette transit", "450 000 - 450 000", money(0), ControlledDebtPaymentService.describe_expense_group(ControlledDebtPaymentService.TRANSIT)["remaining_amount"])
     report.check("9. Paiements fournisseur / transporteur / douane / transit", "dette douane", "10 125 000 - 10 125 000", money(0), ControlledDebtPaymentService.describe_expense_group(ControlledDebtPaymentService.CUSTOMS)["remaining_amount"])
 
-    report.check("10. Tresorerie finale", "banques", "200M + 40.41M - 50M - 2.835M - .45M - 10.125M", money(177000000), bank.current_balance)
+    report.check("10. Tresorerie finale", "banques", "200M + 40.365M - 50M - 2.88M - .45M - 10.125M", money(176910000), bank.current_balance)
     report.check("10. Tresorerie finale", "caisses", "5 000 000", money(5000000), cash.current_balance)
-    report.check("10. Tresorerie finale", "total tresorerie", "177 000 000 + 5 000 000", money(182000000), bank.current_balance + cash.current_balance)
+    report.check("10. Tresorerie finale", "total tresorerie", "176 910 000 + 5 000 000", money(181910000), bank.current_balance + cash.current_balance)
 
-    distribution = ShareholderDistributionService.create_distribution(TODAY, TODAY, money(4500000), user)
+    distribution = ShareholderDistributionService.create_distribution(TODAY, TODAY, money(4410000), user)
     ShareholderDistributionService.validate_distribution(distribution.id, user)
     shares = {share.shareholder.name: share for share in ShareholderProfitShare.objects.filter(distribution=distribution).select_related("shareholder")}
-    report.check("12. Repartition actionnaires", "part Abdou", "4 500 000 x 10%", money(450000), shares["Abdou Mohamed"].amount_due)
-    report.check("12. Repartition actionnaires", "part Sidi", "4 500 000 x 80%", money(3600000), shares["Sidi Mohamed"].amount_due)
-    report.check("12. Repartition actionnaires", "part Yacoub", "4 500 000 x 10%", money(450000), shares["Yacoub"].amount_due)
-    report.check("12. Repartition actionnaires", "benefice restant non retire", "somme parts", money(4500000), sum(share.remaining_due for share in shares.values()))
+    report.check("12. Repartition actionnaires", "part Abdou", "4 410 000 x 10%", money(441000), shares["Abdou Mohamed"].amount_due)
+    report.check("12. Repartition actionnaires", "part Sidi", "4 410 000 x 80%", money(3528000), shares["Sidi Mohamed"].amount_due)
+    report.check("12. Repartition actionnaires", "part Yacoub", "4 410 000 x 10%", money(441000), shares["Yacoub"].amount_due)
+    report.check("12. Repartition actionnaires", "benefice restant non retire", "somme parts", money(4410000), sum(share.remaining_due for share in shares.values()))
 
     ShareholderWithdrawalService.record_withdrawal(
         shareholder_id=shareholders["Sidi Mohamed"].id,
@@ -541,8 +547,8 @@ def test_scenario_complet_production_like(capsys):
     )
     bank.refresh_from_db()
     shares["Sidi Mohamed"].refresh_from_db()
-    report.check("13. Retraits / avances", "solde disponible Sidi apres retrait", "3 600 000 - 1 000 000", money(2600000), ShareholderLedgerService.get_available_balance(shareholders["Sidi Mohamed"].id))
-    report.check("13. Retraits / avances", "banque apres retrait", "177 000 000 - 1 000 000", money(176000000), bank.current_balance)
+    report.check("13. Retraits / avances", "solde disponible Sidi apres retrait", "3 528 000 - 1 000 000", money(2528000), ShareholderLedgerService.get_available_balance(shareholders["Sidi Mohamed"].id))
+    report.check("13. Retraits / avances", "banque apres retrait", "176 910 000 - 1 000 000", money(175910000), bank.current_balance)
     report.check("13. Retraits / avances", "grand livre retrait Sidi", "ligne WITHDRAWAL", True, any(row["type"] == "WITHDRAWAL" and row["debit"] == money(1000000) for row in ShareholderStatementQuery.run(shareholder_id=shareholders["Sidi Mohamed"].id)))
     before_loan_tx_count = TreasuryTransaction.objects.count()
     ShareholderLoanService.create_loan(
@@ -599,14 +605,14 @@ def test_scenario_complet_production_like(capsys):
     report.check("14. Dashboard", "sortie stock apres attribution", "destination CUSTOMER", Trip.DestinationType.CUSTOMER, stock_trip.destination_type)
     report.check("14. Dashboard", "workflow client apres attribution", "GOING_TO_CLIENT permis", True, Trip.Status.GOING_TO_CLIENT in TripWorkflowService.get_allowed_targets(stock_trip))
 
-    report.check("15. Grands livres", "compte client total facture", "invoice ledger debit", money(40410000), sum((row["debit"] or money(0)) for row in CustomerStatementQuery.run(customer_id=customer.id)))
-    report.check("15. Grands livres", "compte client total encaisse", "payment ledger credit", money(40410000), sum((row["credit"] or money(0)) for row in CustomerStatementQuery.run(customer_id=customer.id)))
+    report.check("15. Grands livres", "compte client total facture", "invoice ledger debit", money(40365000), sum((row["debit"] or money(0)) for row in CustomerStatementQuery.run(customer_id=customer.id)))
+    report.check("15. Grands livres", "compte client total encaisse", "payment ledger credit", money(40365000), sum((row["credit"] or money(0)) for row in CustomerStatementQuery.run(customer_id=customer.id)))
     report.check("15. Grands livres", "compte fournisseur total achete", "supplier ledger debit", money(50000000), sum((row["debit"] or money(0)) for row in SupplierStatementQuery.run(supplier_id=supplier.id)))
     report.check("15. Grands livres", "compte fournisseur total paye", "supplier ledger credit", money(50000000), sum((row["credit"] or money(0)) for row in SupplierStatementQuery.run(supplier_id=supplier.id)))
     transporter_rows = TransporterStatementQuery.run(transporter_id=transporter.id)
-    report.check("15. Grands livres", "grand livre transporteur deduction", "deduction_amount", money(90000), transporter_rows[0]["deduction_amount"])
-    report.check("15. Grands livres", "grand livre transporteur net", "net_amount", money(2835000), transporter_rows[0]["net_amount"])
-    report.check("15. Grands livres", "journal tresorerie banque final", "dernier solde", money(176000000), TreasuryStatementQuery.run(bank_account_id=bank.id)[-1]["balance"])
+    report.check("15. Grands livres", "grand livre transporteur deduction", "deduction_amount", money(45000), transporter_rows[0]["deduction_amount"])
+    report.check("15. Grands livres", "grand livre transporteur net", "net_amount", money(2880000), transporter_rows[0]["net_amount"])
+    report.check("15. Grands livres", "journal tresorerie banque final", "dernier solde", money(175910000), TreasuryStatementQuery.run(bank_account_id=bank.id)[-1]["balance"])
 
     def rejected(label, fn, exc_type=Exception):
         try:
