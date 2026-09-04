@@ -56,6 +56,51 @@ export function fetchCustomerLedger(customerId: number): Promise<CustomerLedger>
   return apiClient.get<CustomerLedger>(`/customers/${customerId}/ledger/`).then((r) => r.data)
 }
 
+// Task 10/11 PDF exports - dedicated `/ledger/pdf/` actions rather than
+// `?format=pdf`: DRF's DefaultContentNegotiation reserves the `format`
+// query param for its own renderer selection (backend/apps/suppliers/
+// views.py SupplierViewSet.ledger_pdf docstring). Mirrors
+// modules/reports/api.ts's downloadReportExport blob-download pattern.
+const LEDGER_PDF_PATH: Record<'supplier' | 'transporter' | 'customer', string> = {
+  supplier: 'suppliers',
+  transporter: 'transporters',
+  customer: 'customers',
+}
+
+function downloadBlob(blob: Blob, filename: string): void {
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.URL.revokeObjectURL(url)
+}
+
+export async function exportLedgerPdf(
+  kind: 'supplier' | 'transporter' | 'customer',
+  id: number,
+  lang: string,
+): Promise<void> {
+  const response = await apiClient.get(`/${LEDGER_PDF_PATH[kind]}/${id}/ledger/pdf/`, {
+    params: { lang },
+    responseType: 'blob',
+  })
+  downloadBlob(new Blob([response.data]), `${kind}-ledger-${id}.pdf`)
+}
+
+// GET /api/transport-payments/{id}/pdf/?lang=fr|en|ar (backend/apps/
+// finance/views.py TransportPaymentViewSet.pdf) - per-trip "Reglement par
+// trajet" settlement PDF, Task 11.
+export async function exportTransportPaymentPdf(id: number, lang: string): Promise<void> {
+  const response = await apiClient.get(`/transport-payments/${id}/pdf/`, {
+    params: { lang },
+    responseType: 'blob',
+  })
+  downloadBlob(new Blob([response.data]), `reglement-${id}.pdf`)
+}
+
 // Generic attachment upload (backend/apps/documents), scoped to the one
 // document_type/content_type this module needs: a proof image attached to
 // an already-created CustomerPayment (backend/apps/documents/views.py

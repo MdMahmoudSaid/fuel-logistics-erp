@@ -3,6 +3,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import CustomerLedgerView from '../CustomerLedgerView.vue'
 
 const fetchCustomerLedger = vi.fn()
+const exportLedgerPdf = vi.fn()
 const push = vi.fn()
 
 vi.mock('vue-router', () => ({
@@ -12,6 +13,7 @@ vi.mock('vue-router', () => ({
 
 vi.mock('../api', () => ({
   fetchCustomerLedger: (...args: unknown[]) => fetchCustomerLedger(...args),
+  exportLedgerPdf: (...args: unknown[]) => exportLedgerPdf(...args),
 }))
 
 describe('CustomerLedgerView', () => {
@@ -59,5 +61,21 @@ describe('CustomerLedgerView', () => {
 
     expect(wrapper.find('img[src="/media/documents/recu.jpg"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('Fermer')
+  })
+
+  it('shows Imprimer and Exporter PDF buttons and exports with the current locale', async () => {
+    const wrapper = mount(CustomerLedgerView)
+    await flushPromises()
+
+    const buttons = wrapper.findAll('button')
+    const printButton = buttons.find((button) => button.text() === 'Imprimer')
+    const exportButton = buttons.find((button) => button.text() === 'Exporter PDF')
+    expect(printButton).toBeTruthy()
+    expect(exportButton).toBeTruthy()
+
+    await exportButton!.trigger('click')
+    await flushPromises()
+
+    expect(exportLedgerPdf).toHaveBeenCalledWith('customer', 1, 'fr')
   })
 })

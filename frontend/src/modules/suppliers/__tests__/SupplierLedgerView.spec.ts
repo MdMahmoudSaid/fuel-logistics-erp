@@ -133,10 +133,19 @@ const ledger: SupplierLedger = {
 }
 
 const fetchSupplierLedger = vi.fn(async () => ledger)
+const exportLedgerPdf = vi.fn(async () => undefined)
 
 vi.mock('@/modules/purchasing/api', () => ({
   fetchSupplierLedger: (...args: unknown[]) => fetchSupplierLedger(...(args as [])),
 }))
+
+vi.mock('@/modules/finance/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/modules/finance/api')>()
+  return {
+    ...actual,
+    exportLedgerPdf: (...args: unknown[]) => exportLedgerPdf(...(args as [])),
+  }
+})
 
 describe('SupplierLedgerView', () => {
   beforeEach(() => {
@@ -249,5 +258,21 @@ describe('SupplierLedgerView', () => {
     await flushPromises()
 
     expect(wrapper.find('img[src="/media/documents/advance.png"]').exists()).toBe(true)
+  })
+
+  it('shows Imprimer and Exporter PDF buttons and exports the ledger with the current locale', async () => {
+    const wrapper = mount(SupplierLedgerView)
+    await flushPromises()
+
+    const buttons = wrapper.findAll('button')
+    const printButton = buttons.find((button) => button.text() === 'Imprimer')
+    const exportButton = buttons.find((button) => button.text() === 'Exporter PDF')
+    expect(printButton).toBeTruthy()
+    expect(exportButton).toBeTruthy()
+
+    await exportButton!.trigger('click')
+    await flushPromises()
+
+    expect(exportLedgerPdf).toHaveBeenCalledWith('supplier', 1, 'fr')
   })
 })

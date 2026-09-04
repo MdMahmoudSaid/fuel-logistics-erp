@@ -104,12 +104,16 @@ const ledger: TransporterLedger = {
 }
 
 const fetchTransporterLedger = vi.fn(async () => ledger)
+const exportLedgerPdf = vi.fn(async () => undefined)
+const exportTransportPaymentPdf = vi.fn(async () => undefined)
 
 vi.mock('../api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api')>()
   return {
     ...actual,
     fetchTransporterLedger: (...args: unknown[]) => fetchTransporterLedger(...(args as [])),
+    exportLedgerPdf: (...args: unknown[]) => exportLedgerPdf(...(args as [])),
+    exportTransportPaymentPdf: (...args: unknown[]) => exportTransportPaymentPdf(...(args as [])),
   }
 })
 
@@ -196,5 +200,34 @@ describe('TransporterLedgerView', () => {
     const partySelect = wrapper.find('select#party')
     expect(partySelect.exists()).toBe(true)
     expect((partySelect.element as HTMLSelectElement).disabled).toBe(true)
+  })
+
+  it('shows Imprimer and Exporter PDF buttons and exports the ledger with the current locale', async () => {
+    const wrapper = mount(TransporterLedgerView)
+    await flushPromises()
+
+    const buttons = wrapper.findAll('button')
+    const printButton = buttons.find((button) => button.text() === 'Imprimer')
+    const exportButton = buttons.find((button) => button.text() === 'Exporter PDF')
+    expect(printButton).toBeTruthy()
+    expect(exportButton).toBeTruthy()
+
+    await exportButton!.trigger('click')
+    await flushPromises()
+
+    expect(exportLedgerPdf).toHaveBeenCalledWith('transporter', 1, 'fr')
+  })
+
+  it('shows a PDF action on each settlement-by-trip row that exports that payment', async () => {
+    const wrapper = mount(TransporterLedgerView)
+    await flushPromises()
+
+    const pdfButton = wrapper.find('[data-test="settlement-pdf"]')
+    expect(pdfButton.exists()).toBe(true)
+
+    await pdfButton.trigger('click')
+    await flushPromises()
+
+    expect(exportTransportPaymentPdf).toHaveBeenCalledWith(1, 'fr')
   })
 })

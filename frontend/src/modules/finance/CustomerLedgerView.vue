@@ -5,7 +5,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { fetchCustomerLedger } from './api'
+import { fetchCustomerLedger, exportLedgerPdf } from './api'
 import Modal from '@/components/ui/Modal.vue'
 import PaymentAllocationForm from './PaymentAllocationForm.vue'
 import type { CustomerLedger } from './types'
@@ -17,11 +17,12 @@ import MonoValue from '@/components/ui/MonoValue.vue'
 
 const route = useRoute()
 const router = useRouter()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 const ledger = ref<CustomerLedger | null>(null)
 const loading = ref(true)
 const error = ref('')
+const exporting = ref(false)
 
 const customerId = computed(() => Number(route.params.id))
 const showPaymentModal = ref(false)
@@ -48,6 +49,21 @@ async function load() {
 function onPaymentSuccess() {
   showPaymentModal.value = false
   load()
+}
+
+function printLedger() {
+  window.print()
+}
+
+async function exportPdf() {
+  exporting.value = true
+  try {
+    await exportLedgerPdf('customer', customerId.value, locale.value)
+  } catch {
+    error.value = t('reports.exportError')
+  } finally {
+    exporting.value = false
+  }
 }
 
 onMounted(load)
@@ -87,6 +103,12 @@ function badgeVariant(status: string) {
       <div class="flex flex-wrap gap-2">
         <Button v-if="ledger" variant="primary" @click="showPaymentModal = true">
           {{ t('finance.customerLedger.newPayment') }}
+        </Button>
+        <Button v-if="ledger" variant="ghost" @click="printLedger">
+          {{ t('reports.print') }}
+        </Button>
+        <Button v-if="ledger" variant="ghost" :disabled="exporting" @click="exportPdf">
+          {{ t('reports.exportPdf') }}
         </Button>
         <Button variant="ghost" @click="router.push({ name: 'customers' })">
           {{ t('finance.customerLedger.back') }}

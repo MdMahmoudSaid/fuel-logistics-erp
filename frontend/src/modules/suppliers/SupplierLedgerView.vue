@@ -3,6 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { fetchSupplierLedger } from '@/modules/purchasing/api'
+import { exportLedgerPdf } from '@/modules/finance/api'
 import type { SupplierLedger } from '@/modules/purchasing/types'
 import DebtPaymentForm from '@/modules/finance/DebtPaymentForm.vue'
 import AdvanceForm from '@/modules/finance/AdvanceForm.vue'
@@ -15,7 +16,7 @@ import MonoValue from '@/components/ui/MonoValue.vue'
 
 const route = useRoute()
 const router = useRouter()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 const ledger = ref<SupplierLedger | null>(null)
 const loading = ref(true)
@@ -23,6 +24,7 @@ const error = ref('')
 const showPaymentForm = ref(false)
 const showAdvanceForm = ref(false)
 const previewUrl = ref<string | null>(null)
+const exporting = ref(false)
 
 const supplierId = computed(() => Number(route.params.id))
 
@@ -46,6 +48,21 @@ async function onPaymentSaved() {
 async function onAdvanceSaved() {
   showAdvanceForm.value = false
   await load()
+}
+
+function printLedger() {
+  window.print()
+}
+
+async function exportPdf() {
+  exporting.value = true
+  try {
+    await exportLedgerPdf('supplier', supplierId.value, locale.value)
+  } catch {
+    error.value = t('reports.exportError')
+  } finally {
+    exporting.value = false
+  }
 }
 
 onMounted(load)
@@ -94,6 +111,12 @@ function proofUrl(order: SupplierLedger['orders'][number]) {
           @click="showAdvanceForm = true"
         >
           {{ t('finance.advanceForm.title') }}
+        </Button>
+        <Button v-if="ledger" variant="ghost" @click="printLedger">
+          {{ t('reports.print') }}
+        </Button>
+        <Button v-if="ledger" variant="ghost" :disabled="exporting" @click="exportPdf">
+          {{ t('reports.exportPdf') }}
         </Button>
         <Button variant="ghost" @click="router.push({ name: 'suppliers' })">
           {{ t('purchasing.supplierLedger.back') }}

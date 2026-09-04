@@ -861,6 +861,7 @@
       "entriesTitle": "Historique",
       "noEntries": "Aucun mouvement.",
       "viewProof": "Voir justificatif",
+      "pdf": "PDF",
       "table": {
         "date": "Date",
         "type": "Type",

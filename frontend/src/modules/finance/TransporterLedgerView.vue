@@ -6,7 +6,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { fetchTransporterLedger } from './api'
+import { fetchTransporterLedger, exportLedgerPdf, exportTransportPaymentPdf } from './api'
 import type { TransporterLedger } from './types'
 import { formatMoney } from '@/utils/currency'
 import Badge from '@/components/ui/Badge.vue'
@@ -19,7 +19,7 @@ import MonoValue from '@/components/ui/MonoValue.vue'
 
 const route = useRoute()
 const router = useRouter()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 const ledger = ref<TransporterLedger | null>(null)
 const loading = ref(true)
@@ -27,6 +27,8 @@ const error = ref('')
 const showPaymentModal = ref(false)
 const showAdvanceForm = ref(false)
 const previewUrl = ref<string | null>(null)
+const exporting = ref(false)
+const exportingPaymentId = ref<number | null>(null)
 
 const transporterId = computed(() => Number(route.params.id))
 
@@ -67,6 +69,32 @@ async function onAdvanceSaved() {
   await load()
 }
 
+function printLedger() {
+  window.print()
+}
+
+async function exportPdf() {
+  exporting.value = true
+  try {
+    await exportLedgerPdf('transporter', transporterId.value, locale.value)
+  } catch {
+    error.value = t('reports.exportError')
+  } finally {
+    exporting.value = false
+  }
+}
+
+async function exportSettlementPdf(paymentId: number) {
+  exportingPaymentId.value = paymentId
+  try {
+    await exportTransportPaymentPdf(paymentId, locale.value)
+  } catch {
+    error.value = t('reports.exportError')
+  } finally {
+    exportingPaymentId.value = null
+  }
+}
+
 function badgeVariant(status: string) {
   if (status === 'PAID') return 'livre' as const
   if (status === 'PARTIALLY_PAID') return 'ecart' as const
@@ -95,6 +123,12 @@ function badgeVariant(status: string) {
           @click="showAdvanceForm = true"
         >
           {{ t('finance.advanceForm.title') }}
+        </Button>
+        <Button v-if="ledger" variant="ghost" @click="printLedger">
+          {{ t('reports.print') }}
+        </Button>
+        <Button v-if="ledger" variant="ghost" :disabled="exporting" @click="exportPdf">
+          {{ t('reports.exportPdf') }}
         </Button>
         <Button variant="ghost" @click="router.push({ name: 'transporters' })">
           {{ t('finance.transporterLedger.back') }}
@@ -190,6 +224,7 @@ function badgeVariant(status: string) {
                 <th class="px-2 py-1.5 font-medium">
                   {{ t('finance.transporterLedger.table.status') }}
                 </th>
+                <th class="px-2 py-1.5 font-medium"></th>
               </tr>
             </thead>
             <tbody>
@@ -219,9 +254,20 @@ function badgeVariant(status: string) {
                     {{ t(`settlementStatus.${payment.status}`) }}
                   </Badge>
                 </td>
+                <td class="px-2 py-1.5 text-right">
+                  <button
+                    type="button"
+                    data-test="settlement-pdf"
+                    class="text-bitume underline disabled:opacity-50"
+                    :disabled="exportingPaymentId === payment.id"
+                    @click="exportSettlementPdf(payment.id)"
+                  >
+                    {{ t('finance.partyLedger.pdf') }}
+                  </button>
+                </td>
               </tr>
               <tr v-if="ledger.payments.length === 0">
-                <td colspan="5" class="text-texte-3 px-2 py-4 text-center">
+                <td colspan="6" class="text-texte-3 px-2 py-4 text-center">
                   {{ t('finance.transporterLedger.noSettlements') }}
                 </td>
               </tr>
