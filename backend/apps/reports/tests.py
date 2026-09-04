@@ -1,6 +1,7 @@
 # TripProfitService tests (docs/PHASE_6_PLAN.md Etape 2/6;
 # ERP_Implementation_Experience_Guide.md Section 9.1/9.2/9.3).
 
+from datetime import date
 from decimal import Decimal
 
 import pytest
@@ -20,7 +21,8 @@ from apps.reports.services.profit import TripProfitService
 from apps.sales.models import CustomerOrder, Sale
 from apps.suppliers.models import Supplier
 from apps.transport.models import Transporter, Truck
-from apps.trips.models import Trip
+from apps.trips.models import DeliveryControl, Trip
+from apps.trips.services import DeliveryService
 
 
 def _make_trip(suffix, customer_order=None, status=Trip.Status.DELIVERED):
@@ -284,6 +286,44 @@ def test_current_margin_includes_transporter_loss_indemnity():
     assert breakdown["revenue"] == Decimal("40410000.000000")
     assert breakdown["margin"] == Decimal("4500000.00")
     assert TripProfitService.calculate_current_margin(trip) == Decimal("4500000.00")
+
+
+@pytest.mark.django_db
+def test_margin_subtracts_company_absorbed_loss():
+    """Client modifications (recette corrections) Task 4: a post-delivery
+    loss reported via DeliveryService.record_client_verification and within
+    tolerance is never billed to the transporter (Task 3) and never changes
+    the frozen Sale.delivered_quantity (guide Section 1.4) - so it must come
+    out of margin here, the only place a DeliveryControl's real received
+    quantity feeds profitability."""
+    trip, admin_user = _make_delivered_trip_with_sale("ABSORBED")
+    DeliveryControl.objects.create(
+        trip=trip,
+        loaded_quantity=trip.quantity_loaded,
+        received_quantity=trip.quantity_loaded,
+        tolerance_quantity=Decimal("100.00"),
+        control_date="2026-08-18",
+        controller=admin_user,
+        method=DeliveryControl.Method.MANUAL_GAUGE,
+    )
+    margin_before = TripProfitService.get_cost_breakdown(trip)["margin"]
+
+    DeliveryService.record_client_verification(
+        trip_id=trip.id,
+        received_qty=Decimal("44920.00"),  # 80 L loss, all within the 100 L tolerance
+        verified_at=date.today(),
+        actor=admin_user,
+    )
+
+    # Refetch: `trip`'s reverse one-to-one `delivery_control` accessor caches
+    # its first lookup (already resolved above via margin_before), so it
+    # would otherwise keep returning the pre-verification received_quantity.
+    trip = Trip.objects.get(pk=trip.id)
+    breakdown_after = TripProfitService.get_cost_breakdown(trip)
+    # Sale.unit_selling_price for this trip (set by _make_delivered_trip_with_sale) is 650.0000.
+    expected_drop = Decimal("80.00") * Decimal("650.0000")
+    assert breakdown_after["margin"] == (margin_before - expected_drop).quantize(Decimal("0.01"))
+    assert breakdown_after["company_absorbed_loss_amount"] == expected_drop.quantize(Decimal("0.01"))
 
 
 @pytest.mark.django_db

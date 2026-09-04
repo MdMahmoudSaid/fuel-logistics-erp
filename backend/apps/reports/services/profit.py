@@ -149,9 +149,28 @@ class TripProfitService:
         revenue = sale.delivered_quantity * sale.unit_selling_price
         transporter_loss_quantity = cls._transporter_loss_quantity(trip)
         transporter_loss_indemnity = cls._transporter_loss_indemnity(trip)
+
+        # Client modifications (2026-09-04): the tolerated portion of a
+        # post-delivery loss (<=100L by default, LossToleranceConfig) is
+        # never compensated by a TransportDeduction and Sale.delivered_quantity
+        # stays frozen at its original (usually full-load) value - so it must
+        # be subtracted from margin explicitly here, the only place a
+        # DeliveryControl's real received quantity feeds profitability.
+        delivery_control = getattr(trip, "delivery_control", None)
+        company_absorbed_loss_amount = (
+            (delivery_control.company_absorbed_loss_quantity * sale.unit_selling_price).quantize(
+                Decimal("0.01")
+            )
+            if delivery_control is not None
+            else Decimal("0.00")
+        )
+
         real_total_cost = cost_basis["total_cost"]
         margin = (
-            revenue + transporter_loss_indemnity - real_total_cost
+            revenue
+            + transporter_loss_indemnity
+            - company_absorbed_loss_amount
+            - real_total_cost
         ).quantize(Decimal("0.01"))
         unit_cost = cost_basis["unit_cost"]
         unit_profit = sale.unit_selling_price - unit_cost
@@ -160,6 +179,7 @@ class TripProfitService:
             "quantity_invoiced": sale.delivered_quantity,
             "transporter_loss_quantity": transporter_loss_quantity,
             "transporter_loss_indemnity": transporter_loss_indemnity,
+            "company_absorbed_loss_amount": company_absorbed_loss_amount,
             "revenue": revenue,
             "fuel_purchase_cost": cost_basis["fuel_purchase_cost"],
             "transport_cost": cost_basis["transport_cost"],
