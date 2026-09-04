@@ -12,6 +12,7 @@ import {
 } from './api'
 import { translateApiError } from '@/i18n/apiErrors'
 import DeliveryControlForm from './DeliveryControlForm.vue'
+import ClientVerificationForm from './ClientVerificationForm.vue'
 import type { Trip, TripMargin, TripStatus, TripStatusHistoryEntry } from './types'
 import { fetchReport } from '@/modules/reports/api'
 import { lossSeverityTone, type LossReportRow } from '@/modules/dashboard/aggregate'
@@ -126,6 +127,19 @@ async function onCustomerAssigned() {
 }
 
 async function onDeliveryConfirmed() {
+  await Promise.all([load(), loadMargin()])
+  await loadAllowedStatuses()
+}
+
+// Client modifications (2026-09-04 recette corrections): post-delivery
+// client verification - only meaningful once the trip is DELIVERED/
+// COMPLETED (see ClientVerificationForm.vue / DeliveryService.
+// record_client_verification()). Never offered on CANCELLED trips - the
+// explicit ['DELIVERED', 'COMPLETED'] allow-list below already excludes it.
+const showVerificationForm = ref(false)
+
+async function onClientVerified() {
+  showVerificationForm.value = false
   await Promise.all([load(), loadMargin()])
   await loadAllowedStatuses()
 }
@@ -296,17 +310,18 @@ watch(
 
 const visibleNextStatuses = computed(() => allowedStatuses.value as TripStatus[])
 
-const automaticExpenseByStatus: Partial<Record<TripStatus, { title: string; category: ExpenseCategory }>> =
-  {
-    LOADING: { title: t('trips.detail.autoExpense.loading'), category: 'loading' },
-    ROAD_TRANSIT: {
-      title: t('trips.detail.autoExpense.roadTransit'),
-      category: 'road_transit',
-    },
-    IN_TRANSIT: { title: t('trips.detail.autoExpense.transit'), category: 'transit' },
-    BORDER: { title: t('trips.detail.autoExpense.border'), category: 'road' },
-    CUSTOMS: { title: t('trips.detail.autoExpense.customs'), category: 'customs' },
-  }
+const automaticExpenseByStatus: Partial<
+  Record<TripStatus, { title: string; category: ExpenseCategory }>
+> = {
+  LOADING: { title: t('trips.detail.autoExpense.loading'), category: 'loading' },
+  ROAD_TRANSIT: {
+    title: t('trips.detail.autoExpense.roadTransit'),
+    category: 'road_transit',
+  },
+  IN_TRANSIT: { title: t('trips.detail.autoExpense.transit'), category: 'transit' },
+  BORDER: { title: t('trips.detail.autoExpense.border'), category: 'road' },
+  CUSTOMS: { title: t('trips.detail.autoExpense.customs'), category: 'customs' },
+}
 
 function openAutomaticFeePopup(targetStatus: TripStatus) {
   if (!canManageExpenses.value || !trip.value) return
@@ -377,7 +392,9 @@ function transportPaymentUnitPrice(payment: TransportPayment) {
   return quantity ? Number(payment.base_amount) / quantity : 0
 }
 
-const cessionProofUrl = computed(() => trip.value?.cession_letter_detail?.documents[0]?.file ?? null)
+const cessionProofUrl = computed(
+  () => trip.value?.cession_letter_detail?.documents[0]?.file ?? null,
+)
 </script>
 
 <template>
@@ -395,7 +412,9 @@ const cessionProofUrl = computed(() => trip.value?.cession_letter_detail?.docume
     <p v-else-if="loading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
     <template v-else-if="trip">
-      <section class="border-ligne grid grid-cols-1 md:grid-cols-2 gap-4 rounded-xl border bg-white p-4 text-sm">
+      <section
+        class="border-ligne grid grid-cols-1 md:grid-cols-2 gap-4 rounded-xl border bg-white p-4 text-sm"
+      >
         <div>
           <span class="text-texte-2">{{ t('trips.detail.status') }}</span>
           <p class="mt-1">
@@ -536,11 +555,23 @@ const cessionProofUrl = computed(() => trip.value?.cession_letter_detail?.docume
       </Card>
 
       <DeliveryControlForm
-        v-if="trip.status === 'QUANTITY_CONTROL' && canChangeStatus"
+        v-if="['ARRIVED_AT_CLIENT', 'QUANTITY_CONTROL'].includes(trip.status) && canChangeStatus"
         :trip-id="trip.id"
         :quantity-loaded="trip.quantity_loaded"
         @confirmed="onDeliveryConfirmed"
       />
+
+      <div v-if="['DELIVERED', 'COMPLETED'].includes(trip.status) && canChangeStatus">
+        <Button v-if="!showVerificationForm" @click="showVerificationForm = true">
+          {{ t('trips.detail.clientVerificationAction') }}
+        </Button>
+        <ClientVerificationForm
+          v-else
+          :trip-id="trip.id"
+          :quantity-loaded="trip.quantity_loaded"
+          @verified="onClientVerified"
+        />
+      </div>
 
       <section v-if="deliveryData" class="border-ligne space-y-4 rounded-xl border bg-white p-4">
         <h3 class="text-texte-2 text-sm font-semibold uppercase">{{ t('trips.detail.gauges') }}</h3>
@@ -609,10 +640,7 @@ const cessionProofUrl = computed(() => trip.value?.cession_letter_detail?.docume
                   {{ formatUnitMoney(transportPaymentUnitPrice(payment)) }} ·
                   {{ formatQuantity(trip.quantity_loaded) }}
                 </p>
-                <p
-                  v-if="payment.status === 'CANCELLED'"
-                  class="text-critique text-xs font-medium"
-                >
+                <p v-if="payment.status === 'CANCELLED'" class="text-critique text-xs font-medium">
                   {{ t('trips.detail.transportPaymentCancelled') }}
                 </p>
               </div>
@@ -630,8 +658,7 @@ const cessionProofUrl = computed(() => trip.value?.cession_letter_detail?.docume
               <div>
                 <p class="text-texte font-medium">{{ tripExpenseLabel(expense) }}</p>
                 <p class="text-texte-2 text-xs">
-                  {{ expense.date }} ·
-                  {{ formatUnitMoney(expenseUnitPrice(expense)) }} ·
+                  {{ expense.date }} · {{ formatUnitMoney(expenseUnitPrice(expense)) }} ·
                   {{ formatQuantity(trip.quantity_loaded) }}
                 </p>
                 <p v-if="expense.status === 'CANCELLED'" class="text-critique text-xs font-medium">
@@ -687,14 +714,14 @@ const cessionProofUrl = computed(() => trip.value?.cession_letter_detail?.docume
             <Button
               v-if="canManageExpenses"
               variant="ghost"
-              @click=";(automaticExpense = null), (showExpenseForm = true)"
+              @click=";((automaticExpense = null), (showExpenseForm = true))"
             >
               {{ t('trips.detail.addExpense') }}
             </Button>
             <Button
               v-if="canManageExpenses && trip.transporter && !trip.transporter_detail?.is_internal"
               variant="ghost"
-              @click=";(automaticTransportTitle = null), (showTransportPaymentForm = true)"
+              @click=";((automaticTransportTitle = null), (showTransportPaymentForm = true))"
             >
               {{ t('trips.detail.addTransportFee') }}
             </Button>
@@ -722,11 +749,15 @@ const cessionProofUrl = computed(() => trip.value?.cession_letter_detail?.docume
           </div>
           <div class="flex items-center justify-between py-2">
             <dt class="text-texte-2">{{ t('trips.detail.transporterLossQuantity') }}</dt>
-            <dd><MonoValue :value="formatQuantity(margin.transporter_loss_quantity)" align="left" /></dd>
+            <dd>
+              <MonoValue :value="formatQuantity(margin.transporter_loss_quantity)" align="left" />
+            </dd>
           </div>
           <div class="flex items-center justify-between py-2">
             <dt class="text-texte-2">{{ t('trips.detail.transporterLossIndemnity') }}</dt>
-            <dd><MonoValue :value="formatMoney(margin.transporter_loss_indemnity)" align="left" /></dd>
+            <dd>
+              <MonoValue :value="formatMoney(margin.transporter_loss_indemnity)" align="left" />
+            </dd>
           </div>
           <div class="flex items-center justify-between py-2">
             <dt class="text-texte-2">{{ t('trips.detail.fuelPurchaseCost') }}</dt>
@@ -793,7 +824,9 @@ const cessionProofUrl = computed(() => trip.value?.cession_letter_detail?.docume
             :per-litre-quantity="trip.quantity_loaded"
             :editing-expense="editingExpense"
             @success="onExpenseSaved"
-            @cancel=";(showExpenseForm = false), (automaticExpense = null), (editingExpense = null)"
+            @cancel="
+              ;((showExpenseForm = false), (automaticExpense = null), (editingExpense = null))
+            "
           />
         </div>
       </div>
@@ -811,7 +844,7 @@ const cessionProofUrl = computed(() => trip.value?.cession_letter_detail?.docume
             :transporter-name="trip.transporter_detail?.name ?? ''"
             :quantity-loaded="trip.quantity_loaded"
             @success="onTransportPaymentSaved"
-            @cancel=";(showTransportPaymentForm = false), (automaticTransportTitle = null)"
+            @cancel=";((showTransportPaymentForm = false), (automaticTransportTitle = null))"
           />
         </div>
       </div>

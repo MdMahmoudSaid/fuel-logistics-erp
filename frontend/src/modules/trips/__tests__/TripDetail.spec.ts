@@ -78,7 +78,7 @@ const postDeliveryControl = vi.fn(async (_tripId: number, payload: Record<string
   id: 1,
   trip: 9,
   loaded_quantity: '45000.00',
-  received_quantity: payload.received_quantity,
+  received_quantity: '45000.00',
   loss_quantity: '0.00',
   chargeable_loss_quantity: '0.00',
   tolerance_quantity: '100.00',
@@ -91,6 +91,27 @@ const postDeliveryControl = vi.fn(async (_tripId: number, payload: Record<string
   anomaly_confirmed_by: null,
   anomaly_confirmed_by_detail: null,
   anomaly_confirmed_at: null,
+  created_at: '',
+  updated_at: '',
+}))
+const postClientVerification = vi.fn(async (_tripId: number, payload: Record<string, unknown>) => ({
+  id: 1,
+  trip: 9,
+  loaded_quantity: '45000.00',
+  received_quantity: payload.received_quantity,
+  loss_quantity: '150.00',
+  chargeable_loss_quantity: '50.00',
+  tolerance_quantity: '100.00',
+  control_date: '2026-08-18',
+  controller: 1,
+  controller_detail: null,
+  method: 'MANUAL_GAUGE',
+  document: null,
+  notes: '',
+  anomaly_confirmed_by: null,
+  anomaly_confirmed_by_detail: null,
+  anomaly_confirmed_at: null,
+  verified_at: payload.verified_at,
   created_at: '',
   updated_at: '',
 }))
@@ -122,6 +143,8 @@ vi.mock('../api', () => ({
   postTripStatus: (id: number, status: string, notes?: string) => postTripStatus(id, status, notes),
   postDeliveryControl: (tripId: number, payload: Record<string, unknown>) =>
     postDeliveryControl(tripId, payload),
+  postClientVerification: (tripId: number, payload: Record<string, unknown>) =>
+    postClientVerification(tripId, payload),
   fetchSuggestedSellingPrice: () => fetchSuggestedSellingPrice(),
   fetchTripCostBasis: () => fetchTripCostBasis(),
   assignTripCustomer: vi.fn(),
@@ -371,7 +394,10 @@ describe('TripDetail expenses section', () => {
     expensesToReturn = [makeExpense({ id: 7, status: 'UNPAID', amount: '90000.00' })]
 
     const wrapper = await mountAt()
-    await wrapper.findAll('button').find((b) => b.text() === 'Modifier')!.trigger('click')
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Modifier')!
+      .trigger('click')
     await flushPromises()
 
     const amountInput = wrapper.find('#amount').element as HTMLInputElement
@@ -392,7 +418,10 @@ describe('TripDetail expenses section', () => {
     const wrapper = await mountAt()
     expect(expenseList).toHaveBeenCalledTimes(1)
 
-    await wrapper.findAll('button').find((b) => b.text() === 'Supprimer')!.trigger('click')
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Supprimer')!
+      .trigger('click')
     await flushPromises()
 
     expect(removeExpense).toHaveBeenCalledWith(8)
@@ -405,7 +434,10 @@ describe('TripDetail expenses section', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(false)
 
     const wrapper = await mountAt()
-    await wrapper.findAll('button').find((b) => b.text() === 'Supprimer')!.trigger('click')
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Supprimer')!
+      .trigger('click')
     await flushPromises()
 
     expect(removeExpense).not.toHaveBeenCalled()
@@ -418,7 +450,10 @@ describe('TripDetail expenses section', () => {
     const wrapper = await mountAt()
     expect(expenseList).toHaveBeenCalledTimes(1)
 
-    await wrapper.findAll('button').find((b) => b.text() === 'Annuler')!.trigger('click')
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Annuler')!
+      .trigger('click')
     await flushPromises()
 
     expect(cancelExpense).toHaveBeenCalledWith(5)
@@ -564,9 +599,7 @@ describe('TripDetail expenses section', () => {
 
     const wrapper = await mountAt()
 
-    expect(
-      wrapper.findAll('button').find((b) => b.text() === 'Attribuer un client'),
-    ).toBeDefined()
+    expect(wrapper.findAll('button').find((b) => b.text() === 'Attribuer un client')).toBeDefined()
   })
 
   it('hides "Attribuer un client" without operations edit permission', async () => {
@@ -636,7 +669,7 @@ describe('TripDetail expenses section', () => {
 
     const optionText = wrapper.find('#next_status').text()
     expect(fetchAllowedTripStatuses).toHaveBeenCalledWith(9)
-    expect(optionText).toContain("En route vers stock entreprise")
+    expect(optionText).toContain('En route vers stock entreprise')
     expect(optionText).not.toContain('En route vers le client')
     expect(optionText).not.toContain('Arrivé chez le client')
     expect(optionText).not.toContain('Contrôle de quantité')
@@ -654,7 +687,7 @@ describe('TripDetail expenses section', () => {
         id: 1,
         trip: 9,
         loaded_quantity: '45000.00',
-        received_quantity: payload.received_quantity,
+        received_quantity: '45000.00',
         loss_quantity: '0.00',
         chargeable_loss_quantity: '0.00',
         tolerance_quantity: '100.00',
@@ -675,7 +708,7 @@ describe('TripDetail expenses section', () => {
     const wrapper = await mountAt()
     expect(wrapper.find('#next_status').text()).toContain('Livré')
 
-    await wrapper.find('#received_quantity').setValue('45000.00')
+    await wrapper.find('#control_date').setValue('2026-08-18')
     await wrapper.find('form').trigger('submit.prevent')
     await flushPromises()
 
@@ -683,6 +716,72 @@ describe('TripDetail expenses section', () => {
     expect(fetchAllowedTripStatuses).toHaveBeenCalledTimes(2)
     expect(optionText).toContain('Terminé')
     expect(optionText).not.toContain('Livré')
+  })
+
+  it('shows the delivery confirmation form straight from ARRIVED_AT_CLIENT (simplified flow)', async () => {
+    setUser({ operations: ['view', 'edit'], finance: ['view'] })
+    tripResourceGet.mockResolvedValueOnce(makeTrip({ status: 'ARRIVED_AT_CLIENT', client: 10 }))
+    allowedStatusesToReturn = ['DELIVERED']
+
+    const wrapper = await mountAt()
+
+    expect(wrapper.find('#control_date').exists()).toBe(true)
+    expect(
+      wrapper
+        .findAll('button')
+        .find((b) => b.text() === 'Vérification client / Déclarer une perte'),
+    ).toBeUndefined()
+  })
+
+  it('shows the client-verification action once the trip is DELIVERED, and records a verification', async () => {
+    setUser({ operations: ['view', 'edit'], finance: ['view'] })
+    tripResourceGet
+      .mockResolvedValueOnce(makeTrip({ status: 'DELIVERED', client: 10 }))
+      .mockResolvedValueOnce(makeTrip({ status: 'DELIVERED', client: 10 }))
+    allowedStatusesToReturn = ['COMPLETED']
+
+    const wrapper = await mountAt()
+    expect(wrapper.find('#control_date').exists()).toBe(false)
+    const button = wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Vérification client / Déclarer une perte')
+    expect(button).toBeTruthy()
+
+    await button!.trigger('click')
+    await wrapper.find('[data-test="received-quantity"]').setValue('44850')
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(postClientVerification).toHaveBeenCalledWith(
+      9,
+      expect.objectContaining({ verified_at: expect.any(String) }),
+    )
+  })
+
+  it('also shows the client-verification action once the trip is COMPLETED, but never for CANCELLED', async () => {
+    setUser({ operations: ['view', 'edit'], finance: ['view'] })
+    tripResourceGet.mockResolvedValueOnce(makeTrip({ status: 'COMPLETED', client: 10 }))
+    allowedStatusesToReturn = []
+
+    const wrapper = await mountAt()
+    expect(
+      wrapper
+        .findAll('button')
+        .find((b) => b.text() === 'Vérification client / Déclarer une perte'),
+    ).toBeTruthy()
+  })
+
+  it('never shows the client-verification action for a CANCELLED trip', async () => {
+    setUser({ operations: ['view', 'edit'], finance: ['view'] })
+    tripResourceGet.mockResolvedValueOnce(makeTrip({ status: 'CANCELLED', client: 10 }))
+    allowedStatusesToReturn = []
+
+    const wrapper = await mountAt()
+    expect(
+      wrapper
+        .findAll('button')
+        .find((b) => b.text() === 'Vérification client / Déclarer une perte'),
+    ).toBeUndefined()
   })
 
   it('shows the source cession proof in an internal preview modal', async () => {
@@ -708,7 +807,9 @@ describe('TripDetail expenses section', () => {
 
     const wrapper = await mountAt()
 
-    const proofButton = wrapper.findAll('button').find((button) => button.text() === 'Voir justificatif')
+    const proofButton = wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Voir justificatif')
     expect(proofButton).toBeTruthy()
     await proofButton!.trigger('click')
     await flushPromises()
@@ -723,7 +824,10 @@ describe('TripDetail expenses section', () => {
 
     const wrapper = await mountAt()
     await wrapper.find('#next_status').setValue('SENT_FOR_LOADING')
-    await wrapper.findAll('button').find((b) => b.text() === 'Appliquer')!.trigger('click')
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Appliquer')!
+      .trigger('click')
     await flushPromises()
 
     expect(postTripStatus).toHaveBeenCalledWith(9, 'SENT_FOR_LOADING', '')
@@ -738,7 +842,10 @@ describe('TripDetail expenses section', () => {
 
     const wrapper = await mountAt()
     await wrapper.find('#next_status').setValue('LOADING')
-    await wrapper.findAll('button').find((b) => b.text() === 'Appliquer')!.trigger('click')
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Appliquer')!
+      .trigger('click')
     await flushPromises()
 
     expect((wrapper.find('#category').element as HTMLSelectElement).value).toBe('loading')
@@ -755,7 +862,10 @@ describe('TripDetail expenses section', () => {
 
     const wrapper = await mountAt()
     await wrapper.find('#next_status').setValue('ROAD_TRANSIT')
-    await wrapper.findAll('button').find((b) => b.text() === 'Appliquer')!.trigger('click')
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Appliquer')!
+      .trigger('click')
     await flushPromises()
 
     expect(postTripStatus).toHaveBeenCalledWith(9, 'ROAD_TRANSIT', '')
@@ -773,7 +883,10 @@ describe('TripDetail expenses section', () => {
 
     const wrapper = await mountAt()
     await wrapper.find('#next_status').setValue('IN_TRANSIT')
-    await wrapper.findAll('button').find((b) => b.text() === 'Appliquer')!.trigger('click')
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Appliquer')!
+      .trigger('click')
     await flushPromises()
 
     expect(postTripStatus).toHaveBeenCalledWith(9, 'IN_TRANSIT', '')

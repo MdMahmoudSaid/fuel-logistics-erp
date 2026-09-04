@@ -256,6 +256,12 @@ export interface DeliveryControl {
   anomaly_confirmed_by: number | null
   anomaly_confirmed_by_detail: UserBrief | null
   anomaly_confirmed_at: string | null
+  // Client modifications (2026-09-04 recette corrections): set by
+  // POST /api/trips/{id}/client-verification/ (DeliveryService.
+  // record_client_verification()) - optional/absent on a DeliveryControl
+  // that was only ever confirmed at delivery time and never verified with
+  // the client afterwards.
+  verified_at?: string | null
   created_at: string
   updated_at: string
 }

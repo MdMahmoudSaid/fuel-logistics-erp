@@ -364,7 +364,8 @@
       "unitCost": "Unit cost",
       "realTotalCost": "Real total cost",
       "unitProfit": "Unit profit",
-      "netMargin": "Net margin"
+      "netMargin": "Net margin",
+      "clientVerificationAction": "Client verification / Report a loss"
     },
     "assignCustomer": {
       "title": "Assign customer",
@@ -411,14 +412,11 @@
     "delivery": {
       "title": "Delivery / discharge control",
       "loadedQuantity": "Loaded quantity",
-      "receivedQuantity": "Received quantity (L)",
       "controlDate": "Control date",
       "method": "Method",
       "manualGauge": "Manual gauge",
       "meter": "Meter",
       "unitSellingPrice": "Unit selling price (XOF/L)",
-      "lossEstimate": "Loss (est.)",
-      "chargeableLossEstimate": "Chargeable loss (est.)",
       "costBasis": "Cost price",
       "supplierPrice": "Supplier price",
       "transporterCommission": "Transporter commission",
@@ -434,15 +432,23 @@
       "breakEvenResult": "Zero",
       "lossResult": "Loss of {amount}",
       "benefit": "Benefit (est.)",
-      "anomalyWarning": "Received quantity exceeds loaded quantity — this is an anomaly and requires authorized confirmation before it can be recorded.",
-      "anomalyConfirm": "I confirm this anomaly as an authorized user ({email})",
-      "anomalyAskAuthorized": "Ask an authorized user to confirm this anomaly before it can be recorded.",
       "lossTitle": "Warning: loss-making sale",
       "lossWarning": "The selling price is below the cost price — this sale will show a loss and requires confirmation before it can be recorded.",
       "lossConfirm": "I confirm this loss-making sale",
       "recording": "Recording…",
       "confirmDelivery": "Confirm delivery",
       "recordError": "Could not record delivery."
+    },
+    "clientVerification": {
+      "title": "Client verification",
+      "loadedQuantity": "Loaded quantity",
+      "receivedQuantity": "Received quantity (L)",
+      "verifiedAt": "Verification date",
+      "companyAbsorbed": "Loss absorbed by the company (est.)",
+      "transporterChargeable": "Loss chargeable to the transporter (est.)",
+      "recording": "Recording…",
+      "submit": "Record verification",
+      "recordError": "Could not record the client verification."
     }
   },
   "invoiceStatus": {

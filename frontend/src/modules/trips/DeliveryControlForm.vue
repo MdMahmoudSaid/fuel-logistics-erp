@@ -1,17 +1,19 @@
 <script setup lang="ts">
-// docs/PHASE_4_PLAN.md Etape 9: quantity control / discharge form, embedded
-// in TripDetail.vue while the trip sits at QUANTITY_CONTROL.
+// docs/PHASE_4_PLAN.md Etape 9: delivery confirmation form, embedded in
+// TripDetail.vue from ARRIVED_AT_CLIENT (and, for backward-compat, legacy
+// trips still sitting at QUANTITY_CONTROL).
 //
-// The backend (DeliveryService.record_delivery(), guide §7.3/§15) is the
-// sole authority on the loss/tolerance/anomaly rules and the final
-// numbers - the live loss/chargeable-loss figures shown here while typing
-// are an *estimate* only, using whichever tolerance this browser could
-// read (falls back to the spec's 100 L default if the current user lacks
-// "admin" view rights on /api/settings/loss-tolerance/). The authoritative,
-// frozen values always come back in the POST response.
+// Client modifications (2026-09-04 recette corrections): the delivery flow
+// was simplified - `received_quantity` is no longer collected here at all.
+// The backend (DeliveryService.record_delivery()) always defaults it to the
+// full loaded quantity (zero loss) when it's omitted from the payload, so
+// the trip goes straight to DELIVERED. Any discrepancy the client reports
+// afterwards is handled post-delivery by ClientVerificationForm.vue via the
+// separate client-verification endpoint - this form no longer shows a
+// loss/anomaly estimate at all. The below-cost "vente à perte" gate is a
+// different concept (selling price vs. cost price) and is unaffected.
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useAuthStore } from '@/stores/auth'
 import {
   fetchSuggestedSellingPrice,
   fetchTripCostBasis,
@@ -19,7 +21,6 @@ import {
   type DeliveryControlPayload,
 } from './api'
 import { translateApiError } from '@/i18n/apiErrors'
-import { fetchLossTolerance } from '@/modules/settings/api'
 import Button from '@/components/ui/Button.vue'
 import type { DeliveryControl, DeliveryMethod, TripCostBasis } from './types'
 import { formatQuantity, formatUnitMoney } from '@/utils/currency'
@@ -32,31 +33,14 @@ const emit = defineEmits<{
   confirmed: [control: DeliveryControl]
 }>()
 
-const auth = useAuthStore()
 const { t } = useI18n()
 
-const DEFAULT_TOLERANCE_LITRES = 100
-
-const toleranceLitres = ref(DEFAULT_TOLERANCE_LITRES)
-
-onMounted(async () => {
-  try {
-    const config = await fetchLossTolerance()
-    toleranceLitres.value = Number(config.tolerance_litres)
-  } catch {
-    // Not an admin (or the request otherwise failed) - keep the spec
-    // default for the live estimate; the server freezes the real value.
-  }
-})
-
 const form = ref({
-  received_quantity: '',
   control_date: new Date().toISOString().slice(0, 10),
   method: 'MANUAL_GAUGE' as DeliveryMethod,
   unit_selling_price: '',
   notes: '',
 })
-const anomalyConfirmed = ref(false)
 
 // Pre-fills from ProductSellingPriceHistory (backend/apps/sales/models.py)
 // when one exists for this trip's product/customer, but is left editable -
@@ -87,11 +71,6 @@ onMounted(async () => {
 const lossConfirmed = ref(false)
 
 const loadedQty = computed(() => Number(props.quantityLoaded))
-const receivedQty = computed(() => Number(form.value.received_quantity) || 0)
-const hasReceivedInput = computed(() => form.value.received_quantity !== '')
-const lossQty = computed(() => loadedQty.value - receivedQty.value)
-const chargeableLossQty = computed(() => Math.max(lossQty.value - toleranceLitres.value, 0))
-const isAnomaly = computed(() => hasReceivedInput.value && receivedQty.value > loadedQty.value)
 
 const unitCost = computed(() => (costBasis.value ? Number(costBasis.value.unit_cost) : null))
 const hasSellingPriceInput = computed(() => form.value.unit_selling_price !== '')
@@ -127,15 +106,8 @@ const componentRows = computed(() => {
   ]
 })
 
-// Anomaly confirmation is gated on the same "validate" tier the backend
-// Role permission matrix already uses for other frozen/high-stakes actions
-// (guide's "authorized user" - Admin by default, see accounts seed roles).
-const canConfirmAnomaly = computed(() => auth.can('operations', 'validate'))
-
 const canSubmit = computed(() => {
-  if (!hasReceivedInput.value || !form.value.control_date || !form.value.unit_selling_price)
-    return false
-  if (isAnomaly.value && !(canConfirmAnomaly.value && anomalyConfirmed.value)) return false
+  if (!form.value.control_date || !form.value.unit_selling_price) return false
   if (isLoss.value && !lossConfirmed.value) return false
   return true
 })
@@ -148,14 +120,10 @@ async function onSubmit() {
   saving.value = true
   error.value = ''
   const payload: DeliveryControlPayload = {
-    received_quantity: form.value.received_quantity,
     control_date: form.value.control_date,
     method: form.value.method,
     unit_selling_price: form.value.unit_selling_price,
     notes: form.value.notes,
-  }
-  if (isAnomaly.value && anomalyConfirmed.value && auth.user) {
-    payload.anomaly_confirmed_by = auth.user.id
   }
   if (isLoss.value && lossConfirmed.value) {
     payload.confirm_loss = true
@@ -187,21 +155,6 @@ async function onSubmit() {
         <p id="loaded_quantity_display" class="text-texte text-sm font-medium">
           {{ formatQuantity(loadedQty) }}
         </p>
-      </div>
-
-      <div class="space-y-1.5">
-        <label class="text-texte-2 text-sm font-medium" for="received_quantity">{{
-          t('trips.delivery.receivedQuantity')
-        }}</label>
-        <input
-          id="received_quantity"
-          v-model="form.received_quantity"
-          type="number"
-          step="0.01"
-          min="0"
-          required
-          class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-        />
       </div>
 
       <div class="space-y-1.5">
@@ -248,20 +201,6 @@ async function onSubmit() {
     </div>
 
     <div
-      v-if="hasReceivedInput"
-      class="border-ligne grid grid-cols-1 md:grid-cols-2 gap-4 rounded-lg border bg-sable p-3 text-sm"
-    >
-      <div>
-        <span class="text-texte-2">{{ t('trips.delivery.lossEstimate') }}</span>
-        <p class="text-texte font-medium">{{ formatQuantity(lossQty) }}</p>
-      </div>
-      <div>
-        <span class="text-texte-2">{{ t('trips.delivery.chargeableLossEstimate') }}</span>
-        <p class="text-texte font-medium">{{ formatQuantity(chargeableLossQty) }}</p>
-      </div>
-    </div>
-
-    <div
       v-if="unitCost !== null"
       class="border-ligne space-y-3 rounded-lg border bg-sable p-3 text-sm"
     >
@@ -294,24 +233,6 @@ async function onSubmit() {
           </dd>
         </div>
       </dl>
-    </div>
-
-    <div v-if="isAnomaly" class="border-ecart bg-ecart-tint space-y-2 rounded-lg border p-3">
-      <p class="text-ecart-texte text-sm font-medium">
-        {{ t('trips.delivery.anomalyWarning') }}
-      </p>
-      <label v-if="canConfirmAnomaly" class="text-ecart-texte flex items-center gap-2 text-sm">
-        <input
-          id="anomaly_confirmed"
-          v-model="anomalyConfirmed"
-          type="checkbox"
-          class="border-ligne-forte accent-orange h-5 w-5 rounded"
-        />
-        {{ t('trips.delivery.anomalyConfirm', { email: auth.user?.email ?? '' }) }}
-      </label>
-      <p v-else class="text-ecart-texte text-sm">
-        {{ t('trips.delivery.anomalyAskAuthorized') }}
-      </p>
     </div>
 
     <div v-if="isLoss" class="border-critique bg-critique-tint space-y-2 rounded-lg border p-3">

@@ -8,9 +8,9 @@ const postDeliveryControl = vi.fn(async (_tripId: number, payload: Record<string
   id: 1,
   trip: 9,
   loaded_quantity: '45000.00',
-  received_quantity: payload.received_quantity,
-  loss_quantity: '150.00',
-  chargeable_loss_quantity: '50.00',
+  received_quantity: '45000.00',
+  loss_quantity: '0.00',
+  chargeable_loss_quantity: '0.00',
   tolerance_quantity: '100.00',
   control_date: payload.control_date,
   controller: 1,
@@ -18,7 +18,7 @@ const postDeliveryControl = vi.fn(async (_tripId: number, payload: Record<string
   method: payload.method,
   document: null,
   notes: '',
-  anomaly_confirmed_by: payload.anomaly_confirmed_by ?? null,
+  anomaly_confirmed_by: null,
   anomaly_confirmed_by_detail: null,
   anomaly_confirmed_at: null,
   created_at: '',
@@ -51,32 +51,6 @@ vi.mock('../api', () => ({
   fetchTripCostBasis: () => fetchTripCostBasis(),
 }))
 
-const fetchLossTolerance = vi.fn(async () => ({
-  tolerance_litres: '100.00',
-  updated_by: null,
-  updated_by_detail: null,
-  updated_at: null,
-}))
-vi.mock('@/modules/settings/api', () => ({
-  fetchLossTolerance: () => fetchLossTolerance(),
-}))
-
-function setAdminUser() {
-  const auth = useAuthStore()
-  auth.user = {
-    id: 1,
-    phone: '+22212345678',
-    email: 'admin@example.com',
-    full_name: 'Admin',
-    role: 1,
-    role_detail: {
-      id: 1,
-      name: 'Admin',
-      permissions: { operations: ['view', 'create', 'edit', 'validate'] },
-    },
-  }
-}
-
 function setOpsUser() {
   const auth = useAuthStore()
   auth.user = {
@@ -99,75 +73,32 @@ describe('DeliveryControlForm', () => {
     setActivePinia(createPinia())
   })
 
-  it('shows the loaded quantity read-only and computes loss/chargeable loss live', async () => {
+  it('shows the loaded quantity read-only', async () => {
     setOpsUser()
     const wrapper = mount(DeliveryControlForm, { props: { tripId: 9, quantityLoaded: '45000.00' } })
     await flushPromises()
 
     expect(wrapper.text()).toContain('45 000')
     expect(wrapper.find('#loaded_quantity_display').exists()).toBe(true)
-
-    await wrapper.find('#received_quantity').setValue('44850.00')
-    await flushPromises()
-
-    expect(wrapper.text()).toContain('150')
-    expect(wrapper.text()).toContain('50')
+    expect(wrapper.find('#received_quantity').exists()).toBe(false)
   })
 
-  it('warns and hides the confirm control from a non-authorized user when received exceeds loaded', async () => {
+  it('emits confirmed with the server response on success, without sending received_quantity', async () => {
     setOpsUser()
     const wrapper = mount(DeliveryControlForm, { props: { tripId: 9, quantityLoaded: '45000.00' } })
     await flushPromises()
 
-    await wrapper.find('#received_quantity').setValue('46000.00')
-    await flushPromises()
-
-    expect(wrapper.text()).toContain('anomalie')
-    expect(wrapper.find('#anomaly_confirmed').exists()).toBe(false)
-
     await wrapper.find('#control_date').setValue('2026-08-18')
-    await wrapper.find('form').trigger('submit.prevent')
-    await flushPromises()
-
-    expect(postDeliveryControl).not.toHaveBeenCalled()
-  })
-
-  it('lets an authorized user confirm the anomaly and submits anomaly_confirmed_by', async () => {
-    setAdminUser()
-    const wrapper = mount(DeliveryControlForm, { props: { tripId: 9, quantityLoaded: '45000.00' } })
-    await flushPromises()
-
-    await wrapper.find('#received_quantity').setValue('46000.00')
-    await wrapper.find('#control_date').setValue('2026-08-18')
-    await flushPromises()
-
-    expect(wrapper.find('#anomaly_confirmed').exists()).toBe(true)
-    await wrapper.find('#anomaly_confirmed').setValue(true)
-
     await wrapper.find('form').trigger('submit.prevent')
     await flushPromises()
 
     expect(postDeliveryControl).toHaveBeenCalledWith(
       9,
-      expect.objectContaining({ anomaly_confirmed_by: 1 }),
+      expect.not.objectContaining({ received_quantity: expect.anything() }),
     )
-    const [, payload] = postDeliveryControl.mock.calls[0]!
-    expect(Number(payload.received_quantity)).toBe(46000)
-  })
-
-  it('emits confirmed with the server response on success', async () => {
-    setOpsUser()
-    const wrapper = mount(DeliveryControlForm, { props: { tripId: 9, quantityLoaded: '45000.00' } })
-    await flushPromises()
-
-    await wrapper.find('#received_quantity').setValue('44850.00')
-    await wrapper.find('#control_date').setValue('2026-08-18')
-    await wrapper.find('form').trigger('submit.prevent')
-    await flushPromises()
-
     expect(wrapper.emitted('confirmed')).toBeTruthy()
     const [emittedControl] = wrapper.emitted('confirmed')![0] as [Record<string, unknown>]
-    expect(emittedControl.chargeable_loss_quantity).toBe('50.00')
+    expect(emittedControl.chargeable_loss_quantity).toBe('0.00')
   })
 
   it('pre-fills the selling price from the suggestion and sends it with the payload', async () => {
@@ -177,7 +108,6 @@ describe('DeliveryControlForm', () => {
 
     expect((wrapper.find('#unit_selling_price').element as HTMLInputElement).value).toBe('850.0000')
 
-    await wrapper.find('#received_quantity').setValue('44850.00')
     await wrapper.find('#control_date').setValue('2026-08-18')
     await wrapper.find('form').trigger('submit.prevent')
     await flushPromises()
@@ -192,7 +122,6 @@ describe('DeliveryControlForm', () => {
     const wrapper = mount(DeliveryControlForm, { props: { tripId: 9, quantityLoaded: '45000.00' } })
     await flushPromises()
 
-    await wrapper.find('#received_quantity').setValue('44850.00')
     await wrapper.find('#control_date').setValue('2026-08-18')
     await wrapper.find('form').trigger('submit.prevent')
     await flushPromises()
@@ -208,7 +137,6 @@ describe('DeliveryControlForm', () => {
     const wrapper = mount(DeliveryControlForm, { props: { tripId: 9, quantityLoaded: '45000.00' } })
     await flushPromises()
 
-    await wrapper.find('#received_quantity').setValue('44850.00')
     await wrapper.find('#control_date').setValue('2026-08-18')
     await wrapper.find('form').trigger('submit.prevent')
     await flushPromises()
@@ -257,7 +185,6 @@ describe('DeliveryControlForm', () => {
     const wrapper = mount(DeliveryControlForm, { props: { tripId: 9, quantityLoaded: '45000.00' } })
     await flushPromises()
 
-    await wrapper.find('#received_quantity').setValue('44850.00')
     await wrapper.find('#control_date').setValue('2026-08-18')
     await wrapper.find('#unit_selling_price').setValue('790.0000')
     await flushPromises()

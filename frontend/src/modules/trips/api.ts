@@ -63,7 +63,14 @@ export function assignTripCustomer(tripId: number, customerId: number): Promise<
 }
 
 export interface DeliveryControlPayload {
-  received_quantity: string
+  // Client modifications (2026-09-04 recette corrections): now optional -
+  // DeliveryControlForm.vue never sends it any more, so the backend
+  // (DeliveryService.record_delivery()) always defaults it to the full
+  // loaded quantity (zero loss) and the trip goes straight to DELIVERED.
+  // Any post-delivery discrepancy is reported separately via
+  // postClientVerification() below. Kept optional here (rather than
+  // removed) since the backend endpoint still accepts it.
+  received_quantity?: string
   control_date: string
   method: DeliveryMethod
   unit_selling_price: string
@@ -85,6 +92,28 @@ export function postDeliveryControl(
 ): Promise<DeliveryControl> {
   return apiClient
     .post<DeliveryControl>(`/trips/${tripId}/delivery-control/`, payload)
+    .then((r) => r.data)
+}
+
+export interface ClientVerificationPayload {
+  received_quantity: string
+  verified_at: string
+  notes?: string
+}
+
+// DeliveryService.record_client_verification() (backend/apps/trips/
+// services.py) via TripViewSet.client_verification() - post-delivery
+// quantity check (client modifications 2026-09-04 recette corrections).
+// Only valid once the trip is DELIVERED/COMPLETED; the sole authority on
+// the loss/tolerance split (company-absorbed vs. transporter-chargeable)
+// remains the backend - this just posts the request and surfaces whatever
+// it accepts (200, updated DeliveryControl) or rejects (400).
+export function postClientVerification(
+  tripId: number,
+  payload: ClientVerificationPayload,
+): Promise<DeliveryControl> {
+  return apiClient
+    .post<DeliveryControl>(`/trips/${tripId}/client-verification/`, payload)
     .then((r) => r.data)
 }
 

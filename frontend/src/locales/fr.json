@@ -365,7 +365,8 @@
       "unitCost": "Coût unitaire",
       "realTotalCost": "Coût total réel",
       "unitProfit": "Bénéfice unitaire",
-      "netMargin": "Marge nette"
+      "netMargin": "Marge nette",
+      "clientVerificationAction": "Vérification client / Déclarer une perte"
     },
     "assignCustomer": {
       "title": "Attribuer un client",
@@ -413,14 +414,11 @@
     "delivery": {
       "title": "Contrôle de livraison / déchargement",
       "loadedQuantity": "Quantité chargée",
-      "receivedQuantity": "Quantité reçue (L)",
       "controlDate": "Date de contrôle",
       "method": "Méthode",
       "manualGauge": "Jauge manuelle",
       "meter": "Compteur",
       "unitSellingPrice": "Prix de vente unitaire (XOF/L)",
-      "lossEstimate": "Perte (est.)",
-      "chargeableLossEstimate": "Perte facturable (est.)",
       "costBasis": "Prix de revient",
       "supplierPrice": "Prix fournisseur",
       "transporterCommission": "Commission transporteur",
@@ -436,15 +434,23 @@
       "breakEvenResult": "Zéro",
       "lossResult": "Perte de {amount}",
       "benefit": "Bénéfice (est.)",
-      "anomalyWarning": "La quantité reçue dépasse la quantité chargée — ceci est une anomalie et nécessite une confirmation par un utilisateur autorisé avant de pouvoir être enregistrée.",
-      "anomalyConfirm": "Je confirme cette anomalie en tant qu'utilisateur autorisé ({email})",
-      "anomalyAskAuthorized": "Demandez à un utilisateur autorisé de confirmer cette anomalie avant de pouvoir l'enregistrer.",
       "lossTitle": "Attention : vente à perte",
       "lossWarning": "Le prix de vente est inférieur au prix de revient — cette vente sera à perte et nécessite une confirmation avant de pouvoir être enregistrée.",
       "lossConfirm": "Je confirme cette vente à perte",
       "recording": "Enregistrement…",
       "confirmDelivery": "Confirmer la livraison",
       "recordError": "Impossible d'enregistrer la livraison."
+    },
+    "clientVerification": {
+      "title": "Vérification client",
+      "loadedQuantity": "Quantité chargée",
+      "receivedQuantity": "Quantité reçue (L)",
+      "verifiedAt": "Date de vérification",
+      "companyAbsorbed": "Perte absorbée par l'entreprise (est.)",
+      "transporterChargeable": "Perte facturable au transporteur (est.)",
+      "recording": "Enregistrement…",
+      "submit": "Enregistrer la vérification",
+      "recordError": "Impossible d'enregistrer la vérification client."
     }
   },
   "invoiceStatus": {
