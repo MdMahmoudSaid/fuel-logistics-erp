@@ -37,6 +37,7 @@ describe('TreasuryLedgerView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     delete routeQuery.action
+    delete routeQuery.type
   })
 
   it('shows a Nouvelle avance button next to Nouveau paiement', async () => {
@@ -54,6 +55,14 @@ describe('TreasuryLedgerView', () => {
     await flushPromises()
 
     expect(wrapper.findComponent({ name: 'UiModal' }).exists()).toBe(true)
+  })
+
+  it('seeds the type filter to Entree when navigated with ?type=in from the dashboard KPI card', async () => {
+    routeQuery.type = 'in'
+    const wrapper = mount(TreasuryLedgerView)
+    await flushPromises()
+
+    expect((wrapper.find('select').element as HTMLSelectElement).value).toBe('in')
   })
 
   it('renders the Entrées/sorties card from period_treasury_in/out, not collections/paid_expenses', async () => {

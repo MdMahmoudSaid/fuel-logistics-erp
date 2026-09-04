@@ -75,7 +75,14 @@ export interface DashboardSummary {
     period_paid_expenses: string
     period_treasury_in: string
     period_treasury_out: string
+    // Trips-only operational profit for the period - kept for other
+    // consumers (page Benefices), no longer the dashboard's headline
+    // figure (see period_net_profit).
     period_accounting_profit: string
+    // Dashboard recette fix (2026-09-04): operational profit minus
+    // general expenses actually paid in the period - the dashboard's
+    // headline profit card.
+    period_net_profit: string
     current_treasury_balance: string
   }
   party_balances: {

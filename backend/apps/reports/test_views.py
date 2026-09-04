@@ -6,6 +6,7 @@ import io
 from decimal import Decimal
 
 import pytest
+from django.contrib.contenttypes.models import ContentType
 from django.core.files.uploadedfile import SimpleUploadedFile
 from openpyxl import load_workbook
 from rest_framework.test import APIClient
@@ -18,6 +19,7 @@ from apps.finance.models import (
     CashAccount,
     CustomerPayment,
     Expense,
+    ExpenseAllocation,
     Shareholder,
     ShareholderLoan,
     SupplierAdvance,
@@ -760,8 +762,13 @@ def test_dashboard_summary_exposes_final_business_sections():
         recorded_by=admin_user,
     )
     FinancePostingService.record_customer_payment_treasury(payment)
+    # Dashboard recette fix (2026-09-04): this is a generic smoke check for
+    # the whole financial_summary section, not the category-exclusion rule
+    # itself (see test_dashboard_summary_period_paid_expenses_excludes_
+    # trip_fees below for that) - uses a genuine general-expense category
+    # (OTHER) so it isn't accidentally excluded by that rule.
     Expense.objects.create(
-        category=Expense.Category.CUSTOMS,
+        category=Expense.Category.OTHER,
         amount=Decimal("50000.00"),
         calculation_method=Expense.CalculationMethod.FIXED,
         date="2026-08-18",
@@ -794,6 +801,69 @@ def test_dashboard_summary_exposes_final_business_sections():
 
     action_items = response.data["action_items"]
     assert any(item["kind"] == "company_stock_without_customer" for item in action_items)
+
+
+@pytest.mark.django_db
+def test_dashboard_summary_period_paid_expenses_excludes_trip_fees():
+    """Dashboard recette fix (2026-09-04): confirmed bug during actual
+    client recette testing - the "Depenses generales payees" card counted
+    trip-linked fees (douane, transit, transit routiere, chargement,
+    transport) alongside real general expenses. Client's own example: a
+    1 000 000 XOF general expense (Internet) plus real trip fees paid in
+    the same period must show exactly 1 000 000, not their sum."""
+    admin_user = _make_admin("DASHGENEXP")
+    fx = _make_full_trip("DASHGENEXP", admin_user)
+    trip = fx["trip"]
+
+    # General expense (Internet-like, non-system category, no allocation) -
+    # the ONLY thing that must count.
+    Expense.objects.create(
+        category=Expense.Category.OTHER,
+        amount=Decimal("1000000.00"),
+        calculation_method=Expense.CalculationMethod.MANUAL,
+        date=trip.loading_date,
+        status=Expense.Status.PAID,
+    )
+
+    # Trip fees, allocated to the trip like the real "frais trajet" UI does
+    # - douane + transit, both paid - must NEVER show up in this card.
+    for category, amount in (
+        (Expense.Category.CUSTOMS, Decimal("200000.00")),
+        (Expense.Category.TRANSIT, Decimal("60450.00")),
+    ):
+        trip_expense = Expense.objects.create(
+            category=category,
+            amount=amount,
+            calculation_method=Expense.CalculationMethod.MANUAL,
+            date=trip.loading_date,
+            status=Expense.Status.PAID,
+        )
+        ExpenseAllocation.objects.create(
+            expense=trip_expense,
+            content_type=ContentType.objects.get_for_model(Trip),
+            object_id=trip.id,
+            allocated_amount=amount,
+        )
+
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    response = client.get(
+        "/api/dashboard/summary/",
+        {"preset": "custom", "start_date": str(trip.loading_date), "end_date": str(trip.loading_date)},
+    )
+
+    assert response.status_code == 200, response.data
+    financial = response.data["financial_summary"]
+    # Must be exactly the general expense - NOT 1 260 450 (the sum
+    # including douane + transit), matching the client's exact example.
+    assert financial["period_paid_expenses"] == "1000000.00"
+
+    # period_net_profit = operational profit (period_accounting_profit) -
+    # general expenses paid - never the raw operational figure.
+    operational = Decimal(financial["period_accounting_profit"])
+    net = Decimal(financial["period_net_profit"])
+    assert net == operational - Decimal("1000000.00")
+    assert net != operational
 
 
 @pytest.mark.django_db

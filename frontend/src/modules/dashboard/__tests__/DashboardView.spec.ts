@@ -60,6 +60,7 @@ const summary: DashboardSummary = {
     period_treasury_in: '500000.00',
     period_treasury_out: '600000.00',
     period_accounting_profit: '1957500.00',
+    period_net_profit: '1357500.00',
     current_treasury_balance: '6200000.00',
   },
   party_balances: {
@@ -287,6 +288,7 @@ function makeRouter() {
         component: { template: '<div />' },
       },
       { path: '/profit', name: 'profit', component: { template: '<div />' } },
+      { path: '/expenses', name: 'expenses', component: { template: '<div />' } },
       {
         path: '/supplier-orders/new',
         name: 'supplier-order-new',
@@ -381,6 +383,7 @@ describe('DashboardView', () => {
         period_collections: '333333.00',
         period_paid_expenses: '44444.00',
         period_accounting_profit: '123456.00',
+        period_net_profit: '79012.00',
       },
     }
     fetchDashboardSummary.mockImplementation(async (params) =>
@@ -410,8 +413,84 @@ describe('DashboardView', () => {
       expect.stringContaining('222 222 XOF'),
       expect.stringContaining('333 333 XOF'),
       expect.stringContaining('44 444 XOF'),
-      expect.stringContaining('123 456 XOF'),
+      expect.stringContaining('79 012 XOF'),
     ])
+  })
+
+  it('shows dedicated general-expense and net-profit figures on the KPI cards, distinct from trip-fee and operational totals', async () => {
+    const wrapper = mount(DashboardView, { global: { plugins: [makeRouter()] } })
+    await flushPromises()
+
+    const financialCards = wrapper.findAll('[data-test="financial-kpi-card"]')
+    expect(financialCards).toHaveLength(4)
+    // Client's own recette example: a 1 000 000 XOF general expense must
+    // never be inflated by trip-linked fees on this card - here the fixture
+    // uses 600 000.00 as the already-excluded "paid general expenses" figure,
+    // distinct from period_accounting_profit (1 957 500.00).
+    expect(financialCards[2]!.text()).toContain('600 000 XOF')
+    expect(financialCards[2]!.text()).not.toContain('1 957 500')
+    // period_net_profit (1 357 500.00) replaces period_accounting_profit
+    // (1 957 500.00) as the headline figure on card 4.
+    expect(financialCards[3]!.text()).toContain('1 357 500 XOF')
+    expect(financialCards[3]!.text()).not.toContain('1 957 500')
+  })
+
+  it('renders the 4 financial KPI cards as accessible links to their expected destinations', async () => {
+    const wrapper = mount(DashboardView, { global: { plugins: [makeRouter()] } })
+    await flushPromises()
+
+    const financialCards = wrapper.findAll('[data-test="financial-kpi-card"]')
+    expect(financialCards).toHaveLength(4)
+    financialCards.forEach((card) => expect(card.element.tagName).toBe('A'))
+
+    const financialLinks = wrapper
+      .findAllComponents({ name: 'RouterLink' })
+      .filter((link) => link.attributes('data-test') === 'financial-kpi-card')
+    expect(financialLinks).toHaveLength(4)
+    expect(financialLinks.map((link) => (link.props('to') as { name: string }).name)).toEqual([
+      'profit',
+      'treasury-transactions',
+      'expenses',
+      'profit',
+    ])
+    expect(
+      (financialLinks[1]!.props('to') as { query: Record<string, string> }).query.type,
+    ).toBe('in')
+  })
+
+  it('uses the exact FR/EN/AR labels for the 4 financial KPI cards', async () => {
+    const labels = {
+      fr: [
+        'Revenus de la période',
+        'Encaissements de la période',
+        'Dépenses générales payées',
+        'Bénéfice net après dépenses générales',
+      ],
+      en: [
+        'Period revenue',
+        'Period collections',
+        'Paid general expenses',
+        'Net profit after general expenses',
+      ],
+      ar: [
+        'إيرادات الفترة',
+        'تحصيلات الفترة',
+        'المصروفات العامة المدفوعة',
+        'الربح الصافي بعد المصروفات العامة',
+      ],
+    } as const
+
+    for (const [loc, expected] of Object.entries(labels)) {
+      i18n.global.locale.value = loc as 'fr' | 'en' | 'ar'
+      const wrapper = mount(DashboardView, { global: { plugins: [makeRouter()] } })
+      await flushPromises()
+      const cardLabels = wrapper
+        .findAll('[data-test="financial-kpi-card"] .financial-kpi-label')
+        .map((el) => el.text())
+      expect(cardLabels).toEqual(expected)
+      wrapper.unmount()
+    }
+    i18n.global.locale.value = 'fr'
   })
 
   it('refetches fresh balances when the dashboard is re-entered after a payment', async () => {
@@ -472,10 +551,10 @@ describe('DashboardView', () => {
     const wrapper = mount(DashboardView, { global: { plugins: [router] } })
     await flushPromises()
 
-    expect(wrapper.text()).toContain("Chiffre d'affaires de la période")
+    expect(wrapper.text()).toContain('Revenus de la période')
     expect(wrapper.text()).toContain('Encaissements de la période')
-    expect(wrapper.text()).toContain('Dépenses payées de la période')
-    expect(wrapper.text()).toContain('Bénéfice opérationnel de la période (trajets uniquement)')
+    expect(wrapper.text()).toContain('Dépenses générales payées')
+    expect(wrapper.text()).toContain('Bénéfice net après dépenses générales')
     expect(wrapper.text()).not.toContain(
       'La période filtre les ventes, encaissements, dépenses, volumes et bénéfices.',
     )
@@ -608,8 +687,8 @@ describe('DashboardView', () => {
 
     expect(wrapper.text()).toContain('إيرادات الفترة')
     expect(wrapper.text()).toContain('تحصيلات الفترة')
-    expect(wrapper.text()).toContain('المصروفات المدفوعة للفترة')
-    expect(wrapper.text()).toContain('الربح التشغيلي للفترة (الرحلات فقط)')
+    expect(wrapper.text()).toContain('المصروفات العامة المدفوعة')
+    expect(wrapper.text()).toContain('الربح الصافي بعد المصروفات العامة')
     expect(wrapper.text()).toContain('الخزينة المتاحة')
     expect(wrapper.text()).toContain('البنوك')
     expect(wrapper.text()).toContain('الصناديق')

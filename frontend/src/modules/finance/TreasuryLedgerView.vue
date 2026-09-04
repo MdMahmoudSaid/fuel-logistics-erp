@@ -49,7 +49,14 @@ function onAdvanceSuccess() {
 const transactions = ref<TreasuryTransaction[]>([])
 const loading = ref(true)
 const error = ref('')
-const typeFilter = ref('')
+// Dashboard recette fix (2026-09-04): the "Encaissements de la periode" KPI
+// card links here with ?type=in so the ledger opens pre-filtered to money-in
+// rows, same values this <select> already writes into typeFilter itself.
+const typeFilter = ref(
+  route.query.type === 'in' || route.query.type === 'out' || route.query.type === 'transfer'
+    ? (route.query.type as string)
+    : ''
+)
 const accountFilter = ref('')
 const proofFilter = ref('')
 

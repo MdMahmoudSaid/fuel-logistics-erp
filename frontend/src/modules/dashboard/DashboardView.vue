@@ -41,10 +41,17 @@ const { t, locale } = useI18n()
 const summary = ref<DashboardSummary | null>(null)
 const loading = ref(true)
 const error = ref('')
+// Dashboard recette fix (2026-09-04): remembered so the 4 top KPI cards can
+// carry the currently-selected period along as query params when navigating
+// away - the target pages (Depenses generales, Benefices) don't consume
+// them yet (neither has a period-filter query-param contract today), but
+// passing them now is forward-compatible and harmless.
+const currentPeriod = ref<DateRangeValue>({})
 
 async function load(filter: DateRangeValue) {
   loading.value = true
   error.value = ''
+  currentPeriod.value = filter
   try {
     summary.value = await fetchDashboardSummary(filter as Record<string, string | undefined>)
   } catch {
@@ -149,6 +156,18 @@ const deliveredGauge = computed(() =>
 )
 const lossGaugeTone = computed(() => lossSeverityTone(avgLossPct.value))
 
+// Dashboard recette fix (2026-09-04): the currently-selected period, passed
+// through as query params on each card's navigation target - see
+// currentPeriod's own comment for why the target pages don't consume it yet.
+const periodQuery = computed(() => {
+  const p = currentPeriod.value as Record<string, string | undefined>
+  const query: Record<string, string> = {}
+  for (const key of ['preset', 'range', 'start_date', 'end_date', 'from', 'to']) {
+    if (p[key]) query[key] = p[key]!
+  }
+  return query
+})
+
 const financialCards = computed(() => {
   if (!summary.value) return []
   const s = summary.value.financial_summary
@@ -158,24 +177,35 @@ const financialCards = computed(() => {
       raw: s.period_revenue,
       tone: 'neutral',
       icon: 'trending-up' as IconName,
+      // Client instruction (2026-09-04): no dedicated "trajets comptabilises"
+      // route exists yet - page Benefices is the most natural existing
+      // destination for revenue detail.
+      to: { name: 'profit', query: periodQuery.value },
     },
     {
       labelKey: 'dashboard.final.periodCollections',
       raw: s.period_collections,
       tone: 'positive',
       icon: 'wallet' as IconName,
+      // TreasuryLedgerView's typeFilter ref already supports 'in'/'out'/
+      // 'transfer' via a simple <select> - reading it from ?type= on
+      // mount (see that component) is the "simple existing filter" the
+      // instruction asked for.
+      to: { name: 'treasury-transactions', query: { type: 'in', ...periodQuery.value } },
     },
     {
       labelKey: 'dashboard.final.periodPaidExpenses',
       raw: s.period_paid_expenses,
       tone: 'neutral',
       icon: 'receipt' as IconName,
+      to: { name: 'expenses', query: periodQuery.value },
     },
     {
-      labelKey: 'dashboard.final.periodAccountingProfit',
-      raw: s.period_accounting_profit,
-      tone: Number(s.period_accounting_profit) >= 0 ? 'positive' : 'negative',
+      labelKey: 'dashboard.final.periodNetProfit',
+      raw: s.period_net_profit,
+      tone: Number(s.period_net_profit) >= 0 ? 'positive' : 'negative',
       icon: 'coins' as IconName,
+      to: { name: 'profit', query: periodQuery.value },
     },
   ].map((card) => ({
     label: t(card.labelKey),
@@ -183,6 +213,7 @@ const financialCards = computed(() => {
     negative: Number(card.raw) < 0,
     tone: card.tone,
     icon: card.icon,
+    to: card.to,
   }))
 })
 
@@ -339,11 +370,12 @@ const compactEnRouteTrips = computed(() => enRouteTrips.value.slice(0, 5))
 
     <template v-if="summary">
       <section class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <div
+        <RouterLink
           v-for="card in financialCards"
           :key="card.label"
+          :to="card.to"
           data-test="financial-kpi-card"
-          class="financial-kpi-card border-ligne rounded-lg border bg-white p-4"
+          class="financial-kpi-card border-ligne hover:border-transit hover:bg-fond-2 focus-visible:ring-transit block rounded-lg border bg-white p-4 transition-colors focus-visible:ring-2 focus-visible:outline-none"
         >
           <div class="flex items-center gap-2">
             <span
@@ -369,7 +401,7 @@ const compactEnRouteTrips = computed(() => enRouteTrips.value.slice(0, 5))
           >
             <MonoValue v-bind="card.amountParts" align="left" />
           </p>
-        </div>
+        </RouterLink>
       </section>
 
       <section class="grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]">

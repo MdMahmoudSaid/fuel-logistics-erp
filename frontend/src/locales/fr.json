@@ -113,10 +113,11 @@
     "noAmounts": "Aucun montant.",
     "final": {
       "periodFilterHelp": "La période filtre les ventes, encaissements, dépenses, volumes et bénéfices.",
-      "periodRevenue": "Chiffre d'affaires de la période",
+      "periodRevenue": "Revenus de la période",
       "periodCollections": "Encaissements de la période",
-      "periodPaidExpenses": "Dépenses payées de la période",
+      "periodPaidExpenses": "Dépenses générales payées",
       "periodAccountingProfit": "Bénéfice opérationnel de la période (trajets uniquement)",
+      "periodNetProfit": "Bénéfice net après dépenses générales",
       "currentTreasuryBalance": "Solde trésorerie actuel",
       "availableTreasury": "Trésorerie disponible",
       "banks": "Banques",
