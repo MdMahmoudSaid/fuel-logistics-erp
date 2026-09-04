@@ -248,10 +248,15 @@ function onDateRangeChange(value: DateRangeValue) {
            expenses actually paid in the period - both sourced from the
            same period-scoped preview as the badge above, never
            recomputed here. -->
+      <!-- Client modifications (2026-09-04): the 3 distinct profit blocks
+           the client asked to see clearly separated on this page - exact
+           French labels per client clarification (docs/superpowers/specs/
+           2026-09-04-recette-corrections-design.md Section 4), each sourced
+           from the same period-scoped preview, never recomputed here. -->
       <section v-if="preview" class="grid gap-3 sm:grid-cols-3">
-        <div data-test="profit-net-card" class="border-ligne rounded-lg border bg-white p-4 shadow-sm">
+        <div data-test="profit-operational-card" class="border-ligne rounded-lg border bg-white p-4 shadow-sm">
           <p class="text-texte-2 text-xs font-medium tracking-wide uppercase">
-            {{ t('finance.profit.accountingProfit') }}
+            {{ t('finance.profit.operationalProfit') }}
           </p>
           <MonoValue
             class="text-lg font-semibold"
@@ -282,34 +287,38 @@ function onDateRangeChange(value: DateRangeValue) {
         </div>
       </section>
 
-      <!-- "Resultat apres capital" backlog: informational only, sourced from
-           the same preview as the cards above - never recomputed here, never
+      <!-- Client modifications (2026-09-04): "Fond de roulement client" and
+           "Resultat distribuable apres dettes et capital" replace the old
+           "Resultat apres capital" backlog block entirely - informational
+           only, sourced from the same preview - never recomputed here, never
            a basis for shareholder distributions (those stay net_profit-based,
            see distributionNote below). -->
       <section v-if="preview" class="grid gap-3 sm:grid-cols-2">
-        <div data-test="profit-after-capital-card" class="border-ligne rounded-lg border bg-white p-4 shadow-sm">
+        <div data-test="profit-working-capital-card" class="border-ligne rounded-lg border bg-white p-4 shadow-sm">
           <p class="text-texte-2 text-xs font-medium tracking-wide uppercase">
-            {{ t('finance.profit.totalCapitalContributed') }}
+            {{ t('finance.profit.workingCapital') }}
           </p>
           <p class="text-texte-2 mt-1 text-sm">
-            {{ t('finance.profit.totalCapitalContributedHelp') }}
+            {{ t('finance.profit.workingCapitalHelp') }}
           </p>
           <MonoValue
             class="mt-2 text-lg font-semibold"
             align="left"
-            :value="formatMoney(preview.total_capital_contributed)"
+            :value="formatMoney(preview.working_capital.total)"
           />
-          <p class="text-texte-2 mt-3 text-xs font-medium tracking-wide uppercase">
-            {{ t('finance.profit.profitAfterCapital') }}
+        </div>
+        <div data-test="profit-distributable-result-card" class="border-ligne rounded-lg border bg-white p-4 shadow-sm">
+          <p class="text-texte-2 text-xs font-medium tracking-wide uppercase">
+            {{ t('finance.profit.distributableResult') }}
           </p>
           <p class="text-texte-2 mt-1 text-sm">
-            {{ t('finance.profit.profitAfterCapitalHelp') }}
+            {{ t('finance.profit.distributableResultHelp') }}
           </p>
           <MonoValue
             class="mt-2 text-lg font-semibold"
-            :class="Number(preview.profit_after_capital) < 0 ? 'text-critique' : 'text-livre'"
+            :class="Number(preview.distributable_result) < 0 ? 'text-critique' : 'text-livre'"
             align="left"
-            :value="formatMoney(preview.profit_after_capital)"
+            :value="formatMoney(preview.distributable_result)"
           />
         </div>
       </section>

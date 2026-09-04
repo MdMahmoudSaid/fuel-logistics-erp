@@ -48,8 +48,7 @@ const summary: DashboardSummary = {
   },
   shareholders_summary: {
     current_profit: '900000.00',
-    total_capital_contributed: '400000.00',
-    profit_after_capital: '500000.00',
+    distributable_result: '500000.00',
     total_withdrawn: '300000.00',
     remaining_undistributed: '600000.00',
     open_loans_total: '50000.00',
@@ -97,8 +96,8 @@ const summary: DashboardSummary = {
     capital: '5000000.00',
     treasury_available: '17000000.00',
     customer_receivables: '1000000.00',
-    supplier_net_balance: '2000000.00',
-    transporter_net_balance: '-500000.00',
+    supplier_debt_total: '2000000.00',
+    transporter_debt_total: '500000.00',
     other_debts: '300000.00',
     total: '19200000.00',
   },
@@ -511,20 +510,19 @@ describe('DashboardView', () => {
     expect(stockLink?.props('to')).toEqual({ name: 'company-stock' })
   })
 
-  it('renders the fond de roulement section', async () => {
+  it('renders the fond de roulement client section', async () => {
     const wrapper = mount(DashboardView, { global: { plugins: [makeRouter()] } })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Fond de roulement')
+    expect(wrapper.text()).toContain('Fond de roulement client')
     expect(wrapper.text()).toContain('19 200 000 XOF')
   })
 
-  it('shows total capital contributed and profit after capital in the shareholders section', async () => {
+  it('shows the distributable result after debts and capital in the shareholders section', async () => {
     const wrapper = mount(DashboardView, { global: { plugins: [makeRouter()] } })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Résultat après capital')
-    expect(wrapper.text()).toContain('400 000 XOF')
+    expect(wrapper.text()).toContain('Résultat distribuable après dettes et capital')
     expect(wrapper.text()).toContain('500 000 XOF')
   })
 

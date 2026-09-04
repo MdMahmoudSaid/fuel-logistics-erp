@@ -60,8 +60,11 @@ export interface DashboardSummary {
   // per shareholder.
   shareholders_summary: {
     current_profit: string
-    total_capital_contributed: string
-    profit_after_capital: string
+    // Client modifications (2026-09-04): distributable_result replaces the
+    // old total_capital_contributed/profit_after_capital pair entirely -
+    // single source of truth is ShareholderProfitPreviewService, reused here
+    // rather than a second, possibly divergent computation.
+    distributable_result: string
     total_withdrawn: string
     remaining_undistributed: string
     open_loans_total: string
@@ -105,17 +108,20 @@ export interface DashboardSummary {
       other: string
     }
   }
-  // "Fond de roulement" (working capital) - a broader financial view than
-  // financial_summary.current_treasury_balance: treasury + customer
-  // receivables + signed net supplier/transporter balances - customs/
-  // transit/fee debts. capital is informational only (not summed into
+  // "Fond de roulement client" (docs/superpowers/specs/2026-09-04-recette-
+  // corrections-design.md, Section 3) - WorkingCapitalService.get_working_capital(),
+  // the same single source of truth ShareholderProfitPreviewService's
+  // distributable_result uses. A management indicator matching the client's
+  // own "ETAT DE LA TRESORERIE" spreadsheet, NOT the accounting fonds de
+  // roulement - open debts are added as positive figures (mass of funds
+  // engaged in operations), capital is informational only (not summed into
   // total). Point-in-time, like debts/party_balances above.
   working_capital: {
     capital: string
     treasury_available: string
     customer_receivables: string
-    supplier_net_balance: string
-    transporter_net_balance: string
+    supplier_debt_total: string
+    transporter_debt_total: string
     other_debts: string
     total: string
   }

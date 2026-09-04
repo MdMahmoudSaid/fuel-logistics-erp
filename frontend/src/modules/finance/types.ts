@@ -572,6 +572,22 @@ export interface ShareholderProfitPreviewShare {
   indicative_share: string
 }
 
+// "Fond de roulement client" (docs/superpowers/specs/2026-09-04-recette-
+// corrections-design.md, Section 3) - WorkingCapitalService.get_working_capital()
+// (backend/apps/finance/services.py). A management indicator matching the
+// client's own "ETAT DE LA TRESORERIE" spreadsheet, NOT the accounting fonds
+// de roulement. Open debts (supplier/transporter/other) are added here as
+// positive figures - capital is informational only, not summed into total.
+export interface WorkingCapital {
+  capital: string
+  treasury_available: string
+  customer_receivables: string
+  supplier_debt_total: string
+  transporter_debt_total: string
+  other_debts: string
+  total: string
+}
+
 export interface ShareholderProfitPreview {
   period_start: string | null
   period_end: string | null
@@ -583,9 +599,11 @@ export interface ShareholderProfitPreview {
   operational_profit: string
   general_expenses_paid: string
   net_profit: string
-  // "Resultat apres capital" backlog: informational only, never feeds
-  // indicative_share (still net_profit-based) or a distribution's total_profit.
-  total_capital_contributed: string
-  profit_after_capital: string
+  // Client modifications (2026-09-04): "Resultat distribuable apres dettes
+  // et capital" replaces the old total_capital_contributed/profit_after_capital
+  // pair entirely - informational only, never feeds indicative_share (still
+  // net_profit-based) or a distribution's total_profit.
+  working_capital: WorkingCapital
+  distributable_result: string
   shareholders: ShareholderProfitPreviewShare[]
 }

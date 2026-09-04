@@ -29,8 +29,16 @@ describe('ProfitView', () => {
       operational_profit: '900000.00',
       general_expenses_paid: '150000.00',
       net_profit: '750000.00',
-      total_capital_contributed: '100000.00',
-      profit_after_capital: '650000.00',
+      working_capital: {
+        capital: '100000.00',
+        treasury_available: '400000.00',
+        customer_receivables: '350000.00',
+        supplier_debt_total: '200000.00',
+        transporter_debt_total: '100000.00',
+        other_debts: '50000.00',
+        total: '1100000.00',
+      },
+      distributable_result: '650000.00',
       shareholders: [],
     })
     fetchReport.mockResolvedValue({
@@ -120,15 +128,20 @@ describe('ProfitView', () => {
     expect(banner!.text()).not.toContain('900 000 XOF')
   })
 
-  it('shows total capital contributed and profit after capital, informational only', async () => {
+  it('shows fond de roulement client and resultat distribuable, informational only', async () => {
     const wrapper = mount(ProfitView)
     await flushPromises()
     await flushPromises()
 
-    const card = wrapper.find('[data-test="profit-after-capital-card"]')
-    expect(card.exists()).toBe(true)
-    expect(card.text()).toContain('100 000 XOF')
-    expect(card.text()).toContain('650 000 XOF')
+    const workingCapitalCard = wrapper.find('[data-test="profit-working-capital-card"]')
+    expect(workingCapitalCard.exists()).toBe(true)
+    expect(workingCapitalCard.text()).toContain('Fond de roulement client')
+    expect(workingCapitalCard.text()).toContain('1 100 000 XOF')
+
+    const distributableResultCard = wrapper.find('[data-test="profit-distributable-result-card"]')
+    expect(distributableResultCard.exists()).toBe(true)
+    expect(distributableResultCard.text()).toContain('Résultat distribuable après dettes et capital')
+    expect(distributableResultCard.text()).toContain('650 000 XOF')
   })
 
   it('refetches the trip table with ISO start_date and end_date when custom dates change', async () => {
@@ -238,9 +251,9 @@ describe('ProfitView', () => {
     const wrapper = mount(ProfitView)
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Bénéfice opérationnel')
+    expect(wrapper.text()).toContain('Bénéfice opérationnel des trajets')
     expect(wrapper.text()).toContain('Dépenses générales payées')
-    expect(wrapper.text()).toContain('Bénéfice net')
+    expect(wrapper.text()).toContain('Bénéfice net après dépenses générales')
     expect(wrapper.text()).toContain('150 000 XOF')
     expect(wrapper.text()).toContain('750 000 XOF')
   })

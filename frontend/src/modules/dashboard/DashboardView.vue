@@ -206,8 +206,8 @@ const workingCapitalCard = computed(() => {
     capitalParts: formatMoneyParts(wc.capital),
     treasuryParts: formatMoneyParts(wc.treasury_available),
     receivablesParts: formatMoneyParts(wc.customer_receivables),
-    supplierParts: formatMoneyParts(wc.supplier_net_balance),
-    transporterParts: formatMoneyParts(wc.transporter_net_balance),
+    supplierParts: formatMoneyParts(wc.supplier_debt_total),
+    transporterParts: formatMoneyParts(wc.transporter_debt_total),
     otherDebtsParts: formatMoneyParts(wc.other_debts),
   }
 })
@@ -475,13 +475,13 @@ const compactEnRouteTrips = computed(() => enRouteTrips.value.slice(0, 5))
                 </dd>
               </div>
               <div class="bg-sable flex items-center justify-between gap-3 rounded-lg px-3 py-2">
-                <dt class="text-texte-2">{{ t('dashboard.final.supplierNetBalance') }}</dt>
+                <dt class="text-texte-2">{{ t('dashboard.final.supplierDebtTotal') }}</dt>
                 <dd class="text-texte font-medium">
                   <MonoValue v-bind="workingCapitalCard.supplierParts" />
                 </dd>
               </div>
               <div class="bg-sable flex items-center justify-between gap-3 rounded-lg px-3 py-2">
-                <dt class="text-texte-2">{{ t('dashboard.final.transporterNetBalance') }}</dt>
+                <dt class="text-texte-2">{{ t('dashboard.final.transporterDebtTotal') }}</dt>
                 <dd class="text-texte font-medium">
                   <MonoValue v-bind="workingCapitalCard.transporterParts" />
                 </dd>
@@ -985,23 +985,11 @@ const compactEnRouteTrips = computed(() => enRouteTrips.value.slice(0, 5))
             </div>
             <div class="border-ligne flex justify-between border-t pt-1">
               <dt class="text-texte-2">
-                {{ t('dashboard.fields.shareholdersCapitalContributed') }}
+                {{ t('dashboard.fields.shareholdersDistributableResult') }}
               </dt>
               <dd class="text-texte font-medium">
                 <MonoValue
-                  v-bind="
-                    formatMoneyParts(summary.shareholders_summary.total_capital_contributed)
-                  "
-                />
-              </dd>
-            </div>
-            <div class="flex justify-between">
-              <dt class="text-texte-2">
-                {{ t('dashboard.fields.shareholdersProfitAfterCapital') }}
-              </dt>
-              <dd class="text-texte font-medium">
-                <MonoValue
-                  v-bind="formatMoneyParts(summary.shareholders_summary.profit_after_capital)"
+                  v-bind="formatMoneyParts(summary.shareholders_summary.distributable_result)"
                 />
               </dd>
             </div>
