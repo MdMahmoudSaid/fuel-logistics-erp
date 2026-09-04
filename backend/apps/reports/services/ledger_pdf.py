@@ -1,10 +1,12 @@
 # PDF export for the 3 party ledgers (Grand livre fournisseur/transporteur/
-# client) - docs/superpowers/specs/2026-09-04-recette-corrections-design.md
+# client) and for a single trip's transport settlement ("Reglement par
+# trajet") - docs/superpowers/specs/2026-09-04-recette-corrections-design.md
 # Section 5. No business calculation lives here: this module only prints
-# dicts already produced elsewhere (SupplierLedgerService.get_ledger /
-# TransporterLedgerService.get_ledger, the CustomerViewSet.ledger
-# response). Same reportlab dependency already used by
-# apps/reports/export.py (rows_to_pdf) - no new dependency added.
+# dicts/model instances already produced elsewhere
+# (SupplierLedgerService.get_ledger / TransporterLedgerService.get_ledger,
+# the CustomerViewSet.ledger response, and TransportPayment). Same
+# reportlab dependency already used by apps/reports/export.py
+# (rows_to_pdf) - no new dependency added.
 #
 # KNOWN LIMITATION - Arabic (lang="ar"), documented per the client's
 # explicit pre-approval of a minimal correction over a blocking one:
@@ -46,6 +48,20 @@ LEDGER_PDF_LABELS = {
         "export_date": "Date d'export",
         "summary": "Resume des soldes",
         "history": "Historique des operations",
+        "settlement_title": "Reglement par trajet",
+        "trip_reference": "Reference du trajet",
+        "truck": "Camion",
+        "plate": "Plaque (tracteur / citerne)",
+        "transporter": "Transporteur",
+        "client": "Client",
+        "product": "Produit",
+        "quantity": "Quantite chargee",
+        "trip_status": "Statut du trajet",
+        "gross_amount": "Montant brut",
+        "deductions": "Deductions",
+        "net_amount": "Montant net",
+        "date": "Date",
+        "notes": "Notes",
     },
     "en": {
         "title": "Ledger",
@@ -54,6 +70,20 @@ LEDGER_PDF_LABELS = {
         "export_date": "Export date",
         "summary": "Balance summary",
         "history": "Operation history",
+        "settlement_title": "Trip settlement",
+        "trip_reference": "Trip reference",
+        "truck": "Truck",
+        "plate": "Plate (tractor / tanker)",
+        "transporter": "Transporter",
+        "client": "Client",
+        "product": "Product",
+        "quantity": "Quantity loaded",
+        "trip_status": "Trip status",
+        "gross_amount": "Gross amount",
+        "deductions": "Deductions",
+        "net_amount": "Net amount",
+        "date": "Date",
+        "notes": "Notes",
     },
     # AR: labels intentionally kept in French pending an embedded
     # Arabic-capable font + reshaping/bidi support - see module docstring.
@@ -64,6 +94,20 @@ LEDGER_PDF_LABELS = {
         "export_date": "Date d'export",
         "summary": "Resume des soldes",
         "history": "Historique des operations",
+        "settlement_title": "Reglement par trajet",
+        "trip_reference": "Reference du trajet",
+        "truck": "Camion",
+        "plate": "Plaque (tracteur / citerne)",
+        "transporter": "Transporteur",
+        "client": "Client",
+        "product": "Produit",
+        "quantity": "Quantite chargee",
+        "trip_status": "Statut du trajet",
+        "gross_amount": "Montant brut",
+        "deductions": "Deductions",
+        "net_amount": "Montant net",
+        "date": "Date",
+        "notes": "Notes",
     },
 }
 
@@ -172,5 +216,76 @@ def render_ledger_pdf(
         table.setStyle(_TABLE_STYLE)
         elements.append(table)
 
+    doc.build(elements)
+    return buffer.getvalue()
+
+
+def render_trip_settlement_pdf(payment, lang: str = "fr") -> bytes:
+    """Single-record ('Reglement par trajet') PDF for one TransportPayment -
+    label/value grid, not a multi-row table. Prints exactly the fields the
+    task brief lists: trip reference, truck internal_id + plate,
+    transporter, client, product, quantity, trip status, gross amount
+    (base_amount), deductions (deduction_amount), net (net_amount), date,
+    notes.
+
+    TransportPayment itself carries no `date`/`payment_date` or `notes`
+    field (see backend/apps/finance/models.py) - `created_at` (settlement
+    creation timestamp) is used for "date", and the underlying Trip's
+    `notes` field is used for "notes" as the closest available data,
+    consistent with printing only what the existing models/services
+    already expose (no new field, no new calculation)."""
+    labels = _labels(lang)
+    is_rtl = lang == "ar"
+    trip = payment.trip
+    truck = trip.truck
+
+    if trip.client_id:
+        client_name = trip.client.name
+    elif trip.customer_order_id:
+        client_name = trip.customer_order.customer.name
+    else:
+        client_name = ""
+
+    field_rows = [
+        (labels["trip_reference"], trip.reference),
+        (labels["truck"], truck.internal_id),
+        (labels["plate"], f"{truck.tractor_registration} / {truck.tanker_registration}"),
+        (labels["transporter"], payment.transporter.name),
+        (labels["client"], client_name),
+        (labels["product"], trip.product.name),
+        (labels["quantity"], trip.quantity_loaded),
+        (labels["trip_status"], trip.status),
+        (labels["gross_amount"], payment.base_amount),
+        (labels["deductions"], payment.deduction_amount),
+        (labels["net_amount"], payment.net_amount),
+        (labels["date"], payment.created_at),
+        (labels["notes"], trip.notes),
+    ]
+    data = [[label, _stringify(value)] for label, value in field_rows]
+    if is_rtl:
+        data = [list(reversed(row)) for row in data]
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        leftMargin=15 * mm,
+        rightMargin=15 * mm,
+        topMargin=15 * mm,
+        bottomMargin=15 * mm,
+        title=f"{labels['settlement_title']} - {trip.reference}",
+    )
+    styles = getSampleStyleSheet()
+    align_style = ParagraphStyle("aligned", parent=styles["Normal"], alignment=TA_RIGHT if is_rtl else 0)
+
+    table = Table(data, colWidths=[60 * mm, 100 * mm])
+    table.setStyle(_SUMMARY_TABLE_STYLE)
+
+    elements = [
+        Paragraph(labels["settlement_title"], styles["Title"]),
+        Paragraph(f"{labels['trip_reference']}: {trip.reference}", align_style),
+        Spacer(1, 6 * mm),
+        table,
+    ]
     doc.build(elements)
     return buffer.getvalue()

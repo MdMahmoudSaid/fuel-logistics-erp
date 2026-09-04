@@ -3,6 +3,7 @@ from decimal import Decimal
 from django.contrib.contenttypes.models import ContentType
 from django.db.models import Sum
 from django.db.models.functions import Coalesce
+from django.http import HttpResponse
 from rest_framework import status as http_status
 from rest_framework import viewsets
 from rest_framework.decorators import action
@@ -12,6 +13,7 @@ from rest_framework.response import Response
 from apps.accounts.permissions import HasModulePermission
 from apps.reports.date_range import resolve_date_range
 from apps.reports.serialization import decimals_to_str
+from apps.reports.services.ledger_pdf import render_trip_settlement_pdf
 from apps.suppliers.models import Supplier
 from apps.transport.models import Transporter
 from apps.trips.models import Trip
@@ -176,6 +178,21 @@ class TransportPaymentViewSet(viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         raise MethodNotAllowed("DELETE", detail=_NO_HARD_DELETE_DETAIL)
+
+    @action(detail=True, methods=["get"], url_path="pdf")
+    def pdf(self, request, pk=None):
+        """Per-trip settlement PDF ("Reglement par trajet") - Task 11.
+        Export/formatting only: prints the already-loaded TransportPayment/
+        Trip fields via render_trip_settlement_pdf, no new calculation.
+
+        GET /api/transport-payments/{id}/pdf/?lang=fr|en|ar
+        """
+        payment = self.get_object()
+        lang = request.query_params.get("lang", "fr")
+        pdf_bytes = render_trip_settlement_pdf(payment, lang=lang)
+        response = HttpResponse(pdf_bytes, content_type="application/pdf")
+        response["Content-Disposition"] = f'attachment; filename="reglement-{payment.trip.reference}.pdf"'
+        return response
 
 
 class ExpenseViewSet(viewsets.ModelViewSet):

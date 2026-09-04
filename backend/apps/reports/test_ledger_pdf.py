@@ -7,8 +7,9 @@ from rest_framework.test import APIClient
 from apps.accounts.models import Role, User
 from apps.core.models import Product
 from apps.customers.models import Customer
+from apps.finance.models import TransportPayment
 from apps.purchasing.models import CessionLetter, SupplierOrder
-from apps.reports.services.ledger_pdf import render_ledger_pdf
+from apps.reports.services.ledger_pdf import render_ledger_pdf, render_trip_settlement_pdf
 from apps.suppliers.models import Supplier
 from apps.transport.models import Transporter, Truck
 from apps.trips.models import Trip
@@ -71,8 +72,19 @@ def _make_trip(suffix, *, admin_user=None):
     return trip, transporter, supplier
 
 
+def _make_transport_payment(suffix):
+    trip, transporter, _supplier = _make_trip(suffix)
+    return TransportPayment.objects.create(
+        trip=trip,
+        transporter=transporter,
+        calculation_method=TransportPayment.CalculationMethod.FIXED,
+        base_amount=Decimal("700000.00"),
+        deduction_amount=Decimal("42500.00"),
+    )
+
+
 # ---------------------------------------------------------------------------
-# render_ledger_pdf - direct unit tests
+# render_ledger_pdf / render_trip_settlement_pdf - direct unit tests
 # ---------------------------------------------------------------------------
 
 
@@ -134,8 +146,23 @@ def test_render_ledger_pdf_handles_empty_rows_and_all_langs():
         assert pdf_bytes.startswith(b"%PDF")
 
 
+@pytest.mark.django_db
+def test_render_trip_settlement_pdf():
+    payment = _make_transport_payment("SETTLE1")
+    pdf_bytes = render_trip_settlement_pdf(payment, lang="fr")
+    assert pdf_bytes.startswith(b"%PDF")
+
+
+@pytest.mark.django_db
+def test_render_trip_settlement_pdf_arabic_lang_does_not_crash():
+    payment = _make_transport_payment("SETTLE2")
+    pdf_bytes = render_trip_settlement_pdf(payment, lang="ar")
+    assert pdf_bytes.startswith(b"%PDF")
+
+
 # ---------------------------------------------------------------------------
-# Endpoint-level: dedicated /ledger/pdf/ action on the 3 party ledgers
+# Endpoint-level: dedicated /ledger/pdf/ action on the 3 party ledgers, and
+# the per-trip settlement /pdf/ action
 # ---------------------------------------------------------------------------
 
 
@@ -202,3 +229,14 @@ def test_customer_ledger_json_response_unchanged_without_format_param():
     assert response.status_code == 200
     assert response["Content-Type"].startswith("application/json")
     assert set(response.data.keys()) == {"customer", "outstanding_balance", "invoices", "payments"}
+
+
+@pytest.mark.django_db
+def test_transport_payment_settlement_pdf_export():
+    client, admin_user = _admin_client("+2230000106")
+    payment = _make_transport_payment("ENDPT")
+
+    response = client.get(f"/api/transport-payments/{payment.id}/pdf/?lang=fr")
+    assert response.status_code == 200
+    assert response["Content-Type"] == "application/pdf"
+    assert response.content.startswith(b"%PDF")

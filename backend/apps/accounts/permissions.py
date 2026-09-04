@@ -10,6 +10,9 @@ ACTION_MAP = {
     # query param for its own content negotiation, so this can't be a
     # branch on `ledger` gated by `?format=pdf`).
     "ledger_pdf": "view",
+    # Per-trip settlement PDF export (Task 11, same design doc) - read-only
+    # print of an existing TransportPayment, same "view" tier.
+    "pdf": "view",
     "reliquat": "view",
     "next_reference": "view",
     "trips": "view",
