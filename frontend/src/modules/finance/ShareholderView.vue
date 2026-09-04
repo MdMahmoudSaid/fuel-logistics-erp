@@ -104,12 +104,15 @@ async function loadPreview() {
     // Pre-fill (not lock) the distribution form's total_profit from the
     // same engine, so a manager isn't typing a number from memory - still
     // freely editable before submit.
-    // Bug fix (2026-09-03 recette manuelle): this used to default to
-    // preview.current_profit (operational profit, ignoring general
-    // expenses) - the distributable base must be net_profit, same figure
-    // as the banner above and the per-shareholder indicative_share cards.
+    // Business decision (2026-09-04, distribution basis change): the
+    // proposed default is distributable_result, not net_profit - net
+    // profit measures operating profitability, but the amount actually
+    // available to distribute must also account for open debts, capital
+    // already contributed, and available treasury/receivables. Same
+    // figure as the banner above and the per-shareholder indicative_share
+    // cards.
     if (!distributionForm.value.total_profit && preview.value) {
-      distributionForm.value.total_profit = preview.value.net_profit
+      distributionForm.value.total_profit = preview.value.distributable_result
     }
   } catch {
     preview.value = null
@@ -178,17 +181,19 @@ const distributionError = ref('')
 const savingDistribution = ref(false)
 const expandedDistributionId = ref<number | null>(null)
 
-// Bug fix (2026-09-03 recette manuelle): a manager can still freely type
-// any total_profit (the field stays an editable estimate, not locked to
-// the live engine - existing distributions predate any real trip/expense
-// data and rely on that), but a warning now surfaces when the entered
-// amount exceeds the net profit indicative figure shown in the banner
-// above, so an over-distribution is a deliberate, visible choice rather
-// than an accident.
-const distributionExceedsNetProfit = computed(() => {
+// Bug fix (2026-09-03 recette manuelle) + business decision (2026-09-04,
+// distribution basis change): a manager can still freely type any
+// total_profit (the field stays an editable estimate, not locked to the
+// live engine - existing distributions predate any real trip/expense data
+// and rely on that, and blocking submission outright would break that
+// workflow), but a highly visible warning now surfaces when the entered
+// amount exceeds distributable_result (not net_profit anymore) shown in
+// the banner above, so an over-distribution is a deliberate, visible
+// choice rather than an accident.
+const distributionExceedsDistributableResult = computed(() => {
   if (!preview.value) return false
   const entered = Number(distributionForm.value.total_profit)
-  const available = Number(preview.value.net_profit)
+  const available = Number(preview.value.distributable_result)
   return Number.isFinite(entered) && entered > available
 })
 
@@ -423,12 +428,11 @@ async function onViewLedger() {
 
     <!-- Live profit preview: read-only, clearly marked as indicative - it
          never gates a withdrawal and is never a stored distribution.
-         Bug fix (2026-09-03 recette manuelle): shows the NET profit (after
-         general expenses paid), same basis as row.indicative_share below
-         and as the page Benefices banner - showing the raw operational
-         profit here used to contradict the per-shareholder cards, which
-         were already net-profit-based. Operational profit stays visible
-         only on the page Benefices, as its own separate indicator. -->
+         Business decision (2026-09-04, distribution basis change): shows
+         distributable_result (after debts and capital), same basis as
+         row.indicative_share below and as the distribution form's
+         pre-filled default - net profit (rentability) stays visible only
+         on the page Benefices, as its own separate indicator. -->
     <div v-if="preview" class="border-ecart bg-ecart-tint rounded-xl border p-4">
       <div class="flex flex-wrap items-center justify-between gap-2">
         <div class="flex items-center gap-2">
@@ -437,7 +441,7 @@ async function onViewLedger() {
         </div>
         <MonoValue
           class="text-lg font-semibold"
-          :value="formatMoney(preview.net_profit)"
+          :value="formatMoney(preview.distributable_result)"
         />
       </div>
       <div v-if="preview.shareholders.length" class="mt-3 flex flex-wrap gap-4">
@@ -593,9 +597,17 @@ async function onViewLedger() {
             required
             class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           />
-          <p v-if="distributionExceedsNetProfit" class="text-critique text-xs">
-            {{ t('finance.shareholder.distribution.exceedsNetProfitWarning') }}
+          <p v-if="preview" class="text-texte-3 text-xs">
+            {{ t('finance.shareholder.preview.summaryLabel') }}:
+            <MonoValue class="inline" :value="formatMoney(preview.distributable_result)" />
           </p>
+          <div
+            v-if="distributionExceedsDistributableResult"
+            data-test="distribution-exceeds-warning"
+            class="border-critique bg-critique-tint text-critique rounded-lg border p-2 text-xs font-medium"
+          >
+            {{ t('finance.shareholder.distribution.exceedsDistributableResultWarning') }}
+          </div>
         </div>
         <div class="flex items-end">
           <Button type="submit" variant="primary" class="w-full" :loading="savingDistribution">

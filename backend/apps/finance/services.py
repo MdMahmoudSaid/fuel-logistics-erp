@@ -2121,8 +2121,7 @@ class ShareholderProfitPreviewService:
         # apres dettes et capital" must subtract them back out explicitly,
         # term by term, to reach the real distributable amount - written
         # out rather than simplified so the formula stays legible if any
-        # one term changes later. Never feeds indicative_share (still
-        # net_profit-based below) or ShareholderProfitDistribution.
+        # one term changes later.
         working_capital = WorkingCapitalService.get_working_capital()
         distributable_result = (
             working_capital["total"]
@@ -2132,18 +2131,25 @@ class ShareholderProfitPreviewService:
             - working_capital["capital"]
         )
 
-        # Bug fix (2026-09-03 recette manuelle, page Benefices): the
-        # distributable amount must be the net profit (after general
-        # expenses actually paid), never the raw operational/current
-        # profit - a shareholder's indicative share otherwise ignored
-        # general expenses entirely, overstating what's really available.
+        # Business decision (2026-09-04, distribution basis change): a
+        # shareholder's indicative share is now based on distributable_result,
+        # not net_profit - net_profit measures operating profitability, but
+        # the amount actually available to distribute must also account for
+        # open debts, capital already contributed, and available treasury/
+        # receivables (see distributable_result above). net_profit stays
+        # computed and returned unchanged (still the "is the business
+        # profitable" figure), it just no longer feeds this share. Still
+        # never feeds ShareholderProfitDistribution directly - only the
+        # distribution form's suggested default (frontend) does that, and
+        # the distribution itself always uses whatever total_profit the
+        # user actually submits.
         shareholders = [
             {
                 "shareholder_id": shareholder.id,
                 "name": shareholder.name,
                 "participation_percent": shareholder.participation_percent,
                 "indicative_share": (
-                    net_profit * shareholder.participation_percent / Decimal("100")
+                    distributable_result * shareholder.participation_percent / Decimal("100")
                 ).quantize(Decimal("0.01")),
             }
             for shareholder in Shareholder.objects.filter(is_active=True)

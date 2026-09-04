@@ -444,12 +444,17 @@ def test_shareholder_profit_preview_matches_margin_report_current_margin_sum():
     )
     assert preview["current_profit"] == expected_total
 
+    # Business decision (2026-09-04): indicative_share is distributable_
+    # result-based (not current_profit/margin-based) - verified here as a
+    # pure percent-split check against the preview's own distributable_
+    # result field, since that figure's own correctness (fond de roulement,
+    # debts, capital) is already covered by test_working_capital.py.
     shares_by_id = {s["shareholder_id"]: s for s in preview["shareholders"]}
     assert shares_by_id[a.id]["indicative_share"] == (
-        expected_total * Decimal("80") / Decimal("100")
+        preview["distributable_result"] * Decimal("80") / Decimal("100")
     ).quantize(Decimal("0.01"))
     assert shares_by_id[b.id]["indicative_share"] == (
-        expected_total * Decimal("20") / Decimal("100")
+        preview["distributable_result"] * Decimal("20") / Decimal("100")
     ).quantize(Decimal("0.01"))
 
     # Read-only: no distribution/share rows are created by a preview.
@@ -458,26 +463,29 @@ def test_shareholder_profit_preview_matches_margin_report_current_margin_sum():
     assert fx["sale"] is not None
 
 
-# Bug fix (2026-09-03 recette manuelle, page Benefices): with no general
-# expenses in the period, net_profit == operational_profit == current_profit,
-# so the test above can't tell current_profit-based shares apart from
-# net_profit-based ones - this one adds a paid general expense specifically
-# to prove indicative_share is computed from net_profit, not the raw
-# operational/current profit (850 000 operational - 100 000 dep. generales
-# payees = 750 000 net -> repartition must start from 750 000).
+# Business decision (2026-09-04, distribution basis change): a
+# shareholder's indicative_share must be based on distributable_result -
+# NOT net_profit (rentability) and NOT operational_profit. This test proves
+# the distinction: with a paid general expense, operational_profit and
+# net_profit differ from each other (as before), and - because
+# _make_full_trip seeds no treasury/receivables/capital -
+# distributable_result is 0 (gross - capital = 0 - 0) regardless of how
+# profitable the trip was. indicative_share must therefore be exactly 0,
+# not the (nonzero) net_profit or operational_profit figure the old,
+# now-reverted basis would have produced.
 @pytest.mark.django_db
-def test_shareholder_profit_preview_indicative_share_uses_net_profit_not_operational():
-    admin_user = _make_admin("PREVIEWNET")
-    fx = _make_full_trip("PREVIEWNET", admin_user)
+def test_shareholder_profit_preview_indicative_share_uses_distributable_result():
+    admin_user = _make_admin("PREVIEWDIST")
+    fx = _make_full_trip("PREVIEWDIST", admin_user)
     shareholder = Shareholder.objects.create(
-        name="Preview Net", participation_percent=Decimal("100")
+        name="Preview Dist", participation_percent=Decimal("100")
     )
 
     from apps.reports.services.profit import TripProfitService
 
     operational_profit = TripProfitService.get_cost_breakdown(fx["trip"])["margin"]
     general_expense_paid = Decimal("100000.00")
-    _general_expense(general_expense_paid, "PREVIEWNET", fx["trip"].loading_date)
+    _general_expense(general_expense_paid, "PREVIEWDIST", fx["trip"].loading_date)
     expected_net_profit = operational_profit - general_expense_paid
 
     preview = ShareholderProfitPreviewService.get_preview()
@@ -485,12 +493,19 @@ def test_shareholder_profit_preview_indicative_share_uses_net_profit_not_operati
     assert preview["operational_profit"] == operational_profit
     assert preview["net_profit"] == expected_net_profit
     assert preview["net_profit"] != preview["operational_profit"]
+    assert preview["net_profit"] != Decimal("0.00")  # fixture sanity: the trip is profitable
+
+    # No treasury/receivables/capital seeded -> gross = 0, capital = 0 ->
+    # distributable_result = 0, independent of the (nonzero) trip margin.
+    assert preview["distributable_result"] == Decimal("0.00")
 
     share = next(
         s for s in preview["shareholders"] if s["shareholder_id"] == shareholder.id
     )
-    assert share["indicative_share"] == expected_net_profit.quantize(Decimal("0.01"))
-    # The old (buggy) basis would have given the operational figure instead.
+    assert share["indicative_share"] == Decimal("0.00")
+    # The reverted (net_profit-based) and operational-based bases would
+    # both have given a large nonzero figure instead.
+    assert share["indicative_share"] != expected_net_profit.quantize(Decimal("0.01"))
     assert share["indicative_share"] != operational_profit.quantize(Decimal("0.01"))
 
 

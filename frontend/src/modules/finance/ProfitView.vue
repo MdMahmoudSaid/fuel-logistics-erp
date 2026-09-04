@@ -16,7 +16,6 @@ import type { DateRangeValue } from '@/components/date-range'
 import { fetchReport } from '@/modules/reports/api'
 import { fetchShareholderProfitPreview } from './api'
 import type { ShareholderProfitPreview } from './types'
-import Badge from '@/components/ui/Badge.vue'
 import Icon from '@/components/ui/Icon.vue'
 import type { IconName } from '@/components/ui/Icon.vue'
 import MonoValue from '@/components/ui/MonoValue.vue'
@@ -144,25 +143,6 @@ function onDateRangeChange(value: DateRangeValue) {
       {{ t('finance.profit.title') }}
     </h1>
 
-    <!-- Live, indicative NET profit - after general expenses actually
-         paid, the real distributable figure (bug fix 2026-09-03 recette
-         manuelle: this banner used to show the operational profit under a
-         "Benefice actuel" label, easily confused with net profit). Same
-         read-only preview shown on the Actionnaires/Associes page, never a
-         stored figure. -->
-    <div v-if="preview" class="border-ecart bg-ecart-tint rounded-xl border p-4">
-      <div class="flex flex-wrap items-center justify-between gap-2">
-        <div class="flex items-center gap-2">
-          <Badge variant="transit">{{ t('finance.shareholder.preview.badge') }}</Badge>
-          <p class="text-texte-2 text-sm">{{ t('finance.profit.netProfitIndicative') }}</p>
-        </div>
-        <MonoValue
-          class="text-lg font-semibold"
-          :value="formatMoney(preview.net_profit)"
-        />
-      </div>
-    </div>
-
     <div class="border-ligne flex flex-wrap items-end gap-3 rounded-xl border bg-white p-4">
       <DateRangeFilter @change="onDateRangeChange" />
     </div>
@@ -171,228 +151,179 @@ function onDateRangeChange(value: DateRangeValue) {
     <p v-else-if="loading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
     <template v-else>
-      <section class="grid gap-3 lg:grid-cols-3">
-        <div
-          data-test="profit-summary-card"
-          class="border-ligne rounded-lg border bg-white p-4 shadow-sm lg:col-span-2"
-        >
-          <div class="flex items-start justify-between gap-4">
-            <div class="space-y-1">
-              <div class="text-texte flex items-center gap-2">
-                <span
-                  class="bg-livre-tint text-livre-texte inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
-                >
-                  <Icon name="trending-up" :size="18" />
-                </span>
-                <p class="text-texte-2 text-xs font-medium tracking-wide uppercase">
-                  {{ t('finance.profit.accountingProfit') }}
-                </p>
-              </div>
-              <p class="text-texte-2 max-w-2xl text-sm">
-                {{ t('finance.profit.accountingProfitHelp') }}
+      <!-- Section 1: Rentabilite - "Est-ce que l'activite est rentable ?"
+           Operational profit (trips only), general expenses actually paid,
+           and net profit after those expenses - all sourced from the same
+           period-scoped preview, never recomputed here. Revenue/trip count
+           are folded into the operational card as compact sub-values
+           rather than a separate card (UI simplification, 2026-09-04). -->
+      <section>
+        <h2 class="text-texte font-display text-lg font-semibold uppercase">
+          {{ t('finance.profit.sections.profitability') }}
+        </h2>
+        <p class="text-texte-3 mb-3 text-sm">
+          {{ t('finance.profit.sections.profitabilityQuestion') }}
+        </p>
+        <div class="grid gap-3 lg:grid-cols-3">
+          <div
+            data-test="profit-operational-card"
+            class="border-ligne rounded-lg border bg-white p-4 shadow-sm"
+          >
+            <div class="text-texte flex items-center gap-2">
+              <span
+                class="bg-livre-tint text-livre-texte inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+              >
+                <Icon name="trending-up" :size="18" />
+              </span>
+              <p class="text-texte-2 text-xs font-medium tracking-wide uppercase">
+                {{ t('finance.profit.operationalProfit') }}
               </p>
             </div>
             <MonoValue
-              class="text-2xl font-semibold"
+              class="mt-2 text-2xl font-semibold"
               :class="periodProfitTone"
+              align="left"
               :value="formatMoney(periodProfit)"
             />
+            <div class="border-ligne mt-3 grid gap-2 border-t pt-3 sm:grid-cols-2">
+              <div>
+                <p class="text-texte-2 text-xs font-medium uppercase">
+                  {{ t('finance.profit.revenue') }}
+                </p>
+                <MonoValue align="left" :value="formatMoney(revenue)" />
+              </div>
+              <div>
+                <p class="text-texte-2 text-xs font-medium uppercase">
+                  {{ t('finance.profit.tripsCount') }}
+                </p>
+                <MonoValue align="left" :value="String(rows.length)" />
+              </div>
+            </div>
           </div>
-          <div class="border-ligne mt-4 grid gap-3 border-t pt-4 sm:grid-cols-2">
-            <div>
-              <p class="text-texte-2 text-xs font-semibold uppercase">
-                {{ t('finance.profit.revenue') }}
-              </p>
-              <MonoValue class="font-semibold" align="left" :value="formatMoney(revenue)" />
-            </div>
-            <div>
-              <p class="text-texte-2 text-xs font-semibold uppercase">
-                {{ t('finance.profit.tripsCount') }}
-              </p>
-              <MonoValue class="font-semibold" align="left" :value="String(rows.length)" />
-            </div>
-          </div>
-        </div>
-
-        <div class="grid gap-3">
-          <div
-            data-test="profit-summary-card"
-            class="border-ligne rounded-lg border bg-white p-4 shadow-sm"
-          >
-            <div class="text-texte flex items-center gap-2">
-              <span
-                class="bg-transit-tint text-transit-texte inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
-              >
-                <Icon name="receipt-text" :size="17" />
-              </span>
-              <p class="text-texte-2 text-xs font-medium tracking-wide uppercase">
-                {{ t('finance.profit.receivedProfit') }}
-              </p>
-            </div>
-            <p class="text-texte-2 mt-1 text-sm">{{ t('finance.profit.receivedProfitHelp') }}</p>
-          </div>
-          <div
-            data-test="profit-summary-card"
-            class="border-ligne rounded-lg border bg-white p-4 shadow-sm"
-          >
-            <div class="text-texte flex items-center gap-2">
-              <span
-                class="bg-transit-tint text-transit-texte inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
-              >
-                <Icon name="chart-no-axes-combined" :size="17" />
-              </span>
-              <p class="text-texte-2 text-xs font-medium tracking-wide uppercase">
-                {{ t('finance.profit.distributableProfit') }}
-              </p>
-            </div>
-            <p class="text-texte-2 mt-1 text-sm">
-              {{ t('finance.profit.distributableProfitHelp') }}
+          <div data-test="profit-net-card" class="border-ligne rounded-lg border bg-white p-4 shadow-sm">
+            <p class="text-texte-2 text-xs font-medium tracking-wide uppercase">
+              {{ t('finance.profit.generalExpensesPaid') }}
             </p>
+            <MonoValue
+              v-if="preview"
+              class="mt-2 text-lg font-semibold"
+              align="left"
+              :value="formatMoney(preview.general_expenses_paid)"
+            />
+          </div>
+          <div data-test="profit-net-card" class="border-ligne rounded-lg border bg-white p-4 shadow-sm">
+            <p class="text-texte-2 text-xs font-medium tracking-wide uppercase">
+              {{ t('finance.profit.netProfit') }}
+            </p>
+            <MonoValue
+              v-if="preview"
+              class="mt-2 text-lg font-semibold"
+              :class="Number(preview.net_profit) < 0 ? 'text-critique' : 'text-livre'"
+              align="left"
+              :value="formatMoney(preview.net_profit)"
+            />
           </div>
         </div>
       </section>
 
-      <!-- Phase 4 (docs/superpowers/specs/2026-09-02-business-corrections-
-           6-phases-design.md): operational profit (trips only, same figure
-           as the accounting-profit card above) vs net profit after general
-           expenses actually paid in the period - both sourced from the
-           same period-scoped preview as the badge above, never
-           recomputed here. -->
-      <!-- Client modifications (2026-09-04): the 3 distinct profit blocks
-           the client asked to see clearly separated on this page - exact
-           French labels per client clarification (docs/superpowers/specs/
-           2026-09-04-recette-corrections-design.md Section 4), each sourced
-           from the same period-scoped preview, never recomputed here. -->
-      <section v-if="preview" class="grid gap-3 sm:grid-cols-3">
-        <div data-test="profit-operational-card" class="border-ligne rounded-lg border bg-white p-4 shadow-sm">
-          <p class="text-texte-2 text-xs font-medium tracking-wide uppercase">
-            {{ t('finance.profit.operationalProfit') }}
-          </p>
-          <MonoValue
-            class="text-lg font-semibold"
-            align="left"
-            :value="formatMoney(preview.operational_profit)"
-          />
-        </div>
-        <div data-test="profit-net-card" class="border-ligne rounded-lg border bg-white p-4 shadow-sm">
-          <p class="text-texte-2 text-xs font-medium tracking-wide uppercase">
-            {{ t('finance.profit.generalExpensesPaid') }}
-          </p>
-          <MonoValue
-            class="text-lg font-semibold"
-            align="left"
-            :value="formatMoney(preview.general_expenses_paid)"
-          />
-        </div>
-        <div data-test="profit-net-card" class="border-ligne rounded-lg border bg-white p-4 shadow-sm">
-          <p class="text-texte-2 text-xs font-medium tracking-wide uppercase">
-            {{ t('finance.profit.netProfit') }}
-          </p>
-          <MonoValue
-            class="text-lg font-semibold"
-            :class="Number(preview.net_profit) < 0 ? 'text-critique' : 'text-livre'"
-            align="left"
-            :value="formatMoney(preview.net_profit)"
-          />
-        </div>
-      </section>
-
-      <!-- Client modifications (2026-09-04, third pass - confirmed bug
-           during actual client recette testing): brut -> dettes ouvertes
-           -> fond de roulement client -> resultat distribuable, shown as 4
-           distinct steps. Open debts are ADDED to reach the final FDR
-           figure (never subtracted) - informational only, sourced from the
-           same preview, never recomputed here, never a basis for
-           shareholder distributions (those stay net_profit-based, see
-           distributionNote below). -->
-      <section v-if="preview" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <div data-test="profit-working-capital-gross-card" class="border-ligne rounded-lg border bg-white p-4 shadow-sm">
-          <p class="text-texte-2 text-xs font-medium tracking-wide uppercase">
-            {{ t('finance.profit.workingCapitalGross') }}
-          </p>
-          <p class="text-texte-2 mt-1 text-sm">
-            {{ t('finance.profit.workingCapitalGrossHelp') }}
-          </p>
-          <MonoValue
-            class="mt-2 text-lg font-semibold"
-            align="left"
-            :value="formatMoney(preview.working_capital.gross)"
-          />
-        </div>
-        <div data-test="profit-working-capital-debts-card" class="border-ligne rounded-lg border bg-white p-4 shadow-sm">
-          <p class="text-texte-2 text-xs font-medium tracking-wide uppercase">
-            {{ t('finance.profit.workingCapitalDebts') }}
-          </p>
-          <p class="text-texte-2 mt-1 text-sm">
-            {{ t('finance.profit.workingCapitalDebtsHelp') }}
-          </p>
-          <MonoValue
-            class="mt-2 text-lg font-semibold"
-            align="left"
-            :value="formatMoney(workingCapitalDebtsTotal)"
-          />
-        </div>
-        <div data-test="profit-working-capital-total-card" class="border-ligne rounded-lg border bg-white p-4 shadow-sm">
-          <p class="text-texte-2 text-xs font-medium tracking-wide uppercase">
-            {{ t('finance.profit.workingCapital') }}
-          </p>
-          <p class="text-texte-2 mt-1 text-sm">
-            {{ t('finance.profit.workingCapitalHelp') }}
-          </p>
-          <MonoValue
-            class="mt-2 text-lg font-semibold"
-            :class="Number(preview.working_capital.total) < 0 ? 'text-critique' : 'text-livre'"
-            align="left"
-            :value="formatMoney(preview.working_capital.total)"
-          />
-        </div>
-        <div data-test="profit-distributable-result-card" class="border-ligne rounded-lg border bg-white p-4 shadow-sm">
-          <p class="text-texte-2 text-xs font-medium tracking-wide uppercase">
-            {{ t('finance.profit.distributableResult') }}
-          </p>
-          <p class="text-texte-2 mt-1 text-sm">
-            {{ t('finance.profit.distributableResultHelp') }}
-          </p>
-          <MonoValue
-            class="mt-2 text-lg font-semibold"
-            :class="Number(preview.distributable_result) < 0 ? 'text-critique' : 'text-livre'"
-            align="left"
-            :value="formatMoney(preview.distributable_result)"
-          />
+      <!-- Section 2: Distribution - "Combien peut-on distribuer aux
+           associes ?" Client modifications (2026-09-04, third pass):
+           brut -> dettes ouvertes -> capital apporte -> resultat
+           distribuable, all sourced from the same preview, never
+           recomputed here, informational only - the real distribution
+           form lives on the Actionnaires/Associes page. -->
+      <section v-if="preview">
+        <h2 class="text-texte font-display text-lg font-semibold uppercase">
+          {{ t('finance.profit.sections.distribution') }}
+        </h2>
+        <p class="text-texte-3 mb-3 text-sm">
+          {{ t('finance.profit.sections.distributionQuestion') }}
+        </p>
+        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div data-test="profit-working-capital-gross-card" class="border-ligne rounded-lg border bg-white p-4 shadow-sm">
+            <p class="text-texte-2 text-xs font-medium tracking-wide uppercase">
+              {{ t('finance.profit.workingCapitalGross') }}
+            </p>
+            <MonoValue
+              class="mt-2 text-lg font-semibold"
+              align="left"
+              :value="formatMoney(preview.working_capital.gross)"
+            />
+          </div>
+          <div data-test="profit-working-capital-debts-card" class="border-ligne rounded-lg border bg-white p-4 shadow-sm">
+            <p class="text-texte-2 text-xs font-medium tracking-wide uppercase">
+              {{ t('finance.profit.workingCapitalDebts') }}
+            </p>
+            <MonoValue
+              class="mt-2 text-lg font-semibold"
+              align="left"
+              :value="formatMoney(workingCapitalDebtsTotal)"
+            />
+          </div>
+          <div data-test="profit-capital-card" class="border-ligne rounded-lg border bg-white p-4 shadow-sm">
+            <p class="text-texte-2 text-xs font-medium tracking-wide uppercase">
+              {{ t('finance.profit.capitalContributed') }}
+            </p>
+            <MonoValue
+              class="mt-2 text-lg font-semibold"
+              align="left"
+              :value="formatMoney(preview.working_capital.capital)"
+            />
+          </div>
+          <div data-test="profit-distributable-result-card" class="border-ligne rounded-lg border bg-white p-4 shadow-sm">
+            <p class="text-texte-2 text-xs font-medium tracking-wide uppercase">
+              {{ t('finance.profit.distributableResult') }}
+            </p>
+            <MonoValue
+              class="mt-2 text-lg font-semibold"
+              :class="Number(preview.distributable_result) < 0 ? 'text-critique' : 'text-livre'"
+              align="left"
+              :value="formatMoney(preview.distributable_result)"
+            />
+          </div>
         </div>
       </section>
 
-      <p class="border-ligne bg-sable text-texte rounded-lg border px-4 py-3 text-sm">
-        {{ t('finance.profit.distributionNote') }}
-      </p>
-
-      <section class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <div
-          v-for="cost in costs"
-          :key="cost.key"
-          data-test="profit-cost-card"
-          class="border-ligne rounded-lg border bg-white p-4 shadow-sm"
-        >
-          <div class="flex min-h-20 items-start justify-between gap-3">
-            <div class="min-w-0 space-y-2">
-              <p class="text-texte-2 text-xs leading-snug font-medium">
-                {{ t(`finance.profit.${cost.key}`) }}
-              </p>
-              <MonoValue
-                class="text-texte text-base font-semibold"
-                :class="Number(cost.value) < 0 ? '!text-critique' : ''"
-                align="left"
-                :value="formatMoney(cost.value)"
-              />
-            </div>
-            <span
-              class="bg-transit-tint text-transit-texte inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+      <!-- Section 3: Detail des couts trajets - collapsed by default
+           (native <details>, no extra dependency), pushed to the bottom -
+           these are the cost-basis components already inside
+           real_total_cost/operational profit above, shown here only for
+           transparency, never a separate figure. -->
+      <details class="border-ligne rounded-xl border bg-white">
+        <summary class="text-texte cursor-pointer p-4 font-display text-lg font-semibold uppercase">
+          {{ t('finance.profit.sections.costDetail') }}
+        </summary>
+        <div class="space-y-3 p-4 pt-0">
+          <p class="text-texte-2 text-sm">{{ t('finance.profit.costDisclaimer') }}</p>
+          <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div
+              v-for="cost in costs"
+              :key="cost.key"
+              data-test="profit-cost-card"
+              class="border-ligne rounded-lg border bg-white p-4 shadow-sm"
             >
-              <Icon :name="cost.icon" :size="17" />
-            </span>
+              <div class="flex min-h-20 items-start justify-between gap-3">
+                <div class="min-w-0 space-y-2">
+                  <p class="text-texte-2 text-xs leading-snug font-medium">
+                    {{ t(`finance.profit.${cost.key}`) }}
+                  </p>
+                  <MonoValue
+                    class="text-texte text-base font-semibold"
+                    :class="Number(cost.value) < 0 ? '!text-critique' : ''"
+                    align="left"
+                    :value="formatMoney(cost.value)"
+                  />
+                </div>
+                <span
+                  class="bg-transit-tint text-transit-texte inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+                >
+                  <Icon :name="cost.icon" :size="17" />
+                </span>
+              </div>
+            </div>
           </div>
         </div>
-      </section>
+      </details>
 
       <section class="border-ligne overflow-auto rounded-xl border bg-white">
         <div class="overflow-x-auto">

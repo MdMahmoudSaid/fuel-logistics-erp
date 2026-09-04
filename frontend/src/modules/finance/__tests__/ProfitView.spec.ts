@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import ProfitView from '../ProfitView.vue'
+import { i18n } from '@/i18n'
 
 // Design doc 2026-08-26-benefices-associes-refinement-design.md: the
 // Benefices page reuses GET /api/reports/margin-report/ (already tested
@@ -22,6 +23,7 @@ vi.mock('../api', () => ({
 describe('ProfitView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    i18n.global.locale.value = 'fr'
     fetchShareholderProfitPreview.mockResolvedValue({
       period_start: '2026-08-01',
       period_end: null,
@@ -114,25 +116,11 @@ describe('ProfitView', () => {
     expect(wrapper.text()).toContain('2 250 000 XOF')
   })
 
-  // Bug fix (2026-09-03 recette manuelle): the top banner used to show the
-  // operational profit (900 000 in this fixture) under a "Benefice actuel
-  // indicatif" label, confusable with net profit - it must now show the
-  // real distributable net profit (750 000) labelled "Bénéfice net
-  // indicatif".
-  it('shows net profit, not operational profit, in the top indicative banner', async () => {
-    const wrapper = mount(ProfitView)
-    await flushPromises()
-    await flushPromises()
-
-    expect(wrapper.text()).toContain('Bénéfice net indicatif')
-    expect(wrapper.text()).not.toContain('Bénéfice actuel indicatif')
-
-    const banner = wrapper.findAll('.border-ecart').at(0)
-    expect(banner!.text()).toContain('750 000 XOF')
-    expect(banner!.text()).not.toContain('900 000 XOF')
-  })
-
-  it('shows fond de roulement brut, dettes ouvertes (added), total, and resultat distribuable, informational only', async () => {
+  // UI reorg (2026-09-04): Section "Distribution" shows brut, dettes
+  // ouvertes, capital apporte (replacing the old "Fond de roulement
+  // client" total card - still available on the Dashboard), and resultat
+  // distribuable, in that order.
+  it('shows fond de roulement brut, dettes ouvertes (added), capital apporte, and resultat distribuable, informational only', async () => {
     const wrapper = mount(ProfitView)
     await flushPromises()
     await flushPromises()
@@ -147,16 +135,36 @@ describe('ProfitView', () => {
     // supplier 200000 + transporter 100000 + other 50000 = 350000
     expect(debtsCard.text()).toContain('350 000 XOF')
 
-    const totalCard = wrapper.find('[data-test="profit-working-capital-total-card"]')
-    expect(totalCard.exists()).toBe(true)
-    expect(totalCard.text()).toContain('Fond de roulement client')
-    // total = gross (750000) + debts (350000), ADDED
-    expect(totalCard.text()).toContain('1 100 000 XOF')
+    const capitalCard = wrapper.find('[data-test="profit-capital-card"]')
+    expect(capitalCard.exists()).toBe(true)
+    expect(capitalCard.text()).toContain('Capital apporté')
+    expect(capitalCard.text()).toContain('100 000 XOF')
 
     const distributableResultCard = wrapper.find('[data-test="profit-distributable-result-card"]')
     expect(distributableResultCard.exists()).toBe(true)
     expect(distributableResultCard.text()).toContain('Résultat distribuable après dettes et capital')
     expect(distributableResultCard.text()).toContain('650 000 XOF')
+  })
+
+  // UI reorg (2026-09-04): the two placeholder "profit-summary-card" cards
+  // (Benefice encaisse / Benefice distribuable, no real value ever shown)
+  // were removed as dead weight - Section "Rentabilite" now shows the 3
+  // real, data-backed profit blocks instead (covered by a separate test
+  // below).
+  it('shows the Rentabilite and Distribution section headers in order', async () => {
+    const wrapper = mount(ProfitView)
+    await flushPromises()
+    await flushPromises()
+
+    const text = wrapper.text()
+    const profitabilityIndex = text.indexOf('Rentabilité')
+    const distributionIndex = text.indexOf('Distribution')
+    const costDetailIndex = text.indexOf('Détail des coûts trajets')
+    expect(profitabilityIndex).toBeGreaterThanOrEqual(0)
+    expect(distributionIndex).toBeGreaterThan(profitabilityIndex)
+    expect(costDetailIndex).toBeGreaterThan(distributionIndex)
+    expect(text).toContain('Est-ce que l\'activité est rentable ?')
+    expect(text).toContain('Combien peut-on distribuer aux associés ?')
   })
 
   it('refetches the trip table with ISO start_date and end_date when custom dates change', async () => {
@@ -249,19 +257,6 @@ describe('ProfitView', () => {
     expect(wrapper.text()).not.toContain('30 000 XOF')
   })
 
-  it('clarifies accounting, received, and distributable profit meanings', async () => {
-    const wrapper = mount(ProfitView)
-    await flushPromises()
-
-    expect(wrapper.findAll('[data-test="profit-summary-card"]')).toHaveLength(3)
-    expect(wrapper.text()).toContain('Bénéfice opérationnel')
-    expect(wrapper.text()).toContain('Bénéfice encaissé')
-    expect(wrapper.text()).toContain('Bénéfice distribuable')
-    expect(wrapper.text()).toContain(
-      "Le bénéfice comptable n'est pas automatiquement distribuable.",
-    )
-  })
-
   it('shows operational profit, general expenses paid, and net profit from the preview', async () => {
     const wrapper = mount(ProfitView)
     await flushPromises()
@@ -294,16 +289,16 @@ describe('ProfitView', () => {
     const wrapper = mount(ProfitView)
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Frais transit routière comptabilisés')
+    expect(wrapper.text()).toContain('Frais transit routière des trajets comptabilisés')
 
     const cards = wrapper.findAll('[data-test="profit-cost-card"]')
     const roadTransitCard = cards.find((card) =>
-      card.text().includes('Frais transit routière comptabilisés'),
+      card.text().includes('Frais transit routière des trajets comptabilisés'),
     )
     expect(roadTransitCard).toBeDefined()
     expect(roadTransitCard!.text()).toContain('50 000 XOF')
 
-    const otherCard = cards.find((card) => card.text().includes('Autres frais comptabilisés'))
+    const otherCard = cards.find((card) => card.text().includes('Autres frais des trajets comptabilisés'))
     expect(otherCard).toBeDefined()
     expect(otherCard!.text()).toContain('50 000 XOF')
     expect(otherCard!.text()).not.toContain('100 000 XOF')
@@ -417,5 +412,39 @@ describe('ProfitView', () => {
     expect(zeroUnit!.classes()).not.toContain('text-critique')
     expect(zeroTotal!.classes()).not.toContain('text-livre')
     expect(zeroTotal!.classes()).not.toContain('text-critique')
+  })
+
+  // UI reorg (2026-09-04): the new section titles/labels exist and are
+  // correctly localized in all 3 supported languages.
+  it('localizes the section titles and capital-contributed label in French, English, and Arabic', async () => {
+    const french = mount(ProfitView)
+    await flushPromises()
+    await flushPromises()
+    expect(french.text()).toContain('Rentabilité')
+    expect(french.text()).toContain('Distribution')
+    expect(french.text()).toContain('Détail des coûts trajets')
+    expect(french.text()).toContain('Capital apporté')
+    french.unmount()
+
+    i18n.global.locale.value = 'en'
+    const english = mount(ProfitView)
+    await flushPromises()
+    await flushPromises()
+    expect(english.text()).toContain('Profitability')
+    expect(english.text()).toContain('Distribution')
+    expect(english.text()).toContain('Trip cost detail')
+    expect(english.text()).toContain('Capital contributed')
+    expect(english.text()).not.toContain('Rentabilité')
+    english.unmount()
+
+    i18n.global.locale.value = 'ar'
+    const arabic = mount(ProfitView)
+    await flushPromises()
+    await flushPromises()
+    expect(arabic.text()).toContain('الربحية')
+    expect(arabic.text()).toContain('التوزيع')
+    expect(arabic.text()).toContain('تفاصيل تكاليف الرحلات')
+    expect(arabic.text()).toContain('رأس المال المُقدَّم')
+    expect(arabic.text()).not.toContain('Rentabilité')
   })
 })
