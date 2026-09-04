@@ -520,7 +520,7 @@ describe('DashboardView', () => {
     expect(wrapper.text()).toContain('Fond de roulement client')
     // total = gross (18000000) + debts (2000000 + 500000 + 300000), ADDED
     expect(wrapper.text()).toContain('20 800 000 XOF')
-    expect(wrapper.text()).toContain('Fond de roulement brut client')
+    expect(wrapper.text()).toContain('Trésorerie + créances clients')
     expect(wrapper.text()).toContain('18 000 000 XOF')
   })
 

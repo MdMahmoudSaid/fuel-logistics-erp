@@ -139,7 +139,7 @@ describe('ProfitView', () => {
 
     const grossCard = wrapper.find('[data-test="profit-working-capital-gross-card"]')
     expect(grossCard.exists()).toBe(true)
-    expect(grossCard.text()).toContain('Fond de roulement brut client')
+    expect(grossCard.text()).toContain('Trésorerie + créances clients')
     expect(grossCard.text()).toContain('750 000 XOF')
 
     const debtsCard = wrapper.find('[data-test="profit-working-capital-debts-card"]')
