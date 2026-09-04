@@ -279,16 +279,19 @@ describe('DebtPaymentForm', () => {
     expect(wrapper.text()).toContain('Aucune dette ouverte pour ce type.')
   })
 
-  it('requires an image proof before submitting a controlled outgoing payment', async () => {
+  // Task 14 (client modifications, 2026-09-04): proof upload is no longer
+  // required client-side - the backend already accepts this flow without an
+  // attachment.
+  it('allows submitting a controlled outgoing payment without an attachment', async () => {
     const wrapper = mount(DebtPaymentForm)
     await flushPromises()
 
     await wrapper.find('#amount').setValue('100000')
     await wrapper.find('form').trigger('submit')
+    await flushPromises()
 
-    expect(recordDebtPayment).not.toHaveBeenCalled()
-    expect(wrapper.text()).toContain(
-      'Un justificatif image est obligatoire pour enregistrer ce paiement.',
+    expect(recordDebtPayment).toHaveBeenCalledWith(
+      expect.objectContaining({ debt_id: 10, attachment: null }),
     )
   })
 })

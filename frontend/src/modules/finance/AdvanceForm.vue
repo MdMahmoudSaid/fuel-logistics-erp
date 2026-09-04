@@ -169,15 +169,17 @@ function validate(): boolean {
     error.value = t('finance.advanceForm.errors.insufficientBalance')
     return false
   }
-  if (!attachment.value) {
-    error.value = t('finance.advanceForm.errors.proofRequired')
+  // Proof upload is optional (Task 14), but a file that WAS selected and
+  // rejected by onAttachmentChange (wrong type) must still block submission
+  // - silently dropping it and submitting without it would be surprising.
+  if (attachmentError.value) {
     return false
   }
   return true
 }
 
 async function submit() {
-  if (!validate() || !selectedParty.value || !selectedAccount.value || !attachment.value) return
+  if (!validate() || !selectedParty.value || !selectedAccount.value) return
   saving.value = true
   try {
     const payload = {
@@ -340,7 +342,6 @@ onMounted(load)
         }}</span>
         <input
           type="file"
-          required
           :accept="IMAGE_UPLOAD_ACCEPT"
           class="border-ligne w-full rounded-lg border px-3 py-2 text-sm"
           @change="onAttachmentChange"

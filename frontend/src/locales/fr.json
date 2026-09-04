@@ -776,7 +776,7 @@
       "date": "Date",
       "reference": "Référence",
       "note": "Note",
-      "attachment": "Pièce jointe / justificatif",
+      "attachment": "Pièce jointe / justificatif (optionnel)",
       "imageOnlyError": "Seules les images JPG, JPEG, PNG ou WEBP sont autorisées.",
       "submit": "Enregistrer le paiement",
       "loadError": "Impossible de charger les dettes à payer.",
@@ -798,8 +798,7 @@
         "aboveRemaining": "Le montant dépasse le reste à payer.",
         "insufficientBank": "Solde bancaire insuffisant pour effectuer ce paiement.",
         "debtNotFound": "Aucune dette à payer trouvée pour cette entité.",
-        "noOpenDebts": "Aucune dette ouverte pour ce type.",
-        "proofRequired": "Un justificatif image est obligatoire pour enregistrer ce paiement."
+        "noOpenDebts": "Aucune dette ouverte pour ce type."
       }
     },
     "advanceForm": {
@@ -813,7 +812,7 @@
       "date": "Date",
       "reference": "Référence",
       "note": "Note",
-      "attachment": "Justificatif (image)",
+      "attachment": "Justificatif (image, optionnel)",
       "availableBalance": "Solde disponible",
       "submit": "Enregistrer l'avance",
       "imageOnlyError": "Seules les images JPG, JPEG, PNG ou WEBP sont autorisées.",
@@ -824,7 +823,6 @@
         "accountRequired": "Choisissez un compte.",
         "positiveAmount": "Le montant doit être supérieur à zéro.",
         "insufficientBalance": "Solde insuffisant pour cette avance.",
-        "proofRequired": "Un justificatif image est obligatoire pour enregistrer cette avance.",
         "partyNotFound": "Aucun tiers éligible trouvé.",
         "noEligibleParty": "Aucun tiers éligible pour une nouvelle avance."
       }
@@ -839,7 +837,7 @@
       "date": "Date",
       "reference": "Référence",
       "note": "Note",
-      "attachment": "Justificatif (image)",
+      "attachment": "Justificatif (image, optionnel)",
       "submit": "Enregistrer l'apport",
       "imageOnlyError": "Seules les images JPG, JPEG, PNG ou WEBP sont autorisées.",
       "loadError": "Impossible de charger les actionnaires.",
@@ -847,8 +845,7 @@
       "errors": {
         "shareholderRequired": "Choisissez un actionnaire.",
         "accountRequired": "Choisissez un compte.",
-        "positiveAmount": "Le montant doit être supérieur à zéro.",
-        "proofRequired": "Un justificatif image est obligatoire pour enregistrer cet apport."
+        "positiveAmount": "Le montant doit être supérieur à zéro."
       }
     },
     "partyLedger": {

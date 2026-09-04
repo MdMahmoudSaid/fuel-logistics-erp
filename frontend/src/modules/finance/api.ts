@@ -226,12 +226,17 @@ export function recordDebtPayment(payload: {
     .then((r) => r.data)
 }
 
-function buildAdvanceForm(fields: Record<string, unknown>, attachment: File): FormData {
+// Task 14 (client modifications, 2026-09-04): proof upload is no longer
+// required on advances/contributions - backend already accepts these flows
+// without an attachment (Section 6). `attachment` stays optional here;
+// omitted entirely from the FormData when null/undefined rather than
+// appending a stringified "null".
+function buildAdvanceForm(fields: Record<string, unknown>, attachment?: File | null): FormData {
   const form = new FormData()
   for (const [key, value] of Object.entries(fields)) {
     if (value !== undefined && value !== null) form.append(key, String(value))
   }
-  form.append('attachment', attachment)
+  if (attachment) form.append('attachment', attachment)
   return form
 }
 
@@ -243,7 +248,7 @@ export function createSupplierAdvance(payload: {
   date: string
   reference?: string
   notes?: string
-  attachment: File
+  attachment?: File | null
 }): Promise<SupplierAdvance> {
   const { attachment, ...fields } = payload
   return apiClient
@@ -261,7 +266,7 @@ export function createTransporterAdvance(payload: {
   date: string
   reference?: string
   notes?: string
-  attachment: File
+  attachment?: File | null
 }): Promise<TransporterAdvance> {
   const { attachment, ...fields } = payload
   return apiClient
@@ -304,7 +309,7 @@ export function createShareholderContribution(payload: {
   date: string
   reference?: string
   notes?: string
-  attachment: File
+  attachment?: File | null
 }): Promise<ShareholderContribution> {
   const { attachment, ...fields } = payload
   return apiClient

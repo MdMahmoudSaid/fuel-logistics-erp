@@ -117,15 +117,17 @@ function validate(): boolean {
     error.value = t('finance.contributionForm.errors.positiveAmount')
     return false
   }
-  if (!attachment.value) {
-    error.value = t('finance.contributionForm.errors.proofRequired')
+  // Proof upload is optional (Task 14), but a file that WAS selected and
+  // rejected by onAttachmentChange (wrong type) must still block submission
+  // - silently dropping it and submitting without it would be surprising.
+  if (attachmentError.value) {
     return false
   }
   return true
 }
 
 async function submit() {
-  if (!validate() || !selectedShareholder.value || !selectedAccount.value || !attachment.value) return
+  if (!validate() || !selectedShareholder.value || !selectedAccount.value) return
   saving.value = true
   try {
     await createShareholderContribution({
@@ -230,7 +232,6 @@ onMounted(load)
         <span class="text-texte-2 text-sm font-medium">{{ t('finance.contributionForm.attachment') }}</span>
         <input
           type="file"
-          required
           :accept="IMAGE_UPLOAD_ACCEPT"
           class="border-ligne w-full rounded-lg border px-3 py-2 text-sm"
           @change="onAttachmentChange"

@@ -61,14 +61,20 @@ describe('ContributionForm', () => {
     expect((select.element as HTMLSelectElement).value).toBe('11')
   })
 
-  it('requires an image proof before submitting', async () => {
+  // Task 14 (client modifications, 2026-09-04): proof upload is no longer
+  // required client-side - the backend already accepts this flow without an
+  // attachment.
+  it('allows submitting without an attachment', async () => {
     const wrapper = mount(ContributionForm)
     await flushPromises()
 
     await wrapper.find('#amount').setValue('100000')
     await wrapper.find('form').trigger('submit')
+    await flushPromises()
 
-    expect(createShareholderContribution).not.toHaveBeenCalled()
+    expect(createShareholderContribution).toHaveBeenCalledWith(
+      expect.objectContaining({ shareholder: 10, amount: '100000', attachment: null }),
+    )
   })
 
   it('rejects a non-image attachment client-side', async () => {
