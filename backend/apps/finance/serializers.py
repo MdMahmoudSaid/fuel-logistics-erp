@@ -214,10 +214,6 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"destination": "Destination inconnue."})
 
         data["destination"] = destination
-        if self.instance is None and not data.get("proof"):
-            raise serializers.ValidationError(
-                {"proof": "Le justificatif de paiement est obligatoire."}
-            )
         return data
 
     def create(self, validated_data):
@@ -225,14 +221,16 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
         proof = validated_data.pop("proof", None)
         with transaction.atomic():
             payment = CustomerPayment.objects.create(**validated_data)
-            content_type = ContentType.objects.get_for_model(CustomerPayment)
-            document = Document.objects.create(
-                file=proof,
-                document_type="customer_payment_proof",
-                uploaded_by=payment.recorded_by,
-                content_type=content_type,
-                object_id=payment.id,
-            )
+            document = None
+            if proof:
+                content_type = ContentType.objects.get_for_model(CustomerPayment)
+                document = Document.objects.create(
+                    file=proof,
+                    document_type="customer_payment_proof",
+                    uploaded_by=payment.recorded_by,
+                    content_type=content_type,
+                    object_id=payment.id,
+                )
             if allocations:
                 PaymentAllocationService.allocate_payment(payment.id, allocations)
             FinancePostingService.record_customer_payment_treasury(payment, document=document)
@@ -387,10 +385,6 @@ class SupplierAdvanceSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Un seul compte (banque OU caisse) peut etre renseigne.")
         if not bank_account and not cash_account:
             raise serializers.ValidationError("Un compte de tresorerie (banque ou caisse) est requis.")
-        if self.instance is None and not data.get("attachment"):
-            raise serializers.ValidationError(
-                {"attachment": "Un justificatif image est obligatoire pour creer une avance."}
-            )
         return data
 
     def validate_attachment(self, value):
@@ -448,10 +442,6 @@ class TransporterAdvanceSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Un seul compte (banque OU caisse) peut etre renseigne.")
         if not bank_account and not cash_account:
             raise serializers.ValidationError("Un compte de tresorerie (banque ou caisse) est requis.")
-        if self.instance is None and not data.get("attachment"):
-            raise serializers.ValidationError(
-                {"attachment": "Un justificatif image est obligatoire pour creer une avance."}
-            )
         return data
 
     def validate_attachment(self, value):
@@ -908,22 +898,9 @@ class ControlledDebtPaymentRequestSerializer(serializers.Serializer):
     note = serializers.CharField(required=False, allow_blank=True, default="")
     attachment = serializers.FileField(required=False, allow_null=True, default=None)
 
-    def validate(self, data):
-        if not data.get("attachment"):
-            raise serializers.ValidationError(
-                {
-                    "attachment": (
-                        "Un justificatif image est obligatoire pour enregistrer ce paiement."
-                    )
-                }
-            )
-        return data
-
     def validate_attachment(self, value):
         if value is None:
-            raise serializers.ValidationError(
-                "Un justificatif image est obligatoire pour enregistrer ce paiement."
-            )
+            return value
         return validate_image_upload(value)
 
 
@@ -1200,10 +1177,6 @@ class ShareholderContributionSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Un seul compte (banque OU caisse) peut etre renseigne.")
         if not bank_account and not cash_account:
             raise serializers.ValidationError("Un compte de tresorerie (banque ou caisse) est requis.")
-        if not data.get("attachment"):
-            raise serializers.ValidationError(
-                {"attachment": "Un justificatif image est obligatoire pour enregistrer un apport."}
-            )
         return data
 
     def create(self, validated_data):

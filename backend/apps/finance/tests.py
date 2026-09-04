@@ -2052,7 +2052,9 @@ def test_controlled_debt_payment_api_rejects_non_image_attachment(finance_client
 
 
 @pytest.mark.django_db
-def test_controlled_debt_payment_api_rejects_missing_attachment(finance_client):
+def test_controlled_debt_payment_api_succeeds_without_attachment(finance_client):
+    """Task 13 (2026-09-04 recette corrections): no justificatif is ever
+    mandatory for a controlled debt payment."""
     _admin_user, supplier, _order = _make_supplier_order("NO-NOTE-API")
     bank_account = BankAccount.objects.create(
         name="Main BOA Account NO-NOTE-API", opening_balance=Decimal("1000000.00")
@@ -2071,11 +2073,9 @@ def test_controlled_debt_payment_api_rejects_missing_attachment(finance_client):
         format="json",
     )
 
-    assert response.status_code == 400, response.data
-    assert response.data["attachment"][0] == (
-        "Un justificatif image est obligatoire pour enregistrer ce paiement."
-    )
-    assert TreasuryTransaction.objects.count() == 0
+    assert response.status_code == 201, response.data
+    assert response.data["transaction"]["document"] is None
+    assert TreasuryTransaction.objects.count() == 1
 
 
 # ---------------------------------------------------------------------------
@@ -2557,7 +2557,10 @@ def test_customer_payment_serializer_exposes_note_and_destination(finance_client
 
 
 @pytest.mark.django_db
-def test_customer_payment_api_requires_payment_proof(finance_client):
+def test_customer_payment_api_succeeds_without_payment_proof(finance_client):
+    """Task 13 (2026-09-04 recette corrections): no justificatif is ever
+    mandatory - a customer payment with no proof must still be accepted,
+    and no Document row should be created for it."""
     _admin_user, customer, _invoice = _make_invoice_for_payment("API-PROOF-REQ")
     cash_account = CashAccount.objects.create(name="Main Cash")
 
@@ -2574,10 +2577,17 @@ def test_customer_payment_api_requires_payment_proof(finance_client):
         format="json",
     )
 
-    assert response.status_code == 400, response.data
-    assert response.data["proof"][0] == "Le justificatif de paiement est obligatoire."
-    assert CustomerPayment.objects.count() == 0
-    assert TreasuryTransaction.objects.count() == 0
+    assert response.status_code == 201, response.data
+    assert response.data["proof_url"] is None
+    payment = CustomerPayment.objects.get(pk=response.data["id"])
+    assert TreasuryTransaction.objects.filter(
+        source_content_type=ContentType.objects.get_for_model(CustomerPayment),
+        source_object_id=payment.id,
+    ).count() == 1
+    assert not Document.objects.filter(
+        content_type=ContentType.objects.get_for_model(CustomerPayment),
+        object_id=payment.id,
+    ).exists()
 
 
 @pytest.mark.django_db

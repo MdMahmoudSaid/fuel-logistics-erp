@@ -438,7 +438,10 @@ def test_scenario_complet_production_like(capsys):
     report.check("11. Benefices", "prix revient benefice", "800 XOF/L", D("800.00"), profit_breakdown["unit_cost"].quantize(D("0.01")))
     report.check("11. Benefices", "benefice par litre", "900 - 800", D("100.00"), profit_breakdown["unit_profit"].quantize(D("0.01")))
 
-    invalid_payment = CustomerPaymentSerializer(
+    # Task 13 (2026-09-04 recette corrections): no justificatif/proof is
+    # ever mandatory anywhere in finance - a customer payment with every
+    # other required field but no proof must now validate successfully.
+    payment_without_proof = CustomerPaymentSerializer(
         data={
             "customer": customer.id,
             "amount": "20000000.00",
@@ -449,7 +452,10 @@ def test_scenario_complet_production_like(capsys):
         },
         context={"request": DummyRequest(user)},
     )
-    report.check("16. Tests de rejet", "paiement client sans justificatif refuse", "proof obligatoire", False, invalid_payment.is_valid())
+    report.check(
+        "16. Tests de rejet", "paiement client sans justificatif accepte",
+        "proof optionnel (Task 13)", True, payment_without_proof.is_valid(),
+    )
     post_customer_payment(customer=customer, amount=money(20000000), bank=bank, invoice=invoice, user=user, reference="PAY-CUST-1")
     bank.refresh_from_db()
     report.check("8. Paiements client", "solde client apres paiement partiel", "40 365 000 - 20 000 000", money(20365000), PaymentAllocationService.get_customer_outstanding(customer))

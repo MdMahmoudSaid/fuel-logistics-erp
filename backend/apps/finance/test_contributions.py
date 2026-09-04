@@ -95,17 +95,27 @@ def test_record_contribution_posts_one_treasury_transaction_and_document():
 
 
 @pytest.mark.django_db
-def test_record_contribution_requires_attachment():
+def test_record_contribution_succeeds_without_attachment():
+    """Task 13 (2026-09-04 recette corrections): no justificatif is ever
+    mandatory - a contribution with attachment=None must succeed and
+    leave document_id null, with the treasury posting still happening."""
     admin_user = _make_admin("CONTRIB-SVC-2")
     shareholder = _make_shareholder("CONTRIB-SVC-2")
     cash = CashAccount.objects.create(name="Cash C", opening_balance=Decimal("0.00"))
 
-    with pytest.raises(ShareholderContributionError):
-        ShareholderContributionService.record_contribution(
-            shareholder_id=shareholder.id, amount=Decimal("100000.00"), date="2026-09-02",
-            actor=admin_user, attachment=None, cash_account_id=cash.id,
-        )
-    assert ShareholderContribution.objects.filter(shareholder=shareholder).count() == 0
+    contribution = ShareholderContributionService.record_contribution(
+        shareholder_id=shareholder.id, amount=Decimal("100000.00"), date="2026-09-02",
+        actor=admin_user, attachment=None, cash_account_id=cash.id,
+    )
+
+    assert contribution.document_id is None
+    cash.refresh_from_db()
+    assert cash.current_balance == Decimal("100000.00")
+    txn = TreasuryTransaction.objects.get(
+        source_content_type=ContentType.objects.get_for_model(ShareholderContribution),
+        source_object_id=contribution.id,
+    )
+    assert txn.document_id is None
 
 
 @pytest.mark.django_db
@@ -155,7 +165,9 @@ def _authed_client(user):
 
 
 @pytest.mark.django_db
-def test_contribution_api_create_requires_attachment():
+def test_contribution_api_create_succeeds_without_attachment():
+    """Task 13 (2026-09-04 recette corrections): no justificatif is ever
+    mandatory - a contribution submitted with no attachment must succeed."""
     admin_user = _make_admin("CONTRIB-API-1")
     shareholder = _make_shareholder("CONTRIB-API-1")
     bank = BankAccount.objects.create(name="Bank F", opening_balance=Decimal("0.00"))
@@ -169,8 +181,10 @@ def test_contribution_api_create_requires_attachment():
         },
         format="multipart",
     )
-    assert response.status_code == 400
-    assert "attachment" in response.data
+    assert response.status_code == 201, response.data
+    assert response.data["proof_url"] is None
+    bank.refresh_from_db()
+    assert bank.current_balance == Decimal("500000.00")
 
 
 @pytest.mark.django_db

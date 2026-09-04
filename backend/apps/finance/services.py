@@ -720,13 +720,15 @@ class AdvanceService:
             supplier=supplier, bank_account=bank_account, cash_account=cash_account,
             amount=amount, date=date, reference=reference, notes=notes, recorded_by=actor,
         )
-        document = Document.objects.create(
-            file=attachment, document_type="supplier_advance_proof", reference=reference,
-            uploaded_by=actor, content_type=ContentType.objects.get_for_model(SupplierAdvance),
-            object_id=advance.id,
-        )
-        advance.document = document
-        advance.save(update_fields=["document", "updated_at"])
+        document = None
+        if attachment:
+            document = Document.objects.create(
+                file=attachment, document_type="supplier_advance_proof", reference=reference,
+                uploaded_by=actor, content_type=ContentType.objects.get_for_model(SupplierAdvance),
+                object_id=advance.id,
+            )
+            advance.document = document
+            advance.save(update_fields=["document", "updated_at"])
         TreasuryTransaction.objects.create(
             bank_account=bank_account, cash_account=cash_account,
             type=TreasuryTransaction.Type.MONEY_OUT, amount=amount, date=date,
@@ -762,13 +764,15 @@ class AdvanceService:
             transporter=transporter, bank_account=bank_account, cash_account=cash_account,
             amount=amount, date=date, reference=reference, notes=notes, recorded_by=actor,
         )
-        document = Document.objects.create(
-            file=attachment, document_type="transporter_advance_proof", reference=reference,
-            uploaded_by=actor, content_type=ContentType.objects.get_for_model(TransporterAdvance),
-            object_id=advance.id,
-        )
-        advance.document = document
-        advance.save(update_fields=["document", "updated_at"])
+        document = None
+        if attachment:
+            document = Document.objects.create(
+                file=attachment, document_type="transporter_advance_proof", reference=reference,
+                uploaded_by=actor, content_type=ContentType.objects.get_for_model(TransporterAdvance),
+                object_id=advance.id,
+            )
+            advance.document = document
+            advance.save(update_fields=["document", "updated_at"])
         TreasuryTransaction.objects.create(
             bank_account=bank_account, cash_account=cash_account,
             type=TreasuryTransaction.Type.MONEY_OUT, amount=amount, date=date,
@@ -1681,8 +1685,9 @@ class ShareholderWithdrawalService:
 
 
 class ShareholderContributionError(ValueError):
-    """Raised when a capital contribution is missing its mandatory proof
-    image or has an invalid account selection."""
+    """Raised when a capital contribution has an invalid account
+    selection or amount. The proof image is optional (Task 13, 2026-09-04
+    recette corrections: no justificatif/document is ever mandatory)."""
 
 
 class ShareholderContributionService:
@@ -1691,8 +1696,9 @@ class ShareholderContributionService:
     from AdvanceService.create_supplier_advance's shape (Document +
     TreasuryTransaction created directly, in one atomic block) rather than
     ShareholderWithdrawalService's (which delegates posting to
-    FinancePostingService._post_treasury): the proof document is mandatory
-    here, exactly like an advance, unlike a withdrawal.
+    FinancePostingService._post_treasury). The proof document is optional
+    (Task 13, 2026-09-04 recette corrections), same as an advance's
+    attachment.
     """
 
     @staticmethod
@@ -1713,10 +1719,6 @@ class ShareholderContributionService:
             raise ShareholderContributionError("Un seul compte (banque OU caisse) peut etre renseigne.")
         if not bank_account_id and not cash_account_id:
             raise ShareholderContributionError("Un compte de tresorerie (banque ou caisse) est requis.")
-        if not attachment:
-            raise ShareholderContributionError(
-                "Un justificatif image est obligatoire pour enregistrer un apport."
-            )
 
         shareholder = Shareholder.objects.select_for_update().get(pk=shareholder_id)
         amount = Decimal(str(amount)).quantize(Decimal("0.01"))
@@ -1734,13 +1736,15 @@ class ShareholderContributionService:
             shareholder=shareholder, bank_account=bank_account, cash_account=cash_account,
             amount=amount, date=date, reference=reference, notes=notes, recorded_by=actor,
         )
-        document = Document.objects.create(
-            file=attachment, document_type="shareholder_contribution_proof", reference=reference,
-            uploaded_by=actor, content_type=ContentType.objects.get_for_model(ShareholderContribution),
-            object_id=contribution.id,
-        )
-        contribution.document = document
-        contribution.save(update_fields=["document", "updated_at"])
+        document = None
+        if attachment:
+            document = Document.objects.create(
+                file=attachment, document_type="shareholder_contribution_proof", reference=reference,
+                uploaded_by=actor, content_type=ContentType.objects.get_for_model(ShareholderContribution),
+                object_id=contribution.id,
+            )
+            contribution.document = document
+            contribution.save(update_fields=["document", "updated_at"])
         TreasuryTransaction.objects.create(
             bank_account=bank_account, cash_account=cash_account,
             type=TreasuryTransaction.Type.MONEY_IN, amount=amount, date=date,

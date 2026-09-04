@@ -599,6 +599,28 @@ def test_create_supplier_advance_posts_one_treasury_transaction_and_document():
 
 
 @pytest.mark.django_db
+def test_create_supplier_advance_succeeds_without_attachment():
+    """Task 13 (2026-09-04 recette corrections): AdvanceService itself must
+    not require an attachment - it must not attempt to create a Document
+    row (whose file field is mandatory) when none is supplied."""
+    admin_user = _make_admin("CREATE-SADV-NOATT")
+    supplier = Supplier.objects.create(name="Create Advance Supplier No Attachment", country="Senegal")
+    cash_account = CashAccount.objects.create(name="Main Cash", opening_balance=Decimal("5000000.00"))
+
+    advance = AdvanceService.create_supplier_advance(
+        supplier_id=supplier.id, bank_account_id=None, cash_account_id=cash_account.id,
+        amount=Decimal("1000000.00"), date="2026-08-18", reference="SADV-NOATT", notes="",
+        attachment=None, actor=admin_user,
+    )
+
+    assert advance.document_id is None
+    txn = TreasuryTransaction.objects.get(
+        source_content_type=ContentType.objects.get_for_model(SupplierAdvance), source_object_id=advance.id,
+    )
+    assert txn.document_id is None
+
+
+@pytest.mark.django_db
 def test_create_supplier_advance_rejected_when_open_debt_exists():
     admin_user, supplier, order = _make_supplier_order_with_status(
         "REJECT-SADV", SupplierOrder.Status.CONFIRMED,
@@ -654,6 +676,27 @@ def test_create_transporter_advance_posts_treasury_transaction():
         source_content_type=ContentType.objects.get_for_model(TransporterAdvance),
         source_object_id=advance.id,
     ).exists()
+
+
+@pytest.mark.django_db
+def test_create_transporter_advance_succeeds_without_attachment():
+    """Task 13 (2026-09-04 recette corrections): same as the supplier
+    advance case - no attachment must not crash AdvanceService."""
+    trip, transporter = _make_trip_for_deduction("CREATE-TADV-NOATT")
+    bank_account = BankAccount.objects.create(name="Main BOA Account", opening_balance=Decimal("2000000.00"))
+
+    advance = AdvanceService.create_transporter_advance(
+        transporter_id=transporter.id, bank_account_id=bank_account.id, cash_account_id=None,
+        amount=Decimal("500000.00"), date="2026-08-18", reference="TADV-NOATT", notes="",
+        attachment=None, actor=_make_admin("TADV-NOATT-ACTOR"),
+    )
+
+    assert advance.document_id is None
+    txn = TreasuryTransaction.objects.get(
+        source_content_type=ContentType.objects.get_for_model(TransporterAdvance),
+        source_object_id=advance.id,
+    )
+    assert txn.document_id is None
 
 
 @pytest.mark.django_db
@@ -749,7 +792,10 @@ def advances_finance_client():
 
 
 @pytest.mark.django_db
-def test_supplier_advance_endpoint_requires_image_attachment(advances_finance_client):
+def test_supplier_advance_endpoint_succeeds_without_attachment(advances_finance_client):
+    """Task 13 (2026-09-04 recette corrections): no justificatif is ever
+    mandatory - a supplier advance with no attachment must still succeed
+    and leave proof_url null."""
     supplier = Supplier.objects.create(name="API Advance Supplier", country="Senegal")
     cash_account = CashAccount.objects.create(name="Main Cash", opening_balance=Decimal("5000000.00"))
 
@@ -760,8 +806,9 @@ def test_supplier_advance_endpoint_requires_image_attachment(advances_finance_cl
             "amount": "500000.00", "date": "2026-08-18", "reference": "SADV-API",
         },
     )
-    assert response.status_code == 400
-    assert "attachment" in response.data
+    assert response.status_code == 201, response.data
+    assert response.data["remaining_amount"] == "500000.00"
+    assert response.data["proof_url"] is None
 
 
 @pytest.mark.django_db
@@ -820,7 +867,10 @@ def test_supplier_advance_endpoint_rejects_creation_with_open_debt(advances_fina
 
 
 @pytest.mark.django_db
-def test_transporter_advance_endpoint_now_requires_account_and_attachment(advances_finance_client):
+def test_transporter_advance_endpoint_succeeds_without_attachment(advances_finance_client):
+    """Task 13 (2026-09-04 recette corrections): no justificatif is ever
+    mandatory - a transporter advance with no attachment must still
+    succeed (the account is still required)."""
     trip, transporter = _make_trip_for_deduction("API-TADV")
     bank_account = BankAccount.objects.create(name="Main BOA Account", opening_balance=Decimal("2000000.00"))
 
@@ -828,8 +878,10 @@ def test_transporter_advance_endpoint_now_requires_account_and_attachment(advanc
         "/api/transporter-advances/",
         {"transporter": transporter.id, "bank_account": bank_account.id, "amount": "100000.00", "date": "2026-08-18"},
     )
-    assert response.status_code == 400
-    assert "attachment" in response.data
+    assert response.status_code == 201, response.data
+    assert response.data["proof_url"] is None
+    bank_account.refresh_from_db()
+    assert bank_account.current_balance == Decimal("1900000.00")
 
 
 @pytest.mark.django_db
