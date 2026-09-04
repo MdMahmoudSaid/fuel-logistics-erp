@@ -1757,6 +1757,81 @@ class ShareholderContributionService:
         return opening_balances + contributions
 
 
+class WorkingCapitalService:
+    """Fond de roulement client (docs/superpowers/specs/2026-09-04-recette-
+    corrections-design.md, Section 3) - a management indicator matching the
+    client's own "ETAT DE LA TRESORERIE" spreadsheet, NOT the accounting
+    fonds de roulement and NOT the old net/signed working_capital this
+    replaces. Open debts are added here as positive figures (mass of funds
+    engaged in operations) - everywhere else (party balances, ledgers,
+    payment screens) a debt stays displayed as an amount owed, and
+    open advances are never netted against it in this indicator. Never a
+    source of payment - payments always draw from real BankAccount/
+    CashAccount.
+    """
+
+    @staticmethod
+    def get_working_capital() -> dict:
+        # Local import: apps.reports.queries.customer_outstanding_report
+        # imports PaymentAllocationService from this very module - a
+        # module-level import here would create a circular import the
+        # first time either module loads before the other finishes.
+        from apps.reports.queries.customer_outstanding_report import (
+            CustomerOutstandingReportQuery,
+        )
+
+        treasury_available = sum(
+            (a.current_balance for a in BankAccount.objects.filter(is_active=True)), ZERO
+        ) + sum(
+            (a.current_balance for a in CashAccount.objects.filter(is_active=True)), ZERO
+        )
+        customer_receivables = sum(
+            (row["outstanding"] for row in CustomerOutstandingReportQuery.run()), ZERO
+        )
+        supplier_debt_total = sum(
+            (
+                ControlledDebtPaymentService.describe_supplier_balance(s)["total_due"]
+                for s in Supplier.objects.filter(is_active=True)
+            ),
+            ZERO,
+        )
+        transporter_debt_total = sum(
+            (
+                ControlledDebtPaymentService.describe_transporter_balance(t)["total_due"]
+                for t in Transporter.objects.filter(is_active=True)
+            ),
+            ZERO,
+        )
+        other_debts = sum(
+            (
+                ControlledDebtPaymentService.describe_expense_group(group)["remaining_amount"]
+                for group in (
+                    ControlledDebtPaymentService.CUSTOMS,
+                    ControlledDebtPaymentService.TRANSIT,
+                    ControlledDebtPaymentService.ROAD_TRANSIT,
+                    ControlledDebtPaymentService.BORDER,
+                    ControlledDebtPaymentService.LOADING,
+                    ControlledDebtPaymentService.TRIP_OTHER,
+                )
+            ),
+            ZERO,
+        )
+        capital = ShareholderContributionService.get_total_capital()
+        total = (
+            treasury_available + customer_receivables
+            + supplier_debt_total + transporter_debt_total + other_debts
+        )
+        return {
+            "capital": capital,
+            "treasury_available": treasury_available,
+            "customer_receivables": customer_receivables,
+            "supplier_debt_total": supplier_debt_total,
+            "transporter_debt_total": transporter_debt_total,
+            "other_debts": other_debts,
+            "total": total,
+        }
+
+
 class ShareholderLoanError(ValueError):
     """Raised when a loan's principal exceeds what the lender has
     available, or a repayment increment is invalid or would push
@@ -2025,16 +2100,20 @@ class ShareholderProfitPreviewService:
         )
         net_profit = operational_profit - general_expenses_paid
 
-        # "Resultat apres capital" backlog: total_capital_contributed reuses
-        # ShareholderContributionService.get_total_capital() verbatim (opening
-        # Shareholder.contribution balances + posted ShareholderContribution
-        # rows) - no second capital query path. profit_after_capital is a
-        # purely additive, informational figure; it must never feed
-        # indicative_share (still net_profit-based below) or
-        # ShareholderProfitDistribution, per the explicit product decision to
-        # keep distributions on net_profit only.
-        total_capital_contributed = ShareholderContributionService.get_total_capital()
-        profit_after_capital = net_profit - total_capital_contributed
+        # Client modifications (2026-09-04): "resultat distribuable apres
+        # dettes et capital" replaces the old profit_after_capital
+        # (net_profit - capital) formula entirely per client clarification -
+        # see docs/superpowers/specs/2026-09-04-recette-corrections-design.md
+        # Section 4. Never feeds indicative_share (still net_profit-based
+        # below) or ShareholderProfitDistribution.
+        working_capital = WorkingCapitalService.get_working_capital()
+        distributable_result = (
+            working_capital["total"]
+            - working_capital["supplier_debt_total"]
+            - working_capital["transporter_debt_total"]
+            - working_capital["other_debts"]
+            - working_capital["capital"]
+        )
 
         # Bug fix (2026-09-03 recette manuelle, page Benefices): the
         # distributable amount must be the net profit (after general
@@ -2060,8 +2139,8 @@ class ShareholderProfitPreviewService:
             "operational_profit": operational_profit,
             "general_expenses_paid": general_expenses_paid,
             "net_profit": net_profit,
-            "total_capital_contributed": total_capital_contributed,
-            "profit_after_capital": profit_after_capital,
+            "working_capital": working_capital,
+            "distributable_result": distributable_result,
             "shareholders": shareholders,
         }
 

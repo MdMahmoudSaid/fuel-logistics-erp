@@ -296,11 +296,14 @@ def test_dashboard_summary_includes_shareholders_summary_section():
 
 
 @pytest.mark.django_db
-def test_dashboard_summary_shareholders_section_includes_profit_after_capital():
-    """Backlog 'Resultat apres capital': dashboard must expose the same
-    total_capital_contributed/profit_after_capital figures as the
-    Benefices page's profit-preview endpoint - same formula, same source
-    (ShareholderProfitPreviewService.get_preview), never a second one."""
+def test_dashboard_summary_shareholders_section_includes_distributable_result():
+    """Client modifications (2026-09-04): dashboard must expose the same
+    distributable_result figure as the Benefices page's profit-preview
+    endpoint - same formula, same source
+    (ShareholderProfitPreviewService.get_preview), never a second one.
+    Replaces the old total_capital_contributed/profit_after_capital pair
+    entirely (docs/superpowers/specs/2026-09-04-recette-corrections-
+    design.md Section 4)."""
     admin_user = _make_admin("DASHPAC")
     fx = _make_full_trip("DASHPAC", admin_user)
     Shareholder.objects.create(
@@ -316,9 +319,11 @@ def test_dashboard_summary_shareholders_section_includes_profit_after_capital():
 
     assert response.status_code == 200, response.data
     summary = response.data["shareholders_summary"]
-    current_profit = Decimal(summary["current_profit"])
-    assert summary["total_capital_contributed"] == "400000.00"
-    assert Decimal(summary["profit_after_capital"]) == current_profit - Decimal("400000.00")
+    assert "total_capital_contributed" not in summary
+    assert "profit_after_capital" not in summary
+    # No treasury/receivables were seeded, only the 400,000 capital, so
+    # distributable_result = 0 (treasury) + 0 (receivables) - 400,000.
+    assert Decimal(summary["distributable_result"]) == Decimal("-400000.00")
     # Fixture sanity: there really is a sold trip driving current_profit.
     assert fx["sale"] is not None
 
@@ -1046,8 +1051,31 @@ def test_dashboard_summary_includes_working_capital_section():
     assert response.status_code == 200, response.data
     assert set(response.data["working_capital"]) >= {
         "capital", "treasury_available", "customer_receivables",
-        "supplier_net_balance", "transporter_net_balance", "other_debts", "total",
+        "supplier_debt_total", "transporter_debt_total", "other_debts", "total",
     }
+
+
+@pytest.mark.django_db
+def test_dashboard_summary_working_capital_uses_additive_formula():
+    """Task 8: the dashboard payload's working_capital must be the new
+    additive, gross-debt formula (old net/signed supplier_net_balance/
+    transporter_net_balance keys gone), and shareholders_summary must
+    expose distributable_result instead of profit_after_capital."""
+    from decimal import Decimal
+
+    admin_user = _make_admin("DASHWCADD")
+    client = APIClient()
+    client.force_authenticate(admin_user)
+
+    response = client.get("/api/dashboard/summary/")
+
+    assert response.status_code == 200, response.data
+    wc = response.data["working_capital"]
+    assert "supplier_net_balance" not in wc
+    assert "transporter_net_balance" not in wc
+    assert "supplier_debt_total" in wc
+    assert "transporter_debt_total" in wc
+    assert Decimal(response.data["shareholders_summary"]["distributable_result"]) is not None
 
 
 @pytest.mark.django_db
@@ -1086,7 +1114,15 @@ def test_dashboard_working_capital_formula_matches_manual_calculation():
 
 
 @pytest.mark.django_db
-def test_dashboard_working_capital_treats_open_advance_as_asset_not_liability():
+def test_dashboard_working_capital_advance_reduces_treasury_without_any_offset():
+    """Client modifications (2026-09-04): the corrected fond-de-roulement
+    formula never nets debts against advances at all - an open advance is
+    simply not part of the formula (docs/superpowers/specs/2026-09-04-
+    recette-corrections-design.md Section 3). This replaces the old
+    net/signed working_capital's behaviour (where an open advance offset
+    the cash outflow that created it) - under the new formula, paying out
+    an advance with no offsetting debt simply reduces treasury_available,
+    dropping working_capital.total by the same amount."""
     from decimal import Decimal
     from apps.finance.models import CashAccount
     from apps.finance.services import AdvanceService
@@ -1108,6 +1144,4 @@ def test_dashboard_working_capital_treats_open_advance_as_asset_not_liability():
     )
 
     after = client.get("/api/dashboard/summary/").data["working_capital"]["total"]
-    # Cash dropped by 2,000,000 but the advance is now an open asset
-    # (supplier_net_balance +2,000,000) - total working capital is unchanged.
-    assert after == before
+    assert Decimal(after) == Decimal(before) - Decimal("2000000.00")

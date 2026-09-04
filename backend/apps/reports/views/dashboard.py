@@ -23,8 +23,8 @@ from apps.finance.models import (
 )
 from apps.finance.services import (
     ControlledDebtPaymentService,
-    ShareholderContributionService,
     ShareholderProfitPreviewService,
+    WorkingCapitalService,
 )
 from apps.reports.date_range import resolve_date_range
 from apps.reports.queries.customer_outstanding_report import CustomerOutstandingReportQuery
@@ -192,15 +192,14 @@ class DashboardViewSet(viewsets.ViewSet):
         # (Actionnaires/Associes) stays the single detailed source; the
         # dashboard never breaks this down per trip or per shareholder.
         # Single call, fields reused below - avoids a second, possibly
-        # divergent computation of total_capital_contributed/
-        # profit_after_capital alongside the one the Benefices page's
-        # profit-preview endpoint already uses (ShareholderProfitPreviewService
-        # is the sole owner of that formula).
+        # divergent computation of distributable_result alongside the one
+        # the Benefices page's profit-preview endpoint already uses
+        # (ShareholderProfitPreviewService is the sole owner of that
+        # formula).
         profit_preview = ShareholderProfitPreviewService.get_preview()
         shareholders_summary = {
             "current_profit": profit_preview["current_profit"],
-            "total_capital_contributed": profit_preview["total_capital_contributed"],
-            "profit_after_capital": profit_preview["profit_after_capital"],
+            "distributable_result": profit_preview["distributable_result"],
             "total_withdrawn": ShareholderWithdrawal.objects.aggregate(total=Sum("amount"))[
                 "total"
             ]
@@ -340,32 +339,11 @@ class DashboardViewSet(viewsets.ViewSet):
             },
         }
 
-        # Fond de roulement (Phase 2, docs/superpowers/specs/2026-09-02-
-        # business-corrections-6-phases-design.md): reuses the exact same
-        # variables party_balances above already computed - never a second
-        # query path that could disagree. Capital is shown for information
-        # only and is NOT summed into total: a posted ShareholderContribution
-        # already increased bank/cash, so adding it again here would double
-        # count the same money. supplier_net_total/transporter_net_total are
-        # signed (advances minus debts) and are ADDED, not subtracted - an
-        # open advance is the company's asset, not a liability.
-        treasury_available = bank_amounts["total"] + cash_amounts["total"]
-        other_debts = customs_total + transit_total + road_transit_total + other_total
-        working_capital = {
-            "capital": ShareholderContributionService.get_total_capital(),
-            "treasury_available": treasury_available,
-            "customer_receivables": customer_amounts["total"],
-            "supplier_net_balance": supplier_net_total,
-            "transporter_net_balance": transporter_net_total,
-            "other_debts": other_debts,
-            "total": (
-                treasury_available
-                + customer_amounts["total"]
-                + supplier_net_total
-                + transporter_net_total
-                - other_debts
-            ),
-        }
+        # Fond de roulement client (docs/superpowers/specs/2026-09-04-
+        # recette-corrections-design.md, Section 3) - single source of
+        # truth also used by ShareholderProfitPreviewService's
+        # distributable_result, never a second formula.
+        working_capital = WorkingCapitalService.get_working_capital()
 
         # Only trips that have physically arrived at the depot count as stock -
         # destination_type alone isn't enough: GOING_TO_COMPANY_STOCK/earlier
