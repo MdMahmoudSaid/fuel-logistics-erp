@@ -1764,14 +1764,23 @@ class ShareholderContributionService:
 class WorkingCapitalService:
     """Fond de roulement client (docs/superpowers/specs/2026-09-04-recette-
     corrections-design.md, Section 3) - a management indicator matching the
-    client's own "ETAT DE LA TRESORERIE" spreadsheet, NOT the accounting
-    fonds de roulement and NOT the old net/signed working_capital this
-    replaces. Open debts are added here as positive figures (mass of funds
-    engaged in operations) - everywhere else (party balances, ledgers,
-    payment screens) a debt stays displayed as an amount owed, and
-    open advances are never netted against it in this indicator. Never a
-    source of payment - payments always draw from real BankAccount/
-    CashAccount.
+    client's own Google Sheet ("ETAT DE LA TRESORERIE"), NOT the accounting
+    fonds de roulement. Correction (2026-09-04, second pass, after reading
+    the actual client spreadsheet): this is a brut/net breakdown, not a
+    single additive total -
+      gross = treasury_available + customer_receivables
+      net = gross - supplier_debt_total - transporter_debt_total - other_debts
+    Open debts are SUBTRACTED to reach `net` (never added/netted against
+    advances) - everywhere else (party balances, ledgers, payment screens) a
+    debt stays displayed as an amount owed, unaffected by this indicator.
+    Never a source of payment - payments always draw from real
+    BankAccount/CashAccount.
+
+    Stock fournisseur / commandes en cours and "prets entrants" are in the
+    client's spreadsheet but are intentionally NOT included here: no
+    reliable aggregate financial figure exists yet for either (see the
+    module's git history / spec Section 3 for the reasoning) - add them
+    later behind their own tested aggregate rather than approximating now.
     """
 
     @staticmethod
@@ -1821,10 +1830,8 @@ class WorkingCapitalService:
             ZERO,
         )
         capital = ShareholderContributionService.get_total_capital()
-        total = (
-            treasury_available + customer_receivables
-            + supplier_debt_total + transporter_debt_total + other_debts
-        )
+        gross = treasury_available + customer_receivables
+        net = gross - supplier_debt_total - transporter_debt_total - other_debts
         return {
             "capital": capital,
             "treasury_available": treasury_available,
@@ -1832,7 +1839,8 @@ class WorkingCapitalService:
             "supplier_debt_total": supplier_debt_total,
             "transporter_debt_total": transporter_debt_total,
             "other_debts": other_debts,
-            "total": total,
+            "gross": gross,
+            "net": net,
         }
 
 
@@ -2104,20 +2112,17 @@ class ShareholderProfitPreviewService:
         )
         net_profit = operational_profit - general_expenses_paid
 
-        # Client modifications (2026-09-04): "resultat distribuable apres
-        # dettes et capital" replaces the old profit_after_capital
-        # (net_profit - capital) formula entirely per client clarification -
-        # see docs/superpowers/specs/2026-09-04-recette-corrections-design.md
-        # Section 4. Never feeds indicative_share (still net_profit-based
-        # below) or ShareholderProfitDistribution.
+        # Client modifications (2026-09-04, second pass after reading the
+        # client's actual Google Sheet): "resultat distribuable apres dettes
+        # et capital" = working_capital["net"] - capital. working_capital
+        # already subtracts supplier/transporter/other debts to reach "net"
+        # (brut -> net -> resultat distribuable, see WorkingCapitalService),
+        # so this is never recomputed from the individual debt terms here -
+        # a single source of truth for the debt subtraction. Never feeds
+        # indicative_share (still net_profit-based below) or
+        # ShareholderProfitDistribution.
         working_capital = WorkingCapitalService.get_working_capital()
-        distributable_result = (
-            working_capital["total"]
-            - working_capital["supplier_debt_total"]
-            - working_capital["transporter_debt_total"]
-            - working_capital["other_debts"]
-            - working_capital["capital"]
-        )
+        distributable_result = working_capital["net"] - working_capital["capital"]
 
         # Bug fix (2026-09-03 recette manuelle, page Benefices): the
         # distributable amount must be the net profit (after general

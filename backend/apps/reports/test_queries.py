@@ -635,14 +635,14 @@ def test_general_expenses_paid_ignores_unpaid_and_allocated_expenses():
 
 
 @pytest.mark.django_db
-def test_distributable_result_equals_zero_when_no_treasury_receivables_or_capital():
-    # Client modifications (2026-09-04): distributable_result replaces the
-    # old profit_after_capital (net_profit - capital) entirely - it is no
-    # longer tied to net_profit at all, only to working_capital's
-    # treasury/receivables/capital terms (docs/superpowers/specs/2026-09-04-
-    # recette-corrections-design.md Section 4). _make_full_trip's supplier
-    # order creates a supplier debt, but that term is added and subtracted
-    # right back out of the formula, so it never shows up in the result.
+def test_distributable_result_subtracts_open_debts_via_net():
+    # Client modifications (2026-09-04, second pass after reading the
+    # client's actual Google Sheet): distributable_result = working_capital
+    # ["net"] - capital, and net = gross - debts. Debts are genuinely
+    # subtracted once here (not added into a total and cancelled back out
+    # like the first-pass additive formula did) - _make_full_trip's
+    # confirmed, unpaid supplier order leaves an open supplier debt, so it
+    # must show up in distributable_result.
     admin_user = _make_admin("PAC-NOCAP")
     _make_full_trip("PAC-NOCAP", admin_user)
     Shareholder.objects.create(
@@ -655,10 +655,16 @@ def test_distributable_result_equals_zero_when_no_treasury_receivables_or_capita
 
     assert "total_capital_contributed" not in preview
     assert "profit_after_capital" not in preview
-    assert preview["working_capital"]["capital"] == Decimal("0.00")
-    assert preview["working_capital"]["treasury_available"] == Decimal("0.00")
-    assert preview["working_capital"]["customer_receivables"] == Decimal("0.00")
-    assert preview["distributable_result"] == Decimal("0.00")
+    wc = preview["working_capital"]
+    assert wc["capital"] == Decimal("0.00")
+    assert wc["treasury_available"] == Decimal("0.00")
+    assert wc["customer_receivables"] == Decimal("0.00")
+    assert wc["gross"] == Decimal("0.00")
+    assert wc["supplier_debt_total"] > Decimal("0.00")
+    assert wc["net"] == (
+        wc["gross"] - wc["supplier_debt_total"] - wc["transporter_debt_total"] - wc["other_debts"]
+    )
+    assert preview["distributable_result"] == wc["net"] - wc["capital"]
 
 
 @pytest.mark.django_db
@@ -696,16 +702,16 @@ def test_distributable_result_formula_term_by_term():
     # treasury account in this scenario.
     assert wc["treasury_available"] == Decimal("1000000.00")
     assert wc["customer_receivables"] == Decimal("0.00")
-    # Formula C written term-by-term (docs/superpowers/specs/2026-09-04-
-    # recette-corrections-design.md Section 4), not algebraically
-    # simplified - the supplier debt _make_full_trip creates is added into
-    # wc["total"] and subtracted right back out via supplier_debt_total.
-    expected = (
-        wc["total"] - wc["supplier_debt_total"] - wc["transporter_debt_total"]
-        - wc["other_debts"] - wc["capital"]
+    # Formula C (docs/superpowers/specs/2026-09-04-recette-corrections-
+    # design.md Section 4, second pass): net = gross - debts, distributable
+    # = net - capital. The supplier debt _make_full_trip creates is
+    # genuinely subtracted here (not added into a total and cancelled back
+    # out like the first-pass additive formula did).
+    assert wc["supplier_debt_total"] > Decimal("0.00")
+    assert wc["net"] == (
+        wc["gross"] - wc["supplier_debt_total"] - wc["transporter_debt_total"] - wc["other_debts"]
     )
-    assert preview["distributable_result"] == expected
-    assert preview["distributable_result"] == Decimal("-2500000.00")
+    assert preview["distributable_result"] == wc["net"] - wc["capital"]
     # net_profit itself must stay exactly what it was before capital ever
     # entered the picture - distributable_result never feeds it back.
     assert preview["net_profit"] == preview["operational_profit"]

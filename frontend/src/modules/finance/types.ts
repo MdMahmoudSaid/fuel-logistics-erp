@@ -575,9 +575,11 @@ export interface ShareholderProfitPreviewShare {
 // "Fond de roulement client" (docs/superpowers/specs/2026-09-04-recette-
 // corrections-design.md, Section 3) - WorkingCapitalService.get_working_capital()
 // (backend/apps/finance/services.py). A management indicator matching the
-// client's own "ETAT DE LA TRESORERIE" spreadsheet, NOT the accounting fonds
-// de roulement. Open debts (supplier/transporter/other) are added here as
-// positive figures - capital is informational only, not summed into total.
+// client's own Google Sheet, NOT the accounting fonds de roulement. A
+// brut/net breakdown (second pass, 2026-09-04): gross = treasury_available +
+// customer_receivables; net = gross - supplier_debt_total -
+// transporter_debt_total - other_debts. Capital is informational only, not
+// part of gross/net (only subtracted separately to reach distributable_result).
 export interface WorkingCapital {
   capital: string
   treasury_available: string
@@ -585,7 +587,8 @@ export interface WorkingCapital {
   supplier_debt_total: string
   transporter_debt_total: string
   other_debts: string
-  total: string
+  gross: string
+  net: string
 }
 
 export interface ShareholderProfitPreview {

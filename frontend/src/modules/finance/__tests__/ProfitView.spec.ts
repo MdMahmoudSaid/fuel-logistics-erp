@@ -36,9 +36,12 @@ describe('ProfitView', () => {
         supplier_debt_total: '200000.00',
         transporter_debt_total: '100000.00',
         other_debts: '50000.00',
-        total: '1100000.00',
+        // gross = 400000 + 350000 = 750000; net = 750000 - 200000 - 100000 - 50000 = 400000
+        gross: '750000.00',
+        net: '400000.00',
       },
-      distributable_result: '650000.00',
+      // distributable_result = net (400000) - capital (100000)
+      distributable_result: '300000.00',
       shareholders: [],
     })
     fetchReport.mockResolvedValue({
@@ -128,20 +131,30 @@ describe('ProfitView', () => {
     expect(banner!.text()).not.toContain('900 000 XOF')
   })
 
-  it('shows fond de roulement client and resultat distribuable, informational only', async () => {
+  it('shows fond de roulement brut, dettes, net, and resultat distribuable, informational only', async () => {
     const wrapper = mount(ProfitView)
     await flushPromises()
     await flushPromises()
 
-    const workingCapitalCard = wrapper.find('[data-test="profit-working-capital-card"]')
-    expect(workingCapitalCard.exists()).toBe(true)
-    expect(workingCapitalCard.text()).toContain('Fond de roulement client')
-    expect(workingCapitalCard.text()).toContain('1 100 000 XOF')
+    const grossCard = wrapper.find('[data-test="profit-working-capital-gross-card"]')
+    expect(grossCard.exists()).toBe(true)
+    expect(grossCard.text()).toContain('Fond de roulement brut client')
+    expect(grossCard.text()).toContain('750 000 XOF')
+
+    const debtsCard = wrapper.find('[data-test="profit-working-capital-debts-card"]')
+    expect(debtsCard.exists()).toBe(true)
+    // supplier 200000 + transporter 100000 + other 50000 = 350000
+    expect(debtsCard.text()).toContain('350 000 XOF')
+
+    const netCard = wrapper.find('[data-test="profit-working-capital-net-card"]')
+    expect(netCard.exists()).toBe(true)
+    expect(netCard.text()).toContain('Fond de roulement net client')
+    expect(netCard.text()).toContain('400 000 XOF')
 
     const distributableResultCard = wrapper.find('[data-test="profit-distributable-result-card"]')
     expect(distributableResultCard.exists()).toBe(true)
     expect(distributableResultCard.text()).toContain('Résultat distribuable après dettes et capital')
-    expect(distributableResultCard.text()).toContain('650 000 XOF')
+    expect(distributableResultCard.text()).toContain('300 000 XOF')
   })
 
   it('refetches the trip table with ISO start_date and end_date when custom dates change', async () => {

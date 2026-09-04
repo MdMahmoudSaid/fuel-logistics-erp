@@ -201,8 +201,13 @@ const workingCapitalCard = computed(() => {
   if (!summary.value) return null
   const wc = summary.value.working_capital
   return {
-    totalParts: formatMoneyParts(wc.total),
-    negative: Number(wc.total) < 0,
+    // Client modifications (2026-09-04, second pass): headline figure is
+    // now the NET fond de roulement (brut minus open debts), matching the
+    // client's own Google Sheet - brut and the debt buckets are shown as
+    // distinct rows below rather than folded into a single additive total.
+    netParts: formatMoneyParts(wc.net),
+    negative: Number(wc.net) < 0,
+    grossParts: formatMoneyParts(wc.gross),
     capitalParts: formatMoneyParts(wc.capital),
     treasuryParts: formatMoneyParts(wc.treasury_available),
     receivablesParts: formatMoneyParts(wc.customer_receivables),
@@ -444,7 +449,7 @@ const compactEnRouteTrips = computed(() => enRouteTrips.value.slice(0, 5))
                 <Icon name="landmark" :size="16" />
               </span>
               <h2 class="text-texte-2 text-sm font-semibold uppercase">
-                {{ t('dashboard.final.workingCapital') }}
+                {{ t('dashboard.final.workingCapitalNet') }}
               </h2>
             </div>
             <p class="text-texte-3 mt-1 text-xs">{{ t('dashboard.final.workingCapitalHelp') }}</p>
@@ -453,9 +458,15 @@ const compactEnRouteTrips = computed(() => enRouteTrips.value.slice(0, 5))
               class="mt-3 text-2xl font-semibold"
               :class="workingCapitalCard.negative ? 'text-critique' : 'text-texte'"
             >
-              <MonoValue v-bind="workingCapitalCard.totalParts" align="left" />
+              <MonoValue v-bind="workingCapitalCard.netParts" align="left" />
             </p>
             <dl v-if="workingCapitalCard" class="mt-4 grid gap-2 text-sm">
+              <div class="bg-sable flex items-center justify-between gap-3 rounded-lg px-3 py-2">
+                <dt class="text-texte-2">{{ t('dashboard.final.workingCapitalGross') }}</dt>
+                <dd class="text-texte font-medium">
+                  <MonoValue v-bind="workingCapitalCard.grossParts" />
+                </dd>
+              </div>
               <div class="bg-sable flex items-center justify-between gap-3 rounded-lg px-3 py-2">
                 <dt class="text-texte-2">{{ t('dashboard.final.capitalContributed') }}</dt>
                 <dd class="text-texte font-medium">

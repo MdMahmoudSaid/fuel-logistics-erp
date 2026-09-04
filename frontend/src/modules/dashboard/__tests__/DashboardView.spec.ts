@@ -99,7 +99,10 @@ const summary: DashboardSummary = {
     supplier_debt_total: '2000000.00',
     transporter_debt_total: '500000.00',
     other_debts: '300000.00',
-    total: '19200000.00',
+    // gross = 17000000 + 1000000 = 18000000
+    // net = 18000000 - 2000000 - 500000 - 300000 = 15200000
+    gross: '18000000.00',
+    net: '15200000.00',
   },
   company_stock: {
     total_quantity: '80000.00',
@@ -510,12 +513,14 @@ describe('DashboardView', () => {
     expect(stockLink?.props('to')).toEqual({ name: 'company-stock' })
   })
 
-  it('renders the fond de roulement client section', async () => {
+  it('renders the fond de roulement brut/net section', async () => {
     const wrapper = mount(DashboardView, { global: { plugins: [makeRouter()] } })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Fond de roulement client')
-    expect(wrapper.text()).toContain('19 200 000 XOF')
+    expect(wrapper.text()).toContain('Fond de roulement net client')
+    expect(wrapper.text()).toContain('15 200 000 XOF')
+    expect(wrapper.text()).toContain('Fond de roulement brut client')
+    expect(wrapper.text()).toContain('18 000 000 XOF')
   })
 
   it('shows the distributable result after debts and capital in the shareholders section', async () => {

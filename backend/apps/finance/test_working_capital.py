@@ -2,12 +2,13 @@
 # recette-corrections/task-7-brief.md; business rationale in
 # docs/superpowers/specs/2026-09-04-recette-corrections-design.md Section 3).
 #
-# Client-corrected "fond de roulement": open debts (supplier/transporter/
-# customs-transit) are added as POSITIVE gross figures (total_due, never
-# netted against open advances) - a management indicator matching the
-# client's own spreadsheet, not the accounting working capital and not the
-# old net/signed working_capital it replaces. Capital is informational only
-# and never summed into total.
+# Client-corrected "fond de roulement" (2026-09-04, second pass after
+# reading the client's actual Google Sheet): gross = treasury + receivables;
+# net = gross - open debts (supplier/transporter/customs-transit, each
+# total_due, never netted against open advances at the per-debt level). A
+# management indicator matching the client's own spreadsheet, not the
+# accounting working capital. Capital is informational only, never part of
+# gross/net (only subtracted separately to reach distributable_result).
 
 from decimal import Decimal
 
@@ -81,7 +82,7 @@ def _make_trip_for_transporter_debt(suffix):
 
 
 @pytest.mark.django_db
-def test_working_capital_adds_debts_as_positive_no_netting():
+def test_working_capital_gross_and_net_breakdown():
     # treasury_available = 2,000,000 (bank 1,500,000 + cash 500,000)
     BankAccount.objects.create(name="WC Bank", opening_balance=Decimal("1500000.00"), is_active=True)
     CashAccount.objects.create(name="WC Cash", opening_balance=Decimal("500000.00"), is_active=True)
@@ -153,7 +154,10 @@ def test_working_capital_adds_debts_as_positive_no_netting():
     assert result["supplier_debt_total"] == Decimal("1000000.00")
     assert result["transporter_debt_total"] == Decimal("1000000.00")
     assert result["other_debts"] == Decimal("1000000.00")
-    assert result["total"] == Decimal("6000000.00")
+    # gross = treasury + receivables (2,000,000 + 1,000,000)
+    assert result["gross"] == Decimal("3000000.00")
+    # net = gross - the 3 debt buckets (3,000,000 - 1,000,000 x 3)
+    assert result["net"] == Decimal("0.00")
 
 
 @pytest.mark.django_db

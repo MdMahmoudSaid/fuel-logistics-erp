@@ -58,6 +58,16 @@ function num(value: string): number {
   return Number(value)
 }
 
+// Client modifications (2026-09-04, second pass): "dettes" step between
+// brut and net - the same 3 debt buckets working_capital.net already
+// subtracts, summed here purely for display (not recomputed/renamed
+// anywhere in working_capital itself).
+const workingCapitalDebtsTotal = computed(() => {
+  if (!preview.value) return 0
+  const wc = preview.value.working_capital
+  return num(wc.supplier_debt_total) + num(wc.transporter_debt_total) + num(wc.other_debts)
+})
+
 const periodProfit = computed(() => rows.value.reduce((sum, r) => sum + num(r.current_margin), 0))
 const revenue = computed(() =>
   rows.value.reduce((sum, r) => sum + num(r.quantity_invoiced) * num(r.unit_selling_price), 0),
@@ -287,24 +297,52 @@ function onDateRangeChange(value: DateRangeValue) {
         </div>
       </section>
 
-      <!-- Client modifications (2026-09-04): "Fond de roulement client" and
-           "Resultat distribuable apres dettes et capital" replace the old
-           "Resultat apres capital" backlog block entirely - informational
-           only, sourced from the same preview - never recomputed here, never
-           a basis for shareholder distributions (those stay net_profit-based,
-           see distributionNote below). -->
-      <section v-if="preview" class="grid gap-3 sm:grid-cols-2">
-        <div data-test="profit-working-capital-card" class="border-ligne rounded-lg border bg-white p-4 shadow-sm">
+      <!-- Client modifications (2026-09-04, second pass after reading the
+           client's actual Google Sheet): brut -> dettes -> net -> resultat
+           distribuable, shown as 4 distinct steps rather than a single
+           combined figure - informational only, sourced from the same
+           preview, never recomputed here, never a basis for shareholder
+           distributions (those stay net_profit-based, see distributionNote
+           below). -->
+      <section v-if="preview" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div data-test="profit-working-capital-gross-card" class="border-ligne rounded-lg border bg-white p-4 shadow-sm">
           <p class="text-texte-2 text-xs font-medium tracking-wide uppercase">
-            {{ t('finance.profit.workingCapital') }}
+            {{ t('finance.profit.workingCapitalGross') }}
           </p>
           <p class="text-texte-2 mt-1 text-sm">
-            {{ t('finance.profit.workingCapitalHelp') }}
+            {{ t('finance.profit.workingCapitalGrossHelp') }}
           </p>
           <MonoValue
             class="mt-2 text-lg font-semibold"
             align="left"
-            :value="formatMoney(preview.working_capital.total)"
+            :value="formatMoney(preview.working_capital.gross)"
+          />
+        </div>
+        <div data-test="profit-working-capital-debts-card" class="border-ligne rounded-lg border bg-white p-4 shadow-sm">
+          <p class="text-texte-2 text-xs font-medium tracking-wide uppercase">
+            {{ t('finance.profit.workingCapitalDebts') }}
+          </p>
+          <p class="text-texte-2 mt-1 text-sm">
+            {{ t('finance.profit.workingCapitalDebtsHelp') }}
+          </p>
+          <MonoValue
+            class="mt-2 text-lg font-semibold text-critique"
+            align="left"
+            :value="formatMoney(workingCapitalDebtsTotal)"
+          />
+        </div>
+        <div data-test="profit-working-capital-net-card" class="border-ligne rounded-lg border bg-white p-4 shadow-sm">
+          <p class="text-texte-2 text-xs font-medium tracking-wide uppercase">
+            {{ t('finance.profit.workingCapitalNet') }}
+          </p>
+          <p class="text-texte-2 mt-1 text-sm">
+            {{ t('finance.profit.workingCapitalNetHelp') }}
+          </p>
+          <MonoValue
+            class="mt-2 text-lg font-semibold"
+            :class="Number(preview.working_capital.net) < 0 ? 'text-critique' : 'text-livre'"
+            align="left"
+            :value="formatMoney(preview.working_capital.net)"
           />
         </div>
         <div data-test="profit-distributable-result-card" class="border-ligne rounded-lg border bg-white p-4 shadow-sm">

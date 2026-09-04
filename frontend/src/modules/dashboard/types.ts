@@ -112,10 +112,11 @@ export interface DashboardSummary {
   // corrections-design.md, Section 3) - WorkingCapitalService.get_working_capital(),
   // the same single source of truth ShareholderProfitPreviewService's
   // distributable_result uses. A management indicator matching the client's
-  // own "ETAT DE LA TRESORERIE" spreadsheet, NOT the accounting fonds de
-  // roulement - open debts are added as positive figures (mass of funds
-  // engaged in operations), capital is informational only (not summed into
-  // total). Point-in-time, like debts/party_balances above.
+  // own Google Sheet, NOT the accounting fonds de roulement. Brut/net
+  // breakdown (second pass, 2026-09-04): gross = treasury_available +
+  // customer_receivables; net = gross - the 3 debt buckets. Capital is
+  // informational only (not part of gross/net). Point-in-time, like
+  // debts/party_balances above.
   working_capital: {
     capital: string
     treasury_available: string
@@ -123,7 +124,8 @@ export interface DashboardSummary {
     supplier_debt_total: string
     transporter_debt_total: string
     other_debts: string
-    total: string
+    gross: string
+    net: string
   }
   company_stock: {
     total_quantity: string
