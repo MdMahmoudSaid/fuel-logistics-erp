@@ -27,8 +27,13 @@ describe('formatMoney', () => {
 })
 
 describe('formatUnitMoney', () => {
-  it('appends XOF/L', () => {
-    expect(stripBidiIsolate(formatUnitMoney(810))).toBe('810 XOF/L')
+  it('renders 2 decimals with a comma separator, not rounded to 0', () => {
+    // 10 000 XOF / 45 000 L = 0.2222... XOF/L
+    expect(stripBidiIsolate(formatUnitMoney(10000 / 45000))).toBe('0,22 XOF/L')
+  })
+
+  it('still renders whole values with 2 decimals', () => {
+    expect(stripBidiIsolate(formatUnitMoney(810))).toBe('810,00 XOF/L')
   })
 })
 
@@ -38,10 +43,19 @@ describe('formatQuantity', () => {
   })
 })
 
+describe('formatMoney / formatQuantity (unchanged, still integer-rounded)', () => {
+  it('formatMoney stays rounded to 0 decimals', () => {
+    expect(stripBidiIsolate(formatMoney(23576205.6))).not.toContain(',')
+  })
+  it('formatQuantity stays rounded to 0 decimals', () => {
+    expect(stripBidiIsolate(formatQuantity(45000.4))).not.toContain(',')
+  })
+})
+
 describe('bidi isolation', () => {
   it('wraps formatted values in LRI/PDI so RTL contexts cannot reorder them', () => {
     expect(formatMoney(23576205)).toBe(`${LRI}23 576 205 XOF${PDI}`)
-    expect(formatUnitMoney(810)).toBe(`${LRI}810 XOF/L${PDI}`)
+    expect(formatUnitMoney(810)).toBe(`${LRI}810,00 XOF/L${PDI}`)
     expect(formatQuantity(45000)).toBe(`${LRI}45 000 L${PDI}`)
   })
 })

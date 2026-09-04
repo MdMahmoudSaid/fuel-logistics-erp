@@ -22,6 +22,12 @@ function formatInteger(value: number): string {
   return Math.round(value).toLocaleString('fr-FR').replace(THOUSANDS_SEPARATOR_RE, ' ')
 }
 
+function formatDecimal(value: number, decimals: number): string {
+  return value
+    .toLocaleString('fr-FR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
+    .replace(THOUSANDS_SEPARATOR_RE, ' ')
+}
+
 function isolateLtr(value: string): string {
   return `${LRI}${value}${PDI}`
 }
@@ -31,9 +37,10 @@ export function formatMoney(value: string | number): string {
   return isolateLtr(`${formatInteger(toNumber(value))} ${CURRENCY}`)
 }
 
-/** `810 XOF/L` */
+/** `0,22 XOF/L` — 2 decimals, never rounded to a whole unit (per-litre costs
+ * are frequently sub-1-XOF, e.g. a 10 000 XOF "par camion" fee on 45 000 L). */
 export function formatUnitMoney(value: string | number): string {
-  return isolateLtr(`${formatInteger(toNumber(value))} ${CURRENCY}/L`)
+  return isolateLtr(`${formatDecimal(toNumber(value), 2)} ${CURRENCY}/L`)
 }
 
 /** `45 000 L` */
