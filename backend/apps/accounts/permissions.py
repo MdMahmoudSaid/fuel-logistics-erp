@@ -4,6 +4,12 @@ ACTION_MAP = {
     "list": "view",
     "retrieve": "view",
     "ledger": "view",
+    # PDF export of a party ledger (Task 10, recette corrections 2026-09-04)
+    # is read-only - same "view" tier as `ledger` itself, just a different
+    # response format via a dedicated action (DRF reserves the `format`
+    # query param for its own content negotiation, so this can't be a
+    # branch on `ledger` gated by `?format=pdf`).
+    "ledger_pdf": "view",
     "reliquat": "view",
     "next_reference": "view",
     "trips": "view",

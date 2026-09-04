@@ -1,14 +1,17 @@
+import datetime
 from decimal import Decimal
 
 from django.contrib.contenttypes.models import ContentType
 from django.db import IntegrityError, transaction
 from django.db.models import Sum
+from django.http import HttpResponse
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.accounts.permissions import HasModulePermission
 from apps.reports.serialization import decimals_to_str
+from apps.reports.services.ledger_pdf import DEFAULT_COMPANY_NAME, render_ledger_pdf
 
 from .models import Driver, Transporter, Truck
 from .serializers import DriverSerializer, TransporterSerializer, TruckSerializer
@@ -144,6 +147,40 @@ class TransporterViewSet(viewsets.ModelViewSet):
                 "entries": decimals_to_str(ledger_data["entries"]),
             }
         )
+
+    @action(detail=True, methods=["get"], url_path="ledger/pdf")
+    def ledger_pdf(self, request, pk=None):
+        """PDF export of the transporter ledger (Task 10) - a dedicated
+        action rather than a `?format=pdf` query param on `ledger` above:
+        DRF's DefaultContentNegotiation reserves the `format` query
+        parameter for its own renderer selection and raises Http404 before
+        the view is even called when the value doesn't match a registered
+        renderer (verified while implementing this task) - the same reason
+        apps/reports/views/reports.py's export branch uses `?export=`
+        instead of `?format=`. Spec Section 5 explicitly allows this
+        "action dediee /pdf/" alternative. Prints the same
+        TransporterLedgerService.get_ledger() dict as `ledger` above - no
+        new calculation.
+
+        GET /api/transporters/{id}/ledger/pdf/?lang=fr|en|ar
+        """
+        from apps.finance.services import TransporterLedgerService
+
+        transporter = self.get_object()
+        ledger_data = TransporterLedgerService.get_ledger(transporter)
+        lang = request.query_params.get("lang", "fr")
+        pdf_bytes = render_ledger_pdf(
+            company_name=DEFAULT_COMPANY_NAME,
+            account_type="transporteur",
+            party_name=transporter.name,
+            export_date=datetime.date.today(),
+            summary=ledger_data["summary"],
+            rows=ledger_data["entries"],
+            lang=lang,
+        )
+        response = HttpResponse(pdf_bytes, content_type="application/pdf")
+        response["Content-Disposition"] = f'attachment; filename="grand-livre-{transporter.name}.pdf"'
+        return response
 
 
 class DriverViewSet(viewsets.ModelViewSet):
