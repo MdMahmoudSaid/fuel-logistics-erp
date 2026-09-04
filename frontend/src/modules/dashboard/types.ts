@@ -111,12 +111,12 @@ export interface DashboardSummary {
   // "Fond de roulement client" (docs/superpowers/specs/2026-09-04-recette-
   // corrections-design.md, Section 3) - WorkingCapitalService.get_working_capital(),
   // the same single source of truth ShareholderProfitPreviewService's
-  // distributable_result uses. A management indicator matching the client's
-  // own Google Sheet, NOT the accounting fonds de roulement. Brut/net
-  // breakdown (second pass, 2026-09-04): gross = treasury_available +
-  // customer_receivables; net = gross - the 3 debt buckets. Capital is
-  // informational only (not part of gross/net). Point-in-time, like
-  // debts/party_balances above.
+  // distributable_result uses. A management indicator, NOT the accounting
+  // fonds de roulement. Confirmed via actual client recette testing (third
+  // pass, 2026-09-04): open debts are ADDED, not subtracted - gross =
+  // treasury_available + customer_receivables; total = gross + the 3 debt
+  // buckets. Capital is informational only (not part of gross/total).
+  // Point-in-time, like debts/party_balances above.
   working_capital: {
     capital: string
     treasury_available: string
@@ -125,7 +125,7 @@ export interface DashboardSummary {
     transporter_debt_total: string
     other_debts: string
     gross: string
-    net: string
+    total: string
   }
   company_stock: {
     total_quantity: string

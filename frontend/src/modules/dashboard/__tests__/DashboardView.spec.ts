@@ -100,9 +100,9 @@ const summary: DashboardSummary = {
     transporter_debt_total: '500000.00',
     other_debts: '300000.00',
     // gross = 17000000 + 1000000 = 18000000
-    // net = 18000000 - 2000000 - 500000 - 300000 = 15200000
+    // total = 18000000 + 2000000 + 500000 + 300000 (debts ADDED) = 20800000
     gross: '18000000.00',
-    net: '15200000.00',
+    total: '20800000.00',
   },
   company_stock: {
     total_quantity: '80000.00',
@@ -513,14 +513,38 @@ describe('DashboardView', () => {
     expect(stockLink?.props('to')).toEqual({ name: 'company-stock' })
   })
 
-  it('renders the fond de roulement brut/net section', async () => {
+  it('renders the fond de roulement section with debts added, not subtracted', async () => {
     const wrapper = mount(DashboardView, { global: { plugins: [makeRouter()] } })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Fond de roulement net client')
-    expect(wrapper.text()).toContain('15 200 000 XOF')
+    expect(wrapper.text()).toContain('Fond de roulement client')
+    // total = gross (18000000) + debts (2000000 + 500000 + 300000), ADDED
+    expect(wrapper.text()).toContain('20 800 000 XOF')
     expect(wrapper.text()).toContain('Fond de roulement brut client')
     expect(wrapper.text()).toContain('18 000 000 XOF')
+  })
+
+  it('matches the client recette example: 300M brut + 45M + 2.925M + 10.255M = 358.18M', async () => {
+    // Confirmed bug during actual client recette testing (2026-09-04,
+    // third pass): the card showed dettes ouvertes as positive line items
+    // but the headline figure still subtracted them.
+    fetchDashboardSummary.mockResolvedValueOnce({
+      ...summary,
+      working_capital: {
+        capital: '0.00',
+        treasury_available: '300000000.00',
+        customer_receivables: '0.00',
+        supplier_debt_total: '45000000.00',
+        transporter_debt_total: '2925000.00',
+        other_debts: '10255000.00',
+        gross: '300000000.00',
+        total: '358180000.00',
+      },
+    })
+    const wrapper = mount(DashboardView, { global: { plugins: [makeRouter()] } })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('358 180 000 XOF')
   })
 
   it('shows the distributable result after debts and capital in the shareholders section', async () => {

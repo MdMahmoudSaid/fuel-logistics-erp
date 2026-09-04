@@ -574,12 +574,13 @@ export interface ShareholderProfitPreviewShare {
 
 // "Fond de roulement client" (docs/superpowers/specs/2026-09-04-recette-
 // corrections-design.md, Section 3) - WorkingCapitalService.get_working_capital()
-// (backend/apps/finance/services.py). A management indicator matching the
-// client's own Google Sheet, NOT the accounting fonds de roulement. A
-// brut/net breakdown (second pass, 2026-09-04): gross = treasury_available +
-// customer_receivables; net = gross - supplier_debt_total -
-// transporter_debt_total - other_debts. Capital is informational only, not
-// part of gross/net (only subtracted separately to reach distributable_result).
+// (backend/apps/finance/services.py). A management indicator, NOT the
+// accounting fonds de roulement. Confirmed via actual client recette
+// testing (third pass, 2026-09-04): open debts are ADDED, not subtracted -
+// gross = treasury_available + customer_receivables; total = gross +
+// supplier_debt_total + transporter_debt_total + other_debts. Capital is
+// informational only, not part of gross/total (only subtracted separately
+// to reach distributable_result).
 export interface WorkingCapital {
   capital: string
   treasury_available: string
@@ -588,7 +589,7 @@ export interface WorkingCapital {
   transporter_debt_total: string
   other_debts: string
   gross: string
-  net: string
+  total: string
 }
 
 export interface ShareholderProfitPreview {

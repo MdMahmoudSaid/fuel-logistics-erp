@@ -58,10 +58,10 @@ function num(value: string): number {
   return Number(value)
 }
 
-// Client modifications (2026-09-04, second pass): "dettes" step between
-// brut and net - the same 3 debt buckets working_capital.net already
-// subtracts, summed here purely for display (not recomputed/renamed
-// anywhere in working_capital itself).
+// Client modifications (2026-09-04, third pass): "dettes ouvertes" step
+// between brut and the final FDR figure - the same 3 debt buckets
+// working_capital.total already adds, summed here purely for display (not
+// recomputed/renamed anywhere in working_capital itself).
 const workingCapitalDebtsTotal = computed(() => {
   if (!preview.value) return 0
   const wc = preview.value.working_capital
@@ -297,13 +297,14 @@ function onDateRangeChange(value: DateRangeValue) {
         </div>
       </section>
 
-      <!-- Client modifications (2026-09-04, second pass after reading the
-           client's actual Google Sheet): brut -> dettes -> net -> resultat
-           distribuable, shown as 4 distinct steps rather than a single
-           combined figure - informational only, sourced from the same
-           preview, never recomputed here, never a basis for shareholder
-           distributions (those stay net_profit-based, see distributionNote
-           below). -->
+      <!-- Client modifications (2026-09-04, third pass - confirmed bug
+           during actual client recette testing): brut -> dettes ouvertes
+           -> fond de roulement client -> resultat distribuable, shown as 4
+           distinct steps. Open debts are ADDED to reach the final FDR
+           figure (never subtracted) - informational only, sourced from the
+           same preview, never recomputed here, never a basis for
+           shareholder distributions (those stay net_profit-based, see
+           distributionNote below). -->
       <section v-if="preview" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div data-test="profit-working-capital-gross-card" class="border-ligne rounded-lg border bg-white p-4 shadow-sm">
           <p class="text-texte-2 text-xs font-medium tracking-wide uppercase">
@@ -326,23 +327,23 @@ function onDateRangeChange(value: DateRangeValue) {
             {{ t('finance.profit.workingCapitalDebtsHelp') }}
           </p>
           <MonoValue
-            class="mt-2 text-lg font-semibold text-critique"
+            class="mt-2 text-lg font-semibold"
             align="left"
             :value="formatMoney(workingCapitalDebtsTotal)"
           />
         </div>
-        <div data-test="profit-working-capital-net-card" class="border-ligne rounded-lg border bg-white p-4 shadow-sm">
+        <div data-test="profit-working-capital-total-card" class="border-ligne rounded-lg border bg-white p-4 shadow-sm">
           <p class="text-texte-2 text-xs font-medium tracking-wide uppercase">
-            {{ t('finance.profit.workingCapitalNet') }}
+            {{ t('finance.profit.workingCapital') }}
           </p>
           <p class="text-texte-2 mt-1 text-sm">
-            {{ t('finance.profit.workingCapitalNetHelp') }}
+            {{ t('finance.profit.workingCapitalHelp') }}
           </p>
           <MonoValue
             class="mt-2 text-lg font-semibold"
-            :class="Number(preview.working_capital.net) < 0 ? 'text-critique' : 'text-livre'"
+            :class="Number(preview.working_capital.total) < 0 ? 'text-critique' : 'text-livre'"
             align="left"
-            :value="formatMoney(preview.working_capital.net)"
+            :value="formatMoney(preview.working_capital.total)"
           />
         </div>
         <div data-test="profit-distributable-result-card" class="border-ligne rounded-lg border bg-white p-4 shadow-sm">

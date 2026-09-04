@@ -297,9 +297,10 @@ def test_dashboard_summary_includes_shareholders_summary_section():
 
 @pytest.mark.django_db
 def test_dashboard_summary_shareholders_section_includes_distributable_result():
-    """Client modifications (2026-09-04, second pass): dashboard must
-    expose the same distributable_result figure as the Benefices page's
-    profit-preview endpoint - same formula (net - capital), same source
+    """Client modifications (2026-09-04, third pass - confirmed bug during
+    actual recette testing): dashboard must expose the same
+    distributable_result figure as the Benefices page's profit-preview
+    endpoint - same formula (total - debts - capital), same source
     (ShareholderProfitPreviewService.get_preview), never a second one.
     Replaces the old total_capital_contributed/profit_after_capital pair
     entirely (docs/superpowers/specs/2026-09-04-recette-corrections-
@@ -323,10 +324,15 @@ def test_dashboard_summary_shareholders_section_includes_distributable_result():
     assert "total_capital_contributed" not in summary
     assert "profit_after_capital" not in summary
     # No treasury/receivables were seeded, only the 400,000 capital and
-    # _make_full_trip's open, unpaid supplier debt - distributable_result =
-    # net (gross 0 - debts) - 400,000 capital, derived rather than
-    # hardcoded since the exact debt amount isn't this test's concern.
-    expected = Decimal(wc["net"]) - Decimal(wc["capital"])
+    # _make_full_trip's open, unpaid supplier debt (added into total, then
+    # subtracted back out) - distributable_result = gross(0) - 400,000
+    # capital, derived rather than hardcoded since the exact debt amount
+    # isn't this test's concern.
+    expected = (
+        Decimal(wc["total"]) - Decimal(wc["supplier_debt_total"])
+        - Decimal(wc["transporter_debt_total"]) - Decimal(wc["other_debts"])
+        - Decimal(wc["capital"])
+    )
     assert Decimal(summary["distributable_result"]) == expected
     # Fixture sanity: there really is a sold trip driving current_profit.
     assert fx["sale"] is not None
@@ -1055,14 +1061,14 @@ def test_dashboard_summary_includes_working_capital_section():
     assert response.status_code == 200, response.data
     assert set(response.data["working_capital"]) >= {
         "capital", "treasury_available", "customer_receivables",
-        "supplier_debt_total", "transporter_debt_total", "other_debts", "gross", "net",
+        "supplier_debt_total", "transporter_debt_total", "other_debts", "gross", "total",
     }
 
 
 @pytest.mark.django_db
 def test_dashboard_summary_working_capital_uses_additive_formula():
     """Task 8: the dashboard payload's working_capital must be the new
-    gross/net breakdown (old net/signed supplier_net_balance/
+    gross/total breakdown (old net/signed supplier_net_balance/
     transporter_net_balance keys gone), and shareholders_summary must
     expose distributable_result instead of profit_after_capital."""
     from decimal import Decimal
@@ -1109,11 +1115,11 @@ def test_dashboard_working_capital_formula_matches_manual_calculation():
     # Bank now holds 10,000,000 (opening) + 5,000,000 (contribution) = 15,000,000.
     # Cash = 2,000,000. No suppliers/transporters/customers/debts exist in this
     # test, so treasury_available is the only nonzero component of gross, and
-    # no debts exist to subtract, so net == gross.
+    # no debts exist to add, so total == gross.
     assert wc["treasury_available"] == "17000000.00"
     assert wc["capital"] == "5000000.00"
     assert wc["gross"] == "17000000.00"
-    assert wc["net"] == "17000000.00"
+    assert wc["total"] == "17000000.00"
     # Capital must NOT be double-counted: gross == treasury_available exactly,
     # not treasury_available + capital.
     assert Decimal(wc["gross"]) == Decimal(wc["treasury_available"])
@@ -1126,10 +1132,10 @@ def test_dashboard_working_capital_advance_reduces_treasury_without_any_offset()
     simply not part of the formula (docs/superpowers/specs/2026-09-04-
     recette-corrections-design.md Section 3). This replaces the old
     net/signed working_capital's behaviour (where an open advance offset
-    the cash outflow that created it) - under the new formula, paying out
-    an advance with no offsetting debt simply reduces treasury_available,
-    dropping working_capital.net (and .gross, since no debt exists to
-    subtract) by the same amount."""
+    the cash outflow that created it) - under the (third-pass, additive)
+    formula, paying out an advance with no offsetting debt simply reduces
+    treasury_available, dropping working_capital.total (and .gross, since
+    no debt exists to add) by the same amount."""
     from decimal import Decimal
     from apps.finance.models import CashAccount
     from apps.finance.services import AdvanceService
@@ -1142,7 +1148,7 @@ def test_dashboard_working_capital_advance_reduces_treasury_without_any_offset()
 
     client = APIClient()
     client.force_authenticate(admin_user)
-    before = client.get("/api/dashboard/summary/").data["working_capital"]["net"]
+    before = client.get("/api/dashboard/summary/").data["working_capital"]["total"]
 
     AdvanceService.create_supplier_advance(
         supplier_id=supplier.id, bank_account_id=None, cash_account_id=cash.id,
@@ -1150,5 +1156,78 @@ def test_dashboard_working_capital_advance_reduces_treasury_without_any_offset()
         attachment=SimpleUploadedFile("p.jpg", b"x", content_type="image/jpeg"), actor=admin_user,
     )
 
-    after = client.get("/api/dashboard/summary/").data["working_capital"]["net"]
+    after = client.get("/api/dashboard/summary/").data["working_capital"]["total"]
     assert Decimal(after) == Decimal(before) - Decimal("2000000.00")
+
+
+@pytest.mark.django_db
+def test_dashboard_working_capital_matches_client_recette_example():
+    """Confirmed bug during actual client recette testing (2026-09-04,
+    third pass): the "Fond de roulement net client" dashboard card showed
+    dettes ouvertes as positive line items but the headline figure still
+    subtracted them. Client-provided example, reproduced exactly via the
+    real dashboard endpoint:
+      gross (tresorerie + creances) = 300 000 000
+      + dettes fournisseurs ouvertes  =  45 000 000
+      + dettes transporteurs ouvertes =   2 925 000
+      + dettes douane/transit/frais   =  10 255 000
+      = 358 180 000
+    """
+    admin_user = _make_admin("DASHRECETTE")
+    BankAccount.objects.create(
+        name="Dash Recette Bank", opening_balance=Decimal("300000000.00"), is_active=True
+    )
+
+    supplier = Supplier.objects.create(name="Dash Recette Supplier", country="Senegal")
+    product = Product.objects.get(code="gasoil")
+    SupplierOrder.objects.create(
+        reference="SO-DASHRECETTE", supplier=supplier, product=product,
+        purchase_date="2026-08-18", quantity_litres=Decimal("45000.00"),
+        unit_price=Decimal("1000.0000"), status=SupplierOrder.Status.CONFIRMED,
+        created_by=admin_user,
+    )
+
+    transporter = Transporter.objects.create(name="Dash Recette Transporter")
+    truck = Truck.objects.create(
+        internal_id="TRK-DASHRECETTE", tractor_registration="DASHRECETTE-TRACTOR",
+        tanker_registration="DASHRECETTE-TANKER", capacity_litres=Decimal("45000.00"),
+    )
+    debt_supplier = Supplier.objects.create(name="Dash Recette Trip Supplier", country="Senegal")
+    debt_order = SupplierOrder.objects.create(
+        reference="SO-DASHRECETTE-TRIP", supplier=debt_supplier, product=product,
+        purchase_date="2026-08-18", quantity_litres=Decimal("45000.00"),
+        unit_price=Decimal("0.0000"), status=SupplierOrder.Status.CONFIRMED,
+        created_by=admin_user,
+    )
+    cession = CessionLetter.objects.create(
+        reference="CL-DASHRECETTE", supplier_order=debt_order,
+        authorized_quantity=Decimal("45000.00"), issue_date="2026-08-18", created_by=admin_user,
+    )
+    debt_trip = Trip.objects.create(
+        reference="TRIP-DASHRECETTE", truck=truck, transporter=transporter, supplier=debt_supplier,
+        supplier_order=debt_order, cession_letter=cession, product=product,
+        quantity_loaded=Decimal("45000.00"), loading_date="2026-08-18",
+        bl_reference="BL-DASHRECETTE", created_by=admin_user,
+    )
+    TransportPayment.objects.create(
+        trip=debt_trip, transporter=transporter,
+        calculation_method=TransportPayment.CalculationMethod.FIXED,
+        base_amount=Decimal("2925000.00"),
+    )
+
+    Expense.objects.create(
+        category=Expense.Category.CUSTOMS, amount=Decimal("10255000.00"),
+        calculation_method=Expense.CalculationMethod.MANUAL, date="2026-08-18",
+    )
+
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    response = client.get("/api/dashboard/summary/")
+
+    assert response.status_code == 200, response.data
+    wc = response.data["working_capital"]
+    assert wc["gross"] == "300000000.00"
+    assert wc["supplier_debt_total"] == "45000000.00"
+    assert wc["transporter_debt_total"] == "2925000.00"
+    assert wc["other_debts"] == "10255000.00"
+    assert wc["total"] == "358180000.00"

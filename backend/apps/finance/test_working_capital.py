@@ -2,13 +2,15 @@
 # recette-corrections/task-7-brief.md; business rationale in
 # docs/superpowers/specs/2026-09-04-recette-corrections-design.md Section 3).
 #
-# Client-corrected "fond de roulement" (2026-09-04, second pass after
-# reading the client's actual Google Sheet): gross = treasury + receivables;
-# net = gross - open debts (supplier/transporter/customs-transit, each
-# total_due, never netted against open advances at the per-debt level). A
-# management indicator matching the client's own spreadsheet, not the
-# accounting working capital. Capital is informational only, never part of
-# gross/net (only subtracted separately to reach distributable_result).
+# Client-corrected "fond de roulement" (2026-09-04, third pass - confirmed
+# bug during actual client recette testing, reverting the second pass's
+# subtraction): gross = treasury + receivables; total = gross + open debts
+# (supplier/transporter/customs-transit, each total_due, never netted
+# against open advances at the per-debt level - open debts are ADDED here,
+# never subtracted). A management indicator matching the client's own
+# spreadsheet, not the accounting working capital. Capital is informational
+# only, never part of gross/total (only subtracted separately to reach
+# distributable_result).
 
 from decimal import Decimal
 
@@ -82,7 +84,7 @@ def _make_trip_for_transporter_debt(suffix):
 
 
 @pytest.mark.django_db
-def test_working_capital_gross_and_net_breakdown():
+def test_working_capital_gross_and_total_breakdown():
     # treasury_available = 2,000,000 (bank 1,500,000 + cash 500,000)
     BankAccount.objects.create(name="WC Bank", opening_balance=Decimal("1500000.00"), is_active=True)
     CashAccount.objects.create(name="WC Cash", opening_balance=Decimal("500000.00"), is_active=True)
@@ -156,8 +158,8 @@ def test_working_capital_gross_and_net_breakdown():
     assert result["other_debts"] == Decimal("1000000.00")
     # gross = treasury + receivables (2,000,000 + 1,000,000)
     assert result["gross"] == Decimal("3000000.00")
-    # net = gross - the 3 debt buckets (3,000,000 - 1,000,000 x 3)
-    assert result["net"] == Decimal("0.00")
+    # total = gross + the 3 debt buckets, ADDED (3,000,000 + 1,000,000 x 3)
+    assert result["total"] == Decimal("6000000.00")
 
 
 @pytest.mark.django_db
@@ -188,3 +190,50 @@ def test_working_capital_debt_total_is_gross_not_net_of_advances():
     result = WorkingCapitalService.get_working_capital()
 
     assert result["supplier_debt_total"] == Decimal("1000000.00")
+
+
+@pytest.mark.django_db
+def test_working_capital_matches_client_recette_example():
+    """Confirmed bug during actual client recette testing (2026-09-04,
+    third pass): the dashboard "Fond de roulement net client" card showed
+    dettes ouvertes as positive line items but the headline figure still
+    subtracted them. Client-provided example, reproduced exactly here:
+      gross (tresorerie + creances) = 300 000 000
+      + dettes fournisseurs ouvertes  =  45 000 000
+      + dettes transporteurs ouvertes =   2 925 000
+      + dettes douane/transit/frais   =  10 255 000
+      = 358 180 000
+    """
+    BankAccount.objects.create(
+        name="WC Recette Bank", opening_balance=Decimal("300000000.00"), is_active=True
+    )
+
+    # dettes fournisseurs ouvertes = 45 000 000 (45 000 L x 1 000.0000, no advance)
+    _make_supplier_order_with_status(
+        "WCRECETTE-SUP", SupplierOrder.Status.CONFIRMED,
+        quantity=Decimal("45000.00"), unit_price=Decimal("1000.0000"),
+    )
+
+    # dettes transporteurs ouvertes = 2 925 000 (no advance)
+    from apps.finance.models import TransportPayment
+
+    debt_trip, debt_transporter = _make_trip_for_transporter_debt("WCRECETTE-TRA")
+    TransportPayment.objects.create(
+        trip=debt_trip, transporter=debt_transporter,
+        calculation_method=TransportPayment.CalculationMethod.FIXED,
+        base_amount=Decimal("2925000.00"),
+    )
+
+    # dettes douane/transit/frais ouvertes = 10 255 000
+    Expense.objects.create(
+        category=Expense.Category.CUSTOMS, amount=Decimal("10255000.00"),
+        calculation_method=Expense.CalculationMethod.MANUAL, date="2026-08-18",
+    )
+
+    result = WorkingCapitalService.get_working_capital()
+
+    assert result["gross"] == Decimal("300000000.00")
+    assert result["supplier_debt_total"] == Decimal("45000000.00")
+    assert result["transporter_debt_total"] == Decimal("2925000.00")
+    assert result["other_debts"] == Decimal("10255000.00")
+    assert result["total"] == Decimal("358180000.00")
