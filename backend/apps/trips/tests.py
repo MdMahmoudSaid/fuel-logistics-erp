@@ -1736,6 +1736,61 @@ def test_record_client_verification_rejected_on_cancelled_trip():
 
 
 # ---------------------------------------------------------------------------
+# Recette corrections Task 6 (2026-09-04): POST /api/trips/{id}/client-
+# verification/ - thin HTTP wrapper around
+# DeliveryService.record_client_verification(), same conventions as the
+# delivery-control API tests above.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_api_client_verification_updates_delivery_control():
+    fx = _fixtures_with_customer("API-CV-HAPPY")
+    trip = _deliverable_trip(fx, "TRIP-API-CV-HAPPY-001")
+    DeliveryService.record_delivery(
+        trip_id=trip.id,
+        control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE,
+        controller=fx["admin_user"],
+        unit_selling_price=Decimal("850.0000"),
+    )
+
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+    response = client.post(
+        f"/api/trips/{trip.id}/client-verification/",
+        {
+            "received_quantity": "44920.00",
+            "verified_at": str(date.today()),
+            "notes": "Ecart client",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200, response.data
+    assert response.data["received_quantity"] == "44920.00"
+
+
+@pytest.mark.django_db
+def test_api_client_verification_rejected_on_non_delivered_trip():
+    fx = _fixtures_with_customer("API-CV-REJECT")
+    # _deliverable_trip() advances to ARRIVED_AT_CLIENT only - no
+    # delivery-control/DELIVERED transition yet, so no DeliveryControl
+    # exists to correct.
+    trip = _deliverable_trip(fx, "TRIP-API-CV-REJECT-001")
+
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+    response = client.post(
+        f"/api/trips/{trip.id}/client-verification/",
+        {"received_quantity": "44000.00", "verified_at": str(date.today())},
+        format="json",
+    )
+
+    assert response.status_code in (400, 422)
+
+
+# ---------------------------------------------------------------------------
 # Client modifications Task 3: sale-below-cost guard (fuel-only cost basis
 # here, 45,000 L @ 600.0000 -> 600.0000 unit cost, no transport/expenses).
 # ---------------------------------------------------------------------------

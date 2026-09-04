@@ -352,6 +352,24 @@ class DeliveryControlRequestSerializer(serializers.Serializer):
     confirm_loss = serializers.BooleanField(required=False, default=False)
 
 
+class ClientVerificationRequestSerializer(serializers.Serializer):
+    """Input validation for POST /api/trips/{id}/client-verification/.
+
+    Not a ModelSerializer: the actual DeliveryControl update (plus the
+    TransportDeduction re-sync) is owned exclusively by
+    DeliveryService.record_client_verification() under a Trip row lock
+    (same convention as DeliveryControlRequestSerializer above) - this
+    only validates and type-converts the request body before the view
+    hands it to that service.
+    """
+
+    received_quantity = serializers.DecimalField(
+        max_digits=14, decimal_places=2, min_value=Decimal("0")
+    )
+    verified_at = serializers.DateField()
+    notes = serializers.CharField(required=False, allow_blank=True, default="")
+
+
 class AssignCustomerRequestSerializer(serializers.Serializer):
     """Input validation for POST /api/trips/{id}/assign-customer/.
 

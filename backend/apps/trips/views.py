@@ -13,6 +13,7 @@ from apps.reports.services.profit import TripProfitService
 from .models import Trip
 from .serializers import (
     AssignCustomerRequestSerializer,
+    ClientVerificationRequestSerializer,
     DeliveryControlRequestSerializer,
     DeliveryControlSerializer,
     TripSerializer,
@@ -293,3 +294,26 @@ class TripViewSet(viewsets.ModelViewSet):
             DeliveryControlSerializer(control, context={"request": request}).data,
             status=http_status.HTTP_201_CREATED,
         )
+
+    @action(detail=True, methods=["post"], url_path="client-verification")
+    def client_verification(self, request, pk=None):
+        """Post-delivery client quantity check (client modifications
+        2026-09-04) - see DeliveryService.record_client_verification().
+
+        POST /api/trips/{id}/client-verification/
+        """
+        trip = self.get_object()
+        input_serializer = ClientVerificationRequestSerializer(data=request.data)
+        input_serializer.is_valid(raise_exception=True)
+        data = input_serializer.validated_data
+        try:
+            control = DeliveryService.record_client_verification(
+                trip_id=trip.id,
+                received_qty=data["received_quantity"],
+                verified_at=data["verified_at"],
+                actor=request.user,
+                notes=data.get("notes", ""),
+            )
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=http_status.HTTP_400_BAD_REQUEST)
+        return Response(DeliveryControlSerializer(control, context={"request": request}).data)

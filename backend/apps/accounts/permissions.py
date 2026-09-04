@@ -29,6 +29,10 @@ ACTION_MAP = {
     # Delivery confirmation (docs/PHASE_4_PLAN.md Etape 6) is the same kind
     # of routine operations action as a trip status transition above.
     "delivery_control": "edit",
+    # Post-delivery client quantity check (recette corrections Task 6,
+    # 2026-09-04) corrects an existing DeliveryControl - same routine
+    # operations tier as the delivery confirmation it follows.
+    "client_verification": "edit",
     # Trip cost basis (Task 1, client modifications plan) is a read-only
     # decomposition, same "view" tier as margin/suggested_selling_price.
     "cost_basis": "view",
