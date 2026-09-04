@@ -657,6 +657,52 @@ class DeliveryService:
         return control
 
     @staticmethod
+    @transaction.atomic
+    def record_client_verification(
+        trip_id, received_qty: Decimal, verified_at, actor, notes: str = ""
+    ) -> DeliveryControl:
+        """Post-delivery client quantity check (client modifications
+        2026-09-04): updates the DeliveryControl created at delivery time
+        (defaulted to full quantity_loaded) with what the client actually
+        reports having received. Never touches Sale/Invoice ("Delivered
+        Quantity is Commercial Truth" stays frozen) - the loss below
+        tolerance is instead subtracted from margin by TripProfitService,
+        and the loss above tolerance re-syncs the existing
+        TransportDeduction mechanism.
+        """
+        trip = Trip.objects.select_for_update().get(pk=trip_id)
+        if trip.status not in (Trip.Status.DELIVERED, Trip.Status.COMPLETED):
+            raise ValueError(
+                f"Le trajet {trip.reference} doit etre livre ou termine pour "
+                "enregistrer une verification client."
+            )
+        try:
+            control = DeliveryControl.objects.select_for_update().get(trip=trip)
+        except DeliveryControl.DoesNotExist:
+            raise ValueError(
+                f"Le trajet {trip.reference} n'a pas de controle de livraison "
+                "a corriger."
+            )
+
+        control.received_quantity = received_qty
+        control.verified_at = verified_at
+        control.notes = notes
+        control.save(
+            update_fields=[
+                "received_quantity", "verified_at", "notes",
+                "loss_quantity", "chargeable_loss_quantity", "updated_at",
+            ]
+        )
+
+        sale = getattr(trip, "sale", None)
+        DeliveryService.sync_transport_shortage_deduction(
+            trip=trip,
+            received_qty=received_qty,
+            unit_selling_price=sale.unit_selling_price if sale else Decimal("0.0000"),
+        )
+        return control
+
+    @staticmethod
     def sync_transport_shortage_deduction(
         *, trip: Trip, received_qty: Decimal, unit_selling_price: Decimal
     ) -> None:
@@ -671,7 +717,16 @@ class DeliveryService:
         if trip.transporter_id is None or trip.transporter.is_internal:
             return
 
-        missing_quantity = (trip.quantity_loaded - received_qty).quantize(Decimal("0.01"))
+        # Bug fix (recette corrections Task 3, 2026-09-04): this previously
+        # charged the transporter for the FULL missing quantity, ignoring
+        # LossToleranceConfig entirely. The loss within tolerance is a
+        # company-absorbed cost (never billable), matching
+        # DeliveryControl.chargeable_loss_quantity's own tolerance-aware
+        # computation - only the loss above tolerance is chargeable here.
+        tolerance = LossToleranceConfig.get_current_tolerance()
+        missing_quantity = max(
+            (trip.quantity_loaded - received_qty) - tolerance, Decimal("0.00")
+        ).quantize(Decimal("0.01"))
         deductions = list(
             TransportDeduction.objects.select_for_update().filter(trip=trip).order_by("id")
         )

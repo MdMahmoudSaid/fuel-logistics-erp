@@ -258,6 +258,11 @@ class DeliveryControl(AuditableModel, TimeStampedModel):
         related_name="confirmed_delivery_anomalies",
     )
     anomaly_confirmed_at = models.DateTimeField(null=True, blank=True)
+    verified_at = models.DateField(
+        null=True, blank=True,
+        help_text="Date a laquelle la quantite recue a ete verifiee/corrigee "
+        "par le client, distincte de control_date (date de livraison initiale).",
+    )
 
     class Meta:
         constraints = [
@@ -288,3 +293,9 @@ class DeliveryControl(AuditableModel, TimeStampedModel):
             loss - self.tolerance_quantity, Decimal("0.00")
         )
         super().save(*args, **kwargs)
+
+    @property
+    def company_absorbed_loss_quantity(self) -> Decimal:
+        """Portion de la perte non facturable au transporteur (<= tolerance),
+        supportee par l'entreprise (client modifications 2026-09-04)."""
+        return max(self.loss_quantity, Decimal("0.00")) - self.chargeable_loss_quantity

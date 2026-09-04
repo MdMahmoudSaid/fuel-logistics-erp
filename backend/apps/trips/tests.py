@@ -1,4 +1,5 @@
 import itertools
+from datetime import date
 from decimal import Decimal
 
 import pytest
@@ -1336,9 +1337,9 @@ def test_delivery_service_unit_selling_price_override_matching_existing_skips_du
 
 @pytest.mark.django_db
 def test_delivery_service_happy_path_creates_deduction_sale_and_invoice():
-    # Client adjustment: any missing quantity is deducted from the transporter
-    # at the trip selling price, regardless of the historic tolerance used for
-    # the loss report.
+    # Recette corrections Task 3 (2026-09-04): the transporter is only
+    # charged for the loss above tolerance (150L loss - 100L tolerance =
+    # 50L chargeable), matching DeliveryControl.chargeable_loss_quantity.
     fx = _fixtures_with_customer("DS-HAPPY")
     trip = _deliverable_trip(fx, "TRIP-DS-HAPPY-001")
     ProductSellingPriceHistory.objects.create(
@@ -1370,9 +1371,9 @@ def test_delivery_service_happy_path_creates_deduction_sale_and_invoice():
 
     deduction = TransportDeduction.objects.get(trip=trip)
     assert deduction.transporter_id == fx["transporter"].id
-    assert deduction.chargeable_quantity == Decimal("150.00")
+    assert deduction.chargeable_quantity == Decimal("50.00")
     assert deduction.unit_price == Decimal("650.0000")
-    assert deduction.amount == Decimal("97500.00")
+    assert deduction.amount == Decimal("32500.00")
     assert deduction.status == TransportDeduction.Status.DRAFT
 
     sale = trip.sale
@@ -1398,26 +1399,30 @@ def test_delivery_service_syncs_transport_deduction_without_duplicates():
         base_amount=Decimal("700000.00"),
     )
 
+    # Recette corrections Task 3 (2026-09-04): missing quantity is charged
+    # net of the 100L default tolerance (300L missing -> 200L chargeable,
+    # then 400L missing -> 300L chargeable), still updating the same
+    # deduction row in place rather than creating a second one.
     DeliveryService.sync_transport_shortage_deduction(
         trip=trip,
-        received_qty=Decimal("44900.00"),
+        received_qty=Decimal("44700.00"),
         unit_selling_price=Decimal("600.0000"),
     )
     DeliveryService.sync_transport_shortage_deduction(
         trip=trip,
-        received_qty=Decimal("44800.00"),
+        received_qty=Decimal("44600.00"),
         unit_selling_price=Decimal("610.0000"),
     )
 
     assert TransportDeduction.objects.filter(trip=trip).count() == 1
     deduction = TransportDeduction.objects.get(trip=trip)
-    assert deduction.chargeable_quantity == Decimal("200.00")
+    assert deduction.chargeable_quantity == Decimal("300.00")
     assert deduction.unit_price == Decimal("610.0000")
-    assert deduction.amount == Decimal("122000.00")
+    assert deduction.amount == Decimal("183000.00")
 
     payment.refresh_from_db()
-    assert payment.deduction_amount == Decimal("122000.00")
-    assert payment.net_amount == Decimal("578000.00")
+    assert payment.deduction_amount == Decimal("183000.00")
+    assert payment.net_amount == Decimal("517000.00")
 
     DeliveryService.sync_transport_shortage_deduction(
         trip=trip,
@@ -1455,7 +1460,11 @@ def test_delivery_confirmation_generates_fac_invoice_number():
 
 
 @pytest.mark.django_db
-def test_delivery_service_deducts_missing_quantity_even_within_tolerance():
+def test_delivery_service_does_not_deduct_missing_quantity_within_tolerance():
+    # Recette corrections Task 3 (2026-09-04): fixes a pre-existing bug where
+    # sync_transport_shortage_deduction charged the transporter for the full
+    # missing quantity, ignoring LossToleranceConfig entirely. A loss within
+    # tolerance must not create/charge any TransportDeduction.
     fx = _fixtures_with_customer("DS-INTOL")
     trip = _deliverable_trip(fx, "TRIP-DS-INTOL-001")
     ProductSellingPriceHistory.objects.create(
@@ -1471,10 +1480,7 @@ def test_delivery_service_deducts_missing_quantity_even_within_tolerance():
         controller=fx["admin_user"],
     )
 
-    deduction = TransportDeduction.objects.get(trip=trip)
-    assert deduction.chargeable_quantity == Decimal("50.00")
-    assert deduction.unit_price == Decimal("650.0000")
-    assert deduction.amount == Decimal("32500.00")
+    assert not TransportDeduction.objects.filter(trip=trip).exists()
 
 
 @pytest.mark.django_db
@@ -1566,6 +1572,127 @@ def test_delivery_service_freezes_tolerance_used_at_confirmation_time():
     # Trip A's historic control must never drift with the new default.
     control_a.refresh_from_db()
     assert control_a.tolerance_quantity == Decimal("100.00")
+
+
+# ---------------------------------------------------------------------------
+# Recette corrections Task 3 (2026-09-04): sync_transport_shortage_deduction
+# must respect LossToleranceConfig instead of charging the transporter for
+# the full missing quantity, and DeliveryService.record_client_verification
+# lets the client report a real post-delivery discrepancy that corrects the
+# DeliveryControl created at delivery time (defaulted to full qty/zero loss
+# by Task 2) without ever touching Sale.delivered_quantity.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_sync_transport_shortage_deduction_respects_tolerance():
+    # loss of 80L (<= 100L tolerance): must NOT create/charge a TransportDeduction
+    fx = _fixtures_with_customer("SYNC-TOL")
+    trip = _deliverable_trip(fx, "TRIP-SYNC-TOL-001")
+    LossToleranceConfig.objects.create(
+        tolerance_litres=Decimal("100.00"), updated_by=fx["admin_user"]
+    )
+
+    DeliveryService.sync_transport_shortage_deduction(
+        trip=trip, received_qty=Decimal("44920.00"), unit_selling_price=Decimal("850.0000")
+    )
+
+    assert not TransportDeduction.objects.filter(trip=trip).exists()
+
+
+@pytest.mark.django_db
+def test_sync_transport_shortage_deduction_charges_only_above_tolerance():
+    # loss of 150L: only 50L (150 - 100 tolerance) must be charged
+    fx = _fixtures_with_customer("SYNC-OVERTOL")
+    trip = _deliverable_trip(fx, "TRIP-SYNC-OVERTOL-001")
+    LossToleranceConfig.objects.create(
+        tolerance_litres=Decimal("100.00"), updated_by=fx["admin_user"]
+    )
+
+    DeliveryService.sync_transport_shortage_deduction(
+        trip=trip, received_qty=Decimal("44850.00"), unit_selling_price=Decimal("850.0000")
+    )
+
+    deduction = TransportDeduction.objects.get(trip=trip)
+    assert deduction.chargeable_quantity == Decimal("50.00")
+
+
+@pytest.mark.django_db
+def test_sync_transport_shortage_deduction_no_charge_at_exact_tolerance_boundary():
+    # loss of exactly 100L == 100L tolerance: fully absorbed, 0L chargeable -
+    # the boundary the pre-fix bug got wrong (it charged the full 100L).
+    fx = _fixtures_with_customer("SYNC-EXACTTOL")
+    trip = _deliverable_trip(fx, "TRIP-SYNC-EXACTTOL-001")
+    LossToleranceConfig.objects.create(
+        tolerance_litres=Decimal("100.00"), updated_by=fx["admin_user"]
+    )
+
+    DeliveryService.sync_transport_shortage_deduction(
+        trip=trip, received_qty=Decimal("44900.00"), unit_selling_price=Decimal("850.0000")
+    )
+
+    assert not TransportDeduction.objects.filter(trip=trip).exists()
+
+
+@pytest.mark.django_db
+def test_record_client_verification_80L_loss_company_absorbs():
+    fx = _fixtures_with_customer("RCV-80L")
+    trip = _deliverable_trip(fx, "TRIP-RCV-80L-001")
+    DeliveryService.record_delivery(  # delivered with full qty by default
+        trip_id=trip.id,
+        control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE,
+        controller=fx["admin_user"],
+        unit_selling_price=Decimal("850.0000"),
+    )
+
+    control = DeliveryService.record_client_verification(
+        trip_id=trip.id, received_qty=Decimal("44920.00"),
+        verified_at=date.today(), actor=fx["admin_user"], notes="Ecart signale par le client",
+    )
+
+    assert control.loss_quantity == Decimal("80.00")
+    assert control.chargeable_loss_quantity == Decimal("0.00")
+    assert control.company_absorbed_loss_quantity == Decimal("80.00")
+    assert not TransportDeduction.objects.filter(trip=trip).exists()
+
+
+@pytest.mark.django_db
+def test_record_client_verification_150L_loss_splits_company_and_transporter():
+    fx = _fixtures_with_customer("RCV-150L")
+    trip = _deliverable_trip(fx, "TRIP-RCV-150L-001")
+    DeliveryService.record_delivery(
+        trip_id=trip.id,
+        control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE,
+        controller=fx["admin_user"],
+        unit_selling_price=Decimal("850.0000"),
+    )
+
+    control = DeliveryService.record_client_verification(
+        trip_id=trip.id, received_qty=Decimal("44850.00"),
+        verified_at=date.today(), actor=fx["admin_user"],
+    )
+
+    assert control.company_absorbed_loss_quantity == Decimal("100.00")
+    assert control.chargeable_loss_quantity == Decimal("50.00")
+    deduction = TransportDeduction.objects.get(trip=trip)
+    assert deduction.chargeable_quantity == Decimal("50.00")
+
+
+@pytest.mark.django_db
+def test_record_client_verification_rejected_on_cancelled_trip():
+    fx = _setup_fixtures("RCV-CANCEL")
+    truck = _make_truck("TRK-RCV-CANCEL")
+    trip = _make_trip(fx, truck, "TRIP-RCV-CANCEL-001")
+    TripWorkflowService.transition_trip(trip.id, Trip.Status.CANCELLED, fx["admin_user"])
+    trip.refresh_from_db()
+
+    with pytest.raises(ValueError):
+        DeliveryService.record_client_verification(
+            trip_id=trip.id, received_qty=Decimal("44000.00"),
+            verified_at=date.today(), actor=fx["admin_user"],
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -2016,8 +2143,10 @@ def test_api_trip_margin_unavailable_before_sale():
 def test_api_trip_margin_breakdown_after_delivery():
     """Guide Section 9.1's cost breakdown, end-to-end through the API:
     45,000 L @ 600 fuel cost, no transport payment or expenses recorded,
-    44,850 L delivered @ 650, 150 L charged back to the transporter at
-    selling price -> margin = revenue + loss indemnity - real loaded cost."""
+    44,850 L delivered @ 650 (150 L loss, 100 L tolerance) -> only the 50 L
+    above tolerance is charged back to the transporter at selling price
+    (recette corrections Task 3 tolerance fix) -> margin = revenue + loss
+    indemnity - real loaded cost."""
     fx = _fixtures_with_customer("API-MARGIN-OK")
     trip = _deliverable_trip(fx, "TRIP-API-MARGIN-OK-001")
     ProductSellingPriceHistory.objects.create(
@@ -2043,13 +2172,13 @@ def test_api_trip_margin_breakdown_after_delivery():
     assert response.data["revenue"] == "29152500.000000"
     assert response.data["quantity_loaded"] == "45000.00"
     assert response.data["quantity_invoiced"] == "44850.00"
-    assert response.data["transporter_loss_quantity"] == "150.00"
-    assert response.data["transporter_loss_indemnity"] == "97500.00"
+    assert response.data["transporter_loss_quantity"] == "50.00"
+    assert response.data["transporter_loss_indemnity"] == "32500.00"
     assert response.data["fuel_purchase_cost"] == "27000000.000000"
     assert response.data["transport_cost"] == "0.00"
     assert response.data["total_expenses"] == "0.00"
     assert response.data["real_total_cost"] == "27000000.000000"
-    assert response.data["margin"] == "2250000.00"
+    assert response.data["margin"] == "2185000.00"
 
 
 # ---------------------------------------------------------------------------
