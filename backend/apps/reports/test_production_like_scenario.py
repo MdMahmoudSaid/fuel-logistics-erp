@@ -365,13 +365,16 @@ def test_scenario_complet_production_like(capsys):
         Trip.Status.CUSTOMS,
         Trip.Status.GOING_TO_CLIENT,
         Trip.Status.ARRIVED_AT_CLIENT,
-        Trip.Status.QUANTITY_CONTROL,
+        # Client correction (2026-09-04 recette): QUANTITY_CONTROL is no
+        # longer a mandatory intermediate stop - a trip is delivered
+        # directly from ARRIVED_AT_CLIENT (see
+        # TripWorkflowService.FORWARD_TRANSITIONS).
     ]
     trip = transition_path(trip, workflow, user)
     history = list(TripStatusHistory.objects.filter(trip=trip).values_list("new_status", flat=True))
     report.check("4. Trajet et frais", "statut transit routiere present", "ROAD_TRANSIT dans workflow", True, Trip.Status.ROAD_TRANSIT in history)
-    report.check("4. Trajet et frais", "historique statuts", "10 transitions", 10, len(history))
-    report.check("4. Trajet et frais", "statut avant controle", "QUANTITY_CONTROL", Trip.Status.QUANTITY_CONTROL, Trip.objects.get(pk=trip.pk).status)
+    report.check("4. Trajet et frais", "historique statuts", "9 transitions", 9, len(history))
+    report.check("4. Trajet et frais", "statut avant controle", "ARRIVED_AT_CLIENT", Trip.Status.ARRIVED_AT_CLIENT, Trip.objects.get(pk=trip.pk).status)
 
     control = DeliveryService.record_delivery(
         trip.id,
@@ -697,7 +700,8 @@ def test_scenario_complet_production_like(capsys):
     )
     stock_trip = TripWorkflowService.transition_trip(stock_trip.id, Trip.Status.GOING_TO_CLIENT, user)
     stock_trip = TripWorkflowService.transition_trip(stock_trip.id, Trip.Status.ARRIVED_AT_CLIENT, user)
-    stock_trip = TripWorkflowService.transition_trip(stock_trip.id, Trip.Status.QUANTITY_CONTROL, user)
+    # Client correction (2026-09-04 recette): QUANTITY_CONTROL is no longer
+    # a mandatory intermediate stop before DELIVERED.
     rejected(
         "prix vente inferieur prix revient sans confirmation",
         lambda: DeliveryService.record_delivery(
