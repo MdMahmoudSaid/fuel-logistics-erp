@@ -116,6 +116,9 @@ const postClientVerification = vi.fn(async (_tripId: number, payload: Record<str
   updated_at: '',
 }))
 const fetchSuggestedSellingPrice = vi.fn(async () => '850.0000')
+const fetchReport = vi.fn(async (_type: string, _params: Record<string, unknown>) => ({
+  rows: [] as unknown[],
+}))
 const fetchTripCostBasis = vi.fn(async () => ({
   fuel_purchase_cost: '13500000.00',
   transport_cost: '13500000.00',
@@ -234,7 +237,7 @@ vi.mock('@/api/resource', () => ({
 }))
 
 vi.mock('@/modules/reports/api', () => ({
-  fetchReport: vi.fn(async () => ({ rows: [] })),
+  fetchReport: (type: string, params: Record<string, unknown>) => fetchReport(type, params),
 }))
 
 function setUser(permissions: Record<string, string[]>) {
@@ -819,6 +822,43 @@ describe('TripDetail expenses section', () => {
       9,
       expect.objectContaining({ verified_at: expect.any(String) }),
     )
+  })
+
+  it('hides the client-verification action and shows a read-only block once a verification is already recorded', async () => {
+    // Bug fix (recette corrections 2026-09-05): the button used to stay
+    // visible after a client verification was already recorded, letting a
+    // loss be declared a second time on the same trip.
+    setUser({ operations: ['view', 'edit'], finance: ['view'] })
+    tripResourceGet.mockResolvedValueOnce(makeTrip({ status: 'DELIVERED', client: 10 }))
+    allowedStatusesToReturn = ['COMPLETED']
+    fetchReport.mockResolvedValueOnce({
+      rows: [
+        {
+          trip_reference: 'TRIP-009',
+          control_date: '2026-08-18',
+          loaded_quantity: '45000.00',
+          received_quantity: '44850.00',
+          loss_quantity: '150.00',
+          tolerance_quantity: '100.00',
+          chargeable_loss_quantity: '50.00',
+          verified_at: '2026-08-19',
+          notes: 'Ecart signale par le client',
+        },
+      ],
+    })
+
+    const wrapper = await mountAt()
+
+    expect(
+      wrapper
+        .findAll('button')
+        .find((b) => b.text() === 'Vérification client / Déclarer une perte'),
+    ).toBeUndefined()
+    const readOnlyBlock = wrapper.find('[data-test="client-verification-recorded"]')
+    expect(readOnlyBlock.exists()).toBe(true)
+    expect(readOnlyBlock.text()).toContain('Vérification client enregistrée')
+    expect(readOnlyBlock.text()).toContain('2026-08-19')
+    expect(readOnlyBlock.text()).toContain('Ecart signale par le client')
   })
 
   it('also shows the client-verification action once the trip is COMPLETED, but never for CANCELLED', async () => {

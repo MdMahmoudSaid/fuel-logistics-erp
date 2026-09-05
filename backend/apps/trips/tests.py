@@ -1721,6 +1721,33 @@ def test_record_client_verification_150L_loss_splits_company_and_transporter():
 
 
 @pytest.mark.django_db
+def test_record_client_verification_rejected_when_already_verified():
+    """Bug fix (recette corrections 2026-09-05): a second client
+    verification on the same trip must be refused - it previously silently
+    overwrote the first declaration, letting a loss be declared more than
+    once on the same trip."""
+    fx = _fixtures_with_customer("RCV-TWICE")
+    trip = _deliverable_trip(fx, "TRIP-RCV-TWICE-001")
+    DeliveryService.record_delivery(
+        trip_id=trip.id,
+        control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE,
+        controller=fx["admin_user"],
+        unit_selling_price=Decimal("850.0000"),
+    )
+    DeliveryService.record_client_verification(
+        trip_id=trip.id, received_qty=Decimal("44920.00"),
+        verified_at=date.today(), actor=fx["admin_user"],
+    )
+
+    with pytest.raises(ValueError):
+        DeliveryService.record_client_verification(
+            trip_id=trip.id, received_qty=Decimal("44800.00"),
+            verified_at=date.today(), actor=fx["admin_user"],
+        )
+
+
+@pytest.mark.django_db
 def test_record_client_verification_rejected_on_cancelled_trip():
     fx = _setup_fixtures("RCV-CANCEL")
     truck = _make_truck("TRK-RCV-CANCEL")
@@ -1769,6 +1796,35 @@ def test_api_client_verification_updates_delivery_control():
 
     assert response.status_code == 200, response.data
     assert response.data["received_quantity"] == "44920.00"
+
+
+@pytest.mark.django_db
+def test_api_client_verification_rejected_when_already_verified():
+    fx = _fixtures_with_customer("API-CV-TWICE")
+    trip = _deliverable_trip(fx, "TRIP-API-CV-TWICE-001")
+    DeliveryService.record_delivery(
+        trip_id=trip.id,
+        control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE,
+        controller=fx["admin_user"],
+        unit_selling_price=Decimal("850.0000"),
+    )
+
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+    first = client.post(
+        f"/api/trips/{trip.id}/client-verification/",
+        {"received_quantity": "44920.00", "verified_at": str(date.today())},
+        format="json",
+    )
+    assert first.status_code == 200, first.data
+
+    second = client.post(
+        f"/api/trips/{trip.id}/client-verification/",
+        {"received_quantity": "44800.00", "verified_at": str(date.today())},
+        format="json",
+    )
+    assert second.status_code == 400
 
 
 @pytest.mark.django_db

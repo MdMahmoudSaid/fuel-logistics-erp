@@ -11,7 +11,11 @@ from rest_framework.response import Response
 
 from apps.accounts.permissions import HasModulePermission
 from apps.reports.serialization import decimals_to_str
-from apps.reports.services.ledger_pdf import DEFAULT_COMPANY_NAME, render_ledger_pdf
+from apps.reports.services.ledger_pdf import (
+    DEFAULT_COMPANY_NAME,
+    get_ledger_pdf_labels,
+    render_ledger_pdf,
+)
 
 from .models import Driver, Transporter, Truck
 from .serializers import DriverSerializer, TransporterSerializer, TruckSerializer
@@ -163,12 +167,53 @@ class TransporterViewSet(viewsets.ModelViewSet):
         new calculation.
 
         GET /api/transporters/{id}/ledger/pdf/?lang=fr|en|ar
+
+        Section 3 (recette corrections 2026-09-05): now also prints the
+        "Camions rattaches", "Reglements par trajet" and "Avances" sections
+        already visible on TransporterLedgerView.vue, reusing the exact
+        same queries this view's own `ledger` action above already uses -
+        no new calculation.
         """
+        from apps.finance.models import TransportPayment
         from apps.finance.services import TransporterLedgerService
 
         transporter = self.get_object()
         ledger_data = TransporterLedgerService.get_ledger(transporter)
         lang = request.query_params.get("lang", "fr")
+
+        trucks = transporter.trucks.filter(ownership_type=Truck.OwnershipType.EXTERNAL)
+        trucks_section = [
+            {
+                "internal_id": truck.internal_id,
+                "tractor_registration": truck.tractor_registration,
+                "tanker_registration": truck.tanker_registration,
+            }
+            for truck in trucks
+        ]
+
+        payments = TransportPayment.objects.filter(transporter=transporter).select_related("trip")
+        settlements_section = [
+            {
+                "trip_reference": payment.trip.reference,
+                "base_amount": payment.base_amount,
+                "deduction_amount": payment.deduction_amount,
+                "net_amount": payment.net_amount,
+                "status": payment.status,
+            }
+            for payment in payments
+        ]
+
+        advances = transporter.advances.all()
+        advances_section = [
+            {
+                "date": advance.date,
+                "reference": advance.reference,
+                "settled": advance.settled,
+                "amount": advance.amount,
+            }
+            for advance in advances
+        ]
+
         pdf_bytes = render_ledger_pdf(
             company_name=DEFAULT_COMPANY_NAME,
             account_type="transporteur",
@@ -177,6 +222,14 @@ class TransporterViewSet(viewsets.ModelViewSet):
             summary=ledger_data["summary"],
             rows=ledger_data["entries"],
             lang=lang,
+            extra_sections=[
+                {"title": get_ledger_pdf_labels(lang)["trucks_section"], "rows": trucks_section},
+                {
+                    "title": get_ledger_pdf_labels(lang)["settlements_section"],
+                    "rows": settlements_section,
+                },
+                {"title": get_ledger_pdf_labels(lang)["advances_section"], "rows": advances_section},
+            ],
         )
         response = HttpResponse(pdf_bytes, content_type="application/pdf")
         response["Content-Disposition"] = f'attachment; filename="grand-livre-{transporter.name}.pdf"'

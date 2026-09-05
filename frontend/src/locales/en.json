@@ -368,7 +368,8 @@
       "realTotalCost": "Real total cost",
       "unitProfit": "Unit profit",
       "netMargin": "Net margin",
-      "clientVerificationAction": "Client verification / Report a loss"
+      "clientVerificationAction": "Client verification / Report a loss",
+      "clientVerificationRecorded": "Client verification recorded"
     },
     "assignCustomer": {
       "title": "Assign customer",

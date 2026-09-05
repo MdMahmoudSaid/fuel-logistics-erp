@@ -368,7 +368,8 @@
       "realTotalCost": "التكلفة الفعلية الإجمالية",
       "unitProfit": "ربح الوحدة",
       "netMargin": "الهامش الصافي",
-      "clientVerificationAction": "التحقق مع العميل / الإبلاغ عن فاقد"
+      "clientVerificationAction": "التحقق مع العميل / الإبلاغ عن فاقد",
+      "clientVerificationRecorded": "تم تسجيل التحقق مع العميل"
     },
     "assignCustomer": {
       "title": "تعيين عميل",

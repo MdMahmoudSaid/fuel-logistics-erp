@@ -684,6 +684,18 @@ class DeliveryService:
                 "a corriger."
             )
 
+        # Bug fix (recette corrections 2026-09-05): a trip could previously
+        # be verified twice, silently overwriting the client's first
+        # declaration with a second free-text submission - a correction
+        # after the fact must go through a separate, audited action (not
+        # implemented in this pass), never a second call to this endpoint.
+        if control.verified_at is not None:
+            raise ValueError(
+                f"Le trajet {trip.reference} a deja une verification client "
+                "enregistree le "
+                f"{control.verified_at.isoformat()}."
+            )
+
         control.received_quantity = received_qty
         control.verified_at = verified_at
         control.notes = notes

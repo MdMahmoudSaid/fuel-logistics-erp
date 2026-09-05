@@ -369,7 +369,8 @@
       "realTotalCost": "Coût total réel",
       "unitProfit": "Bénéfice unitaire",
       "netMargin": "Marge nette",
-      "clientVerificationAction": "Vérification client / Déclarer une perte"
+      "clientVerificationAction": "Vérification client / Déclarer une perte",
+      "clientVerificationRecorded": "Vérification client enregistrée"
     },
     "assignCustomer": {
       "title": "Attribuer un client",

@@ -134,6 +134,7 @@ const ledger: SupplierLedger = {
 
 const fetchSupplierLedger = vi.fn(async () => ledger)
 const exportLedgerPdf = vi.fn(async () => undefined)
+const exportSupplierPaymentPdf = vi.fn(async () => undefined)
 
 vi.mock('@/modules/purchasing/api', () => ({
   fetchSupplierLedger: (...args: unknown[]) => fetchSupplierLedger(...(args as [])),
@@ -144,6 +145,7 @@ vi.mock('@/modules/finance/api', async (importOriginal) => {
   return {
     ...actual,
     exportLedgerPdf: (...args: unknown[]) => exportLedgerPdf(...(args as [])),
+    exportSupplierPaymentPdf: (...args: unknown[]) => exportSupplierPaymentPdf(...(args as [])),
   }
 })
 
@@ -274,5 +276,20 @@ describe('SupplierLedgerView', () => {
     await flushPromises()
 
     expect(exportLedgerPdf).toHaveBeenCalledWith('supplier', 1, 'fr')
+  })
+
+  // Recette corrections (2026-09-05): Grand livre fournisseur now has the
+  // same per-payment PDF action Grand livre transporteur already had.
+  it('shows a PDF action per payment row and exports it with the current locale', async () => {
+    const wrapper = mount(SupplierLedgerView)
+    await flushPromises()
+
+    const pdfButtons = wrapper.findAll('[data-test="supplier-payment-pdf"]')
+    expect(pdfButtons).toHaveLength(2)
+
+    await pdfButtons[0].trigger('click')
+    await flushPromises()
+
+    expect(exportSupplierPaymentPdf).toHaveBeenCalledWith(30, 'fr')
   })
 })

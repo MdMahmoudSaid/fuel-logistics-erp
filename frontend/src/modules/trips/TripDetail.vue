@@ -144,6 +144,12 @@ async function onClientVerified() {
   await loadAllowedStatuses()
 }
 
+// Bug fix (recette corrections 2026-09-05): the button stayed visible after
+// a client verification was already recorded, letting a loss be declared a
+// second time on the same trip. deliveryData.verified_at (see its own
+// comment below) is the single source of truth for "already verified".
+const clientAlreadyVerified = computed(() => Boolean(deliveryData.value?.verified_at))
+
 async function loadExpenses() {
   expensesError.value = ''
   try {
@@ -571,7 +577,13 @@ const cessionProofUrl = computed(
         @confirmed="onDeliveryConfirmed"
       />
 
-      <div v-if="['DELIVERED', 'COMPLETED'].includes(trip.status) && canChangeStatus">
+      <div
+        v-if="
+          ['DELIVERED', 'COMPLETED'].includes(trip.status) &&
+          canChangeStatus &&
+          !clientAlreadyVerified
+        "
+      >
         <Button v-if="!showVerificationForm" @click="showVerificationForm = true">
           {{ t('trips.detail.clientVerificationAction') }}
         </Button>
@@ -582,6 +594,59 @@ const cessionProofUrl = computed(
           @verified="onClientVerified"
         />
       </div>
+
+      <section
+        v-if="clientAlreadyVerified && deliveryData"
+        data-test="client-verification-recorded"
+        class="border-ligne space-y-3 rounded-xl border bg-white p-4"
+      >
+        <h3 class="text-texte-2 text-sm font-semibold uppercase">
+          {{ t('trips.detail.clientVerificationRecorded') }}
+        </h3>
+        <div class="grid grid-cols-2 gap-4 sm:grid-cols-3">
+          <div>
+            <p class="text-texte-3 text-xs uppercase">{{ t('trips.detail.loaded') }}</p>
+            <MonoValue :value="formatQuantity(deliveryData.loaded_quantity)" align="left" />
+          </div>
+          <div>
+            <p class="text-texte-3 text-xs uppercase">{{ t('trips.detail.delivered') }}</p>
+            <MonoValue :value="formatQuantity(deliveryData.received_quantity)" align="left" />
+          </div>
+          <div>
+            <p class="text-texte-3 text-xs uppercase">{{ t('trips.detail.gap') }}</p>
+            <MonoValue :value="formatQuantity(deliveryData.loss_quantity)" align="left" />
+          </div>
+          <div>
+            <p class="text-texte-3 text-xs uppercase">
+              {{ t('trips.clientVerification.companyAbsorbed') }}
+            </p>
+            <MonoValue
+              :value="
+                formatQuantity(
+                  String(
+                    Math.max(0, Number(deliveryData.loss_quantity)) -
+                      Number(deliveryData.chargeable_loss_quantity),
+                  ),
+                )
+              "
+              align="left"
+            />
+          </div>
+          <div>
+            <p class="text-texte-3 text-xs uppercase">
+              {{ t('trips.clientVerification.transporterChargeable') }}
+            </p>
+            <MonoValue :value="formatQuantity(deliveryData.chargeable_loss_quantity)" align="left" />
+          </div>
+          <div>
+            <p class="text-texte-3 text-xs uppercase">{{ t('trips.clientVerification.verifiedAt') }}</p>
+            <p class="text-texte text-sm">{{ deliveryData.verified_at }}</p>
+          </div>
+        </div>
+        <p v-if="deliveryData.notes" class="text-texte-2 text-sm">
+          {{ deliveryData.notes }}
+        </p>
+      </section>
 
       <section v-if="deliveryData" class="border-ligne space-y-4 rounded-xl border bg-white p-4">
         <h3 class="text-texte-2 text-sm font-semibold uppercase">{{ t('trips.detail.gauges') }}</h3>

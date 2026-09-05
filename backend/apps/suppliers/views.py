@@ -8,10 +8,39 @@ from rest_framework.response import Response
 
 from apps.accounts.permissions import HasModulePermission
 from apps.reports.serialization import decimals_to_str
-from apps.reports.services.ledger_pdf import DEFAULT_COMPANY_NAME, render_ledger_pdf
+from apps.reports.services.ledger_pdf import (
+    DEFAULT_COMPANY_NAME,
+    get_ledger_pdf_labels,
+    render_ledger_pdf,
+)
 
 from .models import Supplier
 from .serializers import SupplierSerializer
+
+
+def _reliquat_by_product(confirmed_orders) -> list[dict]:
+    """Shared by `ledger` (JSON) and `ledger_pdf` (Section 3, recette
+    corrections 2026-09-05) so the PDF's "Reliquat par produit" section can
+    never disagree with the on-screen SupplierLedgerView.vue table - single
+    computation, two consumers, same pre-existing SupplierStockService
+    calculation this always used."""
+    from apps.purchasing.services import SupplierStockService
+
+    product_reliquats = {}
+    for order in confirmed_orders:
+        product_id = order.product.id
+        product_name = order.product.name
+        reliquat = SupplierStockService.get_purchase_reliquat(order)
+
+        if product_id not in product_reliquats:
+            product_reliquats[product_id] = {
+                "product_id": product_id,
+                "product_name": product_name,
+                "total_reliquat": Decimal("0.00"),
+            }
+        product_reliquats[product_id]["total_reliquat"] += reliquat
+
+    return list(product_reliquats.values())
 
 
 class SupplierViewSet(viewsets.ModelViewSet):
@@ -30,36 +59,19 @@ class SupplierViewSet(viewsets.ModelViewSet):
         supplier = self.get_object()
         from apps.purchasing.models import SupplierOrder
         from apps.purchasing.serializers import SupplierOrderSerializer
-        from apps.purchasing.services import SupplierStockService
 
         orders = SupplierOrder.objects.filter(supplier=supplier)
         confirmed_orders = orders.filter(status=SupplierOrder.Status.CONFIRMED)
         orders_serialized = SupplierOrderSerializer(orders, many=True).data
 
-        # Agrégation du reliquat par produit
-        product_reliquats = {}
-        for order in confirmed_orders:
-            product_id = order.product.id
-            product_name = order.product.name
-            reliquat = SupplierStockService.get_purchase_reliquat(order)
-
-            if product_id not in product_reliquats:
-                product_reliquats[product_id] = {
-                    "product_id": product_id,
-                    "product_name": product_name,
-                    "total_reliquat": Decimal("0.00"),
-                }
-            product_reliquats[product_id]["total_reliquat"] += reliquat
-
-        reliquat_summary = []
-        for item in product_reliquats.values():
-            reliquat_summary.append(
-                {
-                    "product_id": item["product_id"],
-                    "product_name": item["product_name"],
-                    "total_reliquat": f"{item['total_reliquat']:.2f}",
-                }
-            )
+        reliquat_summary = [
+            {
+                "product_id": item["product_id"],
+                "product_name": item["product_name"],
+                "total_reliquat": f"{item['total_reliquat']:.2f}",
+            }
+            for item in _reliquat_by_product(confirmed_orders)
+        ]
 
         # Imported lazily: apps.suppliers sits below apps.finance in the app
         # dependency graph (apps.finance.models references
@@ -111,13 +123,54 @@ class SupplierViewSet(viewsets.ModelViewSet):
         calculation.
 
         GET /api/suppliers/{id}/ledger/pdf/?lang=fr|en|ar
-        """
-        supplier = self.get_object()
 
+        Section 3 (recette corrections 2026-09-05): now also prints the
+        "Reliquat par produit", "Historique des achats" and "Paiements et
+        avances" sections already visible on SupplierLedgerView.vue,
+        reusing the exact same queries/computations that view's own
+        `ledger` action above already exposes - no new calculation.
+        """
+        from apps.purchasing.models import SupplierOrder
         from apps.finance.services import SupplierLedgerService
 
-        ledger_data = SupplierLedgerService.get_ledger(supplier)
+        supplier = self.get_object()
         lang = request.query_params.get("lang", "fr")
+
+        ledger_data = SupplierLedgerService.get_ledger(supplier)
+
+        confirmed_orders = SupplierOrder.objects.filter(
+            supplier=supplier, status=SupplierOrder.Status.CONFIRMED
+        )
+        reliquat_section = [
+            {"product_name": item["product_name"], "total_reliquat": item["total_reliquat"]}
+            for item in _reliquat_by_product(confirmed_orders)
+        ]
+
+        all_orders = SupplierOrder.objects.filter(supplier=supplier)
+        purchase_history_section = [
+            {
+                "reference": order.reference,
+                "product": order.product.name,
+                "purchase_date": order.purchase_date,
+                "quantity_litres": order.quantity_litres,
+                "total_amount": order.total_amount,
+                "status": order.status,
+            }
+            for order in all_orders
+        ]
+
+        payments = supplier.payments.select_related("bank_account", "cash_account")
+        payments_advances_section = [
+            {
+                "payment_date": payment.payment_date,
+                "method": payment.method,
+                "reference": payment.reference,
+                "is_advance": payment.is_advance,
+                "amount": payment.amount,
+            }
+            for payment in payments
+        ]
+
         pdf_bytes = render_ledger_pdf(
             company_name=DEFAULT_COMPANY_NAME,
             account_type="fournisseur",
@@ -126,6 +179,17 @@ class SupplierViewSet(viewsets.ModelViewSet):
             summary=ledger_data["summary"],
             rows=ledger_data["entries"],
             lang=lang,
+            extra_sections=[
+                {"title": get_ledger_pdf_labels(lang)["reliquat_section"], "rows": reliquat_section},
+                {
+                    "title": get_ledger_pdf_labels(lang)["purchase_history_section"],
+                    "rows": purchase_history_section,
+                },
+                {
+                    "title": get_ledger_pdf_labels(lang)["payments_advances_section"],
+                    "rows": payments_advances_section,
+                },
+            ],
         )
         response = HttpResponse(pdf_bytes, content_type="application/pdf")
         response["Content-Disposition"] = f'attachment; filename="grand-livre-{supplier.name}.pdf"'

@@ -5,7 +5,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { fetchCustomerLedger, exportLedgerPdf } from './api'
+import { fetchCustomerLedger, exportLedgerPdf, exportCustomerPaymentPdf } from './api'
 import Modal from '@/components/ui/Modal.vue'
 import PaymentAllocationForm from './PaymentAllocationForm.vue'
 import type { CustomerLedger } from './types'
@@ -23,6 +23,7 @@ const ledger = ref<CustomerLedger | null>(null)
 const loading = ref(true)
 const error = ref('')
 const exporting = ref(false)
+const exportingPaymentId = ref<number | null>(null)
 
 const customerId = computed(() => Number(route.params.id))
 const showPaymentModal = ref(false)
@@ -63,6 +64,17 @@ async function exportPdf() {
     error.value = t('reports.exportError')
   } finally {
     exporting.value = false
+  }
+}
+
+async function exportPaymentPdf(paymentId: number) {
+  exportingPaymentId.value = paymentId
+  try {
+    await exportCustomerPaymentPdf(paymentId, locale.value)
+  } catch {
+    error.value = t('reports.exportError')
+  } finally {
+    exportingPaymentId.value = null
   }
 }
 
@@ -236,6 +248,7 @@ function badgeVariant(status: string) {
                   {{ t('finance.customerLedger.paymentsTable.amount') }}
                 </th>
                 <th class="px-2 py-1.5 font-medium">Justificatif</th>
+                <th class="px-2 py-1.5 font-medium"></th>
               </tr>
             </thead>
             <tbody>
@@ -264,9 +277,20 @@ function badgeVariant(status: string) {
                   </button>
                   <span v-else class="text-texte-3">—</span>
                 </td>
+                <td class="px-2 py-1.5 text-right">
+                  <button
+                    type="button"
+                    data-test="customer-payment-pdf"
+                    class="text-bitume underline disabled:opacity-50"
+                    :disabled="exportingPaymentId === payment.id"
+                    @click="exportPaymentPdf(payment.id)"
+                  >
+                    {{ t('finance.partyLedger.pdf') }}
+                  </button>
+                </td>
               </tr>
               <tr v-if="ledger.payments.length === 0">
-                <td colspan="6" class="text-texte-3 px-2 py-4 text-center">
+                <td colspan="7" class="text-texte-3 px-2 py-4 text-center">
                   {{ t('finance.customerLedger.noPayments') }}
                 </td>
               </tr>

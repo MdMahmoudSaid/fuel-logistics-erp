@@ -101,6 +101,27 @@ export async function exportTransportPaymentPdf(id: number, lang: string): Promi
   downloadBlob(new Blob([response.data]), `reglement-${id}.pdf`)
 }
 
+// Recette corrections (2026-09-05): Grand livre client/fournisseur now
+// have the same per-payment PDF action Grand livre transporteur already
+// had (GET /api/customer-payments/{id}/pdf/, /api/supplier-payments/{id}/
+// pdf/ - backend/apps/finance/views.py CustomerPaymentViewSet.pdf /
+// SupplierPaymentViewSet.pdf).
+export async function exportCustomerPaymentPdf(id: number, lang: string): Promise<void> {
+  const response = await apiClient.get(`/customer-payments/${id}/pdf/`, {
+    params: { lang },
+    responseType: 'blob',
+  })
+  downloadBlob(new Blob([response.data]), `paiement-client-${id}.pdf`)
+}
+
+export async function exportSupplierPaymentPdf(id: number, lang: string): Promise<void> {
+  const response = await apiClient.get(`/supplier-payments/${id}/pdf/`, {
+    params: { lang },
+    responseType: 'blob',
+  })
+  downloadBlob(new Blob([response.data]), `paiement-fournisseur-${id}.pdf`)
+}
+
 // Generic attachment upload (backend/apps/documents), scoped to the one
 // document_type/content_type this module needs: a proof image attached to
 // an already-created CustomerPayment (backend/apps/documents/views.py

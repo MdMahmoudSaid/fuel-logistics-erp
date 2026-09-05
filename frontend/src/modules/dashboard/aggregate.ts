@@ -11,6 +11,11 @@ export interface LossReportRow {
   loss_quantity: string
   tolerance_quantity: string
   chargeable_loss_quantity: string
+  // Recette corrections (2026-09-05): lets TripDetail.vue tell whether a
+  // client verification was already recorded on this trip (verified_at set)
+  // - null/absent means "not yet verified".
+  verified_at?: string | null
+  notes?: string
 }
 
 export function sumField(

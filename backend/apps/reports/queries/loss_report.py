@@ -11,6 +11,12 @@ FIELDS = [
     "loss_quantity",
     "tolerance_quantity",
     "chargeable_loss_quantity",
+    # Recette corrections (2026-09-05): appended so TripDetail.vue can tell
+    # whether a client verification was already recorded (verified_at set)
+    # without a new endpoint - see its deliveryData comment for why this
+    # report is reused rather than adding one.
+    "verified_at",
+    "notes",
 ]
 
 
@@ -36,6 +42,8 @@ class LossReportQuery:
                 "loss_quantity": control.loss_quantity,
                 "tolerance_quantity": control.tolerance_quantity,
                 "chargeable_loss_quantity": control.chargeable_loss_quantity,
+                "verified_at": control.verified_at,
+                "notes": control.notes,
             }
             for control in controls
         ]

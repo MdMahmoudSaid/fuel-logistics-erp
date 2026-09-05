@@ -1,4 +1,5 @@
 import datetime
+from decimal import Decimal
 
 from django.http import HttpResponse
 from rest_framework import viewsets
@@ -6,7 +7,11 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.accounts.permissions import HasModulePermission
-from apps.reports.services.ledger_pdf import DEFAULT_COMPANY_NAME, render_ledger_pdf
+from apps.reports.services.ledger_pdf import (
+    DEFAULT_COMPANY_NAME,
+    get_ledger_pdf_labels,
+    render_ledger_pdf,
+)
 
 from .models import Customer
 from .serializers import CustomerSerializer
@@ -83,13 +88,23 @@ class CustomerViewSet(viewsets.ModelViewSet):
         SupplierLedgerService/TransporterLedgerService already use.
 
         GET /api/customers/{id}/ledger/pdf/?lang=fr|en|ar
+
+        Section 3 (recette corrections 2026-09-05): the summary and the
+        extra "Liste des factures"/"Liste des paiements" sections mirror
+        CustomerLedgerView.vue's own totalInvoiced/totalReceived/
+        openInvoices/lastPayment computations exactly (same fields, same
+        sums) so this export can never disagree with what the page shows -
+        no new calculation invented for the PDF, just the same numbers the
+        page already displays, reduced to a printable shape. The merged
+        chronological `rows` (unchanged from the original pass) stays the
+        "Historique complet" section.
         """
         from apps.finance.services import PaymentAllocationService
         from apps.sales.models import Invoice
 
         customer = self.get_object()
-        invoices = Invoice.objects.filter(sale__customer=customer).select_related("sale")
-        payments = customer.payments.all()
+        invoices = list(Invoice.objects.filter(sale__customer=customer).select_related("sale"))
+        payments = list(customer.payments.all())
         outstanding_balance = PaymentAllocationService.get_customer_outstanding(customer)
         lang = request.query_params.get("lang", "fr")
 
@@ -114,14 +129,54 @@ class CustomerViewSet(viewsets.ModelViewSet):
         ]
         rows.sort(key=lambda row: row["date"])
 
+        total_invoiced = sum((invoice.total_amount for invoice in invoices), Decimal("0.00"))
+        total_received = sum((payment.amount for payment in payments), Decimal("0.00"))
+        open_invoices = [
+            invoice
+            for invoice in invoices
+            if PaymentAllocationService.get_invoice_outstanding(invoice) > 0
+            and invoice.status != Invoice.Status.CANCELLED
+        ]
+        last_payment = max(payments, key=lambda p: p.payment_date, default=None)
+
+        invoices_section = [
+            {
+                "invoice_number": invoice.invoice_number,
+                "issued_date": invoice.issued_date,
+                "total_amount": invoice.total_amount,
+                "outstanding": PaymentAllocationService.get_invoice_outstanding(invoice),
+                "status": invoice.status,
+            }
+            for invoice in invoices
+        ]
+        payments_section = [
+            {
+                "payment_date": payment.payment_date,
+                "method": payment.method,
+                "reference": payment.reference,
+                "amount": payment.amount,
+            }
+            for payment in payments
+        ]
+
         pdf_bytes = render_ledger_pdf(
             company_name=DEFAULT_COMPANY_NAME,
             account_type="client",
             party_name=customer.name,
             export_date=datetime.date.today(),
-            summary={"outstanding_balance": outstanding_balance},
+            summary={
+                "total_invoiced": total_invoiced,
+                "total_received": total_received,
+                "outstanding_balance": outstanding_balance,
+                "open_invoices": len(open_invoices),
+                "last_payment": last_payment.amount if last_payment else None,
+            },
             rows=rows,
             lang=lang,
+            extra_sections=[
+                {"title": get_ledger_pdf_labels(lang)["invoices_section"], "rows": invoices_section},
+                {"title": get_ledger_pdf_labels(lang)["payments_section"], "rows": payments_section},
+            ],
         )
         response = HttpResponse(pdf_bytes, content_type="application/pdf")
         response["Content-Disposition"] = f'attachment; filename="grand-livre-{customer.name}.pdf"'

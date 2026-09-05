@@ -7,9 +7,18 @@ from rest_framework.test import APIClient
 from apps.accounts.models import Role, User
 from apps.core.models import Product
 from apps.customers.models import Customer
-from apps.finance.models import TransportPayment
+from apps.finance.models import CustomerPayment, PaymentAllocation, SupplierPayment, TransportPayment
 from apps.purchasing.models import CessionLetter, SupplierOrder
-from apps.reports.services.ledger_pdf import render_ledger_pdf, render_trip_settlement_pdf
+from apps.reports.services.ledger_pdf import (
+    VALUE_LABELS_FR,
+    _stringify,
+    _translate_key,
+    render_customer_payment_pdf,
+    render_ledger_pdf,
+    render_supplier_payment_pdf,
+    render_trip_settlement_pdf,
+)
+from apps.sales.models import Invoice, Sale
 from apps.suppliers.models import Supplier
 from apps.transport.models import Transporter, Truck
 from apps.trips.models import Trip
@@ -80,6 +89,58 @@ def _make_transport_payment(suffix):
         calculation_method=TransportPayment.CalculationMethod.FIXED,
         base_amount=Decimal("700000.00"),
         deduction_amount=Decimal("42500.00"),
+    )
+
+
+def _make_customer_payment(suffix, admin_user, *, allocate=True):
+    """Bypasses the real delivery/sale workflow (DeliveryService) on
+    purpose - this only needs valid Sale/Invoice/CustomerPayment rows to
+    exercise render_customer_payment_pdf's printing, not the business rules
+    that normally produce them."""
+    trip, _transporter, _supplier = _make_trip(suffix, admin_user=admin_user)
+    customer = Customer.objects.create(name=f"Client {suffix}", address="Nouakchott")
+    sale = Sale.objects.create(
+        trip=trip,
+        customer=customer,
+        product=trip.product,
+        delivered_quantity=Decimal("44900.00"),
+        unit_selling_price=Decimal("850.0000"),
+    )
+    invoice = Invoice.objects.create(
+        invoice_number=f"INV-PDF-{suffix}",
+        sale=sale,
+        total_amount=sale.subtotal,
+        issued_date="2026-08-19",
+        status=Invoice.Status.PARTIALLY_PAID,
+    )
+    payment = CustomerPayment.objects.create(
+        customer=customer,
+        amount=Decimal("10000000.00"),
+        payment_date="2026-08-20",
+        method=CustomerPayment.Method.BANK_TRANSFER,
+        reference=f"REF-{suffix}",
+        recorded_by=admin_user,
+    )
+    if allocate:
+        PaymentAllocation.objects.create(payment=payment, invoice=invoice, amount=Decimal("10000000.00"))
+    return payment
+
+
+def _make_supplier_payment(suffix, admin_user, *, with_order=True):
+    from apps.finance.models import CashAccount
+
+    trip, _transporter, supplier = _make_trip(suffix, admin_user=admin_user)
+    cash_account = CashAccount.objects.create(name=f"Caisse {suffix}")
+    return SupplierPayment.objects.create(
+        supplier=supplier,
+        supplier_order=trip.supplier_order if with_order else None,
+        amount=Decimal("5000000.00"),
+        payment_date="2026-08-20",
+        method=SupplierPayment.Method.CASH,
+        cash_account=cash_account,
+        is_advance=not with_order,
+        reference=f"REF-{suffix}",
+        recorded_by=admin_user,
     )
 
 
@@ -240,3 +301,195 @@ def test_transport_payment_settlement_pdf_export():
     assert response.status_code == 200
     assert response["Content-Type"] == "application/pdf"
     assert response.content.startswith(b"%PDF")
+
+
+# ---------------------------------------------------------------------------
+# Recette corrections 2026-09-05, Section 2: per-payment PDF on Grand livre
+# client/fournisseur (Grand livre transporteur already had one).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_customer_payment_pdf_export():
+    client, admin_user = _admin_client("+2230000201")
+    payment = _make_customer_payment("CUSTPAY1", admin_user)
+
+    response = client.get(f"/api/customer-payments/{payment.id}/pdf/?lang=fr")
+    assert response.status_code == 200
+    assert response["Content-Type"] == "application/pdf"
+    assert response.content.startswith(b"%PDF")
+
+
+@pytest.mark.django_db
+def test_customer_payment_pdf_export_with_no_allocations_does_not_crash():
+    # Pure credit, not yet applied to any invoice - render_customer_payment_pdf
+    # must print an explanatory row, never crash on an empty allocations list.
+    client, admin_user = _admin_client("+2230000202")
+    payment = _make_customer_payment("CUSTPAY2", admin_user, allocate=False)
+
+    response = client.get(f"/api/customer-payments/{payment.id}/pdf/?lang=fr")
+    assert response.status_code == 200
+    assert response.content.startswith(b"%PDF")
+
+
+@pytest.mark.django_db
+def test_render_customer_payment_pdf_direct():
+    payment = _make_customer_payment("CUSTPAY3", _admin_client("+2230000203")[1])
+    pdf_bytes = render_customer_payment_pdf(payment, lang="fr")
+    assert pdf_bytes.startswith(b"%PDF")
+
+
+@pytest.mark.django_db
+def test_supplier_payment_pdf_export():
+    client, admin_user = _admin_client("+2230000204")
+    payment = _make_supplier_payment("SUPPPAY1", admin_user)
+
+    response = client.get(f"/api/supplier-payments/{payment.id}/pdf/?lang=fr")
+    assert response.status_code == 200
+    assert response["Content-Type"] == "application/pdf"
+    assert response.content.startswith(b"%PDF")
+
+
+@pytest.mark.django_db
+def test_supplier_payment_pdf_export_with_no_order_does_not_crash():
+    # A general advance (supplier_order=None) - must print "no order"
+    # explanatory rows instead of crashing on a None supplier_order.
+    client, admin_user = _admin_client("+2230000205")
+    payment = _make_supplier_payment("SUPPPAY2", admin_user, with_order=False)
+
+    response = client.get(f"/api/supplier-payments/{payment.id}/pdf/?lang=fr")
+    assert response.status_code == 200
+    assert response.content.startswith(b"%PDF")
+
+
+@pytest.mark.django_db
+def test_render_supplier_payment_pdf_direct():
+    payment = _make_supplier_payment("SUPPPAY3", _admin_client("+2230000206")[1])
+    pdf_bytes = render_supplier_payment_pdf(payment, lang="fr")
+    assert pdf_bytes.startswith(b"%PDF")
+
+
+# ---------------------------------------------------------------------------
+# Recette corrections 2026-09-05, Section 3: global ledger export now
+# includes every section visible on the page, and never crashes on an
+# empty ledger (no orders/invoices/payments/trucks/advances at all).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_customer_ledger_pdf_export_with_data_includes_all_sections():
+    client, admin_user = _admin_client("+2230000210")
+    _payment = _make_customer_payment("CUSTFULL", admin_user)
+    customer = Customer.objects.get(name="Client CUSTFULL")
+
+    response = client.get(f"/api/customers/{customer.id}/ledger/pdf/?lang=fr")
+    assert response.status_code == 200
+    assert response.content.startswith(b"%PDF")
+
+
+@pytest.mark.django_db
+def test_customer_ledger_pdf_export_empty_does_not_crash():
+    client, _admin_user = _admin_client("+2230000211")
+    customer = Customer.objects.create(name="Client Vide", address="Nouakchott")
+
+    response = client.get(f"/api/customers/{customer.id}/ledger/pdf/?lang=fr")
+    assert response.status_code == 200
+    assert response.content.startswith(b"%PDF")
+
+
+@pytest.mark.django_db
+def test_supplier_ledger_pdf_export_with_data_includes_all_sections():
+    client, admin_user = _admin_client("+2230000212")
+    trip, _transporter, supplier = _make_trip("SUPFULL", admin_user=admin_user)
+
+    response = client.get(f"/api/suppliers/{supplier.id}/ledger/pdf/?lang=fr")
+    assert response.status_code == 200
+    assert response.content.startswith(b"%PDF")
+
+
+@pytest.mark.django_db
+def test_supplier_ledger_pdf_export_empty_does_not_crash():
+    client, _admin_user = _admin_client("+2230000213")
+    supplier = Supplier.objects.create(name="Fournisseur Vide", country="Senegal")
+
+    response = client.get(f"/api/suppliers/{supplier.id}/ledger/pdf/?lang=fr")
+    assert response.status_code == 200
+    assert response.content.startswith(b"%PDF")
+
+
+@pytest.mark.django_db
+def test_transporter_ledger_pdf_export_with_data_includes_all_sections():
+    client, admin_user = _admin_client("+2230000214")
+    trip, transporter, _supplier = _make_trip("TRFULL", admin_user=admin_user)
+
+    response = client.get(f"/api/transporters/{transporter.id}/ledger/pdf/?lang=fr")
+    assert response.status_code == 200
+    assert response.content.startswith(b"%PDF")
+
+
+@pytest.mark.django_db
+def test_transporter_ledger_pdf_export_empty_does_not_crash():
+    client, _admin_user = _admin_client("+2230000215")
+    transporter = Transporter.objects.create(name="Transporteur Vide")
+
+    response = client.get(f"/api/transporters/{transporter.id}/ledger/pdf/?lang=fr")
+    assert response.status_code == 200
+    assert response.content.startswith(b"%PDF")
+
+
+# ---------------------------------------------------------------------------
+# Recette corrections 2026-09-05, Section 4: FR label/value coverage - no
+# business keyword should leak untranslated English when lang="fr". These
+# are unit tests on the translation helpers themselves (not a PDF-text
+# extraction, since no PDF-parsing library is installed and adding one is
+# out of scope) - the exact table the client gave in their recette prompt.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "value,expected_fr",
+    [
+        ("PAID", "Paye"),
+        ("CANCELLED", "Annule"),
+        ("CONFIRMED", "Confirmee"),
+        ("DRAFT", "Brouillon"),
+        ("CASH", "Especes"),
+        ("BANK_TRANSFER", "Virement bancaire"),
+        ("payment", "Paiement"),
+        ("invoice", "Facture"),
+        ("advance_given", "Avance versee"),
+    ],
+)
+def test_value_labels_fr_cover_the_client_keyword_table(value, expected_fr):
+    assert VALUE_LABELS_FR[value] == expected_fr
+    assert _stringify(value, lang="fr") == expected_fr
+
+
+@pytest.mark.parametrize(
+    "key,expected_fr",
+    [
+        ("reference", "Reference"),
+        ("status", "Statut"),
+        ("outstanding_balance", "Solde impaye"),
+        ("net_amount", "Montant net"),
+        ("total_amount", "Montant total"),
+        ("product", "Produit"),
+        ("product_name", "Produit"),
+    ],
+)
+def test_field_labels_fr_cover_the_client_keyword_table(key, expected_fr):
+    assert _translate_key(key, "fr") == expected_fr
+
+
+def test_stringify_translates_booleans_for_fr_and_en():
+    assert _stringify(True, lang="fr") == "Oui"
+    assert _stringify(False, lang="fr") == "Non"
+    assert _stringify(True, lang="en") == "Yes"
+    assert _stringify(False, lang="en") == "No"
+
+
+def test_stringify_leaves_english_lang_using_default_titlecase():
+    # lang="en" was already correct before this pass (the bug was only for
+    # fr/ar) - it must keep behaving exactly as it did.
+    assert _stringify("PAID", lang="en") == "PAID"
+    assert _translate_key("outstanding_balance", "en") == "Outstanding Balance"

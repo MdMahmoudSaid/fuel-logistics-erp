@@ -4,6 +4,7 @@ import CustomerLedgerView from '../CustomerLedgerView.vue'
 
 const fetchCustomerLedger = vi.fn()
 const exportLedgerPdf = vi.fn()
+const exportCustomerPaymentPdf = vi.fn()
 const push = vi.fn()
 
 vi.mock('vue-router', () => ({
@@ -14,6 +15,7 @@ vi.mock('vue-router', () => ({
 vi.mock('../api', () => ({
   fetchCustomerLedger: (...args: unknown[]) => fetchCustomerLedger(...args),
   exportLedgerPdf: (...args: unknown[]) => exportLedgerPdf(...args),
+  exportCustomerPaymentPdf: (...args: unknown[]) => exportCustomerPaymentPdf(...args),
 }))
 
 describe('CustomerLedgerView', () => {
@@ -77,5 +79,20 @@ describe('CustomerLedgerView', () => {
     await flushPromises()
 
     expect(exportLedgerPdf).toHaveBeenCalledWith('customer', 1, 'fr')
+  })
+
+  // Recette corrections (2026-09-05): Grand livre client now has the same
+  // per-payment PDF action Grand livre transporteur already had.
+  it('shows a PDF action per payment row and exports it with the current locale', async () => {
+    const wrapper = mount(CustomerLedgerView)
+    await flushPromises()
+
+    const pdfButton = wrapper.find('[data-test="customer-payment-pdf"]')
+    expect(pdfButton.exists()).toBe(true)
+
+    await pdfButton.trigger('click')
+    await flushPromises()
+
+    expect(exportCustomerPaymentPdf).toHaveBeenCalledWith(7, 'fr')
   })
 })
