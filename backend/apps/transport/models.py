@@ -90,7 +90,21 @@ class Truck(TimeStampedModel):
         # EXTERNAL stays unassisted - there is no sane default external
         # transporter, so that case is expected to fail loudly instead.
         if self.owner_transporter_id is None and self.ownership_type == self.OwnershipType.COMPANY_OWNED:
-            self.owner_transporter = Transporter.objects.get(is_internal=True)
+            # UI recette fix (2026-09-05): is_internal became user-editable
+            # via TransporterSerializer (several internal transporters are
+            # now expected, not just the one seeded row) - .get() would
+            # crash with MultipleObjectsReturned the moment a second one
+            # exists. TransporterSerializer.validate() only guarantees "at
+            # least one" survives, so this can still legitimately find none
+            # if the seed migration was never applied - fail loudly with a
+            # clear message rather than a bare DoesNotExist either way.
+            transporter = Transporter.objects.filter(is_internal=True).first()
+            if transporter is None:
+                raise ValueError(
+                    "Aucun transporteur interne (flotte propre) n'existe pour "
+                    "assigner ce camion appartenant a l'entreprise."
+                )
+            self.owner_transporter = transporter
         super().save(*args, **kwargs)
 
     def __str__(self) -> str:

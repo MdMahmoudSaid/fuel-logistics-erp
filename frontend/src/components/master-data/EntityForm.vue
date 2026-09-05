@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { FieldSchema } from './types'
 import Button from '@/components/ui/Button.vue'
@@ -29,6 +29,52 @@ function inputValue(key: string): string | number | undefined {
 }
 
 const editableFields = computed(() => props.fields.filter((field) => !field.readOnly))
+
+// UI recette fix (2026-09-05): generic "+ Creer..." inline mini-form for
+// any select field with a `quickCreate` config (see types.ts) - mirrors
+// ExpenseForm.vue's expense-category quick-create, generalized so the
+// truck form's Chauffeur field can reuse it without a bespoke page.
+// Keyed by field.key (not a single shared ref) so more than one
+// quick-create-enabled field could coexist on the same form someday.
+const quickCreateOpen = ref<Record<string, boolean>>({})
+const quickCreateValues = ref<Record<string, Record<string, unknown>>>({})
+const quickCreateSaving = ref<Record<string, boolean>>({})
+const quickCreateError = ref<Record<string, string>>({})
+
+function openQuickCreate(key: string) {
+  quickCreateOpen.value = { ...quickCreateOpen.value, [key]: true }
+  quickCreateValues.value = { ...quickCreateValues.value, [key]: {} }
+  quickCreateError.value = { ...quickCreateError.value, [key]: '' }
+}
+
+function closeQuickCreate(key: string) {
+  quickCreateOpen.value = { ...quickCreateOpen.value, [key]: false }
+}
+
+function setQuickCreateField(fieldKey: string, subKey: string, value: unknown) {
+  quickCreateValues.value = {
+    ...quickCreateValues.value,
+    [fieldKey]: { ...quickCreateValues.value[fieldKey], [subKey]: value },
+  }
+}
+
+async function submitQuickCreate(field: FieldSchema) {
+  if (!field.quickCreate) return
+  quickCreateSaving.value = { ...quickCreateSaving.value, [field.key]: true }
+  quickCreateError.value = { ...quickCreateError.value, [field.key]: '' }
+  try {
+    const created = await field.quickCreate.create(quickCreateValues.value[field.key] ?? {})
+    // Auto-selects the newly created record and never touches any other
+    // field already filled in on this form - setField() only patches
+    // this one key onto the existing modelValue.
+    setField(field.key, String(created.id))
+    closeQuickCreate(field.key)
+  } catch {
+    quickCreateError.value = { ...quickCreateError.value, [field.key]: field.quickCreate.errorMessage }
+  } finally {
+    quickCreateSaving.value = { ...quickCreateSaving.value, [field.key]: false }
+  }
+}
 </script>
 
 <template>
@@ -89,6 +135,57 @@ const editableFields = computed(() => props.fields.filter((field) => !field.read
           {{ opt.label }}
         </option>
       </select>
+
+      <div v-if="field.type === 'select' && field.quickCreate" class="space-y-2">
+        <button
+          v-if="!quickCreateOpen[field.key]"
+          type="button"
+          :data-test="`quick-create-toggle-${field.key}`"
+          class="text-bitume hover:text-orange text-sm font-medium"
+          @click="openQuickCreate(field.key)"
+        >
+          {{ field.quickCreate.buttonLabel }}
+        </button>
+        <div v-else class="border-ligne space-y-2 rounded-lg border bg-fond p-3">
+          <div v-for="qf in field.quickCreate.fields" :key="qf.key" class="space-y-1">
+            <label class="sr-only" :for="`${field.key}_${qf.key}`">{{ qf.label }}</label>
+            <CountryPhoneInput
+              v-if="qf.type === 'phone'"
+              :id="`${field.key}_${qf.key}`"
+              :model-value="String(quickCreateValues[field.key]?.[qf.key] ?? '')"
+              :required="qf.required"
+              @update:model-value="setQuickCreateField(field.key, qf.key, $event)"
+            />
+            <input
+              v-else
+              :id="`${field.key}_${qf.key}`"
+              type="text"
+              :required="qf.required"
+              :placeholder="qf.label"
+              :value="String(quickCreateValues[field.key]?.[qf.key] ?? '')"
+              class="border-ligne-forte h-10 w-full rounded-lg border bg-white px-3 text-sm focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+              @input="setQuickCreateField(field.key, qf.key, ($event.target as HTMLInputElement).value)"
+            />
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              :loading="quickCreateSaving[field.key]"
+              :data-test="`quick-create-submit-${field.key}`"
+              @click="submitQuickCreate(field)"
+            >
+              {{ t('common.save') }}
+            </Button>
+            <Button type="button" variant="ghost" @click="closeQuickCreate(field.key)">
+              {{ t('common.cancel') }}
+            </Button>
+          </div>
+          <p v-if="quickCreateError[field.key]" class="text-critique text-xs">
+            {{ quickCreateError[field.key] }}
+          </p>
+        </div>
+      </div>
 
       <input
         v-else-if="field.type === 'checkbox'"

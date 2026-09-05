@@ -251,12 +251,17 @@
       "defaultDriverId": "Chauffeur par défaut",
       "none": "Aucun",
       "participationPercent": "Pourcentage de participation",
-      "contribution": "Contribution"
+      "contribution": "Contribution",
+      "isInternal": "Transporteur interne à l'entreprise"
     },
     "ownershipOptions": {
       "companyOwned": "Propriété de l'entreprise",
       "external": "Externe / loué"
-    }
+    },
+    "noInternalTransporters": "Aucun transporteur interne disponible. Créez d'abord un transporteur interne.",
+    "noExternalTransporters": "Aucun transporteur externe disponible. Créez d'abord un transporteur externe.",
+    "quickCreateDriver": "+ Créer un nouveau chauffeur",
+    "quickCreateDriverError": "Impossible de créer le chauffeur."
   },
   "trips": {
     "title": "Trajets & chargements",

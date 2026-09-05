@@ -250,12 +250,17 @@
       "ownerTransporterId": "Owner Transporter ID",
       "defaultDriverId": "Default Driver ID",
       "participationPercent": "Participation percent",
-      "contribution": "Contribution"
+      "contribution": "Contribution",
+      "isInternal": "Internal transporter (company fleet)"
     },
     "ownershipOptions": {
       "companyOwned": "Company owned",
       "external": "External / rented"
-    }
+    },
+    "noInternalTransporters": "No internal transporter available. Create an internal transporter first.",
+    "noExternalTransporters": "No external transporter available. Create an external transporter first.",
+    "quickCreateDriver": "+ Create a new driver",
+    "quickCreateDriverError": "Could not create the driver."
   },
   "trips": {
     "title": "Trips & Loading",

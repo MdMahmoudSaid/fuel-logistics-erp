@@ -250,12 +250,17 @@
       "ownerTransporterId": "معرّف الناقل المالك",
       "defaultDriverId": "معرّف السائق الافتراضي",
       "participationPercent": "نسبة المشاركة",
-      "contribution": "المساهمة"
+      "contribution": "المساهمة",
+      "isInternal": "ناقل داخلي (أسطول الشركة)"
     },
     "ownershipOptions": {
       "companyOwned": "ملك الشركة",
       "external": "خارجي / مستأجر"
-    }
+    },
+    "noInternalTransporters": "لا يوجد ناقل داخلي متاح. أنشئ أولاً ناقلاً داخلياً.",
+    "noExternalTransporters": "لا يوجد ناقل خارجي متاح. أنشئ أولاً ناقلاً خارجياً.",
+    "quickCreateDriver": "+ إنشاء سائق جديد",
+    "quickCreateDriverError": "تعذر إنشاء السائق."
   },
   "trips": {
     "title": "الرحلات والتحميل",

@@ -14,6 +14,13 @@ const props = defineProps<{
   title: string
   resource: ResourceApi<Record<string, unknown>>
   fields: FieldSchema[]
+  // UI recette fix (2026-09-05): optional - when a field's available
+  // options depend on the form's own live values (e.g. Truck's
+  // owner_transporter must only list transporters compatible with the
+  // currently-selected ownership_type), the parent passes this instead of
+  // (or in addition to) a static `fields` array. Defaults to `fields`
+  // unchanged, so every other master-data page is unaffected.
+  formFields?: (formValue: Record<string, unknown>) => FieldSchema[]
   ledgerRouteName?: string
 }>()
 
@@ -28,6 +35,10 @@ const columns = computed(() =>
   props.fields
     .filter((f) => f.type !== 'textarea' && f.type !== 'password' && f.type !== 'pin')
     .map((f) => ({ key: f.key, label: f.label, type: f.type, options: f.options })),
+)
+
+const resolvedFormFields = computed(() =>
+  props.formFields ? props.formFields(formValue.value) : props.fields,
 )
 
 const hasActiveField = computed(() => props.fields.some((f) => f.key === 'is_active'))
@@ -155,7 +166,7 @@ onMounted(load)
         <p v-if="error" class="text-critique mb-2 text-sm">{{ error }}</p>
         <EntityForm
           v-model="formValue"
-          :fields="fields"
+          :fields="resolvedFormFields"
           @submit="onSubmit"
           @cancel="showForm = false"
         />

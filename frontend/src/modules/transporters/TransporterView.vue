@@ -18,6 +18,11 @@ const fields = computed<FieldSchema[]>(() => [
   { key: 'already_paid', label: 'Déjà réglé', type: 'money', readOnly: true },
   { key: 'net_balance', label: 'Solde net', type: 'money', readOnly: true },
   { key: 'address', label: t('masterData.fields.address'), type: 'text' },
+  // UI recette fix (2026-09-05): "Type de transporteur" ask - is_internal
+  // already existed on the model/API (backend/apps/transport/models.py,
+  // seeded by migration 0004_truck_owner_transporter_mandatory) but had no
+  // form field, so it could never be set from this page.
+  { key: 'is_internal', label: t('masterData.fields.isInternal'), type: 'checkbox' },
   { key: 'is_active', label: t('masterData.fields.active'), type: 'checkbox' },
 ])
 </script>

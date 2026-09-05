@@ -6,6 +6,28 @@ from rest_framework import serializers
 from .models import Driver, Transporter, Truck
 
 
+def _get_default_internal_transporter() -> Transporter:
+    # UI recette fix (2026-09-05): is_internal is now user-editable
+    # (TransporterSerializer.validate() below only guarantees "at least
+    # one" survives, not "exactly one" - the client's own request implies
+    # several internal transporters are expected), so this can no longer
+    # be a plain .get() (would crash with MultipleObjectsReturned the
+    # moment a second internal transporter exists). Same defensive
+    # .filter().first() pattern as Truck.save() below - kept as a small,
+    # local helper since both call sites need the identical fallback.
+    transporter = Transporter.objects.filter(is_internal=True).first()
+    if transporter is None:
+        raise serializers.ValidationError(
+            {
+                "owner_transporter": (
+                    "Aucun transporteur interne (flotte propre) n'existe. "
+                    "Creez d'abord un transporteur interne."
+                )
+            }
+        )
+    return transporter
+
+
 class TransporterSerializer(serializers.ModelSerializer):
     gross_earned = serializers.SerializerMethodField()
     deductions = serializers.SerializerMethodField()
@@ -20,7 +42,33 @@ class TransporterSerializer(serializers.ModelSerializer):
             "gross_earned", "deductions", "advances_applied", "already_paid", "net_balance",
             "is_active", "is_internal", "created_at", "updated_at",
         ]
-        read_only_fields = ["id", "is_internal", "created_at", "updated_at"]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+    def validate(self, data):
+        # UI recette fix (2026-09-05): is_internal was read-only, so
+        # "Nouveau transporteur / Modifier transporteur" had no way to mark
+        # a transporter as internal/external - now writable, but guarded:
+        # Truck.save()'s COMPANY_OWNED auto-assign and TruckSerializer's own
+        # fallback both do Transporter.objects.filter(is_internal=True) and
+        # expect at least one row to exist, so the last internal transporter
+        # can never be turned into an external one.
+        is_internal = data.get("is_internal", getattr(self.instance, "is_internal", False))
+        if self.instance is not None and self.instance.is_internal and not is_internal:
+            remaining = (
+                Transporter.objects.filter(is_internal=True)
+                .exclude(pk=self.instance.pk)
+                .exists()
+            )
+            if not remaining:
+                raise serializers.ValidationError(
+                    {
+                        "is_internal": (
+                            "Impossible de retirer le dernier transporteur interne "
+                            "(flotte propre) - au moins un doit toujours exister."
+                        )
+                    }
+                )
+        return data
 
     def get_gross_earned(self, obj) -> str:
         total = obj.transport_payments.aggregate(total=Sum("base_amount"))["total"] or Decimal("0.00")
@@ -122,5 +170,18 @@ class TruckSerializer(serializers.ModelSerializer):
                     }
                 )
         elif owner_transporter is None:
-            data["owner_transporter"] = Transporter.objects.get(is_internal=True)
+            data["owner_transporter"] = _get_default_internal_transporter()
+        # UI recette fix (2026-09-05): the reverse of the EXTERNAL check
+        # above was missing - a COMPANY_OWNED truck could be explicitly
+        # assigned an external transporter (only an omitted transporter was
+        # ever caught, via the auto-assign branch just above).
+        elif not owner_transporter.is_internal:
+            raise serializers.ValidationError(
+                {
+                    "owner_transporter": (
+                        "Un camion appartenant a l'entreprise doit avoir un "
+                        "transporteur interne (flotte propre)."
+                    )
+                }
+            )
         return data

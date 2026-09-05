@@ -269,6 +269,28 @@ def test_external_truck_cannot_be_assigned_the_internal_transporter(ops_client):
 
 
 @pytest.mark.django_db
+def test_company_owned_truck_with_explicit_external_transporter_is_rejected(ops_client):
+    """UI recette fix (2026-09-05): only the reverse (EXTERNAL truck +
+    internal transporter) was validated - a COMPANY_OWNED truck explicitly
+    given a real external transporter slipped through uncaught."""
+    external = Transporter.objects.create(name="Diallo Transport")
+
+    response = ops_client.post(
+        "/api/trucks/",
+        {
+            "internal_id": "TRK-CO-EXT",
+            "tractor_registration": "AB-111-SN",
+            "tanker_registration": "AB-222-SN",
+            "capacity_litres": "45000.00",
+            "ownership_type": "COMPANY_OWNED",
+            "owner_transporter": external.id,
+        },
+    )
+    assert response.status_code == 400
+    assert "owner_transporter" in response.data
+
+
+@pytest.mark.django_db
 def test_switching_truck_to_external_without_transporter_is_rejected(ops_client):
     created = ops_client.post(
         "/api/trucks/",
@@ -287,3 +309,57 @@ def test_switching_truck_to_external_without_transporter_is_rejected(ops_client)
     )
     assert response.status_code == 400
     assert "owner_transporter" in response.data
+
+
+# ---------------------------------------------------------------------------
+# UI recette fix (2026-09-05): is_internal is now user-editable, guarded
+# so the "at least one internal transporter" invariant Truck.save()/
+# TruckSerializer rely on can never break.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_transporter_can_be_created_as_internal(ops_client):
+    response = ops_client.post(
+        "/api/transporters/", {"name": "Flotte Nord", "is_internal": True}
+    )
+    assert response.status_code == 201, response.data
+    assert response.data["is_internal"] is True
+
+
+@pytest.mark.django_db
+def test_transporter_can_be_toggled_to_internal_when_another_stays_internal(ops_client):
+    # The seeded "Flotte propre / Interne" row stays internal - this one
+    # can freely become a second internal transporter.
+    external = Transporter.objects.create(name="Diallo Transport", is_internal=False)
+
+    response = ops_client.patch(
+        f"/api/transporters/{external.id}/", {"is_internal": True}
+    )
+    assert response.status_code == 200, response.data
+    assert response.data["is_internal"] is True
+
+
+@pytest.mark.django_db
+def test_last_internal_transporter_cannot_be_turned_external(ops_client):
+    internal = Transporter.objects.get(is_internal=True)
+
+    response = ops_client.patch(
+        f"/api/transporters/{internal.id}/", {"is_internal": False}
+    )
+    assert response.status_code == 400
+    assert "is_internal" in response.data
+
+
+@pytest.mark.django_db
+def test_internal_transporter_can_be_turned_external_when_another_stays_internal(ops_client):
+    internal = Transporter.objects.get(is_internal=True)
+    second_internal = Transporter.objects.create(name="Flotte Sud", is_internal=True)
+
+    response = ops_client.patch(
+        f"/api/transporters/{internal.id}/", {"is_internal": False}
+    )
+    assert response.status_code == 200, response.data
+    assert response.data["is_internal"] is False
+    second_internal.refresh_from_db()
+    assert second_internal.is_internal is True

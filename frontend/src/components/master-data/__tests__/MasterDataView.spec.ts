@@ -166,6 +166,52 @@ describe('MasterDataView', () => {
     )
   })
 
+  // UI recette fix (2026-09-05): a field's options can now depend on the
+  // form's own live values (Truck's owner_transporter filtered by the
+  // currently-selected ownership_type).
+  it('recomputes form fields from the live form value via the formFields prop', async () => {
+    const resource = makeResource([])
+    const dependentFields: FieldSchema[] = [
+      {
+        key: 'kind',
+        label: 'Kind',
+        type: 'select',
+        options: [
+          { value: 'A', label: 'Kind A' },
+          { value: 'B', label: 'Kind B' },
+        ],
+      },
+      { key: 'detail', label: 'Detail', type: 'select', options: [] },
+    ]
+    function formFields(form: Record<string, unknown>): FieldSchema[] {
+      const kind = (form.kind as string | undefined) ?? 'A'
+      return dependentFields.map((field) =>
+        field.key === 'detail'
+          ? {
+              ...field,
+              options:
+                kind === 'A'
+                  ? [{ value: '1', label: 'Detail for A' }]
+                  : [{ value: '2', label: 'Detail for B' }],
+            }
+          : field,
+      )
+    }
+    const wrapper = mount(MasterDataView, {
+      props: { title: 'Test', resource, fields: dependentFields, formFields },
+      global: { plugins: [i18n] },
+    })
+    await flushPromises()
+
+    await wrapper.find('button').trigger('click') // "Add"
+    expect(wrapper.find('select#detail option').text()).toBe('Detail for A')
+
+    await wrapper.find('select#kind').setValue('B')
+    await flushPromises()
+
+    expect(wrapper.find('select#detail option').text()).toBe('Detail for B')
+  })
+
   it('renders a ledger link per row when ledgerRouteName is passed through', async () => {
     const resource = makeResource([{ id: 7, name: 'Total Senegal', is_active: true }])
     const wrapper = mount(MasterDataView, {
