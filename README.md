@@ -1,4 +1,4 @@
-# Fuel Logistics ERP
+# AZUR ÉNERGIE ERP
 
 Internal ERP for a fuel trading and transport company operating between Senegal and Mali. Full business rules and data model live in [`docs/ERP_Specification.md`](docs/ERP_Specification.md); implementation is broken into phases in [`roadmap/`](roadmap/).
 

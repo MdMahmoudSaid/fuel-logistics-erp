@@ -156,7 +156,7 @@ def test_render_ledger_pdf_produces_valid_pdf_bytes():
     # ControlledDebtPaymentService.describe_supplier_balance(...), entries
     # = list of {type, date, amount, reference, note, proof_url}.
     pdf_bytes = render_ledger_pdf(
-        company_name="Fuel Logistics ERP",
+        company_name="AZUR ÉNERGIE",
         account_type="fournisseur",
         party_name="Fournisseur Test",
         export_date=datetime.date.today(),
@@ -196,7 +196,7 @@ def test_render_ledger_pdf_produces_valid_pdf_bytes():
 def test_render_ledger_pdf_handles_empty_rows_and_all_langs():
     for lang in ("fr", "en", "ar", "unknown"):
         pdf_bytes = render_ledger_pdf(
-            company_name="Fuel Logistics ERP",
+            company_name="AZUR ÉNERGIE",
             account_type="client",
             party_name="Client Test",
             export_date=datetime.date.today(),

@@ -42,7 +42,9 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 # (grepped models/settings/frontend branding) - a fixed constant is used
 # for the PDF header, matching the generic branding already used
 # elsewhere (frontend/index.html <title>).
-DEFAULT_COMPANY_NAME = "Fuel Logistics ERP"
+# Rebrand (2026-09-05): AZUR ÉNERGIE, no "ERP" suffix on PDFs specifically
+# (kept only in the browser title / API schema title).
+DEFAULT_COMPANY_NAME = "AZUR ÉNERGIE"
 
 LEDGER_PDF_LABELS = {
     "fr": {

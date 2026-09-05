@@ -128,7 +128,7 @@ SIMPLE_JWT = {
 }
 
 SPECTACULAR_SETTINGS = {
-    "TITLE": "Fuel Logistics ERP API",
+    "TITLE": "AZUR ÉNERGIE ERP API",
     "DESCRIPTION": "Backend API for the Senegal/Mali fuel trading and transport ERP.",
     "VERSION": "0.1.0",
 }

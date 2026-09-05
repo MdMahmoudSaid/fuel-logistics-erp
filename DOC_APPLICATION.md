@@ -1,4 +1,4 @@
-# Documentation Fonctionnelle — Fuel Logistics ERP
+# Documentation Fonctionnelle — AZUR ÉNERGIE ERP
 
 > Document généré par analyse du code source réel (backend Django/DRF + frontend Vue 3).
 > Dernière génération : 20 août 2026.
@@ -7,7 +7,7 @@
 
 ## 1. Vue d'ensemble du système
 
-**Fuel Logistics ERP** est une application de gestion intégrée pour une entreprise de logistique carburant. Elle couvre l'intégralité du cycle opérationnel et financier :
+**AZUR ÉNERGIE ERP** est une application de gestion intégrée pour une entreprise de logistique carburant. Elle couvre l'intégralité du cycle opérationnel et financier :
 
 - **Approvisionnement** : achat de carburant auprès de fournisseurs, autorisations de chargement (lettres de cession), suivi du reliquat disponible.
 - **Suivi de flotte & transport** : gestion des camions, transporteurs et chauffeurs, cycle de vie complet d'un trajet (chargement → transit → douane → livraison), contrôle de quantité à la livraison et gestion des écarts (pertes).
