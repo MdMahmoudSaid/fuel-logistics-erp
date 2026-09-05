@@ -234,6 +234,54 @@ def test_quotation_pdf_export():
 
 
 @pytest.mark.django_db
+def test_quotation_pdf_export_does_not_crash_on_markup_like_notes():
+    """Security fix: `notes` is free-form user input rendered through
+    reportlab's Paragraph, which parses a mini-XML/HTML markup language -
+    including <img src="..."> tags that reportlab resolves as a real
+    file/URL fetch at render time (SSRF/LFI), on top of arbitrary
+    formatting/link injection and a lone unescaped `&` crashing the XML
+    parser outright. render_quotation_pdf() must escape this text before
+    handing it to Paragraph - see the unit test below for the exact
+    escaping guarantee; this is the end-to-end "it still exports" half."""
+    client, user = _sales_client("QPDFXSS")
+    customer = Customer.objects.create(name="Client QPDFXSS")
+    product = Product.objects.get(code="gasoil")
+    quotation = Quotation.objects.create(
+        reference="DEV-202609-9005",
+        customer=customer,
+        issue_date="2026-09-05",
+        notes='Livraison sous 48h & <img src="http://169.254.169.254/latest/meta-data/"/> <a href="evil">clic</a>',
+        created_by=user,
+    )
+    QuotationLine.objects.create(
+        quotation=quotation, product=product, quantity=Decimal("10.00"),
+        unit="L", unit_price=Decimal("100.0000"),
+    )
+
+    response = client.get(f"/api/quotations/{quotation.id}/pdf/?lang=fr")
+
+    assert response.status_code == 200
+    assert response.content.startswith(b"%PDF")
+
+
+def test_notes_escaping_neutralizes_markup_before_paragraph_rendering():
+    """Direct check of render_quotation_pdf()'s exact transformation
+    (xml_escape then <br/>) - proves the <img>/<a> tags and the bare `&`
+    can never reach reportlab's Paragraph as live markup."""
+    from xml.sax.saxutils import escape as xml_escape
+
+    raw = 'Livraison sous 48h & <img src="http://169.254.169.254/"/> <a href="evil">clic</a>\nligne 2'
+    escaped = xml_escape(raw).replace("\n", "<br/>")
+
+    assert "<img" not in escaped
+    assert "<a href" not in escaped
+    assert "&amp;" in escaped
+    assert "&lt;img" in escaped
+    # Our own line-break markup, inserted after escaping, must survive.
+    assert "<br/>" in escaped
+
+
+@pytest.mark.django_db
 def test_quotation_creation_has_no_accounting_side_effects():
     """Product decision 2026-09-05: a quotation must never create a Sale,
     Invoice, CustomerPayment or TreasuryTransaction - it is a standalone

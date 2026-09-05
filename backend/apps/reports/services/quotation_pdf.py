@@ -11,6 +11,7 @@ import datetime
 import io
 from decimal import Decimal
 from pathlib import Path
+from xml.sax.saxutils import escape as xml_escape
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_RIGHT
@@ -214,7 +215,16 @@ def render_quotation_pdf(quotation, lang: str = "fr") -> bytes:
         elements.append(Spacer(1, 8 * mm))
         elements.append(Paragraph(labels["notes"], heading_style))
         elements.append(Spacer(1, 2 * mm))
-        elements.append(Paragraph(quotation.notes.replace("\n", "<br/>"), align_style))
+        # Security fix: quotation.notes is free-form user input (the
+        # "Notes / conditions" textarea) - reportlab's Paragraph parses a
+        # mini-XML/HTML markup language, including <img src="..."> tags
+        # that reportlab resolves as a real file/URL fetch at render time
+        # (SSRF/LFI), plus arbitrary formatting/link injection. Escape the
+        # raw text first (neutralizes any embedded tags/entities), then
+        # apply our own literal <br/> line breaks on the now-safe string -
+        # never on unescaped user input.
+        safe_notes = xml_escape(quotation.notes).replace("\n", "<br/>")
+        elements.append(Paragraph(safe_notes, align_style))
 
     elements.append(Spacer(1, 8 * mm))
     elements.append(
