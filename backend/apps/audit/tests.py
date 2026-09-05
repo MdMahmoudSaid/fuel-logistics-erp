@@ -19,6 +19,8 @@ from apps.customers.models import Customer
 from apps.finance.models import (
     CustomerPayment,
     Expense,
+    Shareholder,
+    ShareholderContribution,
     SupplierPayment,
     TransportDeduction,
     TreasuryTransaction,
@@ -661,6 +663,45 @@ def test_describe_treasury_transaction_resolves_account_and_amount():
     assert summary["module_key"] == "treasury"
     assert summary["account_label"] == "Main Cash DESCRIBE-TT"
     assert summary["amount"] == "22500000.00"
+
+
+@pytest.mark.django_db
+def test_describe_shareholder_contribution_resolves_module_key_and_amount():
+    """UI recette fix (2026-09-05): finance.shareholdercontribution was
+    missing from MODULE_KEYS, so Journal d'audit showed the raw
+    "finance.shareholdercontribution" content-type string instead of a
+    translated label - client's own example: "finance.shareholdercontribution
+    3 000 000 XOF" instead of "Apport en capital - 3 000 000 XOF"."""
+    admin_user = _make_admin("DESCRIBE-SHCONTRIB")
+    shareholder = Shareholder.objects.create(
+        name="Actionnaire DESCRIBE-SHCONTRIB", participation_percent=Decimal("10.00")
+    )
+    cash_account = CashAccount.objects.create(name="Caisse DESCRIBE-SHCONTRIB")
+    contribution = ShareholderContribution.objects.create(
+        shareholder=shareholder,
+        amount=Decimal("3000000.00"),
+        date="2026-08-18",
+        cash_account=cash_account,
+        recorded_by=admin_user,
+    )
+    log = _audit_logs_for(contribution).latest("id")
+
+    summary = describe(log)
+
+    assert summary["module_key"] == "shareholder_contribution"
+    assert summary["amount"] == "3000000.00"
+
+
+def test_module_keys_cover_transport_payment_and_trip():
+    """finance.transportpayment/trips.trip aren't AuditableModel today (no
+    real audit row currently carries either content type), but the client's
+    recette explicitly asked for both translations - kept here as a plain
+    dict assertion (no audit row to construct) so the mapping doesn't
+    silently regress if either model becomes audited later."""
+    from apps.audit.labels import MODULE_KEYS
+
+    assert MODULE_KEYS["finance.transportpayment"] == "transport_payment"
+    assert MODULE_KEYS["trips.trip"] == "trip"
 
 
 @pytest.mark.django_db

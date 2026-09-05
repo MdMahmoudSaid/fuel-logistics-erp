@@ -1480,10 +1480,13 @@
       "treasury": "الخزينة",
       "customer_payment": "دفعة عميل",
       "supplier_payment": "دفعة مورد",
+      "transport_payment": "دفعة ناقل",
       "transport_deduction": "خصم ناقل",
       "expense": "مصروف",
       "shareholder_withdrawal": "سحب مساهم",
+      "shareholder_contribution": "مساهمة رأس المال",
       "supplier_order": "طلب مورد",
+      "trip": "رحلة",
       "delivery_control": "مراقبة التسليم",
       "sale": "بيع",
       "invoice": "فاتورة"

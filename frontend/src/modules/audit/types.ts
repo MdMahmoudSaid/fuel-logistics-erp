@@ -4,6 +4,11 @@ export interface AuditLog {
   id: number
   user: number | null
   user_email: string | null
+  // UI recette fix (2026-09-05): full_name, else phone, else email - see
+  // AuditLogSerializer.get_user_display_name(). Preferred over user_email
+  // for display; user_email is kept for any consumer that needs the raw
+  // email specifically.
+  user_display_name: string | null
   timestamp: string
   action: 'CREATE' | 'UPDATE' | 'DELETE' | 'CANCEL' | 'REVERSE'
   content_type: number

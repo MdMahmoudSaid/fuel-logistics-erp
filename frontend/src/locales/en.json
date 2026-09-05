@@ -1480,10 +1480,13 @@
       "treasury": "Treasury",
       "customer_payment": "Customer payment",
       "supplier_payment": "Supplier payment",
+      "transport_payment": "Transporter payment",
       "transport_deduction": "Transporter deduction",
       "expense": "Expense",
       "shareholder_withdrawal": "Shareholder withdrawal",
+      "shareholder_contribution": "Capital contribution",
       "supplier_order": "Supplier order",
+      "trip": "Trip",
       "delivery_control": "Delivery control",
       "sale": "Sale",
       "invoice": "Invoice"

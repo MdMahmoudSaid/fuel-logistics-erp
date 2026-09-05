@@ -79,6 +79,72 @@ def test_audit_log_endpoint_is_read_only():
     assert AuditLog.objects.filter(pk=log_id).exists()
 
 
+def _make_supplier_order_attributed_to(suffix, admin_user):
+    """Like _make_supplier_order, but attributes the CREATE audit log to
+    admin_user explicitly (plain .objects.create() leaves AuditLog.user
+    None outside a bound request context - see
+    test_audit_log_has_no_user_without_request_context_or_explicit_user
+    above)."""
+    product = Product.objects.get(code="gasoil")
+    supplier = Supplier.objects.create(name=f"Supplier {suffix}", country="Senegal")
+    order = SupplierOrder(
+        reference=f"SO-AUDITVIEW-{suffix}",
+        supplier=supplier,
+        product=product,
+        purchase_date="2026-08-18",
+        quantity_litres=Decimal("500000.00"),
+        unit_price=Decimal("600.0000"),
+        created_by=admin_user,
+    )
+    order.save(user=admin_user)
+    return order
+
+
+@pytest.mark.django_db
+def test_audit_log_shows_full_name_instead_of_technical_email():
+    """UI recette fix (2026-09-05): Journal d'audit showed the raw
+    (often synthetic) email in the "Utilisateur" column - this app is
+    phone/PIN based, full_name is the user-facing identifier."""
+    admin_role = Role.objects.get(name=Role.NAME_ADMIN)
+    admin_user = User.objects.create_user(
+        phone="+22200000900", pin="1234", role=admin_role,
+        full_name="Admin/Test Vide", email="admin-empty@example.test",
+    )
+    order = _make_supplier_order_attributed_to("FULLNAME", admin_user)
+    content_type_id = ContentType.objects.get_for_model(SupplierOrder).id
+
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    response = client.get(
+        "/api/audit-logs/", {"content_type": content_type_id, "object_id": order.id}
+    )
+
+    assert response.status_code == 200, response.data
+    results = response.data["results"] if "results" in response.data else response.data
+    assert results[0]["user_display_name"] == "Admin/Test Vide"
+    # user_email is kept untouched for any consumer that needs the literal
+    # email - only the frontend's displayed column changed.
+    assert results[0]["user_email"] == "admin-empty@example.test"
+
+
+@pytest.mark.django_db
+def test_audit_log_falls_back_to_phone_when_full_name_is_blank():
+    admin_role = Role.objects.get(name=Role.NAME_ADMIN)
+    admin_user = User.objects.create_user(phone="+22200000901", pin="1234", role=admin_role)
+    order = _make_supplier_order_attributed_to("NOFULLNAME", admin_user)
+    content_type_id = ContentType.objects.get_for_model(SupplierOrder).id
+
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    response = client.get(
+        "/api/audit-logs/", {"content_type": content_type_id, "object_id": order.id}
+    )
+
+    assert response.status_code == 200, response.data
+    results = response.data["results"] if "results" in response.data else response.data
+    assert results[0]["user_display_name"] == "+22200000901"
+
+
 @pytest.mark.django_db
 def test_non_admin_role_cannot_list_audit_logs():
     role = Role.objects.create(name="NoAdmin", permissions={"reports": ["view"]})

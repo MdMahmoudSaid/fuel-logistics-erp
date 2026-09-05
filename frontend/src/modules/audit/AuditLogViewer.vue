@@ -73,7 +73,7 @@ function objectLabel(log: AuditLog): string {
       ? `${label} ${t(`expenseCategory.${reference}`)}`
       : `${label} ${reference}`
   }
-  if (amount) return `${label} ${formatMoney(amount)}`
+  if (amount) return `${label} — ${formatMoney(amount)}`
   return `${label} #${log.object_id}`
 }
 
@@ -130,7 +130,7 @@ function badgeVariant(action: string) {
                 </td>
                 <td class="px-3 py-2.5">{{ moduleLabel(log.summary.module_key) }}</td>
                 <td class="px-3 py-2.5">{{ objectLabel(log) }}</td>
-                <td class="px-3 py-2.5">{{ log.user_email || '—' }}</td>
+                <td class="px-3 py-2.5">{{ log.user_display_name || '—' }}</td>
                 <td class="text-texte-3 px-3 py-2.5">{{ expandedId === log.id ? '▲' : '▼' }}</td>
               </tr>
               <tr v-if="expandedId === log.id" class="border-ligne bg-sable border-b last:border-0">

@@ -8,10 +8,16 @@ MODULE_KEYS = {
     "finance.treasurytransaction": "treasury",
     "finance.customerpayment": "customer_payment",
     "finance.supplierpayment": "supplier_payment",
+    "finance.transportpayment": "transport_payment",
     "finance.transportdeduction": "transport_deduction",
     "finance.expense": "expense",
     "finance.shareholderwithdrawal": "shareholder_withdrawal",
+    # UI recette fix (2026-09-05): missing entry - Journal d'audit was
+    # showing the raw "finance.shareholdercontribution" content-type
+    # string instead of a translated label.
+    "finance.shareholdercontribution": "shareholder_contribution",
     "purchasing.supplierorder": "supplier_order",
+    "trips.trip": "trip",
     "trips.deliverycontrol": "delivery_control",
     "sales.sale": "sale",
     "sales.invoice": "invoice",

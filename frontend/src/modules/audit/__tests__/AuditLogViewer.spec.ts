@@ -8,6 +8,7 @@ const logs: AuditLog[] = [
     id: 1,
     user: 1,
     user_email: 'admin@example.com',
+    user_display_name: 'Admin/Test Vide',
     timestamp: '2026-08-18T10:00:00Z',
     action: 'UPDATE',
     content_type: 5,
@@ -47,7 +48,10 @@ describe('AuditLogViewer', () => {
     expect(wrapper.text()).toContain('Commande fournisseur')
     expect(wrapper.text()).toContain('SO-1 (Supplier X)')
     expect(wrapper.text()).toContain('Modification')
-    expect(wrapper.text()).toContain('admin@example.com')
+    // UI recette fix (2026-09-05): full_name shown instead of the raw
+    // (often synthetic/technical) email.
+    expect(wrapper.text()).toContain('Admin/Test Vide')
+    expect(wrapper.text()).not.toContain('admin@example.com')
   })
 
   it('expands a row to show only the fields that actually changed', async () => {
@@ -116,6 +120,36 @@ describe('AuditLogViewer', () => {
 
     // Amounts are wrapped in bidi isolate marks (LRI/PDI) so they can't be
     // reordered in RTL locales; strip them before matching adjacent text.
-    expect(wrapper.text().replace(/[⁦⁩]/g, '')).toContain('Trésorerie 22 500 000 XOF')
+    expect(wrapper.text().replace(/[⁦⁩]/g, '')).toContain('Trésorerie — 22 500 000 XOF')
+  })
+
+  it('shows a translated label for finance.shareholdercontribution instead of the raw content-type string', async () => {
+    // UI recette fix (2026-09-05): client's own example - the module was
+    // missing from MODULE_KEYS, so this printed the raw
+    // "finance.shareholdercontribution 3 000 000 XOF" string.
+    list.mockResolvedValueOnce({
+      count: 1,
+      next: null,
+      previous: null,
+      results: [
+        {
+          ...logs[0],
+          id: 4,
+          content_type_label: 'finance.shareholdercontribution',
+          summary: {
+            module_key: 'shareholder_contribution',
+            reference: null,
+            related_party: null,
+            account_label: null,
+            amount: '3000000.00',
+          },
+        },
+      ],
+    })
+    const wrapper = mount(AuditLogViewer)
+    await flushPromises()
+
+    expect(wrapper.text().replace(/[⁦⁩]/g, '')).toContain('Apport en capital — 3 000 000 XOF')
+    expect(wrapper.text()).not.toContain('finance.shareholdercontribution')
   })
 })
