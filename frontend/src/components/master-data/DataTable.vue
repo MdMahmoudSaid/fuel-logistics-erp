@@ -3,6 +3,7 @@ import { useI18n } from 'vue-i18n'
 import type { FieldOption, FieldType } from './types'
 import { formatPhoneDisplay } from '@/data/countries'
 import { formatMoney, formatQuantity } from '@/utils/currency'
+import MonoValue from '@/components/ui/MonoValue.vue'
 
 defineProps<{
   columns: { key: string; label: string; type?: FieldType; options?: FieldOption[] }[]
@@ -10,6 +11,16 @@ defineProps<{
   activeToggle?: boolean
   ledgerRouteName?: string
 }>()
+
+// UI recette fix (2026-09-05): money/quantity columns previously printed
+// plain text (no font-mono/tabular-nums, no right alignment), the same
+// "digits don't line up between rows" alignment bug the rest of the app
+// avoids by always going through MonoValue (see that component's own
+// docstring) - this only changes how these two column types render, never
+// the underlying data.
+function isNumericColumn(type?: FieldType): boolean {
+  return type === 'money' || type === 'quantity'
+}
 
 defineEmits<{
   edit: [row: Record<string, unknown>]
@@ -27,11 +38,12 @@ const { t } = useI18n()
         <th
           v-for="col in columns"
           :key="col.key"
-          class="px-3 py-2.5 font-medium whitespace-nowrap"
+          class="px-3 py-2.5 font-medium whitespace-nowrap align-middle"
+          :class="isNumericColumn(col.type) ? 'text-end' : 'text-start'"
         >
           {{ col.label }}
         </th>
-        <th class="px-3 py-2.5" />
+        <th class="px-3 py-2.5 align-middle" />
       </tr>
     </thead>
     <tbody>
@@ -40,7 +52,12 @@ const { t } = useI18n()
         :key="String(row.id)"
         class="border-ligne hover:bg-sable border-b last:border-0"
       >
-        <td v-for="col in columns" :key="col.key" class="px-3 py-2.5 whitespace-nowrap">
+        <td
+          v-for="col in columns"
+          :key="col.key"
+          class="px-3 py-2.5 align-middle whitespace-nowrap"
+          :class="isNumericColumn(col.type) ? 'text-end' : 'text-start'"
+        >
           <template v-if="col.type === 'checkbox'">
             {{ row[col.key] ? t('masterData.statusActive') : t('masterData.statusInactive') }}
           </template>
@@ -51,14 +68,14 @@ const { t } = useI18n()
             {{ formatPhoneDisplay(row[col.key] as string) }}
           </template>
           <template v-else-if="col.type === 'money'">
-            {{ formatMoney((row[col.key] as string | number | undefined) ?? 0) }}
+            <MonoValue :value="formatMoney((row[col.key] as string | number | undefined) ?? 0)" />
           </template>
           <template v-else-if="col.type === 'quantity'">
-            {{ formatQuantity((row[col.key] as string | number | undefined) ?? 0) }}
+            <MonoValue :value="formatQuantity((row[col.key] as string | number | undefined) ?? 0)" />
           </template>
           <template v-else>{{ row[col.key] }}</template>
         </td>
-        <td class="px-3 py-2.5 text-end whitespace-nowrap">
+        <td class="px-3 py-2.5 text-end align-middle whitespace-nowrap">
           <span class="inline-flex items-center gap-3">
             <RouterLink
               v-if="ledgerRouteName"
