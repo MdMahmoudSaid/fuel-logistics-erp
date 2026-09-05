@@ -32,6 +32,7 @@
     "lossesToReview": "الفروقات للمراجعة",
     "sales": "المبيعات",
     "invoices": "الفواتير",
+    "quotations": "العروض التجارية",
     "transporters": "الناقلون",
     "drivers": "السائقون",
     "trucks": "الشاحنات",
@@ -466,6 +467,13 @@
     "PARTIALLY_PAID": "مدفوعة جزئيًا",
     "PAID": "مدفوعة",
     "CANCELLED": "ملغاة"
+  },
+  "quotationStatus": {
+    "DRAFT": "مسودة",
+    "SENT": "مرسل",
+    "ACCEPTED": "مقبول",
+    "REJECTED": "مرفوض",
+    "EXPIRED": "منتهي الصلاحية"
   },
   "settlementStatus": {
     "PLANNED": "مخطَّط",
@@ -1545,5 +1553,48 @@
     "invalidNumber": "يرجى إدخال رقم صالح.",
     "minValue": "يجب أن تكون القيمة أكبر من أو تساوي {min}.",
     "maxValue": "يجب أن تكون القيمة أصغر من أو تساوي {max}."
+  },
+  "quotations": {
+    "list": {
+      "title": "العروض التجارية",
+      "new": "عرض جديد",
+      "allStatuses": "جميع الحالات",
+      "duplicate": "نسخ",
+      "duplicateError": "تعذر نسخ العرض.",
+      "loadError": "تعذر تحميل العروض التجارية.",
+      "noQuotations": "لا توجد عروض تجارية.",
+      "table": {
+        "reference": "المرجع",
+        "customer": "العميل",
+        "issueDate": "تاريخ الإصدار",
+        "total": "المجموع",
+        "status": "الحالة"
+      }
+    },
+    "form": {
+      "newTitle": "عرض تجاري جديد",
+      "editTitle": "عرض {reference}",
+      "customer": "عميل موجود",
+      "selectCustomer": "ابحث عن عميل…",
+      "noExistingCustomer": "لا يوجد عميل موجود",
+      "customerName": "اسم العميل (مؤقت)",
+      "customerNamePlaceholder": "إذا كان العميل غير موجود بعد",
+      "issueDate": "تاريخ الإصدار",
+      "validityDate": "تاريخ الصلاحية",
+      "status": "الحالة",
+      "lines": "البنود",
+      "addLine": "+ إضافة بند",
+      "noProduct": "بدون منتج (وصف حر)",
+      "description": "الوصف",
+      "quantity": "الكمية",
+      "unit": "الوحدة",
+      "unitPrice": "سعر الوحدة",
+      "total": "المجموع",
+      "notes": "ملاحظات / شروط",
+      "back": "رجوع",
+      "save": "حفظ",
+      "saving": "جارٍ الحفظ…",
+      "saveError": "تعذر حفظ العرض التجاري."
+    }
   }
 }

@@ -66,6 +66,9 @@ ACTION_MAP = {
     # `partial_update`, just routed through a dedicated atomic action
     # instead of a raw field write.
     "record_repayment": "edit",
+    # Duplicating a quotation produces a new DRAFT record - same "create"
+    # tier as a plain POST.
+    "duplicate": "create",
 }
 
 

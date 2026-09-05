@@ -130,6 +130,21 @@ const router = createRouter({
           component: () => import('@/modules/sales/InvoiceDetail.vue'),
         },
         {
+          path: 'quotations',
+          name: 'quotations',
+          component: () => import('@/modules/quotations/QuotationList.vue'),
+        },
+        {
+          path: 'quotations/new',
+          name: 'quotation-new',
+          component: () => import('@/modules/quotations/QuotationForm.vue'),
+        },
+        {
+          path: 'quotations/:id',
+          name: 'quotation-detail',
+          component: () => import('@/modules/quotations/QuotationForm.vue'),
+        },
+        {
           path: 'settings/loss-tolerance',
           name: 'loss-tolerance-settings',
           component: () => import('@/modules/settings/LossToleranceSettings.vue'),

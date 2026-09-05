@@ -32,6 +32,7 @@
     "lossesToReview": "Écarts à traiter",
     "sales": "Ventes",
     "invoices": "Factures",
+    "quotations": "Offres commerciales",
     "transporters": "Transporteurs",
     "drivers": "Chauffeurs",
     "trucks": "Camions",
@@ -468,6 +469,13 @@
     "PARTIALLY_PAID": "Partiellement payée",
     "PAID": "Payée",
     "CANCELLED": "Annulée"
+  },
+  "quotationStatus": {
+    "DRAFT": "Brouillon",
+    "SENT": "Envoyée",
+    "ACCEPTED": "Acceptée",
+    "REJECTED": "Refusée",
+    "EXPIRED": "Expirée"
   },
   "settlementStatus": {
     "PLANNED": "Planifié",
@@ -1549,5 +1557,48 @@
     "invalidNumber": "Veuillez saisir un nombre valide.",
     "minValue": "La valeur doit être supérieure ou égale à {min}.",
     "maxValue": "La valeur doit être inférieure ou égale à {max}."
+  },
+  "quotations": {
+    "list": {
+      "title": "Offres commerciales",
+      "new": "Nouvelle offre",
+      "allStatuses": "Tous les statuts",
+      "duplicate": "Dupliquer",
+      "duplicateError": "Impossible de dupliquer l'offre.",
+      "loadError": "Impossible de charger les offres commerciales.",
+      "noQuotations": "Aucune offre commerciale.",
+      "table": {
+        "reference": "Référence",
+        "customer": "Client",
+        "issueDate": "Date d'émission",
+        "total": "Total",
+        "status": "Statut"
+      }
+    },
+    "form": {
+      "newTitle": "Nouvelle offre commerciale",
+      "editTitle": "Offre {reference}",
+      "customer": "Client existant",
+      "selectCustomer": "Rechercher un client…",
+      "noExistingCustomer": "Aucun client existant",
+      "customerName": "Nom du client (temporaire)",
+      "customerNamePlaceholder": "Si le client n'existe pas encore",
+      "issueDate": "Date d'émission",
+      "validityDate": "Date de validité",
+      "status": "Statut",
+      "lines": "Lignes",
+      "addLine": "+ Ajouter une ligne",
+      "noProduct": "Aucun produit (description libre)",
+      "description": "Description",
+      "quantity": "Quantité",
+      "unit": "Unité",
+      "unitPrice": "Prix unitaire",
+      "total": "Total",
+      "notes": "Notes / conditions",
+      "back": "Retour",
+      "save": "Enregistrer",
+      "saving": "Enregistrement…",
+      "saveError": "Impossible d'enregistrer l'offre commerciale."
+    }
   }
 }

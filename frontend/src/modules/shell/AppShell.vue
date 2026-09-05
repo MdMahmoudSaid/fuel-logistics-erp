@@ -27,6 +27,7 @@ const NAV_ICONS: Record<string, IconName> = {
   'customer-orders': 'cart-plus',
   sales: 'trending-up',
   invoices: 'receipt-text',
+  quotations: 'receipt',
   'treasury-transactions': 'wallet',
   'bank-accounts': 'landmark',
   'cash-accounts': 'banknote',
@@ -79,6 +80,9 @@ const NAV_GROUPS: NavGroup[] = [
       { to: 'customer-orders', labelKey: 'navigation.customerOrders', module: 'sales' },
       { to: 'sales', labelKey: 'navigation.sales', module: 'sales' },
       { to: 'invoices', labelKey: 'navigation.invoices', module: 'sales' },
+      // AZUR ÉNERGIE product decision 2026-09-05: standalone quotation
+      // page, placed under Ventes per that decision.
+      { to: 'quotations', labelKey: 'navigation.quotations', module: 'sales' },
     ],
   },
   {

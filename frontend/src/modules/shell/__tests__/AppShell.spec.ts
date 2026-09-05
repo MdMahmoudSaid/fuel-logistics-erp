@@ -23,6 +23,7 @@ function makeRouter() {
       { path: '/loss-report', name: 'loss-report', component: stub },
       { path: '/sales', name: 'sales', component: stub },
       { path: '/invoices', name: 'invoices', component: stub },
+      { path: '/quotations', name: 'quotations', component: stub },
       { path: '/transporters', name: 'transporters', component: stub },
       { path: '/drivers', name: 'drivers', component: stub },
       { path: '/trucks', name: 'trucks', component: stub },

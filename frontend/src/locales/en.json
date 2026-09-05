@@ -32,6 +32,7 @@
     "lossesToReview": "Losses to Review",
     "sales": "Sales",
     "invoices": "Invoices",
+    "quotations": "Commercial offers",
     "transporters": "Transporters",
     "drivers": "Drivers",
     "trucks": "Trucks",
@@ -466,6 +467,13 @@
     "PARTIALLY_PAID": "Partially paid",
     "PAID": "Paid",
     "CANCELLED": "Cancelled"
+  },
+  "quotationStatus": {
+    "DRAFT": "Draft",
+    "SENT": "Sent",
+    "ACCEPTED": "Accepted",
+    "REJECTED": "Rejected",
+    "EXPIRED": "Expired"
   },
   "settlementStatus": {
     "PLANNED": "Planned",
@@ -1545,5 +1553,48 @@
     "invalidNumber": "Please enter a valid number.",
     "minValue": "Value must be greater than or equal to {min}.",
     "maxValue": "Value must be less than or equal to {max}."
+  },
+  "quotations": {
+    "list": {
+      "title": "Commercial offers",
+      "new": "New offer",
+      "allStatuses": "All statuses",
+      "duplicate": "Duplicate",
+      "duplicateError": "Could not duplicate the offer.",
+      "loadError": "Could not load commercial offers.",
+      "noQuotations": "No commercial offers.",
+      "table": {
+        "reference": "Reference",
+        "customer": "Customer",
+        "issueDate": "Issue date",
+        "total": "Total",
+        "status": "Status"
+      }
+    },
+    "form": {
+      "newTitle": "New commercial offer",
+      "editTitle": "Offer {reference}",
+      "customer": "Existing customer",
+      "selectCustomer": "Search for a customer…",
+      "noExistingCustomer": "No existing customer",
+      "customerName": "Customer name (temporary)",
+      "customerNamePlaceholder": "If the customer doesn't exist yet",
+      "issueDate": "Issue date",
+      "validityDate": "Validity date",
+      "status": "Status",
+      "lines": "Lines",
+      "addLine": "+ Add a line",
+      "noProduct": "No product (free description)",
+      "description": "Description",
+      "quantity": "Quantity",
+      "unit": "Unit",
+      "unitPrice": "Unit price",
+      "total": "Total",
+      "notes": "Notes / terms",
+      "back": "Back",
+      "save": "Save",
+      "saving": "Saving…",
+      "saveError": "Could not save the commercial offer."
+    }
   }
 }
