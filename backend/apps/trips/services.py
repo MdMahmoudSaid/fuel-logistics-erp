@@ -712,6 +712,29 @@ class DeliveryService:
             received_qty=received_qty,
             unit_selling_price=sale.unit_selling_price if sale else Decimal("0.0000"),
         )
+
+        # Feature (client request 2026-09-06): the client verification is
+        # the operator's final word on what was actually delivered - close
+        # the trip immediately instead of leaving it dangling in DELIVERED
+        # until someone remembers to flip the status by hand (which used to
+        # let the "Declarer une perte" button linger and invite a second,
+        # unrelated declaration). Always closes, regardless of whether the
+        # loss is zero, below tolerance, or above it - the client's own
+        # instruction: once this quantity is confirmed and saved, the trip
+        # is done. Reuses TripWorkflowService.transition_trip() so every
+        # side effect of a manual completion (TripStatusHistory row,
+        # freeing the truck, CustomerOrder recompute) still happens.
+        # No-op if the trip was already manually completed before this
+        # verification was recorded (transition_trip's own precondition
+        # already lets that case through above).
+        if trip.status != Trip.Status.COMPLETED:
+            TripWorkflowService.transition_trip(
+                trip.id,
+                Trip.Status.COMPLETED,
+                actor,
+                notes="Cloture automatique apres verification client",
+            )
+
         return control
 
     @staticmethod

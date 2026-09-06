@@ -1845,6 +1845,116 @@ def test_record_client_verification_rejected_on_cancelled_trip():
 
 
 # ---------------------------------------------------------------------------
+# Client request (2026-09-06): the "Vérification client / Déclarer une
+# perte" action must close the trip on its own - it was previously left in
+# DELIVERED until someone remembered to change the status by hand, which
+# both looked unfinished on every trip list/board and (in the client's own
+# words) invited a loss to be "declared" again later. Always closes,
+# whatever the loss size - the client verification is the final word on
+# what was delivered.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_record_client_verification_auto_completes_the_trip_with_a_loss():
+    fx = _fixtures_with_customer("RCV-AUTOCLOSE-LOSS")
+    trip = _deliverable_trip(fx, "TRIP-RCV-AUTOCLOSE-LOSS-001")
+    DeliveryService.record_delivery(
+        trip_id=trip.id, control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE,
+        controller=fx["admin_user"], unit_selling_price=Decimal("850.0000"),
+    )
+    trip.refresh_from_db()
+    assert trip.status == Trip.Status.DELIVERED  # sanity check before the fix's effect
+
+    DeliveryService.record_client_verification(
+        trip_id=trip.id, received_qty=Decimal("44920.00"),
+        verified_at=date.today(), actor=fx["admin_user"],
+    )
+
+    trip.refresh_from_db()
+    assert trip.status == Trip.Status.COMPLETED
+    history = TripStatusHistory.objects.filter(trip=trip).latest("id")
+    assert history.previous_status == Trip.Status.DELIVERED
+    assert history.new_status == Trip.Status.COMPLETED
+    trip.truck.refresh_from_db()
+    assert trip.truck.status == Truck.Status.AVAILABLE
+
+
+@pytest.mark.django_db
+def test_record_client_verification_auto_completes_the_trip_with_zero_loss():
+    """The client explicitly asked for this even when the full quantity is
+    confirmed received (no loss at all) - not only when there's a loss to
+    resolve."""
+    fx = _fixtures_with_customer("RCV-AUTOCLOSE-ZERO")
+    trip = _deliverable_trip(fx, "TRIP-RCV-AUTOCLOSE-ZERO-001")
+    DeliveryService.record_delivery(
+        trip_id=trip.id, control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE,
+        controller=fx["admin_user"], unit_selling_price=Decimal("850.0000"),
+    )
+
+    DeliveryService.record_client_verification(
+        trip_id=trip.id, received_qty=trip.quantity_loaded,
+        verified_at=date.today(), actor=fx["admin_user"],
+    )
+
+    trip.refresh_from_db()
+    assert trip.status == Trip.Status.COMPLETED
+
+
+@pytest.mark.django_db
+def test_record_client_verification_auto_completes_the_trip_with_loss_above_tolerance():
+    """Same 150 L split-loss scenario as
+    test_record_client_verification_150L_loss_splits_company_and_transporter
+    (above tolerance, chargeable to the transporter) - still closes."""
+    fx = _fixtures_with_customer("RCV-AUTOCLOSE-BIG")
+    trip = _deliverable_trip(fx, "TRIP-RCV-AUTOCLOSE-BIG-001")
+    DeliveryService.record_delivery(
+        trip_id=trip.id, control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE,
+        controller=fx["admin_user"], unit_selling_price=Decimal("850.0000"),
+    )
+
+    DeliveryService.record_client_verification(
+        trip_id=trip.id, received_qty=Decimal("44850.00"),
+        verified_at=date.today(), actor=fx["admin_user"],
+    )
+
+    trip.refresh_from_db()
+    assert trip.status == Trip.Status.COMPLETED
+
+
+@pytest.mark.django_db
+def test_record_client_verification_does_not_error_when_trip_already_completed():
+    """A trip can already be COMPLETED before this runs (the operator
+    closed it manually first, then still records the client's figure) -
+    the precondition above already allows this; the auto-close must not
+    then try to "transition" a trip to the status it's already in."""
+    fx = _fixtures_with_customer("RCV-AUTOCLOSE-ALREADY")
+    trip = _deliverable_trip(fx, "TRIP-RCV-AUTOCLOSE-ALREADY-001")
+    DeliveryService.record_delivery(
+        trip_id=trip.id, control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE,
+        controller=fx["admin_user"], unit_selling_price=Decimal("850.0000"),
+    )
+    TripWorkflowService.transition_trip(trip.id, Trip.Status.COMPLETED, fx["admin_user"])
+    history_count_before = TripStatusHistory.objects.filter(trip=trip).count()
+
+    control = DeliveryService.record_client_verification(
+        trip_id=trip.id, received_qty=Decimal("44920.00"),
+        verified_at=date.today(), actor=fx["admin_user"],
+    )
+
+    trip.refresh_from_db()
+    assert trip.status == Trip.Status.COMPLETED
+    assert control.loss_quantity == Decimal("80.00")
+    # No extra history row - transition_trip() was never called since the
+    # trip was already at the target status.
+    assert TripStatusHistory.objects.filter(trip=trip).count() == history_count_before
+
+
+# ---------------------------------------------------------------------------
 # Recette corrections Task 6 (2026-09-04): POST /api/trips/{id}/client-
 # verification/ - thin HTTP wrapper around
 # DeliveryService.record_client_verification(), same conventions as the
@@ -1878,6 +1988,8 @@ def test_api_client_verification_updates_delivery_control():
 
     assert response.status_code == 200, response.data
     assert response.data["received_quantity"] == "44920.00"
+    trip.refresh_from_db()
+    assert trip.status == Trip.Status.COMPLETED
 
 
 @pytest.mark.django_db

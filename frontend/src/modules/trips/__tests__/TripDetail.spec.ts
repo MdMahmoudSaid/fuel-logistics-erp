@@ -583,7 +583,7 @@ describe('TripDetail expenses section', () => {
 
     const row = wrapper.find('[data-test="company-absorbed-loss-row"]')
     expect(row.exists()).toBe(true)
-    expect(row.text()).toContain('Perte supportée par l\'entreprise')
+    expect(row.text()).toContain("Perte supportée par l'entreprise")
     const text = row.text().replace(/[⁦⁩]/g, '')
     expect(text).toContain('-90 000 XOF')
     // detail: 100 L x 900,00 XOF/L (900 = 90000 / 100, derived, never sent by the backend)
@@ -822,6 +822,33 @@ describe('TripDetail expenses section', () => {
       9,
       expect.objectContaining({ verified_at: expect.any(String) }),
     )
+  })
+
+  it('reflects the trip closing itself once the client-verification reload comes back COMPLETED', async () => {
+    // Client request (2026-09-06): DeliveryService.record_client_verification
+    // now closes the trip on the backend in the same call - the reload this
+    // component already does right after submission (onClientVerified ->
+    // load()) is enough to show that on its own, no new frontend code
+    // needed. Locking in that the existing reactive reload actually
+    // surfaces it: once the second load() resolves with status COMPLETED,
+    // the badge updates and the action button (gated on trip.status too)
+    // disappears - not just on the already-covered clientAlreadyVerified path.
+    setUser({ operations: ['view', 'edit'], finance: ['view'] })
+    tripResourceGet
+      .mockResolvedValueOnce(makeTrip({ status: 'DELIVERED', client: 10 }))
+      .mockResolvedValueOnce(makeTrip({ status: 'COMPLETED', client: 10 }))
+    allowedStatusesToReturn = ['COMPLETED']
+
+    const wrapper = await mountAt()
+    const button = wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Vérification client / Déclarer une perte')
+    await button!.trigger('click')
+    await wrapper.find('[data-test="received-quantity"]').setValue('44850')
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Terminé')
   })
 
   it('hides the client-verification action and shows a read-only block once a verification is already recorded', async () => {
