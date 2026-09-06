@@ -616,8 +616,14 @@
         "category": "Category",
         "notes": "Notes",
         "status": "Status",
-        "amount": "Amount"
+        "amount": "Amount",
+        "actions": "Actions"
       },
+      "editExpense": "Edit",
+      "deleteExpense": "Delete",
+      "deleteExpenseConfirm": "Permanently delete this unpaid expense?",
+      "cancelExpense": "Cancel",
+      "actionError": "This action isn't possible on this expense.",
       "monitoring": {
         "customs": "Customs",
         "transit": "Transit",

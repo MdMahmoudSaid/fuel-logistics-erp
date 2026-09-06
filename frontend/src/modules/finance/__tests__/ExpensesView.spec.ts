@@ -3,22 +3,46 @@ import { mount, flushPromises } from '@vue/test-utils'
 import ExpensesView from '../ExpensesView.vue'
 
 const expenseList = vi.fn()
+const expenseRemove = vi.fn()
 const categoryList = vi.fn()
 const fetchPayableDebts = vi.fn()
+const cancelExpense = vi.fn()
 
 vi.mock('../ExpenseForm.vue', () => ({
   default: {
     name: 'ExpenseForm',
+    props: ['editingExpense'],
     emits: ['success', 'cancel'],
     template: '<form data-test="expense-form" @submit.prevent="$emit(\'success\', null)"></form>',
   },
 }))
 
 vi.mock('../api', () => ({
-  expenseResource: { list: (...args: unknown[]) => expenseList(...args) },
+  expenseResource: {
+    list: (...args: unknown[]) => expenseList(...args),
+    remove: (...args: unknown[]) => expenseRemove(...args),
+  },
   expenseCategoryResource: { list: (...args: unknown[]) => categoryList(...args) },
   fetchPayableDebts: (...args: unknown[]) => fetchPayableDebts(...args),
+  cancelExpense: (...args: unknown[]) => cancelExpense(...args),
 }))
+
+function unpaidExpense(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 44,
+    category: 'rent',
+    amount: '300000.00',
+    calculation_method: 'MANUAL',
+    date: '2026-09-02',
+    status: 'UNPAID',
+    paid_by_customer_directly: false,
+    notes: 'Bureau',
+    allocations_detail: [],
+    created_at: '2026-09-02T00:00:00Z',
+    updated_at: '2026-09-02T00:00:00Z',
+    ...overrides,
+  }
+}
 
 function mountView() {
   return mount(ExpensesView)
@@ -27,6 +51,8 @@ function mountView() {
 describe('ExpensesView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    expenseRemove.mockResolvedValue(undefined)
+    cancelExpense.mockResolvedValue({})
     expenseList.mockResolvedValue({ count: 0, next: null, previous: null, results: [] })
     categoryList.mockResolvedValue({
       count: 2,
@@ -115,5 +141,96 @@ describe('ExpensesView', () => {
     expect(wrapper.text()).toContain('Chargement')
     expect(wrapper.text()).toContain('Autres frais trajet')
     expect(wrapper.text()).toContain('75 000 XOF')
+  })
+
+  it('shows Modifier/Supprimer for an unpaid expense and Annuler for a paid one', async () => {
+    expenseList.mockResolvedValue({
+      count: 2,
+      next: null,
+      previous: null,
+      results: [
+        unpaidExpense({ id: 1, status: 'UNPAID' }),
+        unpaidExpense({ id: 2, status: 'PAID', notes: 'Loyer payé' }),
+      ],
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.findAll('[data-test="edit-expense"]')).toHaveLength(1)
+    expect(wrapper.findAll('[data-test="delete-expense"]')).toHaveLength(1)
+    expect(wrapper.findAll('[data-test="cancel-expense"]')).toHaveLength(1)
+  })
+
+  it('opens the edit modal pre-filled when Modifier is clicked', async () => {
+    const expense = unpaidExpense()
+    expenseList.mockResolvedValue({ count: 1, next: null, previous: null, results: [expense] })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.find('[data-test="edit-expense"]').trigger('click')
+
+    const form = wrapper.findComponent({ name: 'ExpenseForm' })
+    expect(form.exists()).toBe(true)
+    expect(form.props('editingExpense')).toEqual(expense)
+  })
+
+  it('hard deletes an unpaid expense after confirmation, then reloads', async () => {
+    window.confirm = vi.fn(() => true)
+    expenseList.mockResolvedValue({
+      count: 1,
+      next: null,
+      previous: null,
+      results: [unpaidExpense()],
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+    expenseList.mockClear()
+
+    await wrapper.find('[data-test="delete-expense"]').trigger('click')
+    await flushPromises()
+
+    expect(expenseRemove).toHaveBeenCalledWith(44)
+    expect(expenseList).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not delete when the confirmation is declined', async () => {
+    window.confirm = vi.fn(() => false)
+    expenseList.mockResolvedValue({
+      count: 1,
+      next: null,
+      previous: null,
+      results: [unpaidExpense()],
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.find('[data-test="delete-expense"]').trigger('click')
+    await flushPromises()
+
+    expect(expenseRemove).not.toHaveBeenCalled()
+  })
+
+  it('cancels (not deletes) a paid expense, removing it from the debt calculation on reload', async () => {
+    expenseList.mockResolvedValue({
+      count: 1,
+      next: null,
+      previous: null,
+      results: [unpaidExpense({ status: 'PAID' })],
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+    expenseList.mockClear()
+
+    await wrapper.find('[data-test="cancel-expense"]').trigger('click')
+    await flushPromises()
+
+    expect(cancelExpense).toHaveBeenCalledWith(44)
+    expect(expenseRemove).not.toHaveBeenCalled()
+    expect(expenseList).toHaveBeenCalledTimes(1)
   })
 })

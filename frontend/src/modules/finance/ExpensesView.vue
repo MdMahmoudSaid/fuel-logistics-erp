@@ -4,9 +4,10 @@ import { useI18n } from 'vue-i18n'
 import Button from '@/components/ui/Button.vue'
 import Modal from '@/components/ui/Modal.vue'
 import MonoValue from '@/components/ui/MonoValue.vue'
+import { translateApiError } from '@/i18n/apiErrors'
 import { formatMoney } from '@/utils/currency'
 import ExpenseForm from './ExpenseForm.vue'
-import { expenseCategoryResource, expenseResource, fetchPayableDebts } from './api'
+import { cancelExpense, expenseCategoryResource, expenseResource, fetchPayableDebts } from './api'
 import type { DebtPaymentType, Expense, ExpenseCategoryOption, PayableDebt } from './types'
 
 const { t } = useI18n()
@@ -27,6 +28,20 @@ const loading = ref(true)
 const error = ref('')
 const showExpenseModal = ref(false)
 const period = ref({ start: '', end: '' })
+
+// Bug fix (2026-09-06 client feedback): "Depenses generales" had no way to
+// correct or remove a mistaken entry, short of leaving it in place forever -
+// same edit/delete story TripDetail.vue's own "Frais du trajet" list already
+// solved. An UNPAID expense is a plain draft: edit overwrites it in place
+// (PATCH, ExpenseForm's editingExpense mode), delete is a real hard DELETE.
+// A PAID/PARTIALLY_PAID expense can only be reversed via /cancel/ (backend
+// locks amount/category/method once money has actually moved) - cancelling
+// still fully removes it from every debt-monitoring total below, because
+// ControlledDebtPaymentService only ever sums UNPAID/PARTIALLY_PAID expenses.
+const editingExpense = ref<Expense | null>(null)
+const actionError = ref('')
+const cancellingId = ref<number | null>(null)
+const deletingId = ref<number | null>(null)
 
 const monitoredDebtTypes = [
   'customs',
@@ -90,9 +105,49 @@ async function load() {
   }
 }
 
-function onExpenseCreated() {
+function onExpenseSaved() {
   showExpenseModal.value = false
+  editingExpense.value = null
   load()
+}
+
+function onExpenseModalClosed() {
+  showExpenseModal.value = false
+  editingExpense.value = null
+}
+
+function onEditExpense(expense: Expense) {
+  editingExpense.value = expense
+  showExpenseModal.value = true
+}
+
+async function onCancelExpenseRow(expense: Expense) {
+  cancellingId.value = expense.id
+  actionError.value = ''
+  try {
+    await cancelExpense(expense.id)
+    await load()
+  } catch (e) {
+    const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+    actionError.value = translateApiError(detail) || t('finance.expensesView.actionError')
+  } finally {
+    cancellingId.value = null
+  }
+}
+
+async function onDeleteExpense(expense: Expense) {
+  if (!window.confirm(t('finance.expensesView.deleteExpenseConfirm'))) return
+  deletingId.value = expense.id
+  actionError.value = ''
+  try {
+    await expenseResource.remove(expense.id)
+    await load()
+  } catch (e) {
+    const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+    actionError.value = translateApiError(detail) || t('finance.expensesView.actionError')
+  } finally {
+    deletingId.value = null
+  }
 }
 
 onMounted(load)
@@ -136,19 +191,29 @@ onMounted(load)
 
     <p v-if="error" class="text-critique text-sm">{{ error }}</p>
     <p v-else-if="loading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
+    <p v-if="actionError" class="text-critique text-sm">{{ actionError }}</p>
 
     <section v-else class="border-ligne overflow-x-auto rounded-xl border bg-white p-4">
-      <table class="w-full text-start text-sm">
+      <table class="w-full text-sm">
         <thead>
           <tr class="border-ligne text-texte-2 border-b">
-            <th class="px-2 py-1.5 font-medium">{{ t('finance.expensesView.table.date') }}</th>
-            <th class="px-2 py-1.5 font-medium">
+            <th class="px-2 py-1.5 text-center font-medium">
+              {{ t('finance.expensesView.table.date') }}
+            </th>
+            <th class="px-2 py-1.5 text-center font-medium">
               {{ t('finance.expensesView.table.category') }}
             </th>
-            <th class="px-2 py-1.5 font-medium">{{ t('finance.expensesView.table.notes') }}</th>
-            <th class="px-2 py-1.5 font-medium">{{ t('finance.expensesView.table.status') }}</th>
+            <th class="px-2 py-1.5 text-center font-medium">
+              {{ t('finance.expensesView.table.notes') }}
+            </th>
+            <th class="px-2 py-1.5 text-center font-medium">
+              {{ t('finance.expensesView.table.status') }}
+            </th>
             <th class="px-2 py-1.5 text-end font-medium">
               {{ t('finance.expensesView.table.amount') }}
+            </th>
+            <th class="px-2 py-1.5 text-center font-medium">
+              {{ t('finance.expensesView.table.actions') }}
             </th>
           </tr>
         </thead>
@@ -158,20 +223,52 @@ onMounted(load)
             :key="expense.id"
             class="border-ligne border-b last:border-0"
           >
-            <td class="px-2 py-1.5 whitespace-nowrap">
-              <MonoValue :value="expense.date" align="left" />
+            <td class="px-2 py-1.5 text-center whitespace-nowrap">
+              <MonoValue :value="expense.date" align="center" />
             </td>
-            <td class="px-2 py-1.5">{{ categoryLabel(expense.category) }}</td>
-            <td class="px-2 py-1.5">{{ expense.notes || '-' }}</td>
-            <td class="px-2 py-1.5 whitespace-nowrap">
+            <td class="px-2 py-1.5 text-center">{{ categoryLabel(expense.category) }}</td>
+            <td class="px-2 py-1.5 text-center">{{ expense.notes || '-' }}</td>
+            <td class="px-2 py-1.5 text-center whitespace-nowrap">
               {{ t(`expenseStatus.${expense.status}`) }}
             </td>
             <td class="px-2 py-1.5 text-end whitespace-nowrap">
               <MonoValue :value="formatMoney(expense.amount)" />
             </td>
+            <td class="px-2 py-1.5 text-center whitespace-nowrap">
+              <div v-if="expense.status === 'UNPAID'" class="flex justify-center gap-2">
+                <button
+                  type="button"
+                  data-test="edit-expense"
+                  class="text-bitume text-xs hover:brightness-90"
+                  @click="onEditExpense(expense)"
+                >
+                  {{ t('finance.expensesView.editExpense') }}
+                </button>
+                <button
+                  type="button"
+                  data-test="delete-expense"
+                  class="text-critique text-xs hover:brightness-90 disabled:opacity-50"
+                  :disabled="deletingId === expense.id"
+                  @click="onDeleteExpense(expense)"
+                >
+                  {{ t('finance.expensesView.deleteExpense') }}
+                </button>
+              </div>
+              <button
+                v-else-if="expense.status === 'PAID' || expense.status === 'PARTIALLY_PAID'"
+                type="button"
+                data-test="cancel-expense"
+                class="text-critique text-xs hover:brightness-90 disabled:opacity-50"
+                :disabled="cancellingId === expense.id"
+                @click="onCancelExpenseRow(expense)"
+              >
+                {{ t('finance.expensesView.cancelExpense') }}
+              </button>
+              <span v-else class="text-texte-3">-</span>
+            </td>
           </tr>
           <tr v-if="filteredExpenses.length === 0">
-            <td colspan="5" class="text-texte-3 px-2 py-4 text-center">
+            <td colspan="6" class="text-texte-3 px-2 py-4 text-center">
               {{ t('finance.expensesView.listEmpty') }}
             </td>
           </tr>
@@ -204,14 +301,15 @@ onMounted(load)
 
     <Modal
       v-if="showExpenseModal"
-      :title="t('finance.expense.title')"
+      :title="editingExpense ? t('finance.expensesView.editExpense') : t('finance.expense.title')"
       max-width="max-w-4xl"
-      @close="showExpenseModal = false"
+      @close="onExpenseModalClosed"
     >
       <ExpenseForm
         show-treasury-payment
-        @success="onExpenseCreated"
-        @cancel="showExpenseModal = false"
+        :editing-expense="editingExpense"
+        @success="onExpenseSaved"
+        @cancel="onExpenseModalClosed"
       />
     </Modal>
   </div>

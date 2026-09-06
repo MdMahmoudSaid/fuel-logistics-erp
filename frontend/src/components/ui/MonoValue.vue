@@ -9,7 +9,7 @@ withDefaults(
   defineProps<{
     value: string | number
     unit?: string
-    align?: 'right' | 'left'
+    align?: 'right' | 'left' | 'center'
   }>(),
   {
     unit: undefined,
@@ -22,7 +22,7 @@ withDefaults(
   <span
     dir="ltr"
     class="inline-flex items-baseline gap-1 whitespace-nowrap font-mono tabular-nums"
-    :class="align === 'right' ? 'text-right' : 'text-start'"
+    :class="align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-start'"
   >
     {{ value
     }}<span v-if="unit" class="font-mono text-[0.85em] font-normal text-current">{{

@@ -616,8 +616,14 @@
         "category": "الفئة",
         "notes": "ملاحظات",
         "status": "الحالة",
-        "amount": "المبلغ"
+        "amount": "المبلغ",
+        "actions": "الإجراءات"
       },
+      "editExpense": "تعديل",
+      "deleteExpense": "حذف",
+      "deleteExpenseConfirm": "هل تريد حذف هذه المصروفات غير المدفوعة نهائيًا؟",
+      "cancelExpense": "إلغاء",
+      "actionError": "لا يمكن تنفيذ هذا الإجراء على هذه المصروفات.",
       "monitoring": {
         "customs": "الجمارك",
         "transit": "العبور",

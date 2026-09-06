@@ -618,8 +618,14 @@
         "category": "Catégorie",
         "notes": "Notes",
         "status": "Statut",
-        "amount": "Montant"
+        "amount": "Montant",
+        "actions": "Actions"
       },
+      "editExpense": "Modifier",
+      "deleteExpense": "Supprimer",
+      "deleteExpenseConfirm": "Supprimer définitivement cette dépense non payée ?",
+      "cancelExpense": "Annuler",
+      "actionError": "Cette action est impossible sur cette dépense.",
       "monitoring": {
         "customs": "Douane",
         "transit": "Transit",
