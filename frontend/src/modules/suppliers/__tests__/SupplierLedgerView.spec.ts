@@ -1,7 +1,23 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
+import { useAuthStore } from '@/stores/auth'
 import SupplierLedgerView from '../SupplierLedgerView.vue'
 import type { SupplierLedger } from '@/modules/purchasing/types'
+
+function setUser(permissions: Record<string, string[]>) {
+  const auth = useAuthStore()
+  auth.user = {
+    id: 1,
+    phone: '+22212345678',
+    email: 'admin@example.com',
+    full_name: 'Admin',
+    role: 1,
+    role_detail: { id: 1, name: 'Admin', permissions },
+  }
+}
+
+vi.stubGlobal('confirm', vi.fn(() => true))
 
 const push = vi.fn()
 vi.mock('vue-router', () => ({
@@ -81,6 +97,7 @@ const ledger: SupplierLedger = {
       is_advance: false,
       reference: 'PAY-WITH-PROOF',
       proof_url: '/media/documents/supplier-payment.png',
+      is_reversed: false,
     },
     {
       id: 31,
@@ -90,6 +107,7 @@ const ledger: SupplierLedger = {
       is_advance: false,
       reference: 'PAY-NO-PROOF',
       proof_url: null,
+      is_reversed: false,
     },
   ],
   total_purchased: '90000000.00',
@@ -135,6 +153,7 @@ const ledger: SupplierLedger = {
 const fetchSupplierLedger = vi.fn(async () => ledger)
 const exportLedgerPdf = vi.fn(async () => undefined)
 const exportSupplierPaymentPdf = vi.fn(async () => undefined)
+const cancelSupplierPayment = vi.fn(async () => ({ ...ledger.payments[0], is_reversed: true }))
 
 vi.mock('@/modules/purchasing/api', () => ({
   fetchSupplierLedger: (...args: unknown[]) => fetchSupplierLedger(...(args as [])),
@@ -146,12 +165,17 @@ vi.mock('@/modules/finance/api', async (importOriginal) => {
     ...actual,
     exportLedgerPdf: (...args: unknown[]) => exportLedgerPdf(...(args as [])),
     exportSupplierPaymentPdf: (...args: unknown[]) => exportSupplierPaymentPdf(...(args as [])),
+    cancelSupplierPayment: (...args: unknown[]) => cancelSupplierPayment(...(args as [])),
   }
 })
 
 describe('SupplierLedgerView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // Task 6 (client business decision, confirmed 2026-09-06): the view
+    // now reads useAuthStore() for the supplier-payment cancel button's
+    // permission gate, so a Pinia instance must exist before mounting.
+    setActivePinia(createPinia())
   })
 
   it('shows purchase proofs in the purchase history table with an internal preview modal', async () => {
@@ -237,6 +261,19 @@ describe('SupplierLedgerView', () => {
     expect(advanceButton).toBeTruthy()
     await advanceButton!.trigger('click')
     await flushPromises()
+    // AdvanceForm's own onMounted fetch (bankAccountResource/
+    // cashAccountResource/fetchPartyBalances) is a real, unmocked
+    // apiClient call in this spec. Its request interceptor calls
+    // useAuthStore() - before Pinia was required here (pre-Task 6), that
+    // call threw synchronously with no active Pinia, which rejected the
+    // request near-instantly and cleared "loading" within one
+    // flushPromises(). Now that Pinia is active for this whole file, the
+    // interceptor succeeds and a real (failing) network call goes out,
+    // which needs real wall-clock time to settle - wait for it instead of
+    // guessing a flush count.
+    await vi.waitFor(() => {
+      expect(wrapper.find('select#party').exists()).toBe(true)
+    })
 
     const selects = wrapper.findAll('select')
     expect((selects[0].element as HTMLSelectElement).disabled).toBe(true)
@@ -291,5 +328,32 @@ describe('SupplierLedgerView', () => {
     await flushPromises()
 
     expect(exportSupplierPaymentPdf).toHaveBeenCalledWith(30, 'fr')
+  })
+
+  // Task 6 (client business decision, confirmed 2026-09-06): a supplier
+  // payment can only be corrected by contre-passation - never a silent
+  // edit or delete - via a permission-gated "Annuler" button per row.
+  it('hides the Annuler button without finance.cancel permission', async () => {
+    setUser({ finance: ['view'] })
+    const wrapper = mount(SupplierLedgerView)
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="supplier-payment-cancel"]').exists()).toBe(false)
+  })
+
+  it('cancels a supplier payment after confirmation and reloads the ledger', async () => {
+    setUser({ finance: ['view', 'cancel'] })
+    const wrapper = mount(SupplierLedgerView)
+    await flushPromises()
+    fetchSupplierLedger.mockClear()
+
+    const cancelButtons = wrapper.findAll('[data-test="supplier-payment-cancel"]')
+    expect(cancelButtons).toHaveLength(2)
+
+    await cancelButtons[0].trigger('click')
+    await flushPromises()
+
+    expect(cancelSupplierPayment).toHaveBeenCalledWith(30)
+    expect(fetchSupplierLedger).toHaveBeenCalledTimes(1)
   })
 })

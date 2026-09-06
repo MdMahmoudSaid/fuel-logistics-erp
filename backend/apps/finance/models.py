@@ -290,6 +290,13 @@ class SupplierPayment(AuditableModel, TimeStampedModel):
     recorded_by = models.ForeignKey(
         "accounts.User", on_delete=models.PROTECT, related_name="supplier_payments_recorded"
     )
+    # Set only by SupplierPaymentCancellationService.cancel_supplier_payment
+    # (Task 6, client business decision confirmed 2026-09-06) - never a hard
+    # delete (AuditableModel.is_locked_for_deletion blocks that once past
+    # draft), so every balance/ledger consumer that sums a supplier's/
+    # order's payments must exclude is_reversed=True rows. Mirrors
+    # CustomerPayment.is_reversed above exactly.
+    is_reversed = models.BooleanField(default=False)
 
     class Meta:
         ordering = ["-payment_date", "-id"]

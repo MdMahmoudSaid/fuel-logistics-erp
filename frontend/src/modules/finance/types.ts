@@ -91,6 +91,10 @@ export interface SupplierPayment {
   reference: string
   recorded_by: number | null
   recorded_by_detail: UserBrief | null
+  // Task 6 (client business decision, confirmed 2026-09-06): set only by
+  // SupplierPaymentCancellationService.cancel_supplier_payment via
+  // POST /api/supplier-payments/{id}/cancel/ - never a plain edit.
+  is_reversed: boolean
   created_at: string
   updated_at: string
 }

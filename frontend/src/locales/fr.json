@@ -1170,7 +1170,12 @@
         "reference": "Référence",
         "advance": "Avance",
         "amount": "Montant",
-        "proof": "Justificatif"
+        "status": "Statut",
+        "cancelled": "Annulé",
+        "proof": "Justificatif",
+        "cancel": "Annuler",
+        "cancelConfirm": "Annuler ce paiement fournisseur ? Une écriture de trésorerie inverse sera créée et la dette sera restaurée. Cette action est tracée et ne peut pas être annulée deux fois.",
+        "cancelError": "Impossible d'annuler ce paiement."
       },
       "noPayments": "Aucun paiement."
     },

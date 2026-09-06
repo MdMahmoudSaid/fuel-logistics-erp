@@ -97,6 +97,10 @@ export interface SupplierLedgerPayment {
   is_advance: boolean
   reference: string
   proof_url: string | null
+  // Task 6 (client business decision, confirmed 2026-09-06): set only by
+  // SupplierPaymentCancellationService.cancel_supplier_payment via
+  // POST /api/supplier-payments/{id}/cancel/ - never a plain edit.
+  is_reversed: boolean
 }
 
 export interface SupplierLedger {

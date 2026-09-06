@@ -87,7 +87,14 @@ class SupplierViewSet(viewsets.ModelViewSet):
         payments = supplier.payments.select_related(
             "supplier_order", "bank_account", "cash_account", "recorded_by"
         )
-        total_paid = sum((p.amount for p in payments), Decimal("0.00"))
+        # Task 6 (client business decision, confirmed 2026-09-06): the
+        # payments list itself still shows a cancelled payment (full audit
+        # trail, is_reversed flag visible via the serializer) - only the
+        # total must exclude it, since it never really left treasury net
+        # of its own reversal.
+        total_paid = sum(
+            (p.amount for p in payments if not p.is_reversed), Decimal("0.00")
+        )
         total_purchased = sum((o.total_amount for o in confirmed_orders), Decimal("0.00"))
         # Bug fix (client business rule, confirmed 2026-09-06): the debt owed
         # to this supplier ("outstanding_balance") is priced on quantity

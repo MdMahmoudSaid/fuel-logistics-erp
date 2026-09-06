@@ -311,9 +311,13 @@ class SupplierPaymentSerializer(serializers.ModelSerializer):
         fields = [
             "id", "supplier", "supplier_detail", "supplier_order", "amount", "payment_date",
             "method", "bank_account", "cash_account", "is_advance", "reference",
-            "recorded_by", "recorded_by_detail", "proof_url", "created_at", "updated_at",
+            "recorded_by", "recorded_by_detail", "proof_url", "is_reversed",
+            "created_at", "updated_at",
         ]
-        read_only_fields = ["id", "recorded_by", "created_at", "updated_at"]
+        # is_reversed is read-only here: only SupplierPaymentCancellationService.
+        # cancel_supplier_payment (via the /cancel/ action) may ever set it -
+        # never a plain PATCH, which would skip the treasury reversal.
+        read_only_fields = ["id", "recorded_by", "is_reversed", "created_at", "updated_at"]
 
     def get_proof_url(self, obj) -> str | None:
         payment_content_type = ContentType.objects.get_for_model(SupplierPayment)

@@ -338,6 +338,59 @@ class TransportPaymentCancellationService:
         return payment
 
 
+class SupplierPaymentCancellationError(ValueError):
+    """Raised when a SupplierPayment cannot be cancelled as requested."""
+
+
+class SupplierPaymentCancellationService:
+    """Cancels a wrongly-entered SupplierPayment by contre-passation, never
+    a silent edit or a hard delete (Task 6, client business decision
+    confirmed 2026-09-06 - the smallest change that keeps a full audit
+    trail, following the exact shape of TransportPaymentCancellationService
+    and ExpensePostingService.cancel_paid_expense above: reverse whatever
+    really left treasury with an offsetting entry, flag the record instead
+    of deleting it, one atomic operation).
+
+    SupplierPayment itself never triggers SupplierAdvance consumption
+    (that only happens on SupplierOrder confirmation, tracked against the
+    order as the AdvanceConsumption debt, not against the payment) - so
+    unlike TransportPayment's cancellation there is no advance-reversal
+    step needed here.
+    """
+
+    @staticmethod
+    @transaction.atomic
+    def cancel_supplier_payment(payment: SupplierPayment, actor) -> SupplierPayment:
+        payment = SupplierPayment.objects.select_for_update().get(pk=payment.pk)
+        if payment.is_reversed:
+            raise SupplierPaymentCancellationError("Ce paiement fournisseur est deja annule.")
+
+        content_type = ContentType.objects.get_for_model(SupplierPayment)
+        paid_transactions = TreasuryTransaction.objects.filter(
+            source_content_type=content_type,
+            source_object_id=payment.id,
+            type=TreasuryTransaction.Type.MONEY_OUT,
+        )
+        paid_amount = paid_transactions.aggregate(total=Sum("amount"))["total"] or ZERO
+        if paid_amount > ZERO:
+            original = paid_transactions.order_by("id").first()
+            TreasuryTransaction.objects.create(
+                bank_account=original.bank_account,
+                cash_account=original.cash_account,
+                type=TreasuryTransaction.Type.MONEY_IN,
+                amount=paid_amount,
+                date=timezone.localdate(),
+                note=f"Annulation paiement fournisseur #{payment.id}",
+                source_content_type=content_type,
+                source_object_id=payment.id,
+                recorded_by=actor,
+            )
+
+        payment.is_reversed = True
+        payment.save(update_fields=["is_reversed", "updated_at"])
+        return payment
+
+
 class FinancePostingService:
     """Posts a direct CustomerPayment to company treasury (Task 4, client
     modifications plan; docs/PHASE_5_PLAN.md conventions Etape 6: separate
@@ -1115,7 +1168,14 @@ class ControlledDebtPaymentService:
             SupplierPayment.objects.filter(
                 supplier_order=order,
                 is_advance=False,
-            ).aggregate(total=Sum("amount"))["total"]
+            )
+            # A cancelled (is_reversed=True) payment never really left
+            # treasury net of its own reversal - exclude it here so the
+            # order's remaining debt is restored, mirroring
+            # PaymentAllocationService.get_customer_outstanding's
+            # equivalent exclusion for CustomerPayment.
+            .exclude(is_reversed=True)
+            .aggregate(total=Sum("amount"))["total"]
             or ZERO
         )
         consumed = AdvanceConsumptionService.get_consumed_amount(order)
@@ -1273,6 +1333,7 @@ class ControlledDebtPaymentService:
         )
         last_payment = (
             SupplierPayment.objects.filter(supplier=supplier, is_advance=False)
+            .exclude(is_reversed=True)
             .order_by("-payment_date", "-id").values("payment_date", "amount").first()
         )
         return {
@@ -2267,7 +2328,14 @@ class SupplierLedgerService:
                 "proof_url": None,
             })
 
-        payments = SupplierPayment.objects.filter(supplier=supplier, is_advance=False)
+        # A cancelled payment (is_reversed=True) never really left treasury
+        # net of its own reversal - excluded here so the chronological
+        # ledger reads as "what's currently true"; the cancellation itself
+        # (who, when, old -> new) is fully traceable in the Journal
+        # d'audit, which is never filtered this way.
+        payments = SupplierPayment.objects.filter(supplier=supplier, is_advance=False).exclude(
+            is_reversed=True
+        )
         payment_ct = ContentType.objects.get_for_model(SupplierPayment)
         for payment in payments:
             txn = (

@@ -36,7 +36,13 @@ class SupplierSerializer(serializers.ModelSerializer):
         return f"{total:.2f}"
 
     def get_total_paid(self, obj) -> str:
-        total = obj.payments.aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
+        # Task 6 (client business decision, confirmed 2026-09-06): a
+        # cancelled (is_reversed=True) payment never really left treasury -
+        # excluded so this figure reflects what's currently true.
+        total = (
+            obj.payments.exclude(is_reversed=True).aggregate(total=Sum("amount"))["total"]
+            or Decimal("0.00")
+        )
         return f"{total:.2f}"
 
     def get_outstanding_balance(self, obj) -> str:

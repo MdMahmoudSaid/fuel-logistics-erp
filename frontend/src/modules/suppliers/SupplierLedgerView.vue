@@ -2,8 +2,9 @@
 import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 import { fetchSupplierLedger } from '@/modules/purchasing/api'
-import { exportLedgerPdf, exportSupplierPaymentPdf } from '@/modules/finance/api'
+import { cancelSupplierPayment, exportLedgerPdf, exportSupplierPaymentPdf } from '@/modules/finance/api'
 import type { SupplierLedger } from '@/modules/purchasing/types'
 import DebtPaymentForm from '@/modules/finance/DebtPaymentForm.vue'
 import AdvanceForm from '@/modules/finance/AdvanceForm.vue'
@@ -16,6 +17,7 @@ import MonoValue from '@/components/ui/MonoValue.vue'
 
 const route = useRoute()
 const router = useRouter()
+const auth = useAuthStore()
 const { t, locale } = useI18n()
 
 const ledger = ref<SupplierLedger | null>(null)
@@ -26,6 +28,10 @@ const showAdvanceForm = ref(false)
 const previewUrl = ref<string | null>(null)
 const exporting = ref(false)
 const exportingPaymentId = ref<number | null>(null)
+const cancellingPaymentId = ref<number | null>(null)
+const cancelError = ref('')
+
+const canCancelSupplierPayments = computed(() => auth.can('finance', 'cancel'))
 
 const supplierId = computed(() => Number(route.params.id))
 
@@ -74,6 +80,21 @@ async function exportPaymentPdf(paymentId: number) {
     error.value = t('reports.exportError')
   } finally {
     exportingPaymentId.value = null
+  }
+}
+
+async function onCancelSupplierPayment(paymentId: number) {
+  if (!window.confirm(t('purchasing.supplierLedger.paymentsTable.cancelConfirm'))) return
+  cancellingPaymentId.value = paymentId
+  cancelError.value = ''
+  try {
+    await cancelSupplierPayment(paymentId)
+    await load()
+  } catch (e) {
+    const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+    cancelError.value = detail || t('purchasing.supplierLedger.paymentsTable.cancelError')
+  } finally {
+    cancellingPaymentId.value = null
   }
 }
 
@@ -296,6 +317,7 @@ function proofUrl(order: SupplierLedger['orders'][number]) {
       </Card>
 
       <Card :title="t('purchasing.supplierLedger.paymentsAndAdvances')">
+        <p v-if="cancelError" class="text-critique mb-2 text-sm">{{ cancelError }}</p>
         <div class="overflow-x-auto">
           <table class="w-full text-start text-sm">
             <thead>
@@ -316,6 +338,9 @@ function proofUrl(order: SupplierLedger['orders'][number]) {
                   {{ t('purchasing.supplierLedger.paymentsTable.amount') }}
                 </th>
                 <th class="px-3 py-2.5 font-medium">
+                  {{ t('purchasing.supplierLedger.paymentsTable.status') }}
+                </th>
+                <th class="px-3 py-2.5 font-medium">
                   {{ t('purchasing.supplierLedger.paymentsTable.proof') }}
                 </th>
                 <th class="px-3 py-2.5 font-medium"></th>
@@ -326,6 +351,7 @@ function proofUrl(order: SupplierLedger['orders'][number]) {
                 v-for="payment in ledger.payments"
                 :key="payment.id"
                 class="border-ligne border-b last:border-0"
+                :class="payment.is_reversed ? 'opacity-60' : ''"
               >
                 <td class="px-3 py-2.5">{{ payment.payment_date }}</td>
                 <td class="px-3 py-2.5">{{ t(`paymentMethod.${payment.method}`) }}</td>
@@ -334,7 +360,16 @@ function proofUrl(order: SupplierLedger['orders'][number]) {
                   {{ payment.is_advance ? t('common.yes') : t('common.no') }}
                 </td>
                 <td class="px-3 py-2.5 text-end">
-                  <MonoValue :value="formatMoney(payment.amount)" />
+                  <MonoValue
+                    :class="payment.is_reversed ? 'text-texte-3 line-through' : ''"
+                    :value="formatMoney(payment.amount)"
+                  />
+                </td>
+                <td class="px-3 py-2.5">
+                  <Badge v-if="payment.is_reversed" variant="critique">
+                    {{ t('purchasing.supplierLedger.paymentsTable.cancelled') }}
+                  </Badge>
+                  <span v-else class="text-texte-3">—</span>
                 </td>
                 <td class="px-3 py-2.5">
                   <button
@@ -348,19 +383,31 @@ function proofUrl(order: SupplierLedger['orders'][number]) {
                   <span v-else class="text-texte-3">—</span>
                 </td>
                 <td class="px-3 py-2.5 text-end">
-                  <button
-                    type="button"
-                    data-test="supplier-payment-pdf"
-                    class="text-bitume underline disabled:opacity-50"
-                    :disabled="exportingPaymentId === payment.id"
-                    @click="exportPaymentPdf(payment.id)"
-                  >
-                    {{ t('finance.partyLedger.pdf') }}
-                  </button>
+                  <div class="flex justify-end gap-3">
+                    <button
+                      type="button"
+                      data-test="supplier-payment-pdf"
+                      class="text-bitume underline disabled:opacity-50"
+                      :disabled="exportingPaymentId === payment.id"
+                      @click="exportPaymentPdf(payment.id)"
+                    >
+                      {{ t('finance.partyLedger.pdf') }}
+                    </button>
+                    <button
+                      v-if="canCancelSupplierPayments && !payment.is_reversed"
+                      type="button"
+                      data-test="supplier-payment-cancel"
+                      class="text-critique disabled:opacity-50"
+                      :disabled="cancellingPaymentId === payment.id"
+                      @click="onCancelSupplierPayment(payment.id)"
+                    >
+                      {{ t('purchasing.supplierLedger.paymentsTable.cancel') }}
+                    </button>
+                  </div>
                 </td>
               </tr>
               <tr v-if="ledger.payments.length === 0">
-                <td colspan="7" class="text-texte-3 px-3 py-8 text-center">
+                <td colspan="8" class="text-texte-3 px-3 py-8 text-center">
                   {{ t('purchasing.supplierLedger.noPayments') }}
                 </td>
               </tr>

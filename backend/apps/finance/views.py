@@ -71,6 +71,8 @@ from .services import (
     ShareholderLoanError,
     ShareholderLoanService,
     ShareholderProfitPreviewService,
+    SupplierPaymentCancellationError,
+    SupplierPaymentCancellationService,
     TreasuryService,
     TreasuryTransferError,
 )
@@ -171,6 +173,26 @@ class SupplierPaymentViewSet(viewsets.ModelViewSet):
         response = HttpResponse(pdf_bytes, content_type="application/pdf")
         response["Content-Disposition"] = f'attachment; filename="paiement-fournisseur-{payment.id}.pdf"'
         return response
+
+    @action(detail=True, methods=["post"])
+    def cancel(self, request, pk=None):
+        """Reverse a wrongly-entered SupplierPayment by contre-passation
+        (Task 6, client business decision confirmed 2026-09-06): the only
+        way to undo one, since it can never be edited or hard-deleted past
+        creation. Creates an offsetting treasury entry, flags the payment
+        is_reversed=True - never deletes it, so the full history stays in
+        the ledger and the audit log.
+
+        POST /api/supplier-payments/{id}/cancel/
+        """
+        payment = self.get_object()
+        try:
+            payment = SupplierPaymentCancellationService.cancel_supplier_payment(
+                payment, request.user
+            )
+        except SupplierPaymentCancellationError as exc:
+            return Response({"detail": str(exc)}, status=http_status.HTTP_400_BAD_REQUEST)
+        return Response(SupplierPaymentSerializer(payment, context={"request": request}).data)
 
 
 class SupplierAdvanceViewSet(viewsets.ModelViewSet):

@@ -21,7 +21,11 @@ class SupplierStatementQuery:
             supplier_id=supplier_id,
             status=SupplierOrder.Status.CONFIRMED,
         )
-        payments = SupplierPayment.objects.filter(supplier_id=supplier_id)
+        # A cancelled payment (is_reversed=True) never really left treasury -
+        # excluded so the running balance reflects what's currently true.
+        payments = SupplierPayment.objects.filter(supplier_id=supplier_id).exclude(
+            is_reversed=True
+        )
         if date_from:
             orders = orders.filter(purchase_date__gte=date_from)
             payments = payments.filter(payment_date__gte=date_from)

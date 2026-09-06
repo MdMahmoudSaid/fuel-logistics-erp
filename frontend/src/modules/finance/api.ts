@@ -194,6 +194,17 @@ export function cancelExpense(expenseId: number): Promise<Expense> {
   return apiClient.post(`/expenses/${expenseId}/cancel/`).then((r) => r.data as Expense)
 }
 
+// backend/apps/finance/services.py SupplierPaymentCancellationService.
+// cancel_supplier_payment() is the sole authority on this flow (Task 6,
+// client business decision confirmed 2026-09-06) - this just posts the
+// request. A SupplierPayment can never be edited or hard-deleted past
+// creation, so this contre-passation is the only way to correct one.
+export function cancelSupplierPayment(paymentId: number): Promise<SupplierPayment> {
+  return apiClient
+    .post(`/supplier-payments/${paymentId}/cancel/`)
+    .then((r) => r.data as SupplierPayment)
+}
+
 // backend/apps/finance/services.py TreasuryService.record_transfer() is the sole
 // authority on this flow (matched MONEY_OUT/MONEY_IN TRANSFER pair under
 // account locks) - this just posts the request.

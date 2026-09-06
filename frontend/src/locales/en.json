@@ -1166,7 +1166,12 @@
         "reference": "Reference",
         "advance": "Advance",
         "amount": "Amount",
-        "proof": "Proof"
+        "status": "Status",
+        "cancelled": "Cancelled",
+        "proof": "Proof",
+        "cancel": "Cancel",
+        "cancelConfirm": "Cancel this supplier payment? An offsetting treasury entry will be created and the debt restored. This action is logged and cannot be cancelled twice.",
+        "cancelError": "This payment could not be cancelled."
       },
       "noPayments": "No payments yet."
     },

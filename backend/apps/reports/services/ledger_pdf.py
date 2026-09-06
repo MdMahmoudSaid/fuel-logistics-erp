@@ -722,7 +722,7 @@ def render_supplier_payment_pdf(payment, lang: str = "fr") -> bytes:
     instead of one transporter's whole history)."""
     from django.db.models import Sum
 
-    from apps.finance.models import AdvanceConsumption, SupplierPayment
+    from apps.finance.models import AdvanceConsumption
 
     labels = _labels(lang)
     is_rtl = lang == "ar"
@@ -754,13 +754,16 @@ def render_supplier_payment_pdf(payment, lang: str = "fr") -> bytes:
             ).aggregate(total=Sum("amount"))["total"]
             or Decimal("0.00")
         )
-        total_paid_for_order = (
-            SupplierPayment.objects.filter(supplier_order=order, is_advance=False).aggregate(
-                total=Sum("amount")
-            )["total"]
-            or Decimal("0.00")
-        )
-        remaining_balance = order.total_amount - total_paid_for_order
+        # Bug fix (client business rule, confirmed 2026-09-06): reuse
+        # ControlledDebtPaymentService.describe_supplier_order - the single
+        # source of truth for a supplier order's debt (priced on quantity
+        # actually loaded, not the full order) and its remaining balance -
+        # rather than recomputing "order.total_amount - paid" here, which
+        # both duplicated the formula and had gone stale after that fix.
+        from apps.finance.services import ControlledDebtPaymentService
+
+        order_debt = ControlledDebtPaymentService.describe_supplier_order(order)
+        remaining_balance = order_debt["remaining_amount"]
         order_rows = [
             (labels["order"], order.reference),
             (labels["product"], order.product.name),
