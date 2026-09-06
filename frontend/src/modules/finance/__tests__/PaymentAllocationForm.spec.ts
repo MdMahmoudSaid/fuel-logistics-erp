@@ -147,7 +147,14 @@ describe('PaymentAllocationForm FIFO auto-allocation', () => {
     expect(amountInputs()[0].element.value).toBe('500.00')
   })
 
-  it('refuses to save a customer payment without a proof document', async () => {
+  it('saves a customer payment without a proof document (Task 13/proof-optional bug fix)', async () => {
+    // Bug fix (found during 2026-09-06 manual recette): the proof is
+    // optional on customer payments (backend CustomerPaymentSerializer.
+    // validate_proof already accepts None) - this form previously had a
+    // stale hard client-side gate (plus a leftover `required` HTML
+    // attribute on the visually-hidden #proof_file input) blocking every
+    // submission with no proof attached, silently and with no visible
+    // error most of the time.
     const wrapper = mount(PaymentAllocationForm)
     await flushPromises()
     await selectCustomer(wrapper)
@@ -157,8 +164,8 @@ describe('PaymentAllocationForm FIFO auto-allocation', () => {
     await wrapper.find('form').trigger('submit.prevent')
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Le justificatif de paiement est obligatoire.')
-    expect(createCustomerPayment).not.toHaveBeenCalled()
+    expect(wrapper.text()).not.toContain('Le justificatif de paiement est obligatoire.')
+    expect(createCustomerPayment).toHaveBeenCalledTimes(1)
   })
 
   it('shows a clear payment proof picker and selected file name', async () => {

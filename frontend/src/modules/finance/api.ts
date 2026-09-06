@@ -145,7 +145,12 @@ export function uploadCustomerPaymentProof(params: {
 
 export function createCustomerPaymentWithProof(
   payload: Record<string, unknown>,
-  proof: File,
+  // Bug fix (found during 2026-09-06 manual recette): proof is optional on
+  // customer payments (backend CustomerPaymentSerializer.validate_proof
+  // already accepts None) - was typed as a required File, so a null/
+  // undefined caller value would have been coerced to the literal string
+  // "null" by FormData.append below instead of being omitted.
+  proof?: File | null,
 ): Promise<CustomerPayment> {
   const form = new FormData()
   for (const [key, value] of Object.entries(payload)) {
@@ -156,7 +161,9 @@ export function createCustomerPaymentWithProof(
       form.append(key, String(value))
     }
   }
-  form.append('proof', proof)
+  if (proof) {
+    form.append('proof', proof)
+  }
   return apiClient
     .post<CustomerPayment>('/customer-payments/', form, {
       headers: { 'Content-Type': 'multipart/form-data' },

@@ -192,10 +192,14 @@ async function onSubmit() {
   error.value = ''
   proofError.value = ''
   try {
-    if (!proofFile.value) {
-      proofError.value = t('finance.payment.proofRequired')
-      return
-    }
+    // Bug fix (found during 2026-09-06 manual recette): the proof/
+    // justificatif was made optional on customer payments (client
+    // decision, backend CustomerPaymentSerializer.validate_proof already
+    // accepts None) - this form's own hard client-side gate was never
+    // updated to match, silently blocking every customer payment that
+    // had no proof file attached, with the "required" HTML attribute on
+    // #proof_file (also removed) giving no visible error either since
+    // that input is visually hidden (sr-only).
 
     const allocations: InvoiceAllocationInput[] = lines.value
       .filter((line) => line.amount)
@@ -397,7 +401,6 @@ async function onSubmit() {
         <input
           id="proof_file"
           type="file"
-          required
           :accept="IMAGE_UPLOAD_ACCEPT"
           class="sr-only"
           @change="onProofFileChange"
