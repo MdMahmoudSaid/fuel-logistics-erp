@@ -1721,6 +1721,47 @@ def test_record_client_verification_150L_loss_splits_company_and_transporter():
 
 
 @pytest.mark.django_db
+def test_transport_payment_created_after_client_verification_still_nets_the_deduction():
+    """Bug fix (annexe au bug recette critique 8bbcd97, 2026-09-06):
+    TransportPaymentForm.vue never sends deduction_amount, and
+    sync_transport_shortage_deduction (called from record_delivery/
+    record_client_verification) only pushes a TransportDeduction's total
+    into TransportPayment rows that already exist at that moment - so a
+    payment created AFTER the loss is already known (delivery, then client
+    verification - the common real order) used to start net_amount at the
+    full base_amount forever, silently losing the deduction depending on
+    the order of actions. TransportPayment.save() now falls back to the
+    trip's live TransportDeduction total whenever the caller leaves
+    deduction_amount at its default, so the backend is the reliable source
+    regardless of what the frontend sends."""
+    fx = _fixtures_with_customer("TPAFTERVER")
+    trip = _deliverable_trip(fx, "TRIP-TPAFTERVER-001")
+    DeliveryService.record_delivery(
+        trip_id=trip.id,
+        control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE,
+        controller=fx["admin_user"],
+        unit_selling_price=Decimal("850.0000"),
+    )
+    DeliveryService.record_client_verification(
+        trip_id=trip.id, received_qty=Decimal("44850.00"),
+        verified_at=date.today(), actor=fx["admin_user"],
+    )
+    deduction = TransportDeduction.objects.get(trip=trip)
+    assert deduction.amount == Decimal("42500.00")  # 50L chargeable x 850
+
+    payment = TransportPayment.objects.create(
+        trip=trip,
+        transporter=fx["transporter"],
+        calculation_method=TransportPayment.CalculationMethod.FIXED,
+        base_amount=Decimal("5000000.00"),
+    )
+
+    assert payment.deduction_amount == deduction.amount
+    assert payment.net_amount == Decimal("5000000.00") - deduction.amount
+
+
+@pytest.mark.django_db
 def test_record_client_verification_rejected_when_already_verified():
     """Bug fix (recette corrections 2026-09-05): a second client
     verification on the same trip must be refused - it previously silently

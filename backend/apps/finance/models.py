@@ -559,6 +559,27 @@ class TransportPayment(TimeStampedModel):
 
         is_new = self._state.adding
         if is_new:
+            # Bug fix (recette annexe, 2026-09-06): deduction_amount must
+            # not depend on the caller remembering to pass it - the
+            # frontend's TransportPaymentForm.vue never sends it, so a
+            # payment created after a loss was already discovered (delivery
+            # or client verification, whose own sync_transport_shortage_
+            # deduction only reaches payments that already exist at that
+            # point) would otherwise start at 0 forever, regardless of the
+            # order of actions. The trip's TransportDeduction rows are
+            # already the single source of truth for this amount (see class
+            # docstring) - fall back to their live total whenever the
+            # caller left this field at its default. A caller that
+            # explicitly supplies a non-zero deduction_amount (existing
+            # unit tests exercising the net_amount formula in isolation,
+            # with no TransportDeduction row at all) is left untouched.
+            if self.deduction_amount == Decimal("0.00"):
+                self.deduction_amount = (
+                    TransportDeduction.objects.filter(trip_id=self.trip_id)
+                    .exclude(status=TransportDeduction.Status.CANCELLED)
+                    .aggregate(total=models.Sum("amount"))["total"]
+                    or Decimal("0.00")
+                )
             self.net_amount = (self.base_amount - self.deduction_amount).quantize(Decimal("0.01"))
             super().save(*args, **kwargs)
             consumed = AdvanceConsumptionService.consume_for_transport_payment(self)
