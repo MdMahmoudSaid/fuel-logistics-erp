@@ -305,10 +305,21 @@ const partyCards = computed(() => {
       label: t('dashboard.final.customsAndOther'),
       to: { name: 'treasury-transactions' },
       balance: p.customs_and_other.balance,
-      detail: t('dashboard.final.customs', { amount: formatMoney(p.customs_and_other.customs) }),
-      sub: t('dashboard.final.roadTransit', {
-        amount: formatMoney(p.customs_and_other.road_transit),
-      }),
+      // Bug fix (recette manuelle 2026-09-06): this card's total was
+      // always the sum of all 4 buckets (customs + transit + road_transit
+      // + other), but the itemization below only ever showed 2 of them -
+      // "transit" and "other" existed in the API response and were simply
+      // never read here.
+      detail:
+        t('dashboard.final.customs', { amount: formatMoney(p.customs_and_other.customs) }) +
+        ' · ' +
+        t('dashboard.final.transit', { amount: formatMoney(p.customs_and_other.transit) }),
+      sub:
+        t('dashboard.final.roadTransit', {
+          amount: formatMoney(p.customs_and_other.road_transit),
+        }) +
+        ' · ' +
+        t('dashboard.final.other', { amount: formatMoney(p.customs_and_other.other) }),
       icon: 'shield' as IconName,
       negative: false,
     },

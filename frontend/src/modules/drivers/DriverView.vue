@@ -17,5 +17,10 @@ const fields = computed<FieldSchema[]>(() => [
 </script>
 
 <template>
-  <MasterDataView :title="t('masterData.titles.drivers')" :resource="resource" :fields="fields" />
+  <MasterDataView
+    :title="t('masterData.titles.drivers')"
+    :item-label="t('masterData.itemLabels.drivers')"
+    :resource="resource"
+    :fields="fields"
+  />
 </template>

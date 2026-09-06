@@ -61,12 +61,51 @@ describe('AuditLogViewer', () => {
     await wrapper.find('tbody tr').trigger('click')
 
     const diffTable = wrapper.find('table.text-xs')
-    expect(diffTable.text()).toContain('unit_price')
+    // Bug fix (recette manuelle 2026-09-06): field names in this table are
+    // now translated ("Prix unitaire"), never the raw Python attribute
+    // name ("unit_price").
+    expect(diffTable.text()).toContain('Prix unitaire')
+    expect(diffTable.text()).not.toContain('unit_price')
     expect(diffTable.text()).toContain('600.0000')
     expect(diffTable.text()).toContain('650.0000')
     // `reference` is identical before/after - must not appear in the diff
     // (it legitimately appears elsewhere, in the readable object column).
     expect(diffTable.text()).not.toContain('SO-1')
+  })
+
+  it('translates a known field name (is_reversed) and humanizes an unknown one instead of showing raw snake_case', async () => {
+    list.mockResolvedValueOnce({
+      count: 1,
+      next: null,
+      previous: null,
+      results: [
+        {
+          ...logs[0],
+          id: 3,
+          content_type_label: 'finance.supplierpayment',
+          previous_value: { is_reversed: false, some_future_field: 'a' },
+          new_value: { is_reversed: true, some_future_field: 'b' },
+          summary: {
+            module_key: 'supplier_payment',
+            reference: null,
+            related_party: 'Ahmed',
+            account_label: null,
+            amount: null,
+          },
+        },
+      ],
+    })
+    const wrapper = mount(AuditLogViewer)
+    await flushPromises()
+    await wrapper.find('tbody tr').trigger('click')
+
+    const diffTable = wrapper.find('table.text-xs')
+    expect(diffTable.text()).toContain('Annulé')
+    expect(diffTable.text()).not.toContain('is_reversed')
+    // No translation exists for this made-up field - falls back to a
+    // humanized label, never the raw snake_case string.
+    expect(diffTable.text()).toContain('Some future field')
+    expect(diffTable.text()).not.toContain('some_future_field')
   })
 
   it('shows "Module - Party" for an entry with no natural reference, e.g. a supplier payment', async () => {

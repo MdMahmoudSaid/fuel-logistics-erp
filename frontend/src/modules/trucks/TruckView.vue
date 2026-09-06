@@ -8,8 +8,9 @@ import type { FieldSchema } from '@/components/master-data/types'
 const { t } = useI18n()
 
 const resource = createResourceApi('/trucks/')
-const transporterResource =
-  createResourceApi<{ id: number; name: string; is_internal: boolean }>('/transporters/')
+const transporterResource = createResourceApi<{ id: number; name: string; is_internal: boolean }>(
+  '/transporters/',
+)
 const driverResource = createResourceApi<{ id: number; name: string; phone?: string }>('/drivers/')
 
 const transporters = ref<{ id: number; name: string; is_internal: boolean }[]>([])
@@ -39,9 +40,24 @@ async function createDriverQuick(payload: Record<string, unknown>) {
 // dynamically-filtered variant).
 const fields = computed<FieldSchema[]>(() => [
   { key: 'internal_id', label: t('masterData.fields.internalId'), type: 'text' },
-  { key: 'tractor_registration', label: t('masterData.fields.tractorReg'), type: 'text', required: true },
-  { key: 'tanker_registration', label: t('masterData.fields.tankerReg'), type: 'text', required: true },
-  { key: 'capacity_litres', label: t('masterData.fields.capacityLitres'), type: 'number', required: true },
+  {
+    key: 'tractor_registration',
+    label: t('masterData.fields.tractorReg'),
+    type: 'text',
+    required: true,
+  },
+  {
+    key: 'tanker_registration',
+    label: t('masterData.fields.tankerReg'),
+    type: 'text',
+    required: true,
+  },
+  {
+    key: 'capacity_litres',
+    label: t('masterData.fields.capacityLitres'),
+    type: 'number',
+    required: true,
+  },
   {
     key: 'ownership_type',
     label: t('masterData.fields.ownership'),
@@ -123,6 +139,7 @@ function formFields(form: Record<string, unknown>): FieldSchema[] {
 <template>
   <MasterDataView
     :title="t('masterData.titles.trucks')"
+    :item-label="t('masterData.itemLabels.trucks')"
     :resource="resource"
     :fields="fields"
     :form-fields="formFields"

@@ -22,7 +22,13 @@ const fields = computed<FieldSchema[]>(() => [
   // already existed on the model/API (backend/apps/transport/models.py,
   // seeded by migration 0004_truck_owner_transporter_mandatory) but had no
   // form field, so it could never be set from this page.
-  { key: 'is_internal', label: t('masterData.fields.isInternal'), type: 'checkbox' },
+  {
+    key: 'is_internal',
+    label: t('masterData.fields.isInternal'),
+    type: 'checkbox',
+    trueLabel: t('masterData.transporterType.internal'),
+    falseLabel: t('masterData.transporterType.external'),
+  },
   { key: 'is_active', label: t('masterData.fields.active'), type: 'checkbox' },
 ])
 </script>
@@ -30,6 +36,7 @@ const fields = computed<FieldSchema[]>(() => [
 <template>
   <MasterDataView
     :title="t('masterData.titles.transporters')"
+    :item-label="t('masterData.itemLabels.transporters')"
     :resource="resource"
     :fields="fields"
     ledger-route-name="transporter-ledger"

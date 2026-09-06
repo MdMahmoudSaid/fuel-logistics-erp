@@ -522,7 +522,7 @@ async function onSubmit() {
             >
               <option value="">{{ t('finance.expense.unallocatedCredit') }}</option>
               <option v-for="inv in customerInvoices" :key="inv.id" :value="inv.id">
-                {{ inv.invoice_number }} — outstanding
+                {{ inv.invoice_number }} — {{ t('finance.payment.invoiceOptionRemaining') }}
                 {{ formatMoney(inv.outstanding) }}
               </option>
             </select>
@@ -531,7 +531,10 @@ async function onSubmit() {
       </template>
 
       <div v-else class="border-ligne space-y-2 border-t pt-4">
-        <div v-if="showTreasuryPayment" class="border-ligne space-y-3 rounded-lg border bg-fond p-3">
+        <div
+          v-if="showTreasuryPayment"
+          class="border-ligne space-y-3 rounded-lg border bg-fond p-3"
+        >
           <h2 class="font-display text-sm font-semibold uppercase">
             {{ t('finance.expense.treasuryPayment') }}
           </h2>
@@ -591,7 +594,8 @@ async function onSubmit() {
           >
             <span class="text-texte-2">{{ t('finance.expense.perLitreCalculation') }}</span>
             <span class="text-texte font-medium">
-              {{ formatQuantity(perLitreQuantity ?? 0) }} × {{ formatUnitMoney(form.amount || 0) }} =
+              {{ formatQuantity(perLitreQuantity ?? 0) }} ×
+              {{ formatUnitMoney(form.amount || 0) }} =
               {{ formatMoney(perLitreTotal || 0) }}
             </span>
           </div>

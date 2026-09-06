@@ -689,7 +689,8 @@ const cessionProofUrl = computed(
               {{ statusLabel(entry.new_status as TripStatus) }}
             </p>
             <p class="text-texte-2 text-xs">
-              {{ formatDateTime(entry.changed_at) }} · {{ entry.changed_by_detail?.email }}
+              {{ formatDateTime(entry.changed_at) }} ·
+              {{ entry.changed_by_detail?.full_name || entry.changed_by_detail?.email }}
             </p>
             <p v-if="entry.notes" class="text-texte-2">{{ entry.notes }}</p>
           </li>

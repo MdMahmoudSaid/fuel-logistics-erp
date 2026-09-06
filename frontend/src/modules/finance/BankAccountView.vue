@@ -37,6 +37,7 @@ const fields = computed<FieldSchema[]>(() => [
 <template>
   <MasterDataView
     :title="t('masterData.titles.bankAccounts')"
+    :item-label="t('masterData.itemLabels.bankAccounts')"
     :resource="resource"
     :fields="fields"
   />

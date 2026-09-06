@@ -41,4 +41,13 @@ export interface FieldSchema {
   readOnly?: boolean
   options?: FieldOption[]
   quickCreate?: QuickCreateConfig
+  // Bug fix (recette manuelle 2026-09-06): DataTable used to render every
+  // `checkbox` column with the generic "Actif"/"Inactif" labels, so a
+  // column like Transporteur.is_internal ("Transporteur interne à
+  // l'entreprise") was indistinguishable from the real is_active status
+  // column right next to it. Optional override for what true/false mean
+  // on THIS field; falls back to the generic Actif/Inactif labels when
+  // absent (e.g. is_active itself).
+  trueLabel?: string
+  falseLabel?: string
 }

@@ -59,6 +59,20 @@ function moduleLabel(moduleKey: string): string {
   return te(key) ? t(key) : moduleKey
 }
 
+// Bug fix (recette manuelle 2026-09-06): the diff table below used to print
+// the raw Python field name verbatim (e.g. "is_reversed", "customer_id") -
+// build_snapshot() (backend/apps/audit/services.py) snapshots every
+// concrete field of every audited model, so this isn't one field, it's
+// every field on every model that has ever been diffed here. Translate the
+// common ones; anything not yet in auditLog.fields still degrades to a
+// readable label instead of a raw snake_case string.
+function fieldLabel(key: string): string {
+  const i18nKey = `auditLog.fields.${key}`
+  if (te(i18nKey)) return t(i18nKey)
+  const stripped = key.endsWith('_id') ? key.slice(0, -3) : key
+  return stripped.charAt(0).toUpperCase() + stripped.slice(1).replace(/_/g, ' ')
+}
+
 // Business-readable "what was touched" line, e.g. "Facture FAC-202608-0015",
 // "Paiement fournisseur - Ahmed", "Transaction trésorerie 22 500 000 XOF" -
 // never the raw content-type/object-id pair (docs/edit.md UI pass
@@ -88,7 +102,9 @@ function badgeVariant(action: string) {
 
 <template>
   <div class="max-w-5xl space-y-6">
-    <h1 class="font-display text-2xl leading-none font-semibold uppercase">{{ t('auditLog.title') }}</h1>
+    <h1 class="font-display text-2xl leading-none font-semibold uppercase">
+      {{ t('auditLog.title') }}
+    </h1>
 
     <p v-if="error" class="text-critique text-sm">{{ error }}</p>
     <p v-else-if="loading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
@@ -136,7 +152,9 @@ function badgeVariant(action: string) {
               <tr v-if="expandedId === log.id" class="border-ligne bg-sable border-b last:border-0">
                 <td colspan="6" class="px-4 py-3">
                   <dl
-                    v-if="log.summary.amount || log.summary.account_label || log.summary.related_party"
+                    v-if="
+                      log.summary.amount || log.summary.account_label || log.summary.related_party
+                    "
                     class="mb-3 grid grid-cols-3 gap-3 text-xs"
                   >
                     <div v-if="log.summary.amount">
@@ -166,28 +184,30 @@ function badgeVariant(action: string) {
                       </thead>
                       <tbody>
                         <tr v-for="key in diffKeys(log)" :key="key">
-                          <td class="text-texte-2 py-1 pr-4 font-medium">{{ key }}</td>
+                          <td class="text-texte-2 py-1 pr-4 font-medium">{{ fieldLabel(key) }}</td>
                           <td class="text-critique py-1 pr-4 line-through">
                             {{ formatValue(log.previous_value?.[key]) }}
                           </td>
-                          <td class="text-livre-texte py-1">{{ formatValue(log.new_value?.[key]) }}</td>
+                          <td class="text-livre-texte py-1">
+                            {{ formatValue(log.new_value?.[key]) }}
+                          </td>
                         </tr>
                       </tbody>
                     </table>
                   </div>
-                <p v-if="log.reason" class="text-texte-2 mt-2 text-xs">
-                  {{ t('auditLog.reason') }} {{ log.reason }}
-                </p>
+                  <p v-if="log.reason" class="text-texte-2 mt-2 text-xs">
+                    {{ t('auditLog.reason') }} {{ log.reason }}
+                  </p>
+                </td>
+              </tr>
+            </template>
+            <tr v-if="logs.length === 0">
+              <td colspan="6" class="text-texte-3 px-3 py-8 text-center">
+                {{ t('auditLog.noEntries') }}
               </td>
             </tr>
-          </template>
-          <tr v-if="logs.length === 0">
-            <td colspan="6" class="text-texte-3 px-3 py-8 text-center">
-              {{ t('auditLog.noEntries') }}
-            </td>
-          </tr>
-        </tbody>
-      </table>
+          </tbody>
+        </table>
       </div>
     </section>
   </div>

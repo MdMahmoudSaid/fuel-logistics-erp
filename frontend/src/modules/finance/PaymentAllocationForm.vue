@@ -411,9 +411,7 @@ async function onSubmit() {
       <div v-if="outstandingBalance !== null" class="border-ligne border-t pt-4">
         <p class="text-texte-2 text-sm font-medium" data-test="outstanding-balance">
           {{ t('finance.payment.outstandingBalance') }}:
-          <span class="text-texte font-semibold">{{
-            formatMoney(outstandingBalance ?? 0)
-          }}</span>
+          <span class="text-texte font-semibold">{{ formatMoney(outstandingBalance ?? 0) }}</span>
         </p>
       </div>
 
@@ -449,7 +447,8 @@ async function onSubmit() {
           >
             <option value="">{{ t('finance.payment.unallocatedCredit') }}</option>
             <option v-for="inv in unpaidInvoices" :key="inv.id" :value="inv.id">
-              {{ inv.invoice_number }} — outstanding {{ formatMoney(inv.outstanding) }}
+              {{ inv.invoice_number }} — {{ t('finance.payment.invoiceOptionRemaining') }}
+              {{ formatMoney(inv.outstanding) }}
             </option>
           </select>
           <input
@@ -472,9 +471,7 @@ async function onSubmit() {
         </div>
 
         <p class="text-texte-2 text-sm">
-          {{
-            t('finance.payment.allocatedSummary', { allocated: formatMoney(allocatedTotal) })
-          }}
+          {{ t('finance.payment.allocatedSummary', { allocated: formatMoney(allocatedTotal) }) }}
           <span :class="unallocatedRemainder < 0 ? 'text-critique font-medium' : ''">
             {{ formatMoney(unallocatedRemainder) }}
           </span>

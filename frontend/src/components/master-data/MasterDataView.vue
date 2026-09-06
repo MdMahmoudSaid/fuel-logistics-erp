@@ -22,6 +22,12 @@ const props = defineProps<{
   // unchanged, so every other master-data page is unaffected.
   formFields?: (formValue: Record<string, unknown>) => FieldSchema[]
   ledgerRouteName?: string
+  // Bug fix (recette manuelle 2026-09-06): `title` is always the plural
+  // page heading ("Produits", "Fournisseurs"...), and the create/edit
+  // modal used to reuse it verbatim ("Nouveau Produits" - wrong gender and
+  // number in French). Optional singular label for that modal only;
+  // falls back to `title` for any caller that doesn't pass it.
+  itemLabel?: string
 }>()
 
 const rows = ref<Record<string, unknown>[]>([])
@@ -34,7 +40,14 @@ const showInactive = ref(false)
 const columns = computed(() =>
   props.fields
     .filter((f) => f.type !== 'textarea' && f.type !== 'password' && f.type !== 'pin')
-    .map((f) => ({ key: f.key, label: f.label, type: f.type, options: f.options })),
+    .map((f) => ({
+      key: f.key,
+      label: f.label,
+      type: f.type,
+      options: f.options,
+      trueLabel: f.trueLabel,
+      falseLabel: f.falseLabel,
+    })),
 )
 
 const resolvedFormFields = computed(() =>
@@ -161,7 +174,8 @@ onMounted(load)
         class="bg-surface border-ligne max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl border p-6"
       >
         <h2 class="font-display mb-4 text-lg leading-none font-semibold uppercase">
-          {{ editingId === null ? t('masterData.new') : t('masterData.edit') }} {{ title }}
+          {{ editingId === null ? t('masterData.new') : t('masterData.edit') }}
+          {{ itemLabel ?? title }}
         </h2>
         <p v-if="error" class="text-critique mb-2 text-sm">{{ error }}</p>
         <EntityForm

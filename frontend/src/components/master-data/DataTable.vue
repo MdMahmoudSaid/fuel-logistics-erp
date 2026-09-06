@@ -6,7 +6,14 @@ import { formatMoney, formatQuantity } from '@/utils/currency'
 import MonoValue from '@/components/ui/MonoValue.vue'
 
 defineProps<{
-  columns: { key: string; label: string; type?: FieldType; options?: FieldOption[] }[]
+  columns: {
+    key: string
+    label: string
+    type?: FieldType
+    options?: FieldOption[]
+    trueLabel?: string
+    falseLabel?: string
+  }[]
   rows: Record<string, unknown>[]
   activeToggle?: boolean
   ledgerRouteName?: string
@@ -59,7 +66,11 @@ const { t } = useI18n()
           :class="isNumericColumn(col.type) ? 'text-end' : 'text-start'"
         >
           <template v-if="col.type === 'checkbox'">
-            {{ row[col.key] ? t('masterData.statusActive') : t('masterData.statusInactive') }}
+            {{
+              row[col.key]
+                ? (col.trueLabel ?? t('masterData.statusActive'))
+                : (col.falseLabel ?? t('masterData.statusInactive'))
+            }}
           </template>
           <template v-else-if="col.type === 'select' && col.options">
             {{ col.options.find((o) => o.value === String(row[col.key]))?.label ?? row[col.key] }}
@@ -71,7 +82,9 @@ const { t } = useI18n()
             <MonoValue :value="formatMoney((row[col.key] as string | number | undefined) ?? 0)" />
           </template>
           <template v-else-if="col.type === 'quantity'">
-            <MonoValue :value="formatQuantity((row[col.key] as string | number | undefined) ?? 0)" />
+            <MonoValue
+              :value="formatQuantity((row[col.key] as string | number | undefined) ?? 0)"
+            />
           </template>
           <template v-else>{{ row[col.key] }}</template>
         </td>
