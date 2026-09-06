@@ -79,7 +79,11 @@ def test_supplier_detail_totals_only_count_confirmed_orders():
 
     assert response.status_code == 200
     assert response.data["total_purchased"] == "50000000.00"
-    assert response.data["outstanding_balance"] == "50000000.00"
+    # Bug fix (client business rule, confirmed 2026-09-06): no trip has
+    # loaded anything against this confirmed order yet, so there is no
+    # supplier debt yet either - outstanding_balance no longer books the
+    # full order the moment it's confirmed.
+    assert response.data["outstanding_balance"] == "0.00"
     assert response.data["total_reliquat"] == "100000.00"
 
 
@@ -95,7 +99,10 @@ def test_supplier_ledger_keeps_draft_and_cancelled_history_but_excludes_them_fro
 
     assert response.status_code == 200
     assert response.data["total_purchased"] == "50000000.00"
-    assert response.data["outstanding_balance"] == "50000000.00"
+    # Bug fix (client business rule, confirmed 2026-09-06): see the
+    # equivalent comment in test_supplier_detail_totals_only_count_
+    # confirmed_orders above - no loading, no debt yet.
+    assert response.data["outstanding_balance"] == "0.00"
     assert response.data["reliquat_summary"] == [
         {
             "product_id": confirmed.product_id,

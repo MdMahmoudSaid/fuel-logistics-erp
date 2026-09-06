@@ -38,6 +38,42 @@ def _make_admin(suffix):
     return User.objects.create_user(phone=(f"+222{suffix}")[:20], pin="1234", role=admin_role)
 
 
+def _fully_load(order, *, suffix, admin_user=None, quantity=None):
+    """Load `quantity` (default: the order's full quantity_litres) against
+    `order` via a real Trip - bug fix (client business rule, confirmed
+    2026-09-06): ControlledDebtPaymentService.describe_supplier_order now
+    prices the supplier debt on quantity actually loaded, not on the full
+    confirmed order, so every fixture in this file that exercises debt-
+    based assertions needs a real Trip behind the order. Defaulting to a
+    full load keeps every pre-existing assertion of the form
+    `... == order.total_amount` correct unchanged; this file's tests are
+    about advance-consumption mechanics (FIFO, partial, surplus), not
+    about the loaded-vs-purchased debt timing rule itself, which is
+    covered separately in apps.purchasing.tests and apps.finance.tests."""
+    if admin_user is None:
+        admin_user = order.created_by
+    quantity = order.quantity_litres if quantity is None else quantity
+    short_suffix = suffix[-16:]
+    from apps.purchasing.models import CessionLetter
+
+    cession = CessionLetter.objects.create(
+        reference=f"CL-{suffix}", supplier_order=order,
+        authorized_quantity=order.quantity_litres, issue_date="2026-08-18",
+        created_by=admin_user,
+    )
+    truck = Truck.objects.create(
+        internal_id=f"TRK-{short_suffix}", tractor_registration=f"{short_suffix}-TRAC",
+        tanker_registration=f"{short_suffix}-TANK", capacity_litres=Decimal("45000.00"),
+    )
+    transporter = Transporter.objects.create(name=f"Transporteur {suffix}")
+    return Trip.objects.create(
+        reference=f"TRIP-{suffix}", truck=truck, transporter=transporter,
+        supplier=order.supplier, supplier_order=order, cession_letter=cession,
+        product=order.product, quantity_loaded=quantity, loading_date="2026-08-18",
+        bl_reference=f"BL-{suffix}", created_by=admin_user,
+    )
+
+
 def _make_supplier_order_with_status(suffix, status, *, quantity=Decimal("1000.00"), unit_price=Decimal("600.0000")):
     admin_user = _make_admin(suffix)
     product = Product.objects.get(code="gasoil")
@@ -111,6 +147,7 @@ def test_confirming_supplier_order_directly_consumes_open_advance_fifo():
         unit_price=Decimal("600.0000"), status=SupplierOrder.Status.CONFIRMED,
         created_by=admin_user,
     )  # total 600000
+    _fully_load(order, suffix="CONFIRM-DIRECT")
 
     advance.refresh_from_db()
     assert advance.remaining_amount == Decimal("0.00")
@@ -135,6 +172,7 @@ def test_draft_to_confirmed_transition_consumes_advance_but_draft_creation_does_
 
     order.status = SupplierOrder.Status.CONFIRMED
     order.save()
+    _fully_load(order, suffix="DRAFT-THEN-CONFIRM")
     advance.refresh_from_db()
 
     assert advance.remaining_amount == Decimal("0.00")
@@ -159,6 +197,7 @@ def test_supplier_advance_partially_covers_larger_order_leaves_remaining_payable
         unit_price=Decimal("600.0000"), status=SupplierOrder.Status.CONFIRMED,
         created_by=admin_user,
     )  # total 600000
+    _fully_load(order, suffix="PARTIAL")
 
     remaining = ControlledDebtPaymentService.describe_supplier_order(order)["remaining_amount"]
     assert remaining == Decimal("350000.00")
@@ -182,6 +221,7 @@ def test_advance_exceeding_order_leaves_surplus_open_for_next_order():
         unit_price=Decimal("600.0000"), status=SupplierOrder.Status.CONFIRMED,
         created_by=admin_user,
     )  # total 300000
+    _fully_load(order, suffix="SURPLUS")
 
     assert ControlledDebtPaymentService.describe_supplier_order(order)["remaining_amount"] == Decimal("0.00")
     advance.refresh_from_db()
@@ -342,6 +382,7 @@ def test_increasing_total_amount_of_an_already_confirmed_order_consumes_the_delt
 
     order.quantity_litres = Decimal("1000.00")  # total becomes 600000
     order.save()  # still CONFIRMED -> CONFIRMED, re-attempts consumption
+    _fully_load(order, suffix="INCREASE-CONFIRMED")  # loads the full, now-1000L quantity
 
     advance.refresh_from_db()
     assert advance.remaining_amount == Decimal("0.00")
@@ -454,6 +495,7 @@ def test_describe_supplier_balance_debt_only():
     admin_user, supplier, order = _make_supplier_order_with_status(
         "BAL-DEBT", SupplierOrder.Status.CONFIRMED,
     )
+    _fully_load(order, suffix="BAL-DEBT")
     balance = ControlledDebtPaymentService.describe_supplier_balance(supplier)
     assert balance["total_due"] == Decimal("600000.00")
     assert balance["open_advances"] == Decimal("0.00")
@@ -493,6 +535,7 @@ def test_describe_supplier_balance_partial_consumption():
         unit_price=Decimal("600.0000"), status=SupplierOrder.Status.CONFIRMED,
         created_by=admin_user,
     )  # total 600000
+    _fully_load(order, suffix="BAL-PARTIAL")
     balance = ControlledDebtPaymentService.describe_supplier_balance(supplier)
     assert balance["total_due"] == Decimal("350000.00")
     assert balance["open_advances"] == Decimal("0.00")
@@ -625,6 +668,7 @@ def test_create_supplier_advance_rejected_when_open_debt_exists():
     admin_user, supplier, order = _make_supplier_order_with_status(
         "REJECT-SADV", SupplierOrder.Status.CONFIRMED,
     )  # total 600000, no advance yet -> net_balance = -600000
+    _fully_load(order, suffix="REJECT-SADV")
     cash_account = CashAccount.objects.create(name="Main Cash", opening_balance=Decimal("5000000.00"))
 
     with pytest.raises(AdvanceError):
@@ -853,6 +897,7 @@ def test_supplier_advance_endpoint_rejects_creation_with_open_debt(advances_fina
     admin_user, supplier, order = _make_supplier_order_with_status(
         "API-REJECT", SupplierOrder.Status.CONFIRMED,
     )
+    _fully_load(order, suffix="API-REJECT")
     cash_account = CashAccount.objects.create(name="Main Cash", opening_balance=Decimal("5000000.00"))
 
     response = advances_finance_client.post(
@@ -987,6 +1032,7 @@ def test_supplier_ledger_service_orders_entries_chronologically_with_all_four_ty
     order.purchase_date = "2026-08-15"
     order.status = SupplierOrder.Status.CONFIRMED
     order.save()  # 600000 debt, consumes the 300000 advance, leaves 300000 payable
+    _fully_load(order, suffix="LEDGER-SVC")
 
     ControlledDebtPaymentService.record_payment(
         debt_type="supplier", debt_id=supplier.id,

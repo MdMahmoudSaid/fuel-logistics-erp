@@ -493,3 +493,99 @@ def test_stringify_leaves_english_lang_using_default_titlecase():
     # fr/ar) - it must keep behaving exactly as it did.
     assert _stringify("PAID", lang="en") == "PAID"
     assert _translate_key("outstanding_balance", "en") == "Outstanding Balance"
+
+
+# ---------------------------------------------------------------------------
+# Security fix (2026-09-06): a customer/supplier/transporter name (or any
+# other free text reaching a reportlab Paragraph in this module) must never
+# crash the PDF export or be interpreted as markup - same escaping already
+# applied to quotation notes (apps.reports.services.quotation_pdf), now
+# applied here too. Regression coverage for the exact failure this audit
+# reproduced directly against render_ledger_pdf before the fix.
+# ---------------------------------------------------------------------------
+
+_MALICIOUS_NAMES = [
+    "Ets Diallo & Freres",
+    "Client <VIP>",
+    "Client & Co <unclosed",
+    "Ets Diallo <b>Gros</b>",
+    '<img src="http://example.invalid/x.png"/> Import',
+]
+
+
+@pytest.mark.parametrize("malicious_name", _MALICIOUS_NAMES)
+def test_render_ledger_pdf_never_crashes_on_unescaped_party_name(malicious_name):
+    # Before the fix, "Client & Co <unclosed" raised
+    # "paraparser: syntax error: parse ended with 1 unclosed tags" - a
+    # party with such a name could never have its ledger exported at all.
+    pdf_bytes = render_ledger_pdf(
+        company_name="AZUR ÉNERGIE",
+        account_type="client",
+        party_name=malicious_name,
+        export_date=datetime.date.today(),
+        summary={"outstanding_balance": Decimal("1000.00")},
+        rows=[],
+        lang="fr",
+    )
+    assert pdf_bytes.startswith(b"%PDF")
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("malicious_name", _MALICIOUS_NAMES)
+def test_customer_ledger_pdf_export_never_crashes_on_unescaped_customer_name(malicious_name):
+    client, admin_user = _admin_client("+2230000301")
+    customer = Customer.objects.create(name=malicious_name, address="Nouakchott")
+
+    response = client.get(f"/api/customers/{customer.id}/ledger/pdf/?lang=fr")
+
+    assert response.status_code == 200
+    assert response["Content-Type"] == "application/pdf"
+    assert response.content.startswith(b"%PDF")
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("malicious_name", _MALICIOUS_NAMES)
+def test_supplier_ledger_pdf_export_never_crashes_on_unescaped_supplier_name(malicious_name):
+    client, admin_user = _admin_client("+2230000302")
+    supplier = Supplier.objects.create(name=malicious_name, country="Senegal")
+
+    response = client.get(f"/api/suppliers/{supplier.id}/ledger/pdf/?lang=fr")
+
+    assert response.status_code == 200
+    assert response["Content-Type"] == "application/pdf"
+    assert response.content.startswith(b"%PDF")
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("malicious_name", _MALICIOUS_NAMES)
+def test_transporter_ledger_pdf_export_never_crashes_on_unescaped_transporter_name(malicious_name):
+    client, admin_user = _admin_client("+2230000303")
+    transporter = Transporter.objects.create(name=malicious_name)
+
+    response = client.get(f"/api/transporters/{transporter.id}/ledger/pdf/?lang=fr")
+
+    assert response.status_code == 200
+    assert response["Content-Type"] == "application/pdf"
+    assert response.content.startswith(b"%PDF")
+
+
+@pytest.mark.django_db
+def test_render_customer_payment_pdf_never_crashes_on_unescaped_customer_name():
+    admin_user = _admin_client("+2230000304")[1]
+    payment = _make_customer_payment("SECCUST", admin_user)
+    payment.customer.name = "Client & Co <unclosed"
+    payment.customer.save()
+
+    pdf_bytes = render_customer_payment_pdf(payment, lang="fr")
+    assert pdf_bytes.startswith(b"%PDF")
+
+
+@pytest.mark.django_db
+def test_render_supplier_payment_pdf_never_crashes_on_unescaped_supplier_name():
+    admin_user = _admin_client("+2230000305")[1]
+    payment = _make_supplier_payment("SECSUPP", admin_user)
+    payment.supplier.name = "Ets Diallo <b>Gros</b>"
+    payment.supplier.save()
+
+    pdf_bytes = render_supplier_payment_pdf(payment, lang="fr")
+    assert pdf_bytes.startswith(b"%PDF")

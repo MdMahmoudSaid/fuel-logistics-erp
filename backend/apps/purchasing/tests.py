@@ -16,6 +16,36 @@ from apps.suppliers.models import Supplier
 from apps.purchasing.models import SupplierOrder, CessionLetter
 from apps.purchasing.serializers import CessionLetterSerializer
 from apps.purchasing.services import SupplierStockService
+from apps.transport.models import Transporter, Truck
+from apps.trips.models import Trip
+
+
+def _load_trip(*, supplier_order, cession, quantity, suffix, admin_user):
+    """Minimal Trip that actually loads `quantity` litres against
+    `cession`/`supplier_order` - the only thing that should move
+    SupplierStockService.get_purchase_reliquat() (client business rule,
+    confirmed 2026-09-06). Mirrors the equivalent fixture already used in
+    apps.finance.tests (_make_trip_for_deduction)."""
+    truck = Truck.objects.create(
+        internal_id=f"TRK-{suffix}",
+        tractor_registration=f"{suffix}-TRACTOR",
+        tanker_registration=f"{suffix}-TANKER",
+        capacity_litres=Decimal("45000.00"),
+    )
+    transporter = Transporter.objects.create(name=f"Transporteur {suffix}")
+    return Trip.objects.create(
+        reference=f"TRIP-{suffix}",
+        truck=truck,
+        transporter=transporter,
+        supplier=supplier_order.supplier,
+        supplier_order=supplier_order,
+        cession_letter=cession,
+        product=supplier_order.product,
+        quantity_loaded=quantity,
+        loading_date="2026-08-18",
+        bl_reference=f"BL-{suffix}",
+        created_by=admin_user,
+    )
 
 
 @pytest.mark.django_db
@@ -62,7 +92,7 @@ def test_cession_letter_validation_limits():
         created_by=admin_user,
     )
 
-    # Création d'une première cession de 60,000 L (reliquat restant: 40,000 L)
+    # Création d'une première cession de 60,000 L.
     CessionLetter.objects.create(
         reference="CL-001",
         supplier_order=order,
@@ -71,8 +101,17 @@ def test_cession_letter_validation_limits():
         created_by=admin_user,
     )
 
-    assert SupplierStockService.get_purchase_reliquat(order) == Decimal("40000.00")
+    # Bug fix (client business rule, confirmed 2026-09-06): issuing a
+    # cession letter no longer moves the *displayed* reliquat by itself -
+    # only an actual loading (a Trip) does. No trip has loaded anything yet
+    # here, so the full 100,000 L is still reliquat.
+    assert SupplierStockService.get_purchase_reliquat(order) == Decimal("100000.00")
 
+    # The cession-issuance cap below is a different, still-valid check:
+    # a cession letter can never authorize more than was actually
+    # purchased, regardless of how much has been loaded so far -
+    # validate_and_lock_reliquat() (used by the serializer) still sums
+    # active cessions against the purchased quantity for that reason.
     # Essai de création d'une cession de 50,000 L via le sérialiseur (doit échouer)
     serializer = CessionLetterSerializer(
         data={
@@ -98,7 +137,12 @@ def test_cession_letter_validation_limits():
 
 
 @pytest.mark.django_db
-def test_cession_cancellation_releases_reliquat():
+def test_reliquat_unaffected_by_cession_issuance_or_cancellation():
+    """Bug fix regression (client business rule, confirmed 2026-09-06):
+    issuing or cancelling a cession letter must never move the displayed
+    reliquat by itself - only an actual Trip loading does. Replaces the
+    old test_cession_cancellation_releases_reliquat, which asserted the
+    opposite (pre-fix) behaviour."""
     admin_role = Role.objects.get(name=Role.NAME_ADMIN)
     admin_user = User.objects.create_user(
         phone="+2220000002", pin="1234", role=admin_role
@@ -126,14 +170,83 @@ def test_cession_cancellation_releases_reliquat():
         created_by=admin_user,
     )
 
-    assert SupplierStockService.get_purchase_reliquat(order) == Decimal("40000.00")
+    # Issuing the cession alone changes nothing on the reliquat.
+    assert SupplierStockService.get_purchase_reliquat(order) == Decimal("100000.00")
 
-    # Annulation de la cession
+    # Loading 25,000 L against it is what actually consumes reliquat.
+    _load_trip(
+        supplier_order=order, cession=cession, quantity=Decimal("25000.00"),
+        suffix="REL003", admin_user=admin_user,
+    )
+    assert SupplierStockService.get_purchase_reliquat(order) == Decimal("75000.00")
+
+    # Cancelling the (already partly consumed) cession doesn't touch the
+    # reliquat either - only cancelling/reducing the trip's loaded quantity
+    # would.
     cession.status = CessionLetter.Status.CANCELLED
     cession.save()
+    assert SupplierStockService.get_purchase_reliquat(order) == Decimal("75000.00")
 
-    # Le reliquat doit être restauré à 100,000 L
+
+@pytest.mark.django_db
+def test_reliquat_and_debt_track_loaded_quantity_not_cession_or_full_order():
+    """Exact client-confirmed example (2026-09-06): purchase 200,000 L at
+    500 XOF/L, cession letter for the full 200,000 L, but only 100,000 L
+    actually loaded onto a trip so far.
+
+    -> reliquat fournisseur restant = 100,000 L (not 0)
+    -> dette fournisseur = 100,000 x 500 = 50,000,000 XOF (not the full
+       order's 100,000,000 XOF)
+
+    When the remaining 100,000 L is loaded later, both figures must update
+    to reflect it.
+    """
+    admin_role = Role.objects.get(name=Role.NAME_ADMIN)
+    admin_user = User.objects.create_user(
+        phone="+2220000099", pin="1234", role=admin_role
+    )
+    product = Product.objects.get(code="gasoil")
+    supplier = Supplier.objects.create(name="Total Client Example", country="Senegal")
+
+    order = SupplierOrder.objects.create(
+        reference="SO-CLIENT-EXAMPLE",
+        supplier=supplier,
+        product=product,
+        purchase_date="2026-08-18",
+        quantity_litres=Decimal("200000.00"),
+        unit_price=Decimal("500.0000"),
+        status=SupplierOrder.Status.CONFIRMED,
+        created_by=admin_user,
+    )
+    cession = CessionLetter.objects.create(
+        reference="CL-CLIENT-EXAMPLE",
+        supplier_order=order,
+        authorized_quantity=Decimal("200000.00"),
+        issue_date="2026-08-18",
+        created_by=admin_user,
+    )
+
+    # No loading yet: reliquat is still the full purchased quantity, and
+    # there is no supplier debt yet either.
+    assert SupplierStockService.get_purchase_reliquat(order) == Decimal("200000.00")
+    assert SupplierStockService.get_purchase_loaded_amount(order) == Decimal("0.00")
+
+    _load_trip(
+        supplier_order=order, cession=cession, quantity=Decimal("100000.00"),
+        suffix="CLIENTEX1", admin_user=admin_user,
+    )
+
     assert SupplierStockService.get_purchase_reliquat(order) == Decimal("100000.00")
+    assert SupplierStockService.get_purchase_loaded_amount(order) == Decimal("50000000.00")
+
+    # Loading the remaining 100,000 L later updates both figures.
+    _load_trip(
+        supplier_order=order, cession=cession, quantity=Decimal("100000.00"),
+        suffix="CLIENTEX2", admin_user=admin_user,
+    )
+
+    assert SupplierStockService.get_purchase_reliquat(order) == Decimal("0.00")
+    assert SupplierStockService.get_purchase_loaded_amount(order) == Decimal("100000000.00")
 
 
 @pytest.mark.django_db
@@ -203,12 +316,20 @@ def test_supplier_ledger_endpoint():
         created_by=admin_user,
     )
 
-    CessionLetter.objects.create(
+    cession = CessionLetter.objects.create(
         reference="CL-LEDGER-001",
         supplier_order=order,
         authorized_quantity=Decimal("30000.00"),
         issue_date="2026-08-18",
         created_by=admin_user,
+    )
+    # Bug fix (client business rule, confirmed 2026-09-06): the reliquat
+    # this endpoint exposes only moves once litres are actually loaded, so
+    # the cession above by itself leaves it unchanged - an actual Trip is
+    # what brings it down to 70,000 L.
+    _load_trip(
+        supplier_order=order, cession=cession, quantity=Decimal("30000.00"),
+        suffix="LEDGER001", admin_user=admin_user,
     )
 
     client = APIClient()

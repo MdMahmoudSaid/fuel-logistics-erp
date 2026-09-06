@@ -32,15 +32,60 @@ class SupplierStockService:
 
     @staticmethod
     def get_purchase_reliquat(purchase: SupplierOrder) -> Decimal:
-        """Dynamic calculation: purchased quantity - active/exhausted cessions.
+        """Dynamic calculation: purchased quantity - quantity actually
+        loaded onto a trip (excluding cancelled trips).
+
+        Bug fix (client business rule, confirmed 2026-09-06): a cession
+        letter *authorizes* loading up to a quantity, it does not itself
+        remove fuel from the supplier - the reliquat must only shrink once
+        litres are physically loaded. Before this fix the reliquat was
+        computed as purchased - cessions, so issuing a cession for the full
+        purchased quantity made the reliquat read 0 even though no truck had
+        loaded anything yet. Example confirmed with the client: purchase
+        200,000 L, cession 200,000 L, one trip loads 100,000 L -> reliquat
+        must read 100,000 L, not 0.
+
+        This is a distinct balance from the "how much more can still be
+        authorized via a new cession" cap enforced by
+        validate_and_lock_reliquat() below, which intentionally still sums
+        active cessions against the purchased quantity (a cession letter can
+        never promise more fuel than was actually bought) - the two numbers
+        are allowed to diverge (cession commitments issued but not yet
+        loaded still show up there, not here) and each has its own use.
 
         Never stored on SupplierOrder (see ERP_Implementation_Experience_Guide.md
         §5.1) so cancellations/corrections can never cause drift.
         """
-        cessions_sum = purchase.cessions.exclude(
-            status=CessionLetter.Status.CANCELLED
-        ).aggregate(total=Sum("authorized_quantity"))["total"] or Decimal("0.00")
-        return purchase.quantity_litres - cessions_sum
+        loaded = SupplierStockService.get_purchase_loaded_quantity(purchase)
+        return purchase.quantity_litres - loaded
+
+    @staticmethod
+    def get_purchase_loaded_amount(purchase: SupplierOrder) -> Decimal:
+        """Monetary value of the quantity actually loaded against `purchase`
+        so far: loaded_quantity x unit_price, plus a proportional share of
+        optional_costs (loaded_quantity / quantity_litres of the order's
+        total optional_costs).
+
+        Bug fix (client business rule, confirmed 2026-09-06): this is the
+        amount that becomes a real payable debt to the supplier - see
+        ControlledDebtPaymentService.describe_supplier_order in
+        apps.finance.services, which must never book the full confirmed
+        order total before the fuel has actually been loaded. Example
+        confirmed with the client: purchase 200,000 L at 500 XOF/L, only
+        100,000 L loaded so far -> debt = 100,000 x 500 = 50,000,000 XOF,
+        not the full order's 100,000,000 XOF.
+        """
+        if purchase.quantity_litres <= Decimal("0.00"):
+            return Decimal("0.00")
+        loaded = SupplierStockService.get_purchase_loaded_quantity(purchase)
+        fuel_amount = loaded * purchase.unit_price
+        optional_costs = purchase.optional_costs or Decimal("0.00")
+        prorated_costs = (
+            (optional_costs * loaded / purchase.quantity_litres)
+            if optional_costs
+            else Decimal("0.00")
+        )
+        return (fuel_amount + prorated_costs).quantize(Decimal("0.01"))
 
     @staticmethod
     def get_cession_remaining(cession: CessionLetter) -> Decimal:
@@ -60,7 +105,17 @@ class SupplierStockService:
     def validate_and_lock_reliquat(
         purchase_id: int, requested_qty: Decimal, exclude_cession_id: int | None = None
     ) -> SupplierOrder:
-        """Lock the SupplierOrder row and validate that enough reliquat remains.
+        """Lock the SupplierOrder row and validate that a new/edited cession
+        never promises more fuel than was actually purchased.
+
+        Despite the name, this guards a different balance from
+        get_purchase_reliquat() above (which now tracks purchased - loaded,
+        the client-facing "reliquat"): this one tracks purchased - already
+        cessioned, i.e. "how much more can still be authorized via a
+        cession letter". That cap is still correct and unchanged - a
+        cession letter can never authorize more than was bought, regardless
+        of how much of it has been loaded yet - it's only the *display*
+        reliquat that moved to a load-based definition.
 
         Must run inside the same atomic block as the CessionLetter
         create/update it guards, per the concurrency rule in
@@ -70,9 +125,9 @@ class SupplierStockService:
         """
         purchase = SupplierOrder.objects.select_for_update().get(pk=purchase_id)
 
-        # Sum of cessions still consuming the reliquat, excluding the cession
-        # being edited (so re-saving an existing cession at the same or a
-        # smaller quantity doesn't double-count itself).
+        # Sum of cessions still consuming the purchased quantity, excluding
+        # the cession being edited (so re-saving an existing cession at the
+        # same or a smaller quantity doesn't double-count itself).
         queryset = purchase.cessions.exclude(status=CessionLetter.Status.CANCELLED)
         if exclude_cession_id:
             queryset = queryset.exclude(pk=exclude_cession_id)

@@ -214,6 +214,57 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"destination": "Destination inconnue."})
 
         data["destination"] = destination
+
+        # Bug fix (2026-09-06): a direct (non-indirect) CustomerPayment
+        # posts exactly one TreasuryTransaction at creation time
+        # (FinancePostingService.record_customer_payment_treasury, called
+        # only from create() below) with amount/date/reference/account
+        # frozen from the payment's values at that instant - _post_treasury
+        # is idempotent and never re-posts on a later save. Before this
+        # fix, update() silently let any of those fields change without
+        # ever touching the TreasuryTransaction it had already created, so
+        # the bank/cash ledger could permanently disagree with the payment
+        # record with nothing in the UI to reveal it. Rather than build a
+        # reversal-and-repost flow for a plain PATCH (the same "block
+        # first, design a real correction flow later" call already made
+        # for SupplierPayment - see SupplierPaymentSerializer.update()
+        # above), every field that feeds that TreasuryTransaction is
+        # blocked from editing once the payment exists. `allocations`
+        # (re-splitting the payment across invoices), `note` and `proof`
+        # remain freely editable - none of them are read by
+        # record_customer_payment_treasury, so editing them can never
+        # desync the treasury.
+        if self.instance is not None:
+            treasury_fields = ("amount", "payment_date", "customer", "reference")
+            changed_treasury_fields = [
+                field
+                for field in treasury_fields
+                if field in data and data[field] != getattr(self.instance, field)
+            ]
+            # is_indirect/bank_account/cash_account/destination are always
+            # present in `data` by this point (resolved above, even on a
+            # partial update that never mentioned them) - falling back to
+            # the instance's own current value when the caller didn't send
+            # one, so this only flags an actual attempted change.
+            if data["is_indirect"] != self.instance.is_indirect:
+                changed_treasury_fields.append("destination")
+            if data["bank_account"] != self.instance.bank_account:
+                changed_treasury_fields.append("bank_account")
+            if data["cash_account"] != self.instance.cash_account:
+                changed_treasury_fields.append("cash_account")
+            if changed_treasury_fields:
+                raise serializers.ValidationError(
+                    {
+                        field: (
+                            "Un paiement client déjà enregistré ne peut pas être "
+                            "modifié sur ce champ : la trésorerie a déjà été "
+                            "mise à jour avec la valeur d'origine. Annulez et "
+                            "recréez le paiement si une correction est nécessaire."
+                        )
+                        for field in changed_treasury_fields
+                    }
+                )
+
         return data
 
     def create(self, validated_data):
@@ -238,6 +289,9 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
         return payment
 
     def update(self, instance, validated_data):
+        # Only allocations/note/proof can reach here for an existing
+        # payment - validate() above already rejected any attempt to
+        # change a field that feeds the already-posted TreasuryTransaction.
         allocations = validated_data.pop("allocations", [])
         validated_data.pop("proof", None)
         payment = super().update(instance, validated_data)

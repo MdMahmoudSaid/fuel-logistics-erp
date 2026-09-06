@@ -30,6 +30,7 @@
 import datetime
 import io
 from decimal import Decimal
+from xml.sax.saxutils import escape as xml_escape
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_RIGHT
@@ -362,6 +363,25 @@ def _stringify(value, lang: str = "fr") -> str:
     return text
 
 
+def _safe_paragraph_text(value) -> str:
+    """Escape free-text before it reaches a reportlab Paragraph.
+
+    Security fix (2026-09-06): Paragraph parses a mini-XML/HTML markup
+    language, including <img src="..."> tags that reportlab resolves as a
+    real file/URL fetch at render time (SSRF/LFI), plus arbitrary
+    formatting/link injection and outright parse crashes on an unbalanced
+    "<" or "&" - the same class of bug already fixed for quotation notes
+    (apps.reports.services.quotation_pdf). A customer/supplier/transporter
+    name is free text an operator types into a form (e.g. "Ets Diallo &
+    Freres", or a name with a stray "<") and must never be trusted here:
+    every Table cell in this module goes through _stringify only (Table
+    cells are never markup-parsed by reportlab), but every value handed to
+    Paragraph must be escaped first via this helper. Table cell content
+    does not need this - only Paragraph does.
+    """
+    return xml_escape(str(value)) if value is not None else ""
+
+
 def _translate_key(key: str, lang: str) -> str:
     if lang in ("fr", "ar") and key in FIELD_LABELS_FR:
         return FIELD_LABELS_FR[key]
@@ -409,7 +429,7 @@ def _section_table(title: str, rows: list[dict], *, lang: str, is_rtl: bool, hea
     table.setStyle(_TABLE_STYLE)
     return [
         Spacer(1, 8 * mm),
-        Paragraph(title, heading_style),
+        Paragraph(_safe_paragraph_text(title), heading_style),
         Spacer(1, 2 * mm),
         table,
     ]
@@ -446,13 +466,19 @@ def render_ledger_pdf(
     doc = _doc_template(buffer, title=f"{labels['title']} - {party_name}")
     styles = getSampleStyleSheet()
     align_style = ParagraphStyle("aligned", parent=styles["Normal"], alignment=TA_RIGHT if is_rtl else 0)
+    # (doc's own `title=` above is PDF metadata, not markup-parsed - no
+    # escaping needed there, only for the Paragraph flowables below.)
     heading_style = ParagraphStyle(
         "headingAligned", parent=styles["Heading2"], alignment=TA_RIGHT if is_rtl else 0
     )
 
+    # Security fix (2026-09-06): party_name (customer/supplier/transporter
+    # .name) is free text an operator typed into a form - escape before it
+    # reaches Paragraph, see _safe_paragraph_text's docstring.
+    safe_party_name = _safe_paragraph_text(party_name)
     elements = [
-        Paragraph(company_name, styles["Title"]),
-        Paragraph(f"{labels['account_type']}: {account_type} — {labels['party']}: {party_name}", align_style),
+        Paragraph(_safe_paragraph_text(company_name), styles["Title"]),
+        Paragraph(f"{labels['account_type']}: {account_type} — {labels['party']}: {safe_party_name}", align_style),
         Paragraph(f"{labels['export_date']}: {export_date.isoformat()}", align_style),
         Spacer(1, 8 * mm),
         Paragraph(labels["summary"], heading_style),
@@ -500,7 +526,7 @@ def _label_value_pdf(*, title: str, field_rows: list[tuple[str, object]], lang: 
     table.setStyle(_SUMMARY_TABLE_STYLE)
 
     elements = [
-        Paragraph(title, styles["Title"]),
+        Paragraph(_safe_paragraph_text(title), styles["Title"]),
         Spacer(1, 6 * mm),
         table,
     ]
@@ -645,6 +671,9 @@ def render_customer_payment_pdf(payment, lang: str = "fr") -> bytes:
         )
 
     buffer = io.BytesIO()
+    # Security fix (2026-09-06): payment.customer.name is free text - only
+    # the Paragraph rendering below needs escaping (doc's own `title=` is
+    # PDF metadata, not markup-parsed).
     title = f"{labels['customer_payment_title']} - {payment.customer.name}"
     doc = _doc_template(buffer, title=title)
     styles = getSampleStyleSheet()
@@ -658,7 +687,7 @@ def render_customer_payment_pdf(payment, lang: str = "fr") -> bytes:
     header_table = Table(header_data, colWidths=[60 * mm, 100 * mm])
     header_table.setStyle(_SUMMARY_TABLE_STYLE)
 
-    elements = [Paragraph(title, styles["Title"]), Spacer(1, 6 * mm), header_table]
+    elements = [Paragraph(_safe_paragraph_text(title), styles["Title"]), Spacer(1, 6 * mm), header_table]
     if invoice_rows:
         columns = list(invoice_rows[0].keys())
         if is_rtl:
@@ -743,6 +772,9 @@ def render_supplier_payment_pdf(payment, lang: str = "fr") -> bytes:
         ]
 
     buffer = io.BytesIO()
+    # Security fix (2026-09-06): payment.supplier.name is free text - only
+    # the Paragraph rendering below needs escaping (doc's own `title=` is
+    # PDF metadata, not markup-parsed).
     title = f"{labels['supplier_payment_title']} - {payment.supplier.name}"
     doc = _doc_template(buffer, title=title)
     styles = getSampleStyleSheet()
@@ -759,7 +791,7 @@ def render_supplier_payment_pdf(payment, lang: str = "fr") -> bytes:
     order_table.setStyle(_SUMMARY_TABLE_STYLE)
 
     elements = [
-        Paragraph(title, styles["Title"]),
+        Paragraph(_safe_paragraph_text(title), styles["Title"]),
         Spacer(1, 6 * mm),
         header_table,
         Spacer(1, 8 * mm),

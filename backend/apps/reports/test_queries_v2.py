@@ -199,7 +199,11 @@ def test_supplier_outstanding_report_matches_purchases_minus_payments():
 
     rows = SupplierOutstandingReportQuery.run()
     row = next(r for r in rows if r["supplier"] == fx["supplier"].name)
-    assert row["outstanding"] == fx["supplier_order"].total_amount - Decimal("2000000.00")
+    # Bug fix (client business rule, confirmed 2026-09-06): debt is now
+    # priced on the 45,000 L actually loaded onto fx["trip"], not the
+    # order's full 500,000 L purchased quantity - 45,000 x 600 = 27,000,000.
+    assert fx["trip"].quantity_loaded == Decimal("45000.00")
+    assert row["outstanding"] == Decimal("27000000.00") - Decimal("2000000.00")
 
 
 @pytest.mark.django_db
@@ -237,6 +241,26 @@ def test_supplier_outstanding_report_only_counts_confirmed_orders():
         status=SupplierOrder.Status.DRAFT,
         created_by=admin_user,
     )
+    # Bug fix (client business rule, confirmed 2026-09-06): debt now needs
+    # quantity actually loaded, not just a CONFIRMED status - fully load
+    # confirmed_order so this test still exercises what it's actually
+    # about (CONFIRMED counted, CANCELLED/DRAFT excluded), unchanged.
+    confirmed_cession = CessionLetter.objects.create(
+        reference="CL-QUERY2-SUPCONFONLY", supplier_order=confirmed_order,
+        authorized_quantity=confirmed_order.quantity_litres, issue_date="2026-08-18",
+        created_by=admin_user,
+    )
+    confirmed_truck = Truck.objects.create(
+        internal_id="TRK-QUERY2-SUPCONFONLY", tractor_registration="SUPCONFONLY-TRAC",
+        tanker_registration="SUPCONFONLY-TANK", capacity_litres=Decimal("45000.00"),
+    )
+    Trip.objects.create(
+        reference="TRIP-QUERY2-SUPCONFONLY", truck=confirmed_truck,
+        transporter=Transporter.objects.create(name="Transporteur SUPCONFONLY"),
+        supplier=supplier, supplier_order=confirmed_order, cession_letter=confirmed_cession,
+        product=product, quantity_loaded=confirmed_order.quantity_litres,
+        loading_date="2026-08-18", bl_reference="BL-QUERY2-SUPCONFONLY", created_by=admin_user,
+    )
 
     rows = SupplierOutstandingReportQuery.run()
     row = next(r for r in rows if r["supplier"] == supplier.name)
@@ -260,6 +284,26 @@ def test_supplier_outstanding_report_nets_out_advance_consumption():
         unit_price=Decimal("600.0000"), status=SupplierOrder.Status.CONFIRMED,
         created_by=admin_user,
     )  # total 300000000, advance created BEFORE confirmation so it's consumed at confirm time
+    # Bug fix (client business rule, confirmed 2026-09-06): fully load the
+    # order so its debt equals the full total_amount this test's assertion
+    # is built on - this test is about advance-consumption netting, not
+    # about the loaded-vs-purchased debt timing rule itself.
+    cession = CessionLetter.objects.create(
+        reference="CL-QUERY2-SUPOUTADV", supplier_order=order,
+        authorized_quantity=order.quantity_litres, issue_date="2026-08-18",
+        created_by=admin_user,
+    )
+    truck = Truck.objects.create(
+        internal_id="TRK-QUERY2-SUPOUTADV", tractor_registration="SUPOUTADV-TRAC",
+        tanker_registration="SUPOUTADV-TANK", capacity_litres=Decimal("45000.00"),
+    )
+    Trip.objects.create(
+        reference="TRIP-QUERY2-SUPOUTADV", truck=truck,
+        transporter=Transporter.objects.create(name="Transporteur SUPOUTADV"),
+        supplier=supplier, supplier_order=order, cession_letter=cession,
+        product=product, quantity_loaded=order.quantity_litres,
+        loading_date="2026-08-18", bl_reference="BL-QUERY2-SUPOUTADV", created_by=admin_user,
+    )
 
     rows = SupplierOutstandingReportQuery.run()
     row = next(r for r in rows if r["supplier"] == supplier.name)

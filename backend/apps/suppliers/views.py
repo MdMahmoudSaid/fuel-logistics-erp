@@ -59,6 +59,7 @@ class SupplierViewSet(viewsets.ModelViewSet):
         supplier = self.get_object()
         from apps.purchasing.models import SupplierOrder
         from apps.purchasing.serializers import SupplierOrderSerializer
+        from apps.purchasing.services import SupplierStockService
 
         orders = SupplierOrder.objects.filter(supplier=supplier)
         confirmed_orders = orders.filter(status=SupplierOrder.Status.CONFIRMED)
@@ -88,6 +89,16 @@ class SupplierViewSet(viewsets.ModelViewSet):
         )
         total_paid = sum((p.amount for p in payments), Decimal("0.00"))
         total_purchased = sum((o.total_amount for o in confirmed_orders), Decimal("0.00"))
+        # Bug fix (client business rule, confirmed 2026-09-06): the debt owed
+        # to this supplier ("outstanding_balance") is priced on quantity
+        # actually loaded, not on the full confirmed order total -
+        # total_purchased above stays the full commitment figure (a
+        # legitimate, separate "how much have we bought historically"
+        # number), it just must not double as the debt anymore.
+        total_loaded_value = sum(
+            (SupplierStockService.get_purchase_loaded_amount(o) for o in confirmed_orders),
+            Decimal("0.00"),
+        )
 
         return Response(
             {
@@ -102,7 +113,7 @@ class SupplierViewSet(viewsets.ModelViewSet):
                 ).data,
                 "total_purchased": f"{total_purchased:.2f}",
                 "total_paid": f"{total_paid:.2f}",
-                "outstanding_balance": f"{total_purchased - total_paid:.2f}",
+                "outstanding_balance": f"{max(total_loaded_value - total_paid, Decimal('0.00')):.2f}",
                 "summary": decimals_to_str(ledger_data["summary"]),
                 "entries": decimals_to_str(ledger_data["entries"]),
             }

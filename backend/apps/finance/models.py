@@ -78,6 +78,12 @@ class TransportDeduction(AuditableModel, TimeStampedModel):
     transport cost, so the transporter ledger keeps a full audit trail:
     "transport earned - deductions - advances - payments = outstanding"
     (guide Section 7.5) never collapses into a single opaque number.
+
+    `unit_price` is CONFIRMED (client, 2026-09-06) to be the customer's
+    sale price for the trip, not the supplier's purchase cost - see
+    apps.trips.services.DeliveryService.sync_transport_shortage_deduction,
+    the sole writer of this field. This is a deliberate business rule, not
+    a bug: do not change it without an explicit new client instruction.
     """
 
     class Status(models.TextChoices):

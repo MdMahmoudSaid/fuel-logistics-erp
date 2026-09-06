@@ -310,8 +310,12 @@ def test_scenario_complet_production_like(capsys):
     )
     supplier_debt = ControlledDebtPaymentService.describe_supplier(supplier)
     report.check("2. Achat fournisseur", "montant achat", "100 000 x 500", money(50000000), order.total_amount)
-    report.check("2. Achat fournisseur", "dette fournisseur", "total achat - paiements", money(50000000), supplier_debt["remaining_amount"])
-    report.check("2. Achat fournisseur", "reliquat fournisseur", "100 000 - cessions", D("100000.00"), SupplierStockService.get_purchase_reliquat(order))
+    # Bug fix (client business rule, confirmed 2026-09-06): a confirmed
+    # purchase is a commitment, not yet a debt - the supplier debt must
+    # only appear once fuel is actually loaded onto a trip, so it is 0
+    # right after confirmation, before any cession or loading exists.
+    report.check("2. Achat fournisseur", "dette fournisseur avant tout chargement", "aucun chargement -> 0", money(0), supplier_debt["remaining_amount"])
+    report.check("2. Achat fournisseur", "reliquat fournisseur", "100 000 - charge", D("100000.00"), SupplierStockService.get_purchase_reliquat(order))
 
     cession = CessionLetter.objects.create(
         reference="LC-TEST-001",
@@ -320,7 +324,13 @@ def test_scenario_complet_production_like(capsys):
         issue_date=TODAY,
         created_by=user,
     )
-    report.check("3. Lettre de cession", "reliquat apres cession", "100 000 - 45 000", D("55000.00"), SupplierStockService.get_purchase_reliquat(order))
+    # Bug fix (client business rule, confirmed 2026-09-06): issuing a
+    # cession letter alone must not move the reliquat - only an actual
+    # loading does (exact client example: achat 200 000 L, cession
+    # 200 000 L, chargement 100 000 L -> reliquat = 100 000 L, reproduced
+    # here at a different scale further below once this order's second
+    # 55 000 L cession/trip is added).
+    report.check("3. Lettre de cession", "reliquat inchange par la cession seule", "100 000 (chargement seul compte)", D("100000.00"), SupplierStockService.get_purchase_reliquat(order))
     report.check("3. Lettre de cession", "cession disponible", "45 000 - charge", D("45000.00"), SupplierStockService.get_cession_remaining(cession))
 
     trip = create_trip(
@@ -338,6 +348,13 @@ def test_scenario_complet_production_like(capsys):
     )
     report.check("4. Trajet et frais", "trajet cree", "reference creee", "TRIP-TEST-PERTE", trip.reference)
     report.check("4. Trajet et frais", "client trajet", "Client Test", "Client Test", trip.client.name)
+    # Bug fix regression (client business rule, confirmed 2026-09-06): now
+    # that 45 000 L of the 100 000 L purchased is actually loaded onto this
+    # trip, the reliquat drops and a real, partial supplier debt appears -
+    # exactly the client's "achat partiel, chargement partiel" example.
+    supplier_debt_after_loading = ControlledDebtPaymentService.describe_supplier(supplier)
+    report.check("4. Trajet et frais", "reliquat fournisseur apres chargement partiel", "100 000 - 45 000 charges", D("55000.00"), SupplierStockService.get_purchase_reliquat(order))
+    report.check("4. Trajet et frais", "dette fournisseur sur quantite chargee", "45 000 x 500", money(22500000), supplier_debt_after_loading["remaining_amount"])
 
     transport_payment = TransportPayment.objects.create(
         trip=trip,
@@ -467,6 +484,42 @@ def test_scenario_complet_production_like(capsys):
     report.check("8. Paiements client", "solde client final", "40 365 000 - 40 365 000", money(0), PaymentAllocationService.get_customer_outstanding(customer))
     report.check("8. Paiements client", "facture payee", "status PAID", Invoice.Status.PAID, invoice.status)
     report.check("8. Paiements client", "solde banque apres encaissements", "200 000 000 + 40 365 000", money(240365000), bank.current_balance)
+
+    # Bug fix regression (client business rule, confirmed 2026-09-06): "quand
+    # les 100 000 L restants sont charges plus tard, la dette et le reliquat
+    # se mettent a jour a ce moment-la" - the remaining 55 000 L of this
+    # purchase is now loaded (destined for company stock, no further sale
+    # workflow needed for this scenario), bringing the reliquat to 0 and the
+    # supplier debt up to the full 50 000 000 order value, which the two
+    # payments below (30M + 20M) then pay off exactly as originally scripted.
+    remaining_cession = CessionLetter.objects.create(
+        reference="LC-TEST-001-REMAINDER",
+        supplier_order=order,
+        authorized_quantity=D("55000.00"),
+        issue_date=TODAY,
+        created_by=user,
+    )
+    remaining_truck = Truck.objects.create(
+        internal_id="TRK-TEST-REMAINDER",
+        tractor_registration="TEST-REMAIN-TRACTOR",
+        tanker_registration="TEST-REMAIN-TANKER",
+        capacity_litres=D("55000.00"),
+        owner_transporter=transporter,
+    )
+    create_trip(
+        reference="TRIP-TEST-REMAINDER",
+        quantity=D("55000.00"),
+        supplier=supplier,
+        order=order,
+        cession=remaining_cession,
+        product=gasoil,
+        transporter=transporter,
+        truck=remaining_truck,
+        driver=driver,
+        user=user,
+    )
+    report.check("4. Trajet et frais", "reliquat fournisseur apres chargement total", "100 000 - 100 000 charges", D("0.00"), SupplierStockService.get_purchase_reliquat(order))
+    report.check("4. Trajet et frais", "dette fournisseur apres chargement total", "100 000 x 500", money(50000000), ControlledDebtPaymentService.describe_supplier(supplier)["remaining_amount"])
 
     ControlledDebtPaymentService.record_payment(
         debt_type=ControlledDebtPaymentService.SUPPLIER,

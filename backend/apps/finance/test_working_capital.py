@@ -51,6 +51,36 @@ def _make_supplier_order_with_status(suffix, status, *, quantity=Decimal("1000.0
     return admin_user, supplier, order
 
 
+def _fully_load(order, *, suffix, admin_user=None):
+    """Load the order's full quantity_litres via a real Trip - bug fix
+    (client business rule, confirmed 2026-09-06): supplier debt is now
+    priced on quantity actually loaded, not on the full confirmed order,
+    so every fixture in this file that needs a real open supplier debt
+    needs a Trip behind the order. This file's tests are about the fond
+    de roulement aggregate formula, not about the loaded-vs-purchased
+    debt timing rule itself, so a full load keeps every pre-existing
+    assertion correct unchanged."""
+    if admin_user is None:
+        admin_user = order.created_by
+    short_suffix = suffix[-16:]
+    cession = CessionLetter.objects.create(
+        reference=f"CL-{suffix}", supplier_order=order,
+        authorized_quantity=order.quantity_litres, issue_date="2026-08-18",
+        created_by=admin_user,
+    )
+    truck = Truck.objects.create(
+        internal_id=f"TRK-{short_suffix}", tractor_registration=f"{short_suffix}-TRAC",
+        tanker_registration=f"{short_suffix}-TANK", capacity_litres=Decimal("45000.00"),
+    )
+    transporter = Transporter.objects.create(name=f"Transporteur {suffix}")
+    return Trip.objects.create(
+        reference=f"TRIP-{suffix}", truck=truck, transporter=transporter,
+        supplier=order.supplier, supplier_order=order, cession_letter=cession,
+        product=order.product, quantity_loaded=order.quantity_litres, loading_date="2026-08-18",
+        bl_reference=f"BL-{suffix}", created_by=admin_user,
+    )
+
+
 def _make_trip_for_transporter_debt(suffix):
     admin_user = _make_admin(suffix)
     product = Product.objects.get(code="gasoil")
@@ -128,10 +158,11 @@ def test_working_capital_gross_and_total_breakdown():
     )
 
     # supplier_debt_total = 1,000,000 (open supplier debt, no advance)
-    _make_supplier_order_with_status(
+    _, _, wcadd_sup_order = _make_supplier_order_with_status(
         "WCADD-SUP", SupplierOrder.Status.CONFIRMED,
         quantity=Decimal("1000.00"), unit_price=Decimal("1000.0000"),
     )
+    _fully_load(wcadd_sup_order, suffix="WCADD-SUP")
 
     # transporter_debt_total = 1,000,000 (open transporter debt, no advance)
     from apps.finance.models import TransportPayment
@@ -170,6 +201,7 @@ def test_working_capital_debt_total_is_gross_not_net_of_advances():
         "WCGROSS", SupplierOrder.Status.CONFIRMED,
         quantity=Decimal("1000.00"), unit_price=Decimal("1000.0000"),
     )
+    _fully_load(order, suffix="WCGROSS")
     cash = CashAccount.objects.create(name="WC Gross Cash", opening_balance=Decimal("5000000.00"))
     # Advance recorded directly (bypassing AdvanceService.create_supplier_advance,
     # which would reject this while a debt is open) - reproduces a state
@@ -209,10 +241,11 @@ def test_working_capital_matches_client_recette_example():
     )
 
     # dettes fournisseurs ouvertes = 45 000 000 (45 000 L x 1 000.0000, no advance)
-    _make_supplier_order_with_status(
+    _, _, wcrecette_sup_order = _make_supplier_order_with_status(
         "WCRECETTE-SUP", SupplierOrder.Status.CONFIRMED,
         quantity=Decimal("45000.00"), unit_price=Decimal("1000.0000"),
     )
+    _fully_load(wcrecette_sup_order, suffix="WCRECETTE-SUP")
 
     # dettes transporteurs ouvertes = 2 925 000 (no advance)
     from apps.finance.models import TransportPayment

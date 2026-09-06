@@ -165,7 +165,7 @@ Par client : solde impayé en tête, table des factures (statut avec code couleu
 #### Grand livre transporteur (Transporter Ledger)
 Écran de lecture seule (aucune action de saisie) présentant 5 indicateurs formant la formule de solde transporteur :
 `Gains bruts − Déductions − Avances appliquées − Déjà réglé = Net à payer`
-- **Déductions** : montants retenus pour compenser une perte de carburant hors tolérance constatée à la livraison (facturée au prix d'achat fournisseur).
+- **Déductions** : montants retenus pour compenser une perte de carburant hors tolérance constatée à la livraison (facturée au prix de vente client — règle métier confirmée le 2026-09-06, correction de cette documentation qui indiquait à tort le prix d'achat fournisseur).
 - **Avances** : sommes versées par anticipation à un transporteur, soldées automatiquement lors du règlement final correspondant.
 - Table détaillée des règlements par trajet et table des avances.
 
@@ -221,7 +221,7 @@ Trajet créé (ASSIGNED)
         │
         ├─► si perte > tolérance configurée :
         │      création automatique d'une Déduction transporteur
-        │      (perte facturable × prix d'achat fournisseur)
+        │      (perte facturable × prix de vente client)
         │
         ├─► détermination automatique du prix de vente
         │      (historique de prix spécifique au client, sinon prix
@@ -266,7 +266,7 @@ Statuts spéciaux : **BLOCKED** (retour au statut précédent, ex. incident doua
 2. À chaque **contrôle de livraison**, ce seuil est **figé** dans l'enregistrement du contrôle (valeur historique, non rétroactive si le paramètre change plus tard).
 3. Écart = quantité chargée − quantité reçue.
    - Si écart ≤ tolérance : aucune conséquence financière.
-   - Si écart > tolérance : le surplus (« perte facturable ») déclenche automatiquement une **Déduction transporteur**, valorisée au prix d'achat fournisseur, qui viendra réduire le net à payer au transporteur (visible dans son grand livre).
+   - Si écart > tolérance : le surplus (« perte facturable ») déclenche automatiquement une **Déduction transporteur**, valorisée au prix de vente client, qui viendra réduire le net à payer au transporteur (visible dans son grand livre).
 4. Si la quantité reçue est **supérieure** à la quantité chargée (anomalie), le système bloque la validation du contrôle tant qu'un utilisateur habilité (droit `operations.validate`) n'a pas explicitement confirmé l'anomalie.
 
 #### e) Règlement transporteur

@@ -562,7 +562,58 @@ def test_payment_allocation_invoice_null_means_unallocated_credit():
 # ---------------------------------------------------------------------------
 
 
-def _make_supplier_order(suffix):
+def _load_trip_for_supplier_order(*, supplier, supplier_order, quantity, suffix, admin_user):
+    """Load `quantity` litres against `supplier_order` via a real Trip -
+    the only thing that now creates supplier debt (bug fix, client
+    business rule confirmed 2026-09-06: ControlledDebtPaymentService.
+    describe_supplier_order prices debt on quantity actually loaded, not
+    on the full confirmed order)."""
+    if quantity <= Decimal("0.00"):
+        return None
+    # Truncated defensively: Truck's internal_id/tractor_registration/
+    # tanker_registration are all varchar(30), and this helper's callers
+    # pass arbitrarily long test suffixes.
+    short_suffix = suffix[-16:]
+    cession = CessionLetter.objects.create(
+        reference=f"CL-{suffix}",
+        supplier_order=supplier_order,
+        authorized_quantity=supplier_order.quantity_litres,
+        issue_date="2026-08-18",
+        created_by=admin_user,
+    )
+    truck = Truck.objects.create(
+        internal_id=f"TRK-{short_suffix}",
+        tractor_registration=f"{short_suffix}-TRAC",
+        tanker_registration=f"{short_suffix}-TANK",
+        capacity_litres=Decimal("45000.00"),
+    )
+    transporter = Transporter.objects.create(name=f"Transporteur {suffix}")
+    return Trip.objects.create(
+        reference=f"TRIP-{suffix}",
+        truck=truck,
+        transporter=transporter,
+        supplier=supplier,
+        supplier_order=supplier_order,
+        cession_letter=cession,
+        product=supplier_order.product,
+        quantity_loaded=quantity,
+        loading_date="2026-08-18",
+        bl_reference=f"BL-{suffix}",
+        created_by=admin_user,
+    )
+
+
+def _make_supplier_order(suffix, *, loaded_quantity=None):
+    """`loaded_quantity` (bug fix, client business rule confirmed
+    2026-09-06): ControlledDebtPaymentService.describe_supplier_order now
+    prices the supplier debt on quantity actually loaded onto a trip, not
+    on the full confirmed order - so every one of this helper's many
+    existing callers needs a real Trip behind the order for the debt to be
+    non-zero. Defaulting to a trip that loads the FULL purchased quantity
+    keeps every pre-existing assertion of the form
+    `... == supplier_order.total_amount` correct unchanged (fully loaded
+    means loaded_amount == total_amount). Pass an explicit smaller
+    Decimal to test partial loading instead."""
     admin_role = Role.objects.get(name=Role.NAME_ADMIN)
     admin_user = User.objects.create_user(
         phone=(f"+222{suffix}")[:20],
@@ -571,17 +622,76 @@ def _make_supplier_order(suffix):
     )
     product = Product.objects.get(code="gasoil")
     supplier = Supplier.objects.create(name=f"Supplier {suffix}", country="Senegal")
+    quantity_litres = Decimal("500000.00")
     supplier_order = SupplierOrder.objects.create(
         reference=f"SO-SUPPAY-{suffix}",
         supplier=supplier,
         product=product,
         purchase_date="2026-08-18",
-        quantity_litres=Decimal("500000.00"),
+        quantity_litres=quantity_litres,
         unit_price=Decimal("600.0000"),
         status=SupplierOrder.Status.CONFIRMED,
         created_by=admin_user,
     )
+    quantity_to_load = quantity_litres if loaded_quantity is None else loaded_quantity
+    _load_trip_for_supplier_order(
+        supplier=supplier,
+        supplier_order=supplier_order,
+        quantity=quantity_to_load,
+        suffix=f"SUPPAY-{suffix}",
+        admin_user=admin_user,
+    )
     return admin_user, supplier, supplier_order
+
+
+@pytest.mark.django_db
+def test_supplier_debt_is_priced_on_loaded_quantity_not_full_order():
+    """Exact client-confirmed example (2026-09-06): purchase 200,000 L at
+    500 XOF/L, only 100,000 L actually loaded onto a trip so far ->
+    supplier debt = 100,000 x 500 = 50,000,000 XOF, not the full order's
+    100,000,000 XOF. Loading the remaining 100,000 L later brings the debt
+    up to the full order amount."""
+    admin_role = Role.objects.get(name=Role.NAME_ADMIN)
+    admin_user = User.objects.create_user(
+        phone="+222DEBTCLIENTEX", pin="1234", role=admin_role
+    )
+    product = Product.objects.get(code="gasoil")
+    supplier = Supplier.objects.create(name="Supplier Debt Example", country="Senegal")
+    order = SupplierOrder.objects.create(
+        reference="SO-DEBT-CLIENT-EXAMPLE",
+        supplier=supplier,
+        product=product,
+        purchase_date="2026-08-18",
+        quantity_litres=Decimal("200000.00"),
+        unit_price=Decimal("500.0000"),
+        status=SupplierOrder.Status.CONFIRMED,
+        created_by=admin_user,
+    )
+
+    # Nothing loaded yet: no debt at all.
+    debt = ControlledDebtPaymentService.describe_supplier_order(order)
+    assert debt["total_amount"] == Decimal("0.00")
+    assert debt["remaining_amount"] == Decimal("0.00")
+
+    _load_trip_for_supplier_order(
+        supplier=supplier, supplier_order=order, quantity=Decimal("100000.00"),
+        suffix="DEBT-CLIENT-EX-1", admin_user=admin_user,
+    )
+
+    debt = ControlledDebtPaymentService.describe_supplier_order(order)
+    assert debt["total_amount"] == Decimal("50000000.00")
+    assert debt["remaining_amount"] == Decimal("50000000.00")
+
+    # Load the remaining 100,000 L later: debt grows to the full order.
+    _load_trip_for_supplier_order(
+        supplier=supplier, supplier_order=order, quantity=Decimal("100000.00"),
+        suffix="DEBT-CLIENT-EX-2", admin_user=admin_user,
+    )
+
+    debt = ControlledDebtPaymentService.describe_supplier_order(order)
+    assert debt["total_amount"] == Decimal("100000000.00")
+    assert debt["remaining_amount"] == Decimal("100000000.00")
+    assert debt["total_amount"] == order.total_amount
 
 
 @pytest.mark.django_db
@@ -1514,6 +1624,13 @@ def test_payable_supplier_debts_are_grouped_by_supplier(treasury_user):
         status=SupplierOrder.Status.CONFIRMED,
         created_by=admin_user,
     )
+    # Fully load new_order too, so its debt equals its total_amount (bug
+    # fix, client business rule confirmed 2026-09-06: debt now tracks
+    # quantity loaded, not the full confirmed order).
+    _load_trip_for_supplier_order(
+        supplier=supplier, supplier_order=new_order, quantity=new_order.quantity_litres,
+        suffix="CTRL-SUP-GROUP-B", admin_user=admin_user,
+    )
     other_supplier = Supplier.objects.create(name="Other Supplier", country="Senegal")
     SupplierOrder.objects.create(
         reference="SO-SUPPAY-CTRL-SUP-GROUP-C",
@@ -1582,6 +1699,12 @@ def test_controlled_supplier_payment_allocates_to_oldest_orders_first(treasury_u
         unit_price=Decimal("600.0000"),
         status=SupplierOrder.Status.CONFIRMED,
         created_by=admin_user,
+    )
+    # Fully load new_order too, so its debt equals its total_amount (bug
+    # fix, client business rule confirmed 2026-09-06).
+    _load_trip_for_supplier_order(
+        supplier=supplier, supplier_order=new_order, quantity=new_order.quantity_litres,
+        suffix="CTRL-SUP-FIFO-B", admin_user=admin_user,
     )
     bank_account = BankAccount.objects.create(
         name="Main BOA Account", opening_balance=Decimal("999999999.00")
@@ -2715,6 +2838,156 @@ def test_direct_bank_customer_payment_creates_linked_treasury_transaction(financ
     assert txn.type == TreasuryTransaction.Type.MONEY_IN
     assert txn.bank_account_id == bank_account.id
     assert txn.amount == Decimal("2500000.00")
+
+
+# ---------------------------------------------------------------------------
+# Bug fix (2026-09-06): editing a CustomerPayment's amount/account/date/
+# customer/reference must never silently desync the TreasuryTransaction
+# already posted at creation - since a plain PATCH has no safe way to
+# reverse-and-repost that transaction yet, those fields are blocked outright
+# once the payment exists (note/proof/allocations remain editable - none of
+# them are read by FinancePostingService.record_customer_payment_treasury).
+# ---------------------------------------------------------------------------
+
+
+def _create_direct_bank_customer_payment(finance_client, suffix, *, amount="2500000.00"):
+    _admin_user, customer, _invoice = _make_invoice_for_payment(suffix)
+    bank_account = BankAccount.objects.create(name=f"Bank {suffix}")
+    response = finance_client.post(
+        "/api/customer-payments/",
+        {
+            "customer": customer.id,
+            "amount": amount,
+            "payment_date": "2026-08-18",
+            "method": CustomerPayment.Method.BANK_TRANSFER,
+            "destination": CustomerPayment.Destination.BANK,
+            "bank_account": bank_account.id,
+        },
+    )
+    assert response.status_code == 201, response.data
+    return response.data, bank_account, customer
+
+
+@pytest.mark.django_db
+def test_customer_payment_amount_edit_is_blocked_to_avoid_treasury_desync(finance_client):
+    payment_data, bank_account, _customer = _create_direct_bank_customer_payment(
+        finance_client, "EDIT-AMOUNT"
+    )
+    txn_before = TreasuryTransaction.objects.get(
+        source_content_type=ContentType.objects.get_for_model(CustomerPayment),
+        source_object_id=payment_data["id"],
+    )
+
+    response = finance_client.patch(
+        f"/api/customer-payments/{payment_data['id']}/", {"amount": "9999999.00"}
+    )
+
+    assert response.status_code == 400
+    assert "amount" in response.data
+
+    payment = CustomerPayment.objects.get(pk=payment_data["id"])
+    assert payment.amount == Decimal("2500000.00")
+    txn_before.refresh_from_db()
+    assert txn_before.amount == Decimal("2500000.00")
+
+
+@pytest.mark.django_db
+def test_customer_payment_bank_account_edit_is_blocked_to_avoid_treasury_desync(finance_client):
+    payment_data, bank_account, _customer = _create_direct_bank_customer_payment(
+        finance_client, "EDIT-BANK"
+    )
+    other_bank = BankAccount.objects.create(name="Other Bank EDIT-BANK")
+
+    response = finance_client.patch(
+        f"/api/customer-payments/{payment_data['id']}/", {"bank_account": other_bank.id}
+    )
+
+    assert response.status_code == 400
+    assert "bank_account" in response.data
+
+    txn = TreasuryTransaction.objects.get(
+        source_content_type=ContentType.objects.get_for_model(CustomerPayment),
+        source_object_id=payment_data["id"],
+    )
+    assert txn.bank_account_id == bank_account.id
+
+
+@pytest.mark.django_db
+def test_customer_payment_date_and_customer_edit_are_blocked_to_avoid_treasury_desync(
+    finance_client,
+):
+    payment_data, _bank_account, customer = _create_direct_bank_customer_payment(
+        finance_client, "EDIT-DATE-CUST"
+    )
+    _admin_user, other_customer, _other_invoice = _make_invoice_for_payment("EDIT-DATE-CUST-2")
+
+    date_response = finance_client.patch(
+        f"/api/customer-payments/{payment_data['id']}/", {"payment_date": "2026-08-19"}
+    )
+    assert date_response.status_code == 400
+    assert "payment_date" in date_response.data
+
+    customer_response = finance_client.patch(
+        f"/api/customer-payments/{payment_data['id']}/", {"customer": other_customer.id}
+    )
+    assert customer_response.status_code == 400
+    assert "customer" in customer_response.data
+
+
+@pytest.mark.django_db
+def test_customer_payment_note_and_proof_edit_remain_allowed(finance_client):
+    payment_data, _bank_account, _customer = _create_direct_bank_customer_payment(
+        finance_client, "EDIT-NOTE-OK"
+    )
+
+    response = finance_client.patch(
+        f"/api/customer-payments/{payment_data['id']}/", {"note": "Correction du libelle"}
+    )
+
+    assert response.status_code == 200, response.data
+    payment = CustomerPayment.objects.get(pk=payment_data["id"])
+    assert payment.note == "Correction du libelle"
+    # Amount/account untouched - the treasury transaction stays in sync.
+    assert payment.amount == Decimal("2500000.00")
+
+
+@pytest.mark.django_db
+def test_customer_payment_allocating_an_unallocated_credit_via_update_remains_allowed(
+    finance_client,
+):
+    # Allocating an existing, still-unallocated payment credit to an
+    # invoice via update() never touches the TreasuryTransaction (money
+    # already received, no change in amount or account) - this must stay
+    # a safe, available correction (e.g. "this payment was recorded as a
+    # pure credit, now allocate it to the right invoice").
+    admin_user, customer, invoice = _make_invoice_for_payment("EDIT-ALLOC-LATER")
+    bank_account = BankAccount.objects.create(name="Bank EDIT-ALLOC-LATER")
+    create_response = finance_client.post(
+        "/api/customer-payments/",
+        {
+            "customer": customer.id,
+            "amount": "1000000.00",
+            "payment_date": "2026-08-18",
+            "method": CustomerPayment.Method.BANK_TRANSFER,
+            "destination": CustomerPayment.Destination.BANK,
+            "bank_account": bank_account.id,
+        },
+    )
+    assert create_response.status_code == 201, create_response.data
+    payment_id = create_response.data["id"]
+    assert not PaymentAllocation.objects.filter(payment_id=payment_id).exists()
+
+    response = finance_client.patch(
+        f"/api/customer-payments/{payment_id}/",
+        {"allocations": json.dumps([{"invoice": invoice.id, "amount": "1000000.00"}])},
+    )
+
+    assert response.status_code == 200, response.data
+    assert PaymentAllocation.objects.filter(payment_id=payment_id, invoice=invoice).exists()
+    # Amount/account untouched throughout.
+    payment = CustomerPayment.objects.get(pk=payment_id)
+    assert payment.amount == Decimal("1000000.00")
+    assert payment.bank_account_id == bank_account.id
 
 
 @pytest.mark.django_db

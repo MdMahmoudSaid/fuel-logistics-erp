@@ -1389,6 +1389,47 @@ def test_delivery_service_happy_path_creates_deduction_sale_and_invoice():
 
 
 @pytest.mark.django_db
+def test_transport_deduction_is_valued_at_customer_sale_price_not_supplier_cost():
+    """CONFIRMED BUSINESS RULE (client, 2026-09-06) - this is deliberate,
+    not a bug: the transporter's chargeable fuel-loss deduction is valued
+    at the customer's sale price, never at the supplier's purchase cost.
+
+    Exact client-confirmed example: 300 L facturables x 900 XOF/L (prix de
+    vente client) = 270,000 XOF. The supplier's own purchase price is set
+    to a very different value (500 XOF/L) here specifically to prove the
+    deduction tracks the sale price and NOT it - do not "fix" this test or
+    apps.trips.services.DeliveryService.sync_transport_shortage_deduction
+    to use trip.supplier_order.unit_price without a new, explicit client
+    instruction overriding this one.
+    """
+    fx = _fixtures_with_customer("DS-SALE-PRICE-RULE")
+    fx["supplier_order"].unit_price = Decimal("500.0000")
+    fx["supplier_order"].save()
+    trip = _deliverable_trip(fx, "TRIP-DS-SALE-PRICE-RULE-001")
+    LossToleranceConfig.objects.create(
+        tolerance_litres=Decimal("100.00"), updated_by=fx["admin_user"]
+    )
+
+    # 400 L short of the 45,000 L loaded; 100 L tolerated -> 300 L chargeable.
+    control = DeliveryService.record_delivery(
+        trip_id=trip.id,
+        received_qty=Decimal("44600.00"),
+        control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE,
+        controller=fx["admin_user"],
+        unit_selling_price=Decimal("900.0000"),
+    )
+
+    assert control.chargeable_loss_quantity == Decimal("300.00")
+
+    deduction = TransportDeduction.objects.get(trip=trip)
+    assert deduction.chargeable_quantity == Decimal("300.00")
+    # Valued at the client's sale price (900), not the supplier's cost (500).
+    assert deduction.unit_price == Decimal("900.0000")
+    assert deduction.amount == Decimal("270000.00")
+
+
+@pytest.mark.django_db
 def test_delivery_service_syncs_transport_deduction_without_duplicates():
     fx = _fixtures_with_customer("DS-DEDUCT-SYNC")
     trip = _deliverable_trip(fx, "TRIP-DS-DEDUCT-SYNC-001")

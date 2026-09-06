@@ -11,8 +11,9 @@ class SupplierOrder(AuditableModel, TimeStampedModel):
     """A fuel purchase from a supplier (spec §5).
 
     `total_amount` is recalculated on every save() for query/list performance,
-    but the authoritative reliquat calculation (purchased - active cessions)
-    lives in SupplierStockService, not here (see docs/PHASE_2_PLAN.md).
+    but the authoritative reliquat calculation (purchased - quantity actually
+    loaded onto a trip, confirmed client business rule 2026-09-06) lives in
+    SupplierStockService, not here (see docs/PHASE_2_PLAN.md).
     """
 
     class Status(models.TextChoices):

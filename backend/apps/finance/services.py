@@ -37,6 +37,7 @@ from apps.finance.models import (
     TreasuryTransaction,
 )
 from apps.purchasing.models import SupplierOrder
+from apps.purchasing.services import SupplierStockService
 from apps.reports.queries.margin_report import MarginReportQuery
 from apps.sales.models import Invoice
 from apps.suppliers.models import Supplier
@@ -1214,7 +1215,22 @@ class ControlledDebtPaymentService:
     @classmethod
     def describe_supplier_order(cls, order, *, paid_amount=None) -> dict:
         paid = cls._supplier_order_paid(order, override=paid_amount)
-        total = order.total_amount if order.status == SupplierOrder.Status.CONFIRMED else ZERO
+        # Bug fix (client business rule, confirmed 2026-09-06): the payable
+        # debt to a supplier must only reflect quantity actually loaded onto
+        # a trip, never the full confirmed order - a cession letter and a
+        # confirmed purchase are commitments, not a debt, until fuel is
+        # physically taken. Example confirmed with the client: purchase
+        # 200,000 L at 500 XOF/L, only 100,000 L loaded -> debt = 50,000,000
+        # XOF, not the order's full 100,000,000 XOF. This total is the
+        # single source of truth reused by the supplier ledger, the
+        # Dashboard's debts card, Nouveau paiement's payable-debts list and
+        # WorkingCapitalService (fond de roulement) - fixing it here fixes
+        # all of them at once.
+        total = (
+            SupplierStockService.get_purchase_loaded_amount(order)
+            if order.status == SupplierOrder.Status.CONFIRMED
+            else ZERO
+        )
         return {
             "id": order.id,
             "debt_type": cls.SUPPLIER,
@@ -2222,7 +2238,11 @@ class SupplierLedgerService:
             entries.append({
                 "type": "debt_created",
                 "date": order.purchase_date,
-                "amount": order.total_amount,
+                # Bug fix (client business rule, 2026-09-06): must match
+                # describe_supplier_order's debt (loaded quantity only), not
+                # the full order - otherwise this timeline entry would show
+                # a bigger figure than the ledger's own summary total_due.
+                "amount": SupplierStockService.get_purchase_loaded_amount(order),
                 "reference": order.reference,
                 "note": "",
                 "proof_url": None,

@@ -718,6 +718,15 @@ class DeliveryService:
     def sync_transport_shortage_deduction(
         *, trip: Trip, received_qty: Decimal, unit_selling_price: Decimal
     ) -> None:
+        # CONFIRMED BUSINESS RULE (client, 2026-09-06) - NOT a bug, do not
+        # "fix" this to use trip.supplier_order.unit_price: the chargeable
+        # transporter loss is deliberately valued at the customer's sale
+        # price (`unit_selling_price`), not the supplier's purchase cost.
+        # Example confirmed with the client: 300 L facturables x 900 XOF/L
+        # (prix de vente client) = 270,000 XOF. See
+        # test_transport_deduction_is_valued_at_customer_sale_price_not_
+        # supplier_cost (apps.trips.tests) for the locked-in regression.
+        #
         # Bug fix (2026-09-03 recette manuelle): a company-owned truck's
         # trip is now linked to the seeded internal transporter (never
         # None - see Trip.transporter docstring), but it still must never

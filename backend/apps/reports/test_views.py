@@ -934,24 +934,61 @@ def test_dashboard_party_balances_suppliers_reflects_advance_then_debt_then_paym
     assert balance_after_advance >= Decimal("2000000.00")
 
     # 2) debt created (order confirmed), fully covered by the advance
-    SupplierOrder.objects.create(
+    # Bug fix (client business rule, confirmed 2026-09-06): debt now needs
+    # quantity actually loaded - fully load both orders below so this
+    # test's progression (600000 then 3000000 total debt) is unchanged;
+    # this test is about advance/debt/payment lifecycle sync, not about
+    # the loaded-vs-purchased debt timing rule itself.
+    order_1 = SupplierOrder.objects.create(
         reference="SO-DASH-SYNC", supplier=supplier, product=product,
         purchase_date="2026-08-18", quantity_litres=Decimal("1000.00"),
         unit_price=Decimal("600.0000"), status=SupplierOrder.Status.CONFIRMED,
         created_by=admin_user,
     )  # total 600000, fully covered by the 2M advance
+    cession_1 = CessionLetter.objects.create(
+        reference="CL-DASH-SYNC", supplier_order=order_1,
+        authorized_quantity=order_1.quantity_litres, issue_date="2026-08-18",
+        created_by=admin_user,
+    )
+    truck_1 = Truck.objects.create(
+        internal_id="TRK-DASH-SYNC", tractor_registration="DASH-SYNC-TRAC",
+        tanker_registration="DASH-SYNC-TANK", capacity_litres=Decimal("45000.00"),
+    )
+    Trip.objects.create(
+        reference="TRIP-DASH-SYNC", truck=truck_1,
+        transporter=Transporter.objects.create(name="Transporteur DASH-SYNC"),
+        supplier=supplier, supplier_order=order_1, cession_letter=cession_1,
+        product=product, quantity_loaded=order_1.quantity_litres,
+        loading_date="2026-08-18", bl_reference="BL-DASH-SYNC", created_by=admin_user,
+    )
     response = client.get("/api/dashboard/summary/")
     balance_after_debt = Decimal(response.data["party_balances"]["suppliers"]["balance"])
     assert balance_after_debt == balance_after_advance - Decimal("600000.00")
     assert balance_after_debt > Decimal("0.00")
 
     # 3) a larger debt -> now net negative (real payable debt)
-    SupplierOrder.objects.create(
+    order_2 = SupplierOrder.objects.create(
         reference="SO-DASH-SYNC-2", supplier=supplier, product=product,
         purchase_date="2026-08-19", quantity_litres=Decimal("5000.00"),
         unit_price=Decimal("600.0000"), status=SupplierOrder.Status.CONFIRMED,
         created_by=admin_user,
     )  # total 3000000, consumes remaining 1400000 advance, leaves 1600000 real debt
+    cession_2 = CessionLetter.objects.create(
+        reference="CL-DASH-SYNC-2", supplier_order=order_2,
+        authorized_quantity=order_2.quantity_litres, issue_date="2026-08-19",
+        created_by=admin_user,
+    )
+    truck_2 = Truck.objects.create(
+        internal_id="TRK-DASH-SYNC-2", tractor_registration="DASH-SYNC2-TRAC",
+        tanker_registration="DASH-SYNC2-TANK", capacity_litres=Decimal("45000.00"),
+    )
+    Trip.objects.create(
+        reference="TRIP-DASH-SYNC-2", truck=truck_2,
+        transporter=Transporter.objects.create(name="Transporteur DASH-SYNC-2"),
+        supplier=supplier, supplier_order=order_2, cession_letter=cession_2,
+        product=product, quantity_loaded=order_2.quantity_litres,
+        loading_date="2026-08-19", bl_reference="BL-DASH-SYNC-2", created_by=admin_user,
+    )
     response = client.get("/api/dashboard/summary/")
     assert Decimal(response.data["party_balances"]["suppliers"]["balance"]) == Decimal("-1600000.00")
 
@@ -1250,11 +1287,30 @@ def test_dashboard_working_capital_matches_client_recette_example():
 
     supplier = Supplier.objects.create(name="Dash Recette Supplier", country="Senegal")
     product = Product.objects.get(code="gasoil")
-    SupplierOrder.objects.create(
+    recette_order = SupplierOrder.objects.create(
         reference="SO-DASHRECETTE", supplier=supplier, product=product,
         purchase_date="2026-08-18", quantity_litres=Decimal("45000.00"),
         unit_price=Decimal("1000.0000"), status=SupplierOrder.Status.CONFIRMED,
         created_by=admin_user,
+    )
+    # Bug fix (client business rule, confirmed 2026-09-06): debt now needs
+    # quantity actually loaded - fully load this order so the client's own
+    # "dettes fournisseurs ouvertes = 45 000 000" example still holds.
+    recette_cession = CessionLetter.objects.create(
+        reference="CL-DASHRECETTE-SUP", supplier_order=recette_order,
+        authorized_quantity=recette_order.quantity_litres, issue_date="2026-08-18",
+        created_by=admin_user,
+    )
+    recette_truck = Truck.objects.create(
+        internal_id="TRK-DASHRECETTE-SUP", tractor_registration="DASHRECSUP-TRAC",
+        tanker_registration="DASHRECSUP-TANK", capacity_litres=Decimal("45000.00"),
+    )
+    Trip.objects.create(
+        reference="TRIP-DASHRECETTE-SUP", truck=recette_truck,
+        transporter=Transporter.objects.create(name="Transporteur Dash Recette Achat"),
+        supplier=supplier, supplier_order=recette_order, cession_letter=recette_cession,
+        product=product, quantity_loaded=recette_order.quantity_litres,
+        loading_date="2026-08-18", bl_reference="BL-DASHRECETTE-SUP", created_by=admin_user,
     )
 
     transporter = Transporter.objects.create(name="Dash Recette Transporter")

@@ -80,14 +80,11 @@ def test_get_supplier_reliquats_sums_active_orders_only():
         "CANCELLED", admin_user, quantity=Decimal("999999.00"), status=SupplierOrder.Status.CANCELLED
     )
 
-    # Partially consume confirmed_a's reliquat with a cession, leave confirmed_b untouched.
-    CessionLetter.objects.create(
-        reference="CL-STOCK-PARTIAL",
-        supplier_order=confirmed_a,
-        authorized_quantity=Decimal("30000.00"),
-        issue_date="2026-08-18",
-        created_by=admin_user,
-    )
+    # Bug fix (client business rule, confirmed 2026-09-06): a cession letter
+    # alone no longer consumes reliquat - only an actual loading (Trip)
+    # does. Partially consume confirmed_a's reliquat by loading 30,000 L
+    # against it, leave confirmed_b untouched.
+    _make_trip("PARTIAL", admin_user, confirmed_a, Decimal("30000.00"))
 
     # confirmed_a reliquat: 100000 - 30000 = 70000; confirmed_b: 50000 (untouched).
     assert TheoreticalStockService.get_supplier_reliquats() == Decimal("120000.00")
