@@ -11,6 +11,7 @@ import { i18n } from '@/i18n'
 
 const fetchReport = vi.fn()
 const fetchShareholderProfitPreview = vi.fn()
+const exportProfitReportPdf = vi.fn(async () => undefined)
 
 vi.mock('@/modules/reports/api', () => ({
   fetchReport: (...args: unknown[]) => fetchReport(...args),
@@ -18,6 +19,7 @@ vi.mock('@/modules/reports/api', () => ({
 
 vi.mock('../api', () => ({
   fetchShareholderProfitPreview: (...args: unknown[]) => fetchShareholderProfitPreview(...args),
+  exportProfitReportPdf: (...args: unknown[]) => exportProfitReportPdf(...args),
 }))
 
 describe('ProfitView', () => {
@@ -142,7 +144,9 @@ describe('ProfitView', () => {
 
     const distributableResultCard = wrapper.find('[data-test="profit-distributable-result-card"]')
     expect(distributableResultCard.exists()).toBe(true)
-    expect(distributableResultCard.text()).toContain('Résultat distribuable après dettes et capital')
+    expect(distributableResultCard.text()).toContain(
+      'Résultat distribuable après dettes et capital',
+    )
     expect(distributableResultCard.text()).toContain('650 000 XOF')
   })
 
@@ -163,7 +167,7 @@ describe('ProfitView', () => {
     expect(profitabilityIndex).toBeGreaterThanOrEqual(0)
     expect(distributionIndex).toBeGreaterThan(profitabilityIndex)
     expect(costDetailIndex).toBeGreaterThan(distributionIndex)
-    expect(text).toContain('Est-ce que l\'activité est rentable ?')
+    expect(text).toContain("Est-ce que l'activité est rentable ?")
     expect(text).toContain('Combien peut-on distribuer aux associés ?')
   })
 
@@ -298,7 +302,9 @@ describe('ProfitView', () => {
     expect(roadTransitCard).toBeDefined()
     expect(roadTransitCard!.text()).toContain('50 000 XOF')
 
-    const otherCard = cards.find((card) => card.text().includes('Autres frais des trajets comptabilisés'))
+    const otherCard = cards.find((card) =>
+      card.text().includes('Autres frais des trajets comptabilisés'),
+    )
     expect(otherCard).toBeDefined()
     expect(otherCard!.text()).toContain('50 000 XOF')
     expect(otherCard!.text()).not.toContain('100 000 XOF')
@@ -446,5 +452,36 @@ describe('ProfitView', () => {
     expect(arabic.text()).toContain('تفاصيل تكاليف الرحلات')
     expect(arabic.text()).toContain('رأس المال المُقدَّم')
     expect(arabic.text()).not.toContain('Rentabilité')
+  })
+
+  // Client request (2026-09-06): "Exporter en PDF" button, respecting the
+  // period currently selected on this page.
+  it('exports a PDF respecting the currently selected period', async () => {
+    const wrapper = mount(ProfitView)
+    await flushPromises()
+    await flushPromises()
+
+    const button = wrapper.find('[data-test="profit-export-pdf"]')
+    expect(button.exists()).toBe(true)
+    await button.trigger('click')
+    await flushPromises()
+
+    expect(exportProfitReportPdf).toHaveBeenCalledWith(
+      expect.objectContaining({ preset: 'month' }),
+      'fr',
+    )
+  })
+
+  it('shows an error message if the PDF export fails, without blocking the page', async () => {
+    exportProfitReportPdf.mockRejectedValueOnce(new Error('network error'))
+    const wrapper = mount(ProfitView)
+    await flushPromises()
+    await flushPromises()
+
+    await wrapper.find('[data-test="profit-export-pdf"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain("Impossible d'exporter ce rapport.")
+    expect(wrapper.text()).toContain('TRIP-1')
   })
 })

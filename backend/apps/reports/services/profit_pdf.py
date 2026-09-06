@@ -1,0 +1,363 @@
+# PDF export for the "Benefices" page (client request 2026-09-06) - a real
+# structured document (reportlab), never a screenshot of the page: the
+# profitability figures, the full fond-de-roulement breakdown (including
+# the douane/transit/transit routiere/autres frais lines the page itself
+# only shows as one merged "dettes ouvertes" figure), and the per-trip
+# margin detail table. Deliberately its own module, mirroring ledger_pdf.py/
+# quotation_pdf.py's self-contained pattern rather than sharing their
+# private helpers - every value handed to Paragraph is escaped via
+# _safe_paragraph_text (security fix 2026-09-06, apps.reports.services.
+# ledger_pdf docstring), even though nothing here is currently free text
+# typed by an operator (trip references/client names go through Table
+# cells only, never markup-parsed by reportlab).
+
+import datetime
+import io
+from decimal import ROUND_HALF_UP, Decimal
+from pathlib import Path
+from xml.sax.saxutils import escape as xml_escape
+
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import mm
+from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+from apps.reports.services.ledger_pdf import DEFAULT_COMPANY_NAME
+
+_LOGO_PATH = Path(__file__).resolve().parent.parent / "assets" / "azur-energie-icon.png"
+
+ZERO = Decimal("0.00")
+
+PROFIT_PDF_LABELS = {
+    "fr": {
+        "title": "Rapport de benefices",
+        "period": "Periode",
+        "period_all_time": "Depuis le debut",
+        "export_date": "Date d'export",
+        "profitability": "Rentabilite",
+        "operationalProfit": "Benefice operationnel des trajets",
+        "revenue": "Chiffre d'affaires",
+        "tripsCount": "Trajets pris en compte",
+        "generalExpenses": "Depenses generales payees",
+        "netProfit": "Benefice net apres depenses generales",
+        "workingCapital": "Fond de roulement - detail complet",
+        "treasuryAvailable": "Tresorerie disponible",
+        "customerReceivables": "Creances clients",
+        "gross": "= Brut (tresorerie + creances)",
+        "supplierDebt": "Dette fournisseurs",
+        "transporterDebt": "Dette transporteurs",
+        "customsDebt": "Douane",
+        "transitDebt": "Transit",
+        "roadTransitDebt": "Transit routiere",
+        "otherDebt": "Autres frais (frontiere / chargement / divers)",
+        "totalDebts": "= Total des dettes ouvertes",
+        "totalWorkingCapital": "= Fond de roulement total",
+        "capital": "Capital apporte",
+        "distributableResult": "= Resultat distribuable apres dettes et capital",
+        "tripDetail": "Detail des couts par trajet",
+        "table": {
+            "trip_reference": "Reference",
+            "client": "Client",
+            "product": "Produit",
+            "quantity_loaded": "Qte chargee",
+            "quantity_invoiced": "Qte facturee",
+            "transporter_loss_quantity": "Perte transp.",
+            "transporter_loss_indemnity": "Indemnisation",
+            "supplier_unit_price": "Prix fourn./L",
+            "real_total_cost": "Cout total",
+            "unit_selling_price": "Prix vente/L",
+            "unit_profit": "Benefice/L",
+            "current_margin": "Benefice total",
+        },
+    },
+    "en": {
+        "title": "Profit report",
+        "period": "Period",
+        "period_all_time": "Since the beginning",
+        "export_date": "Export date",
+        "profitability": "Profitability",
+        "operationalProfit": "Operational profit (trips)",
+        "revenue": "Revenue",
+        "tripsCount": "Trips counted",
+        "generalExpenses": "General expenses paid",
+        "netProfit": "Net profit after general expenses",
+        "workingCapital": "Working capital - full breakdown",
+        "treasuryAvailable": "Available treasury",
+        "customerReceivables": "Customer receivables",
+        "gross": "= Gross (treasury + receivables)",
+        "supplierDebt": "Supplier debt",
+        "transporterDebt": "Transporter debt",
+        "customsDebt": "Customs",
+        "transitDebt": "Transit",
+        "roadTransitDebt": "Road transit",
+        "otherDebt": "Other fees (border / loading / misc.)",
+        "totalDebts": "= Total open debts",
+        "totalWorkingCapital": "= Total working capital",
+        "capital": "Capital contributed",
+        "distributableResult": "= Distributable result after debts and capital",
+        "tripDetail": "Trip cost detail",
+        "table": {
+            "trip_reference": "Reference",
+            "client": "Customer",
+            "product": "Product",
+            "quantity_loaded": "Qty loaded",
+            "quantity_invoiced": "Qty invoiced",
+            "transporter_loss_quantity": "Transp. loss",
+            "transporter_loss_indemnity": "Indemnity",
+            "supplier_unit_price": "Supplier/L",
+            "real_total_cost": "Total cost",
+            "unit_selling_price": "Selling/L",
+            "unit_profit": "Profit/L",
+            "current_margin": "Total profit",
+        },
+    },
+}
+# AR: labels intentionally kept in French, same documented policy as
+# ledger_pdf.py/quotation_pdf.py (no embedded Arabic-capable font/shaping
+# installed in this pass).
+PROFIT_PDF_LABELS["ar"] = PROFIT_PDF_LABELS["fr"]
+
+_SUMMARY_TABLE_STYLE = TableStyle(
+    [
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#d8d5cc")),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+    ]
+)
+
+def _bold_row(row_index: int):
+    """A TableStyle command bolding one full row (both label and value
+    columns) of a 2-column label/value summary table."""
+    return ("FONTNAME", (0, row_index), (-1, row_index), "Helvetica-Bold")
+
+_DETAIL_TABLE_STYLE = TableStyle(
+    [
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#12171c")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTSIZE", (0, 0), (-1, -1), 7),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#d8d5cc")),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f6f4ef")]),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("ALIGN", (3, 1), (-1, -1), "RIGHT"),
+    ]
+)
+
+
+def _safe_paragraph_text(value) -> str:
+    """See apps.reports.services.ledger_pdf._safe_paragraph_text's
+    docstring for why every Paragraph (never a Table cell) must go
+    through this."""
+    return xml_escape(str(value)) if value is not None else ""
+
+
+def _format_money(value) -> str:
+    """`4 874 000 XOF` - rounded to the nearest unit, space-grouped, same
+    convention as the frontend's formatMoney() (utils/currency.ts) so the
+    PDF's figures read identically to the screen they came from."""
+    if value is None:
+        return ""
+    amount = int(Decimal(value).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    return f"{amount:,}".replace(",", " ") + " XOF"
+
+
+def _format_quantity(value) -> str:
+    """`45 000 L` - same rounding/grouping convention as formatQuantity()."""
+    if value is None:
+        return ""
+    amount = int(Decimal(value).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    return f"{amount:,}".replace(",", " ") + " L"
+
+
+def _format_unit_money(value) -> str:
+    """`500,00 XOF/L` - 2 decimals, French decimal comma, matching
+    formatUnitMoney() (per-litre costs are frequently sub-1-XOF)."""
+    if value is None:
+        return ""
+    quantized = Decimal(value).quantize(Decimal("0.01"))
+    formatted = f"{quantized:,.2f}"
+    integer_part, _, decimal_part = formatted.partition(".")
+    return f"{integer_part.replace(',', ' ')},{decimal_part} XOF/L"
+
+
+def _labels(lang: str) -> dict:
+    return PROFIT_PDF_LABELS.get(lang, PROFIT_PDF_LABELS["fr"])
+
+
+def _doc_template(buffer, *, title: str) -> SimpleDocTemplate:
+    # Landscape, not portrait (unlike every other PDF in this app): the
+    # trip-detail table below has 12 columns of real financial data (the
+    # client explicitly asked for the full table, not a trimmed one) and
+    # overflowed off the right edge of a portrait A4 page in review -
+    # landscape's ~267mm usable width (vs ~180mm portrait) is what actually
+    # fits it without truncating a column or shrinking the font past
+    # legibility.
+    return SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(A4),
+        leftMargin=15 * mm,
+        rightMargin=15 * mm,
+        topMargin=15 * mm,
+        bottomMargin=15 * mm,
+        title=title,
+    )
+
+
+def render_profit_report_pdf(
+    *,
+    preview: dict,
+    other_debts_breakdown: dict,
+    rows: list[dict],
+    lang: str = "fr",
+) -> bytes:
+    """Full "Benefices" page export: profitability, the complete fond-de-
+    roulement breakdown, and the per-trip margin detail table - all values
+    read from `preview` (ShareholderProfitPreviewService.get_preview()),
+    `other_debts_breakdown` (WorkingCapitalService.get_other_debts_breakdown())
+    and `rows` (MarginReportQuery.run()), never recomputed here (same rule
+    every other PDF/report in this app follows).
+
+    The period shown is `preview["period_start"]`/`period_end"]` - what the
+    backend actually computed the figures over - not the raw request
+    params, since get_preview() can silently widen an unset date_from to
+    "since the last validated distribution".
+    """
+    labels = _labels(lang)
+    styles = getSampleStyleSheet()
+    heading_style = ParagraphStyle("headingCustom", parent=styles["Heading2"])
+    # Bug fix (found in visual review, 2026-09-06): the detail table's
+    # "client" column is free text of unbounded length (a customer's real
+    # name/company, e.g. "Etablissements Diallo & Freres SARL") - as a
+    # plain string it doesn't wrap and visibly overflows into the next
+    # column instead. Wrapped in a small Paragraph so it word-wraps within
+    # its own column width like every other cell. Free text reaching a
+    # Paragraph must be escaped (_safe_paragraph_text) - see that
+    # function's docstring.
+    cell_style = ParagraphStyle("detailCell", parent=styles["Normal"], fontSize=7, leading=8)
+
+    buffer = io.BytesIO()
+    doc = _doc_template(buffer, title=labels["title"])
+
+    elements: list = []
+    if _LOGO_PATH.exists():
+        logo = Image(str(_LOGO_PATH), width=18 * mm, height=18 * mm)
+        elements.append(logo)
+        elements.append(Spacer(1, 3 * mm))
+    elements.append(Paragraph(_safe_paragraph_text(DEFAULT_COMPANY_NAME), styles["Title"]))
+    elements.append(Paragraph(_safe_paragraph_text(labels["title"]), heading_style))
+
+    period_start = preview.get("period_start")
+    period_end = preview.get("period_end")
+    if period_start or period_end:
+        period_text = f"{period_start or '...'} → {period_end or '...'}"
+    else:
+        period_text = labels["period_all_time"]
+    elements.append(Paragraph(f"{labels['period']}: {period_text}", styles["Normal"]))
+    elements.append(
+        Paragraph(
+            f"{labels['export_date']}: {datetime.date.today().isoformat()}", styles["Normal"]
+        )
+    )
+    elements.append(Spacer(1, 8 * mm))
+
+    # Section 1: Rentabilite.
+    revenue = sum(
+        (
+            Decimal(row["quantity_invoiced"]) * Decimal(row["unit_selling_price"])
+            for row in rows
+        ),
+        ZERO,
+    )
+    elements.append(Paragraph(_safe_paragraph_text(labels["profitability"]), heading_style))
+    elements.append(Spacer(1, 2 * mm))
+    profitability_rows = [
+        (labels["operationalProfit"], _format_money(preview["operational_profit"])),
+        (labels["revenue"], _format_money(revenue)),
+        (labels["tripsCount"], str(len(rows))),
+        (labels["generalExpenses"], _format_money(preview["general_expenses_paid"])),
+        (labels["netProfit"], _format_money(preview["net_profit"])),
+    ]
+    profitability_table = Table(profitability_rows, colWidths=[110 * mm, 60 * mm])
+    profitability_table.setStyle(_SUMMARY_TABLE_STYLE)
+    profitability_table.setStyle(TableStyle([_bold_row(4)]))
+    elements.append(profitability_table)
+    elements.append(Spacer(1, 8 * mm))
+
+    # Section 2: Fond de roulement - full breakdown (client's own explicit
+    # request: never fold douane/transit/transit routiere/autres frais
+    # into one merged figure).
+    wc = preview["working_capital"]
+    elements.append(Paragraph(_safe_paragraph_text(labels["workingCapital"]), heading_style))
+    elements.append(Spacer(1, 2 * mm))
+    wc_rows = [
+        (labels["treasuryAvailable"], _format_money(wc["treasury_available"])),
+        (labels["customerReceivables"], _format_money(wc["customer_receivables"])),
+        (labels["gross"], _format_money(wc["gross"])),
+        (labels["supplierDebt"], _format_money(wc["supplier_debt_total"])),
+        (labels["transporterDebt"], _format_money(wc["transporter_debt_total"])),
+        (labels["customsDebt"], _format_money(other_debts_breakdown["customs"])),
+        (labels["transitDebt"], _format_money(other_debts_breakdown["transit"])),
+        (labels["roadTransitDebt"], _format_money(other_debts_breakdown["road_transit"])),
+        (labels["otherDebt"], _format_money(other_debts_breakdown["other"])),
+        (
+            labels["totalDebts"],
+            _format_money(
+                wc["supplier_debt_total"] + wc["transporter_debt_total"] + wc["other_debts"]
+            ),
+        ),
+        (labels["totalWorkingCapital"], _format_money(wc["total"])),
+        (labels["capital"], _format_money(wc["capital"])),
+        (labels["distributableResult"], _format_money(preview["distributable_result"])),
+    ]
+    wc_table = Table(wc_rows, colWidths=[110 * mm, 60 * mm])
+    wc_table.setStyle(_SUMMARY_TABLE_STYLE)
+    # Bold the 4 subtotal/total rows (gross, total debts, total working
+    # capital, distributable result) - their index in wc_rows above.
+    wc_table.setStyle(TableStyle([_bold_row(idx) for idx in (2, 9, 10, 12)]))
+    elements.append(wc_table)
+    elements.append(Spacer(1, 8 * mm))
+
+    # Section 3: per-trip detail - included at the client's own request
+    # (2026-09-06), same 12 columns as the page's own table.
+    if rows:
+        table_labels = labels["table"]
+        fields = list(table_labels.keys())
+        header = [table_labels[f] for f in fields]
+        formatters = {
+            "quantity_loaded": _format_quantity,
+            "quantity_invoiced": _format_quantity,
+            "transporter_loss_quantity": _format_quantity,
+            "transporter_loss_indemnity": _format_money,
+            "supplier_unit_price": _format_unit_money,
+            "real_total_cost": _format_money,
+            "unit_selling_price": _format_unit_money,
+            "unit_profit": _format_unit_money,
+            "current_margin": _format_money,
+        }
+        def _cell(field, row):
+            if field in formatters:
+                return formatters[field](row.get(field))
+            if field == "client":
+                return Paragraph(_safe_paragraph_text(row.get(field, "")), cell_style)
+            return str(row.get(field, ""))
+
+        detail_data = [header] + [[_cell(field, row) for field in fields] for row in rows]
+        elements.append(Paragraph(_safe_paragraph_text(labels["tripDetail"]), heading_style))
+        elements.append(Spacer(1, 2 * mm))
+        # Explicit widths (sum ~234mm, fits the ~267mm landscape page with
+        # margins) - left unset, reportlab sizes each column to its widest
+        # cell and the 12-column table overflowed off the page edge.
+        detail_col_widths = [
+            20 * mm, 26 * mm, 16 * mm, 18 * mm, 18 * mm, 16 * mm,
+            20 * mm, 18 * mm, 22 * mm, 18 * mm, 18 * mm, 22 * mm,
+        ]
+        detail_table = Table(detail_data, repeatRows=1, colWidths=detail_col_widths)
+        detail_table.setStyle(_DETAIL_TABLE_STYLE)
+        elements.append(detail_table)
+
+    doc.build(elements)
+    return buffer.getvalue()

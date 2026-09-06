@@ -1864,6 +1864,43 @@ class WorkingCapitalService:
     """
 
     @staticmethod
+    def get_other_debts_breakdown() -> dict:
+        """Splits get_working_capital()'s own `other_debts` lump sum into
+        its 4 named components - added for the Benefices PDF export
+        (client request 2026-09-06), which needs "douane / transit /
+        transit routiere / autres frais" as separate lines rather than one
+        merged figure (same grouping the Dashboard's customs_and_other
+        card already uses - border+loading+trip_other collapse to
+        "other"). get_working_capital() calls this too, so the two can
+        never drift apart."""
+        customs = ControlledDebtPaymentService.describe_expense_group(
+            ControlledDebtPaymentService.CUSTOMS
+        )["remaining_amount"]
+        transit = ControlledDebtPaymentService.describe_expense_group(
+            ControlledDebtPaymentService.TRANSIT
+        )["remaining_amount"]
+        road_transit = ControlledDebtPaymentService.describe_expense_group(
+            ControlledDebtPaymentService.ROAD_TRANSIT
+        )["remaining_amount"]
+        other = sum(
+            (
+                ControlledDebtPaymentService.describe_expense_group(group)["remaining_amount"]
+                for group in (
+                    ControlledDebtPaymentService.BORDER,
+                    ControlledDebtPaymentService.LOADING,
+                    ControlledDebtPaymentService.TRIP_OTHER,
+                )
+            ),
+            ZERO,
+        )
+        return {
+            "customs": customs,
+            "transit": transit,
+            "road_transit": road_transit,
+            "other": other,
+        }
+
+    @staticmethod
     def get_working_capital() -> dict:
         # Local import: apps.reports.queries.customer_outstanding_report
         # imports PaymentAllocationService from this very module - a
@@ -1895,20 +1932,8 @@ class WorkingCapitalService:
             ),
             ZERO,
         )
-        other_debts = sum(
-            (
-                ControlledDebtPaymentService.describe_expense_group(group)["remaining_amount"]
-                for group in (
-                    ControlledDebtPaymentService.CUSTOMS,
-                    ControlledDebtPaymentService.TRANSIT,
-                    ControlledDebtPaymentService.ROAD_TRANSIT,
-                    ControlledDebtPaymentService.BORDER,
-                    ControlledDebtPaymentService.LOADING,
-                    ControlledDebtPaymentService.TRIP_OTHER,
-                )
-            ),
-            ZERO,
-        )
+        other_debts_breakdown = WorkingCapitalService.get_other_debts_breakdown()
+        other_debts = sum(other_debts_breakdown.values(), ZERO)
         capital = ShareholderContributionService.get_total_capital()
         gross = treasury_available + customer_receivables
         total = gross + supplier_debt_total + transporter_debt_total + other_debts

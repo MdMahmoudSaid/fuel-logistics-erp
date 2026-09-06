@@ -323,3 +323,102 @@ def test_profit_preview_endpoint_still_blocked_for_a_role_with_no_shareholders_p
     response = client.get("/api/shareholders/profit-preview/")
 
     assert response.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# GET /api/shareholders/profit-preview/pdf/ (client request 2026-09-06): a
+# real structured PDF export of the Benefices page, respecting the same
+# period filter as profit_preview above - never a screenshot.
+# ---------------------------------------------------------------------------
+
+
+def _make_trip_with_sale(suffix, admin_user, *, loading_date):
+    from apps.core.models import Product
+    from apps.customers.models import Customer
+    from apps.purchasing.models import CessionLetter, SupplierOrder
+    from apps.sales.models import Sale
+    from apps.suppliers.models import Supplier
+    from apps.transport.models import Transporter, Truck
+    from apps.trips.models import Trip
+
+    product = Product.objects.get(code="gasoil")
+    supplier = Supplier.objects.create(name=f"Supplier {suffix}", country="Senegal")
+    transporter = Transporter.objects.create(name=f"Trans {suffix}")
+    order = SupplierOrder.objects.create(
+        reference=f"SO-PDF-{suffix}", supplier=supplier, product=product,
+        purchase_date=loading_date, quantity_litres=Decimal("100000.00"),
+        unit_price=Decimal("500.0000"), status=SupplierOrder.Status.CONFIRMED,
+        created_by=admin_user,
+    )
+    cession = CessionLetter.objects.create(
+        reference=f"CL-PDF-{suffix}", supplier_order=order,
+        authorized_quantity=Decimal("45000.00"), issue_date=loading_date,
+        created_by=admin_user,
+    )
+    truck = Truck.objects.create(
+        internal_id=f"TRK-PDF-{suffix}", tractor_registration=f"{suffix}-TRACTOR",
+        tanker_registration=f"{suffix}-TANKER", capacity_litres=Decimal("45000.00"),
+    )
+    customer = Customer.objects.create(name=f"Client {suffix}")
+    trip = Trip.objects.create(
+        reference=f"TRIP-PDF-{suffix}", truck=truck, transporter=transporter,
+        supplier=supplier, supplier_order=order, cession_letter=cession, product=product,
+        quantity_loaded=Decimal("45000.00"), client=customer, loading_date=loading_date,
+        bl_reference=f"BL-PDF-{suffix}", status=Trip.Status.DELIVERED, created_by=admin_user,
+    )
+    Sale.objects.create(
+        trip=trip, customer=customer, product=product,
+        delivered_quantity=Decimal("45000.00"), unit_selling_price=Decimal("900.0000"),
+    )
+    return trip
+
+
+@pytest.mark.django_db
+def test_profit_preview_pdf_endpoint_returns_a_real_pdf():
+    admin_user = _make_admin("PROFIT-PDF-OK")
+    _make_trip_with_sale("PROFIT-PDF-OK", admin_user, loading_date="2026-08-18")
+    client = _authed_client(admin_user)
+
+    response = client.get(
+        "/api/shareholders/profit-preview/pdf/", {"from": "2026-08-01", "to": "2026-08-31"}
+    )
+
+    assert response.status_code == 200
+    assert response["Content-Type"] == "application/pdf"
+    assert response.content.startswith(b"%PDF")
+    assert "rapport-benefices.pdf" in response["Content-Disposition"]
+
+
+@pytest.mark.django_db
+def test_profit_preview_pdf_endpoint_respects_the_requested_period():
+    """Same trip, two requests - only the one whose period actually covers
+    the trip's loading date gets the per-trip detail table, which makes a
+    real, measurable difference in the exported file's size. A black-box
+    proof (no PDF-parsing dependency in this project) that the date filter
+    the page's own DateRangeFilter sends is actually applied here, not
+    silently ignored."""
+    admin_user = _make_admin("PROFIT-PDF-PERIOD")
+    _make_trip_with_sale("PROFIT-PDF-PERIOD", admin_user, loading_date="2026-08-18")
+    client = _authed_client(admin_user)
+
+    with_trip = client.get(
+        "/api/shareholders/profit-preview/pdf/", {"from": "2026-08-01", "to": "2026-08-31"}
+    )
+    without_trip = client.get(
+        "/api/shareholders/profit-preview/pdf/", {"from": "2026-09-01", "to": "2026-09-30"}
+    )
+
+    assert with_trip.status_code == 200
+    assert without_trip.status_code == 200
+    assert len(with_trip.content) > len(without_trip.content)
+
+
+@pytest.mark.django_db
+def test_profit_preview_pdf_endpoint_still_blocked_for_a_role_with_no_shareholders_permission():
+    ops_role = Role.objects.get(name=Role.NAME_OPERATIONS)
+    ops_user = User.objects.create_user(phone="+222PROFITPDFNO", pin="1234", role=ops_role)
+    client = _authed_client(ops_user)
+
+    response = client.get("/api/shareholders/profit-preview/pdf/")
+
+    assert response.status_code == 403

@@ -194,6 +194,48 @@ def test_working_capital_gross_and_total_breakdown():
 
 
 @pytest.mark.django_db
+def test_get_other_debts_breakdown_splits_the_lump_sum_into_4_named_buckets():
+    """Added for the Benefices PDF export (client request 2026-09-06),
+    which shows douane/transit/transit routiere/autres frais as separate
+    lines - must sum back to get_working_capital()'s other_debts exactly,
+    since both call the same underlying ControlledDebtPaymentService
+    groups."""
+    Expense.objects.create(
+        category=Expense.Category.CUSTOMS, amount=Decimal("1000000.00"),
+        calculation_method=Expense.CalculationMethod.MANUAL, date="2026-08-18",
+    )
+    Expense.objects.create(
+        category=Expense.Category.TRANSIT, amount=Decimal("200000.00"),
+        calculation_method=Expense.CalculationMethod.MANUAL, date="2026-08-18",
+    )
+    Expense.objects.create(
+        category=Expense.Category.ROAD_TRANSIT, amount=Decimal("300000.00"),
+        calculation_method=Expense.CalculationMethod.MANUAL, date="2026-08-18",
+    )
+    # "other" collapses border (ROAD) + loading + trip_other.
+    Expense.objects.create(
+        category=Expense.Category.ROAD, amount=Decimal("50000.00"),
+        calculation_method=Expense.CalculationMethod.MANUAL, date="2026-08-18",
+    )
+    Expense.objects.create(
+        category=Expense.Category.LOADING, amount=Decimal("70000.00"),
+        calculation_method=Expense.CalculationMethod.MANUAL, date="2026-08-18",
+    )
+
+    breakdown = WorkingCapitalService.get_other_debts_breakdown()
+
+    assert breakdown == {
+        "customs": Decimal("1000000.00"),
+        "transit": Decimal("200000.00"),
+        "road_transit": Decimal("300000.00"),
+        "other": Decimal("120000.00"),
+    }
+    assert sum(breakdown.values(), Decimal("0.00")) == (
+        WorkingCapitalService.get_working_capital()["other_debts"]
+    )
+
+
+@pytest.mark.django_db
 def test_working_capital_debt_total_is_gross_not_net_of_advances():
     # Order confirmed first (total_due = 1,000,000), no advance exists yet
     # to consume, so nothing is netted at creation time.

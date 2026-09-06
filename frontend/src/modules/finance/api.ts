@@ -34,7 +34,8 @@ export const transporterAdvanceResource =
   createResourceApi<TransporterAdvance>('/transporter-advances/')
 export const transportPaymentResource = createResourceApi<TransportPayment>('/transport-payments/')
 export const expenseResource = createResourceApi<Expense>('/expenses/')
-export const expenseCategoryResource = createResourceApi<ExpenseCategoryOption>('/expense-categories/')
+export const expenseCategoryResource =
+  createResourceApi<ExpenseCategoryOption>('/expense-categories/')
 
 export function createExpenseCategory(payload: { name: string }): Promise<ExpenseCategoryOption> {
   return apiClient.post<ExpenseCategoryOption>('/expense-categories/', payload).then((r) => r.data)
@@ -120,6 +121,22 @@ export async function exportSupplierPaymentPdf(id: number, lang: string): Promis
     responseType: 'blob',
   })
   downloadBlob(new Blob([response.data]), `paiement-fournisseur-${id}.pdf`)
+}
+
+// GET /api/shareholders/profit-preview/pdf/?from=&to=&lang= (client
+// request 2026-09-06, backend/apps/finance/views.py ShareholderViewSet.
+// profit_preview_pdf) - full "Benefices" page export (profitability, the
+// complete fond-de-roulement breakdown, and the per-trip detail table),
+// respecting the same period filter as the page's own DateRangeFilter.
+export async function exportProfitReportPdf(
+  dateRangeParams: Record<string, string | undefined>,
+  lang: string,
+): Promise<void> {
+  const response = await apiClient.get('/shareholders/profit-preview/pdf/', {
+    params: { ...dateRangeParams, lang },
+    responseType: 'blob',
+  })
+  downloadBlob(new Blob([response.data]), 'rapport-benefices.pdf')
 }
 
 // Generic attachment upload (backend/apps/documents), scoped to the one
@@ -352,9 +369,13 @@ export function createShareholderContribution(payload: {
 }): Promise<ShareholderContribution> {
   const { attachment, ...fields } = payload
   return apiClient
-    .post<ShareholderContribution>('/shareholder-contributions/', buildAdvanceForm(fields, attachment), {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    })
+    .post<ShareholderContribution>(
+      '/shareholder-contributions/',
+      buildAdvanceForm(fields, attachment),
+      {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      },
+    )
     .then((r) => r.data)
 }
 

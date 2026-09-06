@@ -14,14 +14,15 @@ import { useI18n } from 'vue-i18n'
 import DateRangeFilter from '@/components/DateRangeFilter.vue'
 import type { DateRangeValue } from '@/components/date-range'
 import { fetchReport } from '@/modules/reports/api'
-import { fetchShareholderProfitPreview } from './api'
+import { exportProfitReportPdf, fetchShareholderProfitPreview } from './api'
 import type { ShareholderProfitPreview } from './types'
+import Button from '@/components/ui/Button.vue'
 import Icon from '@/components/ui/Icon.vue'
 import type { IconName } from '@/components/ui/Icon.vue'
 import MonoValue from '@/components/ui/MonoValue.vue'
 import { formatMoney, formatQuantity, formatUnitMoney } from '@/utils/currency'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 interface MarginRow {
   trip_reference: string
@@ -135,18 +136,48 @@ function onDateRangeChange(value: DateRangeValue) {
   loadRows()
   loadPreview(params)
 }
+
+// Client request (2026-09-06): "Exporter en PDF" on the Benefices page -
+// a real structured document (server-rendered), never a screenshot of
+// this page, respecting the same period filter currently applied here.
+const exportingPdf = ref(false)
+const exportError = ref('')
+
+async function onExportPdf() {
+  exportingPdf.value = true
+  exportError.value = ''
+  try {
+    await exportProfitReportPdf({ ...dateRange.value }, locale.value)
+  } catch {
+    exportError.value = t('reports.exportError')
+  } finally {
+    exportingPdf.value = false
+  }
+}
 </script>
 
 <template>
   <div class="max-w-6xl space-y-6">
-    <h1 class="font-display text-2xl leading-none font-semibold uppercase">
-      {{ t('finance.profit.title') }}
-    </h1>
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <h1 class="font-display text-2xl leading-none font-semibold uppercase">
+        {{ t('finance.profit.title') }}
+      </h1>
+      <Button
+        v-if="!loading"
+        variant="ghost"
+        :disabled="exportingPdf"
+        data-test="profit-export-pdf"
+        @click="onExportPdf"
+      >
+        {{ t('reports.exportPdf') }}
+      </Button>
+    </div>
 
     <div class="border-ligne flex flex-wrap items-end gap-3 rounded-xl border bg-white p-4">
       <DateRangeFilter @change="onDateRangeChange" />
     </div>
 
+    <p v-if="exportError" class="text-critique text-sm">{{ exportError }}</p>
     <p v-if="error" class="text-critique text-sm">{{ error }}</p>
     <p v-else-if="loading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
@@ -200,7 +231,10 @@ function onDateRangeChange(value: DateRangeValue) {
               </div>
             </div>
           </div>
-          <div data-test="profit-net-card" class="border-ligne rounded-lg border bg-white p-4 shadow-sm">
+          <div
+            data-test="profit-net-card"
+            class="border-ligne rounded-lg border bg-white p-4 shadow-sm"
+          >
             <p class="text-texte-2 text-xs font-medium tracking-wide uppercase">
               {{ t('finance.profit.generalExpensesPaid') }}
             </p>
@@ -211,7 +245,10 @@ function onDateRangeChange(value: DateRangeValue) {
               :value="formatMoney(preview.general_expenses_paid)"
             />
           </div>
-          <div data-test="profit-net-card" class="border-ligne rounded-lg border bg-white p-4 shadow-sm">
+          <div
+            data-test="profit-net-card"
+            class="border-ligne rounded-lg border bg-white p-4 shadow-sm"
+          >
             <p class="text-texte-2 text-xs font-medium tracking-wide uppercase">
               {{ t('finance.profit.netProfit') }}
             </p>
@@ -240,7 +277,10 @@ function onDateRangeChange(value: DateRangeValue) {
           {{ t('finance.profit.sections.distributionQuestion') }}
         </p>
         <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div data-test="profit-working-capital-gross-card" class="border-ligne rounded-lg border bg-white p-4 shadow-sm">
+          <div
+            data-test="profit-working-capital-gross-card"
+            class="border-ligne rounded-lg border bg-white p-4 shadow-sm"
+          >
             <p class="text-texte-2 text-xs font-medium tracking-wide uppercase">
               {{ t('finance.profit.workingCapitalGross') }}
             </p>
@@ -250,7 +290,10 @@ function onDateRangeChange(value: DateRangeValue) {
               :value="formatMoney(preview.working_capital.gross)"
             />
           </div>
-          <div data-test="profit-working-capital-debts-card" class="border-ligne rounded-lg border bg-white p-4 shadow-sm">
+          <div
+            data-test="profit-working-capital-debts-card"
+            class="border-ligne rounded-lg border bg-white p-4 shadow-sm"
+          >
             <p class="text-texte-2 text-xs font-medium tracking-wide uppercase">
               {{ t('finance.profit.workingCapitalDebts') }}
             </p>
@@ -260,7 +303,10 @@ function onDateRangeChange(value: DateRangeValue) {
               :value="formatMoney(workingCapitalDebtsTotal)"
             />
           </div>
-          <div data-test="profit-capital-card" class="border-ligne rounded-lg border bg-white p-4 shadow-sm">
+          <div
+            data-test="profit-capital-card"
+            class="border-ligne rounded-lg border bg-white p-4 shadow-sm"
+          >
             <p class="text-texte-2 text-xs font-medium tracking-wide uppercase">
               {{ t('finance.profit.capitalContributed') }}
             </p>
@@ -270,7 +316,10 @@ function onDateRangeChange(value: DateRangeValue) {
               :value="formatMoney(preview.working_capital.capital)"
             />
           </div>
-          <div data-test="profit-distributable-result-card" class="border-ligne rounded-lg border bg-white p-4 shadow-sm">
+          <div
+            data-test="profit-distributable-result-card"
+            class="border-ligne rounded-lg border bg-white p-4 shadow-sm"
+          >
             <p class="text-texte-2 text-xs font-medium tracking-wide uppercase">
               {{ t('finance.profit.distributableResult') }}
             </p>
@@ -330,7 +379,9 @@ function onDateRangeChange(value: DateRangeValue) {
           <table class="w-full text-start text-sm">
             <thead>
               <tr class="border-ligne text-texte-2 border-b">
-                <th class="px-3 py-2.5 font-medium">{{ t('finance.profit.table.tripReference') }}</th>
+                <th class="px-3 py-2.5 font-medium">
+                  {{ t('finance.profit.table.tripReference') }}
+                </th>
                 <th class="px-3 py-2.5 font-medium">{{ t('finance.profit.table.client') }}</th>
                 <th class="px-3 py-2.5 font-medium">{{ t('finance.profit.table.product') }}</th>
                 <th class="px-3 py-2.5 text-end font-medium">

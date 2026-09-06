@@ -18,6 +18,8 @@ from apps.reports.services.ledger_pdf import (
     render_supplier_payment_pdf,
     render_trip_settlement_pdf,
 )
+from apps.reports.queries.margin_report import MarginReportQuery
+from apps.reports.services.profit_pdf import render_profit_report_pdf
 from apps.suppliers.models import Supplier
 from apps.transport.models import Transporter
 from apps.trips.models import Trip
@@ -75,6 +77,7 @@ from .services import (
     SupplierPaymentCancellationService,
     TreasuryService,
     TreasuryTransferError,
+    WorkingCapitalService,
 )
 
 # Once money has actually moved or been committed to a specific invoice,
@@ -538,6 +541,34 @@ class ShareholderViewSet(viewsets.ModelViewSet):
             date_from=date_from, date_to=date_to
         )
         return Response(decimals_to_str(preview))
+
+    @action(detail=False, methods=["get"], url_path="profit-preview/pdf")
+    def profit_preview_pdf(self, request):
+        """Full "Benefices" page export, respecting the same period filter
+        as the page itself (client request 2026-09-06): profitability,
+        the complete fond-de-roulement breakdown (douane/transit/transit
+        routiere/autres frais shown separately, not merged), and the
+        per-trip margin detail table - a real structured document, never a
+        screenshot. Read-only, same "view" tier as profit_preview above.
+
+        GET /api/shareholders/profit-preview/pdf/?from=&to=&lang=
+        """
+        date_from, date_to = resolve_date_range(request.query_params)
+        preview = ShareholderProfitPreviewService.get_preview(
+            date_from=date_from, date_to=date_to
+        )
+        other_debts_breakdown = WorkingCapitalService.get_other_debts_breakdown()
+        rows = MarginReportQuery.run(date_from=date_from, date_to=date_to)
+        lang = request.query_params.get("lang", "fr")
+        pdf_bytes = render_profit_report_pdf(
+            preview=preview,
+            other_debts_breakdown=other_debts_breakdown,
+            rows=rows,
+            lang=lang,
+        )
+        response = HttpResponse(pdf_bytes, content_type="application/pdf")
+        response["Content-Disposition"] = 'attachment; filename="rapport-benefices.pdf"'
+        return response
 
 
 class ShareholderProfitDistributionViewSet(viewsets.ModelViewSet):

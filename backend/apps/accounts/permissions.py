@@ -35,6 +35,13 @@ ACTION_MAP = {
     # HasModulePermission entirely - this endpoint is read-only ("Task 7,
     # client modifications plan" docstring), same "view" tier as `ledger`.
     "profit_preview": "view",
+    # PDF export of the Benefices page (client request 2026-09-06) - same
+    # "view" tier as profit_preview above and every other PDF export in
+    # this map (ledger_pdf, pdf): read-only, never worth gating behind a
+    # separate tier. Added explicitly rather than left to fall through to
+    # its own action name, unlike profit_preview's own gap above (fixed
+    # 2026-09-06) which is exactly why this one isn't skipped.
+    "profit_preview_pdf": "view",
     "create": "create",
     "update": "edit",
     "partial_update": "edit",
