@@ -586,9 +586,9 @@ describe('TripDetail expenses section', () => {
     expect(row.text()).toContain("Perte supportée par l'entreprise")
     const text = row.text().replace(/[⁦⁩]/g, '')
     expect(text).toContain('-90 000 XOF')
-    // detail: 100 L x 900,00 XOF/L (900 = 90000 / 100, derived, never sent by the backend)
+    // detail: 100 L x 900,0000 XOF/L (900 = 90000 / 100, derived, never sent by the backend)
     expect(text).toContain('100 L')
-    expect(text).toContain('900,00 XOF/L')
+    expect(text).toContain('900,0000 XOF/L')
   })
 
   it('hides the "perte supportee par l\'entreprise" row when there is no absorbed loss', async () => {
@@ -1109,7 +1109,7 @@ describe('TripDetail expenses section', () => {
     const wrapper = await mountAt()
 
     const text = wrapper.text()
-    expect(text).toContain('611,11 XOF/L')
-    expect(text).toContain('38,89 XOF/L')
+    expect(text).toContain('611,1100 XOF/L')
+    expect(text).toContain('38,8900 XOF/L')
   })
 })

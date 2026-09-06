@@ -37,10 +37,17 @@ export function formatMoney(value: string | number): string {
   return isolateLtr(`${formatInteger(toNumber(value))} ${CURRENCY}`)
 }
 
-/** `0,22 XOF/L` — 2 decimals, never rounded to a whole unit (per-litre costs
- * are frequently sub-1-XOF, e.g. a 10 000 XOF "par camion" fee on 45 000 L). */
+/** `0,6667 XOF/L` — 4 decimals (client request 2026-09-06: 2 decimals hid
+ * enough precision that summing displayed per-litre prices back up (e.g.
+ * every "Frais du trajet" line) visibly didn't reconstruct the real total -
+ * a 30 000 XOF / 45 000 L fee showed as "0,67 XOF/L", and 0,67 x 45 000 =
+ * 30 150, not 30 000. Matches the backend's own internal per-litre
+ * precision (apps/trips/services.py `_UNIT = Decimal("0.0001")`), so this
+ * is showing more of what was already computed, not inventing precision
+ * that wasn't there. Per-litre costs are frequently sub-1-XOF, e.g. a
+ * 10 000 XOF "par camion" fee on 45 000 L. */
 export function formatUnitMoney(value: string | number): string {
-  return isolateLtr(`${formatDecimal(toNumber(value), 2)} ${CURRENCY}/L`)
+  return isolateLtr(`${formatDecimal(toNumber(value), 4)} ${CURRENCY}/L`)
 }
 
 /** `45 000 L` */

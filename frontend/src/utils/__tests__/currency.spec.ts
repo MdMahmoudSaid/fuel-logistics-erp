@@ -27,13 +27,22 @@ describe('formatMoney', () => {
 })
 
 describe('formatUnitMoney', () => {
-  it('renders 2 decimals with a comma separator, not rounded to 0', () => {
-    // 10 000 XOF / 45 000 L = 0.2222... XOF/L
-    expect(stripBidiIsolate(formatUnitMoney(10000 / 45000))).toBe('0,22 XOF/L')
+  // Client request (2026-09-06): 2 decimals hid enough precision that
+  // summing displayed per-litre prices back up visibly didn't reconstruct
+  // the real total (a 30 000 XOF / 45 000 L fee showed as "0,67 XOF/L",
+  // and 0,67 x 45 000 = 30 150, not 30 000) - 4 decimals matches the
+  // backend's own internal per-litre precision (_UNIT = Decimal("0.0001")).
+  it('renders 4 decimals with a comma separator, not rounded to 0', () => {
+    // 10 000 XOF / 45 000 L = 0.2222222... XOF/L
+    expect(stripBidiIsolate(formatUnitMoney(10000 / 45000))).toBe('0,2222 XOF/L')
   })
 
-  it('still renders whole values with 2 decimals', () => {
-    expect(stripBidiIsolate(formatUnitMoney(810))).toBe('810,00 XOF/L')
+  it('rounds up correctly, not truncating (30 000 / 45 000 = 0.66666... -> 0,6667, not 0,6666)', () => {
+    expect(stripBidiIsolate(formatUnitMoney(30000 / 45000))).toBe('0,6667 XOF/L')
+  })
+
+  it('still renders whole values with 4 decimals', () => {
+    expect(stripBidiIsolate(formatUnitMoney(810))).toBe('810,0000 XOF/L')
   })
 })
 
@@ -55,7 +64,7 @@ describe('formatMoney / formatQuantity (unchanged, still integer-rounded)', () =
 describe('bidi isolation', () => {
   it('wraps formatted values in LRI/PDI so RTL contexts cannot reorder them', () => {
     expect(formatMoney(23576205)).toBe(`${LRI}23 576 205 XOF${PDI}`)
-    expect(formatUnitMoney(810)).toBe(`${LRI}810,00 XOF/L${PDI}`)
+    expect(formatUnitMoney(810)).toBe(`${LRI}810,0000 XOF/L${PDI}`)
     expect(formatQuantity(45000)).toBe(`${LRI}45 000 L${PDI}`)
   })
 })

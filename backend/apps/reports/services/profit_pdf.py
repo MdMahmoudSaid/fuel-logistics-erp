@@ -62,7 +62,7 @@ PROFIT_PDF_LABELS = {
             "product": "Produit",
             "quantity_loaded": "Qte chargee",
             "quantity_invoiced": "Qte facturee",
-            "transporter_loss_quantity": "Perte transp.",
+            "transporter_loss_quantity": "Perte",
             "transporter_loss_indemnity": "Indemnisation",
             "supplier_unit_price": "Prix fourn./L",
             "real_total_cost": "Cout total",
@@ -103,7 +103,7 @@ PROFIT_PDF_LABELS = {
             "product": "Product",
             "quantity_loaded": "Qty loaded",
             "quantity_invoiced": "Qty invoiced",
-            "transporter_loss_quantity": "Transp. loss",
+            "transporter_loss_quantity": "Loss",
             "transporter_loss_indemnity": "Indemnity",
             "supplier_unit_price": "Supplier/L",
             "real_total_cost": "Total cost",
@@ -143,6 +143,17 @@ _DETAIL_TABLE_STYLE = TableStyle(
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("TOPPADDING", (0, 0), (-1, -1), 3),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        # Bug fix (found in visual review, 2026-09-06): reportlab's default
+        # cell padding is 6pt each side (~4.2mm total per column) - fine
+        # for the wide 2-column summary tables above, but on this dense
+        # 12-column table it was eating enough width that a header visibly
+        # ran into its neighbour once the per-litre columns grew from 2 to
+        # 4 decimals. "Perte transp." (the narrowest column's header) was
+        # shortened to "Perte" for the same reason - the table's own title
+        # already says these are per-trip costs, so the abbreviation loses
+        # no information.
+        ("LEFTPADDING", (0, 0), (-1, -1), 2),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 2),
         ("ALIGN", (3, 1), (-1, -1), "RIGHT"),
     ]
 )
@@ -174,12 +185,17 @@ def _format_quantity(value) -> str:
 
 
 def _format_unit_money(value) -> str:
-    """`500,00 XOF/L` - 2 decimals, French decimal comma, matching
-    formatUnitMoney() (per-litre costs are frequently sub-1-XOF)."""
+    """`500,0000 XOF/L` - 4 decimals, French decimal comma, matching the
+    frontend's formatUnitMoney() (utils/currency.ts). Client request
+    (2026-09-06): 2 decimals hid enough precision that summing displayed
+    per-litre prices back up visibly didn't reconstruct the real total (a
+    30 000 XOF / 45 000 L fee showed as "0,67 XOF/L", and 0,67 x 45 000 =
+    30 150, not 30 000) - 4 decimals matches the backend's own internal
+    per-litre precision (apps/trips/services.py `_UNIT = Decimal("0.0001")`)."""
     if value is None:
         return ""
-    quantized = Decimal(value).quantize(Decimal("0.01"))
-    formatted = f"{quantized:,.2f}"
+    quantized = Decimal(value).quantize(Decimal("0.0001"))
+    formatted = f"{quantized:,.4f}"
     integer_part, _, decimal_part = formatted.partition(".")
     return f"{integer_part.replace(',', ' ')},{decimal_part} XOF/L"
 
@@ -351,9 +367,15 @@ def render_profit_report_pdf(
         # Explicit widths (sum ~234mm, fits the ~267mm landscape page with
         # margins) - left unset, reportlab sizes each column to its widest
         # cell and the 12-column table overflowed off the page edge.
+        # Rebalanced (2026-09-06): the 3 per-litre columns grew from
+        # "500,00 XOF/L" to "500,0000 XOF/L" (4-decimal precision fix) and
+        # started overflowing into their neighbours at the old 18mm - widened
+        # those 3, narrowed the quantity/loss columns (short, fixed-format
+        # content: "45 000 L", "130 L") and client (wraps via Paragraph
+        # anyway) to keep the same overall sum.
         detail_col_widths = [
-            20 * mm, 26 * mm, 16 * mm, 18 * mm, 18 * mm, 16 * mm,
-            20 * mm, 18 * mm, 22 * mm, 18 * mm, 18 * mm, 22 * mm,
+            18 * mm, 22 * mm, 14 * mm, 16 * mm, 16 * mm, 14 * mm,
+            20 * mm, 22 * mm, 24 * mm, 22 * mm, 22 * mm, 24 * mm,
         ]
         detail_table = Table(detail_data, repeatRows=1, colWidths=detail_col_widths)
         detail_table.setStyle(_DETAIL_TABLE_STYLE)
