@@ -1656,6 +1656,8 @@
       "expense": "Dépense",
       "shareholder_withdrawal": "Retrait associé",
       "shareholder_contribution": "Apport en capital",
+      "supplier_advance": "Avance fournisseur",
+      "transporter_advance": "Avance transporteur",
       "supplier_order": "Commande fournisseur",
       "trip": "Trajet",
       "delivery_control": "Contrôle de livraison",

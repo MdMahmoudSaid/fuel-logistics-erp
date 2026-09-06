@@ -16,6 +16,13 @@ MODULE_KEYS = {
     # showing the raw "finance.shareholdercontribution" content-type
     # string instead of a translated label.
     "finance.shareholdercontribution": "shareholder_contribution",
+    # Bug fix (found 2026-09-06 while auditing this same class of gap):
+    # SupplierAdvance/TransporterAdvance are both AuditableModel (real
+    # audit rows exist for them, unlike transportpayment/trip below) but
+    # were missing here entirely - same bug as shareholdercontribution
+    # above, just never caught for these two.
+    "finance.supplieradvance": "supplier_advance",
+    "finance.transporteradvance": "transporter_advance",
     "purchasing.supplierorder": "supplier_order",
     "trips.trip": "trip",
     "trips.deliverycontrol": "delivery_control",
@@ -96,6 +103,14 @@ def describe(log) -> dict:
         reference = _lookup_name("trips", "Trip", snapshot.get("trip_id"))
     elif content_type_label == "finance.expense":
         reference = snapshot.get("category")
+    elif content_type_label == "finance.supplieradvance":
+        related_party = _lookup_name("suppliers", "Supplier", snapshot.get("supplier_id"))
+        reference = snapshot.get("reference")
+        account_label = _account_label(snapshot)
+    elif content_type_label == "finance.transporteradvance":
+        related_party = _lookup_name("transport", "Transporter", snapshot.get("transporter_id"))
+        reference = snapshot.get("reference")
+        account_label = _account_label(snapshot)
 
     return {
         "module_key": module_key,

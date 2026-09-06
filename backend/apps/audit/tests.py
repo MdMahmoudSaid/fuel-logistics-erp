@@ -21,8 +21,10 @@ from apps.finance.models import (
     Expense,
     Shareholder,
     ShareholderContribution,
+    SupplierAdvance,
     SupplierPayment,
     TransportDeduction,
+    TransporterAdvance,
     TreasuryTransaction,
     CashAccount,
 )
@@ -690,6 +692,60 @@ def test_describe_shareholder_contribution_resolves_module_key_and_amount():
 
     assert summary["module_key"] == "shareholder_contribution"
     assert summary["amount"] == "3000000.00"
+
+
+@pytest.mark.django_db
+def test_describe_supplier_advance_resolves_module_key_supplier_and_account():
+    """Bug fix (found 2026-09-06): SupplierAdvance IS AuditableModel (real
+    audit rows are written for it) but was missing from MODULE_KEYS -
+    Journal d'audit showed the raw "finance.supplieradvance" content-type
+    string with no related supplier/account, same bug class already fixed
+    for shareholdercontribution above."""
+    admin_user = _make_admin("DESCRIBE-SADV")
+    supplier = Supplier.objects.create(name="Supplier DESCRIBE-SADV", country="Senegal")
+    cash_account = CashAccount.objects.create(name="Caisse DESCRIBE-SADV")
+    advance = SupplierAdvance.objects.create(
+        supplier=supplier,
+        amount=Decimal("500000.00"),
+        date="2026-08-18",
+        reference="AV-SADV-1",
+        cash_account=cash_account,
+        recorded_by=admin_user,
+    )
+    log = _audit_logs_for(advance).latest("id")
+
+    summary = describe(log)
+
+    assert summary["module_key"] == "supplier_advance"
+    assert summary["related_party"] == "Supplier DESCRIBE-SADV"
+    assert summary["reference"] == "AV-SADV-1"
+    assert summary["account_label"] == "Caisse DESCRIBE-SADV"
+    assert summary["amount"] == "500000.00"
+
+
+@pytest.mark.django_db
+def test_describe_transporter_advance_resolves_module_key_and_transporter():
+    """Same bug fix as supplier_advance above, for TransporterAdvance."""
+    admin_user = _make_admin("DESCRIBE-TADV")
+    transporter = Transporter.objects.create(name="Transporteur DESCRIBE-TADV")
+    cash_account = CashAccount.objects.create(name="Caisse DESCRIBE-TADV")
+    advance = TransporterAdvance.objects.create(
+        transporter=transporter,
+        amount=Decimal("300000.00"),
+        date="2026-08-18",
+        reference="AV-TADV-1",
+        cash_account=cash_account,
+        recorded_by=admin_user,
+    )
+    log = _audit_logs_for(advance).latest("id")
+
+    summary = describe(log)
+
+    assert summary["module_key"] == "transporter_advance"
+    assert summary["related_party"] == "Transporteur DESCRIBE-TADV"
+    assert summary["reference"] == "AV-TADV-1"
+    assert summary["account_label"] == "Caisse DESCRIBE-TADV"
+    assert summary["amount"] == "300000.00"
 
 
 def test_module_keys_cover_transport_payment_and_trip():

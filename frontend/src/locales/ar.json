@@ -1645,6 +1645,8 @@
       "expense": "مصروف",
       "shareholder_withdrawal": "سحب مساهم",
       "shareholder_contribution": "مساهمة رأس المال",
+      "supplier_advance": "سلفة المورد",
+      "transporter_advance": "سلفة الناقل",
       "supplier_order": "طلب مورد",
       "trip": "رحلة",
       "delivery_control": "مراقبة التسليم",

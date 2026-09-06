@@ -287,3 +287,39 @@ def test_contribution_api_rejects_update_and_hard_delete():
     # before destroy() is ever reached, so the actual response is 403, not 405. Matches
     # ShareholderWithdrawalViewSet's identical (if latent) behavior.
     assert delete_response.status_code == 403
+
+
+@pytest.mark.django_db
+def test_profit_preview_endpoint_reachable_by_a_role_with_shareholders_view_permission():
+    """Bug fix (found 2026-09-06 code audit): GET /api/shareholders/
+    profit-preview/ was unreachable for every non-superuser role, no
+    matter what permissions they held - the `profit_preview` action name
+    was missing from accounts.permissions.ACTION_MAP, so HasModulePermission
+    fell back to checking for a literal "profit_preview" tier that can
+    never exist in any role's permission list (only "view", "create",
+    "edit", "validate", "cancel", "export" - see Role.ACTIONS). Every prior
+    manual recette ran as a superuser, which bypasses this check entirely,
+    so the bug was invisible from the UI.
+
+    Admin role has ["view", "create", "edit", "validate", "export"] on the
+    "shareholders" module (0005_seed_shareholder_permissions) - "view" is
+    enough for this read-only endpoint."""
+    admin_user = _make_admin("PROFIT-PREVIEW-OK")
+    client = _authed_client(admin_user)
+
+    response = client.get("/api/shareholders/profit-preview/")
+
+    assert response.status_code == 200
+
+
+@pytest.mark.django_db
+def test_profit_preview_endpoint_still_blocked_for_a_role_with_no_shareholders_permission():
+    """Operations gets nothing on the "shareholders" module (same seed
+    migration) - the fix above must not turn this into an open endpoint."""
+    ops_role = Role.objects.get(name=Role.NAME_OPERATIONS)
+    ops_user = User.objects.create_user(phone="+222PROFITPREVIEWNO", pin="1234", role=ops_role)
+    client = _authed_client(ops_user)
+
+    response = client.get("/api/shareholders/profit-preview/")
+
+    assert response.status_code == 403

@@ -26,6 +26,15 @@ ACTION_MAP = {
     "summary": "view",
     "payable_debts": "view",
     "party_balances": "view",
+    # Bug fix (found 2026-09-06): missing from this map entirely, so it
+    # fell back to the literal action name "profit_preview" - never a
+    # valid tier in Role.ACTIONS, so `role.has_permission("shareholders",
+    # "profit_preview")` was False for every non-superuser role no matter
+    # what permissions they actually held. Every previous manual recette
+    # missed this because it ran as an admin/superuser, who bypasses
+    # HasModulePermission entirely - this endpoint is read-only ("Task 7,
+    # client modifications plan" docstring), same "view" tier as `ledger`.
+    "profit_preview": "view",
     "create": "create",
     "update": "edit",
     "partial_update": "edit",

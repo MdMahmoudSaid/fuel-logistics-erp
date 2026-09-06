@@ -1645,6 +1645,8 @@
       "expense": "Expense",
       "shareholder_withdrawal": "Shareholder withdrawal",
       "shareholder_contribution": "Capital contribution",
+      "supplier_advance": "Supplier advance",
+      "transporter_advance": "Transporter advance",
       "supplier_order": "Supplier order",
       "trip": "Trip",
       "delivery_control": "Delivery control",
