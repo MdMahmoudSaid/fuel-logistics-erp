@@ -354,7 +354,7 @@ async function onSubmit() {
       @submit.prevent="onSubmit"
     >
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <h2 v-if="title" class="font-display col-span-2 text-sm font-semibold uppercase">
+        <h2 v-if="title" class="font-display md:col-span-2 text-sm font-semibold uppercase">
           {{ title }}
         </h2>
         <div class="space-y-1.5">

@@ -171,7 +171,7 @@ async function onSubmit() {
           />
         </div>
 
-        <div class="col-span-2 space-y-1.5">
+        <div class="md:col-span-2 space-y-1.5">
           <label class="text-texte-2 text-sm font-medium" for="reference">{{
             t('finance.transfer.reference')
           }}</label>

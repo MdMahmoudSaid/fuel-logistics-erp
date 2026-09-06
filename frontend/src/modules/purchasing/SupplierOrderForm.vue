@@ -386,7 +386,7 @@ function goToNewCession() {
         </p>
       </div>
 
-      <div class="col-span-2 space-y-1.5">
+      <div class="md:col-span-2 space-y-1.5">
         <label class="text-texte-2 text-sm font-medium" for="notes">{{
           t('purchasing.orderForm.notes')
         }}</label>
@@ -399,7 +399,7 @@ function goToNewCession() {
         <p v-if="fieldErrors.notes" class="text-critique text-xs">{{ fieldErrors.notes }}</p>
       </div>
 
-      <div class="col-span-2 flex justify-end gap-2 pt-2">
+      <div class="md:col-span-2 flex justify-end gap-2 pt-2">
         <Button variant="ghost" type="button" @click="router.push({ name: 'supplier-orders' })">
           {{ t('purchasing.orderForm.back') }}
         </Button>

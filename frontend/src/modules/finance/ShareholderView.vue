@@ -765,7 +765,7 @@ async function onViewLedger() {
             class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           />
         </div>
-        <div class="col-span-3 space-y-1.5">
+        <div class="md:col-span-3 space-y-1.5">
           <label class="text-texte-2 text-sm font-medium" for="loan_notes">
             {{ t('masterData.fields.notes') }}
           </label>
@@ -935,7 +935,7 @@ async function onViewLedger() {
             </option>
           </select>
         </div>
-        <div class="col-span-2 space-y-1.5">
+        <div class="md:col-span-2 space-y-1.5">
           <label class="text-texte-2 text-sm font-medium" for="wd_notes">
             {{ t('masterData.fields.notes') }}
           </label>

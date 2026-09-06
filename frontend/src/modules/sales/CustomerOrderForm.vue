@@ -273,7 +273,7 @@ function badgeVariant(status: TripStatus) {
         <p v-if="fieldErrors.status" class="text-critique text-xs">{{ fieldErrors.status }}</p>
       </div>
 
-      <div class="col-span-2 space-y-1.5">
+      <div class="md:col-span-2 space-y-1.5">
         <label class="text-texte-2 text-sm font-medium" for="notes">{{
           t('sales.orderForm.notes')
         }}</label>
@@ -286,7 +286,7 @@ function badgeVariant(status: TripStatus) {
         <p v-if="fieldErrors.notes" class="text-critique text-xs">{{ fieldErrors.notes }}</p>
       </div>
 
-      <div class="col-span-2 flex justify-end gap-2 pt-2">
+      <div class="md:col-span-2 flex justify-end gap-2 pt-2">
         <Button variant="ghost" type="button" @click="router.push({ name: 'customer-orders' })">
           {{ t('sales.orderForm.back') }}
         </Button>

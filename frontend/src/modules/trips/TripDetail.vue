@@ -527,7 +527,7 @@ const cessionProofUrl = computed(
             </RouterLink>
           </p>
         </div>
-        <div v-if="trip.notes" class="col-span-2">
+        <div v-if="trip.notes" class="md:col-span-2">
           <span class="text-texte-2">{{ t('trips.detail.notes') }}</span>
           <p class="text-texte font-medium">{{ trip.notes }}</p>
         </div>
