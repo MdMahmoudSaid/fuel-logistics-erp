@@ -9,6 +9,7 @@ import type { SupplierLedger } from '@/modules/purchasing/types'
 import DebtPaymentForm from '@/modules/finance/DebtPaymentForm.vue'
 import AdvanceForm from '@/modules/finance/AdvanceForm.vue'
 import { formatMoney, formatQuantity } from '@/utils/currency'
+import AppLogo from '@/components/AppLogo.vue'
 import Badge from '@/components/ui/Badge.vue'
 import Button from '@/components/ui/Button.vue'
 import Card from '@/components/ui/Card.vue'
@@ -126,11 +127,20 @@ function proofUrl(order: SupplierLedger['orders'][number]) {
 
 <template>
   <div class="max-w-4xl space-y-6">
+    <!-- Print-only branding (client feedback 2026-09-06): window.print()
+    prints this page's own content, not a generated PDF - it had no logo/
+    company name of its own (only whatever the browser's own optional
+    print header shows) and the action buttons below printed right along
+    with the data. Hidden on screen, shown only in the print stylesheet;
+    the buttons row gets .no-print instead. -->
+    <div class="hidden items-center gap-2.5 print:mb-2 print:flex">
+      <AppLogo :size="36" />
+    </div>
     <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <h1 class="font-display text-2xl leading-none font-semibold uppercase">
         {{ t('purchasing.supplierLedger.title', { name: ledger?.supplier.name ?? '…' }) }}
       </h1>
-      <div class="flex flex-wrap gap-2">
+      <div class="no-print flex flex-wrap gap-2">
         <Button
           v-if="ledger && Number(ledger.summary.net_balance) < 0"
           variant="primary"

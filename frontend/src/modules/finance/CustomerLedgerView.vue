@@ -10,6 +10,7 @@ import Modal from '@/components/ui/Modal.vue'
 import PaymentAllocationForm from './PaymentAllocationForm.vue'
 import type { CustomerLedger } from './types'
 import { formatMoney } from '@/utils/currency'
+import AppLogo from '@/components/AppLogo.vue'
 import Badge from '@/components/ui/Badge.vue'
 import Button from '@/components/ui/Button.vue'
 import Card from '@/components/ui/Card.vue'
@@ -108,11 +109,16 @@ function badgeVariant(status: string) {
 
 <template>
   <div class="max-w-4xl space-y-6">
+    <!-- Print-only branding + hidden action row, see SupplierLedgerView.vue
+    for the full rationale (client feedback 2026-09-06). -->
+    <div class="hidden items-center gap-2.5 print:mb-2 print:flex">
+      <AppLogo :size="36" />
+    </div>
     <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <h1 class="font-display text-2xl leading-none font-semibold uppercase">
         {{ t('finance.customerLedger.title', { name: ledger?.customer.name ?? '…' }) }}
       </h1>
-      <div class="flex flex-wrap gap-2">
+      <div class="no-print flex flex-wrap gap-2">
         <Button v-if="ledger" variant="primary" @click="showPaymentModal = true">
           {{ t('finance.customerLedger.newPayment') }}
         </Button>

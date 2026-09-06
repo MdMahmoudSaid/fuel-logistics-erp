@@ -14,6 +14,7 @@ import { quotationResource, duplicateQuotation, exportQuotationPdf } from './api
 import { QUOTATION_STATUSES } from './types'
 import type { Quotation, QuotationLineInput, QuotationStatus } from './types'
 import type { CustomerBrief, ProductBrief } from '@/modules/sales/types'
+import AppLogo from '@/components/AppLogo.vue'
 import Button from '@/components/ui/Button.vue'
 import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import MonoValue from '@/components/ui/MonoValue.vue'
@@ -187,6 +188,16 @@ function printQuotation() {
 
 <template>
   <div class="max-w-3xl space-y-6">
+    <!-- Print-only branding + hidden action buttons (client feedback
+    2026-09-06): window.print() on this page printed the raw edit form
+    together with its Imprimer/Exporter/Dupliquer/Retour/Enregistrer
+    buttons and had no logo/company name - see SupplierLedgerView.vue for
+    the full rationale. The form fields themselves stay exactly as-is
+    when printed (the client wants "toutes les donnees comme il" - only
+    the buttons are UI, not data). -->
+    <div class="hidden items-center gap-2.5 print:mb-2 print:flex">
+      <AppLogo :size="36" />
+    </div>
     <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <h1 class="font-display text-2xl leading-none font-semibold uppercase">
         {{
@@ -195,7 +206,7 @@ function printQuotation() {
             : t('quotations.form.editTitle', { reference: quotation?.reference ?? '' })
         }}
       </h1>
-      <div v-if="!isNew" class="flex flex-wrap gap-2">
+      <div v-if="!isNew" class="no-print flex flex-wrap gap-2">
         <Button variant="ghost" type="button" @click="printQuotation">
           {{ t('reports.print') }}
         </Button>
@@ -294,7 +305,7 @@ function printQuotation() {
           <h2 class="font-display text-sm font-semibold uppercase">
             {{ t('quotations.form.lines') }}
           </h2>
-          <Button variant="ghost" type="button" size="md" @click="addLine">
+          <Button variant="ghost" type="button" size="md" class="no-print" @click="addLine">
             {{ t('quotations.form.addLine') }}
           </Button>
         </div>
@@ -347,7 +358,7 @@ function printQuotation() {
             <button
               type="button"
               data-test="quotation-line-remove"
-              class="text-critique text-sm underline disabled:opacity-30"
+              class="no-print text-critique text-sm underline disabled:opacity-30"
               :disabled="form.lines.length <= 1"
               @click="removeLine(index)"
             >
@@ -376,7 +387,7 @@ function printQuotation() {
         <p v-if="fieldErrors.notes" class="text-critique text-xs">{{ fieldErrors.notes }}</p>
       </div>
 
-      <div class="col-span-full flex justify-end gap-2 pt-2">
+      <div class="no-print col-span-full flex justify-end gap-2 pt-2">
         <Button variant="ghost" type="button" @click="router.push({ name: 'quotations' })">
           {{ t('quotations.form.back') }}
         </Button>
