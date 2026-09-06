@@ -790,10 +790,24 @@ def test_dashboard_summary_exposes_final_business_sections():
 
     company_stock = response.data["company_stock"]
     assert company_stock["total_quantity"] == "45000.00"
+    # Client request (2026-09-06): the stock card's value = full cost basis
+    # (fuel only here - no TransportPayment/Expense on this fixture's
+    # trip) - 45,000 L x 600.0000 = 27,000,000.
+    assert company_stock["value"] == "27000000.00"
     assert company_stock["trips_count"] == 1
     assert company_stock["by_product"] == [{"product": "Gasoil", "quantity": "45000.00"}]
     assert company_stock["trips"][0]["reference"] == fx["trip"].reference
     assert company_stock["trips"][0]["remaining_quantity"] == "45000.00"
+
+    # Client request (2026-09-06): the other two pipeline cards - this
+    # trip is already ARRIVED_AT_COMPANY_STOCK, so none of its quantity is
+    # "en cours" any more; the reliquat is what's left of the 500,000 L
+    # purchase (455,000 L) priced at the order's own 600.0000 unit price.
+    assert response.data["in_transit"] == {"quantity": "0.00", "value": "0.00"}
+    assert response.data["supplier_reliquat"] == {
+        "quantity": "455000.00",
+        "value": "273000000.00",
+    }
 
     party_balances = response.data["party_balances"]
     assert set(party_balances) >= {"customers", "suppliers", "transporters", "shareholders"}

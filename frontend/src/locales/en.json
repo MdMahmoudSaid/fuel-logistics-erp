@@ -157,6 +157,11 @@
       "other": "Other: {amount}",
       "otherFees": "Other fees: {amount}"
     },
+    "pipeline": {
+      "supplierReliquat": "Supplier reliquat",
+      "inTransit": "In transit",
+      "companyStock": "Company stock"
+    },
     "sections": {
       "operations": "Operations",
       "fuel": "Fuel",

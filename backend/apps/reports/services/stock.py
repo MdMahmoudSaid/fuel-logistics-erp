@@ -15,8 +15,17 @@ from django.db.models import Sum
 from apps.purchasing.models import SupplierOrder
 from apps.purchasing.services import SupplierStockService
 from apps.trips.models import Trip
+from apps.trips.services import TripCostService
 
 ZERO = Decimal("0.00")
+
+# Client request (2026-09-06): a "pipeline" view of where purchased fuel
+# sits and what it's worth at each stage, valued differently at each stage
+# (see each method's own docstring for why):
+#   reliquat fournisseur -> en cours (chargé, pas arrivé) -> stock entreprise
+# and, the instant a trip is delivered to a client, it drops out of all
+# three - it becomes a customer receivable (already shown elsewhere on the
+# dashboard as the customer's outstanding balance), never company stock.
 
 
 class TheoreticalStockService:
@@ -37,6 +46,22 @@ class TheoreticalStockService:
             ZERO,
         )
 
+    @classmethod
+    def get_supplier_reliquat_value(cls) -> Decimal:
+        """Monetary value of get_supplier_reliquats(), each order's own
+        remaining reliquat priced at ITS OWN unit_price - never a single
+        blended average across a supplier's orders (client decision,
+        2026-09-06: two purchases at two different prices must each keep
+        their own price for what's left of them)."""
+        active_orders = SupplierOrder.objects.filter(status=SupplierOrder.Status.CONFIRMED)
+        return sum(
+            (
+                SupplierStockService.get_purchase_reliquat(order) * order.unit_price
+                for order in active_orders
+            ),
+            ZERO,
+        ).quantize(Decimal("0.01"))
+
     @staticmethod
     def get_loaded_unsold_quantity() -> Decimal:
         """Sum of Trip.quantity_loaded for trips that have not yet produced
@@ -51,6 +76,73 @@ class TheoreticalStockService:
             .aggregate(total=Sum("quantity_loaded"))["total"]
             or ZERO
         )
+
+    @staticmethod
+    def _in_transit_trips():
+        """Loaded, not sold, not cancelled, and not yet arrived at EITHER
+        final destination (company stock or client) - client's own
+        definition (2026-09-06): "en cours" is every truck currently on the
+        road, whatever its destination, until it physically arrives
+        somewhere. Once it arrives at the depot it moves to the company-
+        stock bucket below; once it's delivered to a client, sale__isnull
+        becomes False and it drops out of both (it's now a customer debt,
+        not company-held fuel)."""
+        return Trip.objects.filter(sale__isnull=True).exclude(
+            status__in=[
+                Trip.Status.CANCELLED,
+                Trip.Status.ARRIVED_AT_COMPANY_STOCK,
+                Trip.Status.STOCKED,
+            ]
+        )
+
+    @classmethod
+    def get_in_transit_quantity(cls) -> Decimal:
+        return cls._in_transit_trips().aggregate(total=Sum("quantity_loaded"))["total"] or ZERO
+
+    @classmethod
+    def get_in_transit_value(cls) -> Decimal:
+        """Valued at the pure fuel purchase price per litre (client
+        decision, 2026-09-06) - trip fees incurred so far are deliberately
+        excluded here (unlike company stock below): a trip mid-route hasn't
+        necessarily accrued its full cost yet, so this stays comparable to
+        the reliquat card above rather than a partial, still-moving cost
+        basis."""
+        return sum(
+            (
+                trip.quantity_loaded * trip.supplier_order.unit_price
+                for trip in cls._in_transit_trips().select_related("supplier_order")
+            ),
+            ZERO,
+        ).quantize(Decimal("0.01"))
+
+    @staticmethod
+    def _company_stock_trips():
+        """Mirrors DashboardViewSet.summary()'s own `stock_trips` query
+        exactly (apps/reports/views/dashboard.py) so the "Stock entreprise"
+        quantity card and this value never diverge from two independently
+        maintained filters."""
+        return Trip.objects.filter(
+            sale__isnull=True,
+            destination_type=Trip.DestinationType.COMPANY_STOCK,
+            status__in=[Trip.Status.ARRIVED_AT_COMPANY_STOCK, Trip.Status.STOCKED],
+        )
+
+    @classmethod
+    def get_company_stock_value(cls) -> Decimal:
+        """Valued at each trip's full cost basis - purchase price + transport
+        + every allocated expense (TripCostService.calculate_trip_cost_basis,
+        the same "prix de revient" already used for the sale-below-cost
+        guard and the trip margin breakdown) - client decision, 2026-09-06:
+        once fuel has physically reached the depot, its value includes
+        everything it cost to get it there, unlike the reliquat/en-cours
+        cards above which only ever reflect the raw purchase price."""
+        return sum(
+            (
+                TripCostService.calculate_trip_cost_basis(trip)["total_cost"]
+                for trip in cls._company_stock_trips().select_related("supplier_order")
+            ),
+            ZERO,
+        ).quantize(Decimal("0.01"))
 
     @classmethod
     def get_total_theoretical_stock(cls) -> Decimal:

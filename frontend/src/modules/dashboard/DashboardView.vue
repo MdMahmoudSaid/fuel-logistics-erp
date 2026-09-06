@@ -329,6 +329,54 @@ const partyCards = computed(() => {
   }))
 })
 
+// Client request (2026-09-06): "where does every purchased litre sit right
+// now" - reliquat chez le fournisseur -> en cours (chargé, pas arrivé) ->
+// stock entreprise (arrivé), in that order so the row itself tells the
+// supply-chain story. A trip delivered to a client leaves all three (it's
+// a customer receivable at that point, shown elsewhere) - the backend
+// already excludes it, this only ever renders what it's given.
+//
+// Dynamic by request: a stage with nothing in it (quantity 0) is dropped
+// entirely rather than shown as a dead "0" tile - flex (not a fixed-column
+// grid) so the remaining 1 or 2 cards share the row evenly instead of
+// leaving empty gaps where the hidden ones would have been.
+const pipelineCards = computed(() => {
+  if (!summary.value) return []
+  const p = summary.value
+  return [
+    {
+      key: 'supplier_reliquat',
+      label: t('dashboard.pipeline.supplierReliquat'),
+      to: { name: 'suppliers' },
+      icon: 'package' as IconName,
+      quantity: p.supplier_reliquat.quantity,
+      value: p.supplier_reliquat.value,
+    },
+    {
+      key: 'in_transit',
+      label: t('dashboard.pipeline.inTransit'),
+      to: { name: 'trips' },
+      icon: 'truck' as IconName,
+      quantity: p.in_transit.quantity,
+      value: p.in_transit.value,
+    },
+    {
+      key: 'company_stock',
+      label: t('dashboard.pipeline.companyStock'),
+      to: { name: 'company-stock' },
+      icon: 'droplet' as IconName,
+      quantity: p.company_stock.total_quantity,
+      value: p.company_stock.value,
+    },
+  ]
+    .filter((card) => Number(card.quantity) > 0)
+    .map((card) => ({
+      ...card,
+      quantityParts: formatQuantityParts(card.quantity),
+      valueParts: formatMoneyParts(card.value),
+    }))
+})
+
 const quickActions: {
   labelKey: string
   icon: IconName
@@ -411,6 +459,31 @@ const compactEnRouteTrips = computed(() => enRouteTrips.value.slice(0, 5))
             ]"
           >
             <MonoValue v-bind="card.amountParts" align="left" />
+          </p>
+        </RouterLink>
+      </section>
+
+      <section v-if="pipelineCards.length" class="flex flex-col gap-3 sm:flex-row">
+        <RouterLink
+          v-for="card in pipelineCards"
+          :key="card.key"
+          :to="card.to"
+          data-test="pipeline-card"
+          class="pipeline-card border-ligne hover:border-livre hover:bg-fond-2 focus-visible:ring-livre block flex-1 rounded-lg border bg-white p-4 transition-colors focus-visible:ring-2 focus-visible:outline-none"
+        >
+          <div class="flex items-center gap-2">
+            <span
+              class="bg-livre-tint text-livre-texte inline-flex size-7 shrink-0 items-center justify-center rounded-lg"
+            >
+              <Icon :name="card.icon" :size="16" />
+            </span>
+            <p class="text-texte-2 text-xs font-semibold uppercase">{{ card.label }}</p>
+          </div>
+          <p class="mt-2 text-lg font-semibold">
+            <MonoValue v-bind="card.valueParts" align="left" />
+          </p>
+          <p class="text-texte-2 mt-1 text-sm">
+            <MonoValue v-bind="card.quantityParts" align="left" />
           </p>
         </RouterLink>
       </section>

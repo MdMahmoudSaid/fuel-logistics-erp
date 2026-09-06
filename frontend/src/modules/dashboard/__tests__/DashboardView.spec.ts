@@ -107,6 +107,7 @@ const summary: DashboardSummary = {
   },
   company_stock: {
     total_quantity: '80000.00',
+    value: '48000000.00',
     trips_count: 2,
     by_product: [{ product: 'Gasoil', quantity: '80000.00' }],
     trips: [
@@ -123,6 +124,8 @@ const summary: DashboardSummary = {
       },
     ],
   },
+  supplier_reliquat: { quantity: '110000.00', value: '66000000.00' },
+  in_transit: { quantity: '45000.00', value: '27000000.00' },
   action_items: [
     {
       kind: 'company_stock_without_customer',
@@ -453,9 +456,9 @@ describe('DashboardView', () => {
       'expenses',
       'profit',
     ])
-    expect(
-      (financialLinks[1]!.props('to') as { query: Record<string, string> }).query.type,
-    ).toBe('in')
+    expect((financialLinks[1]!.props('to') as { query: Record<string, string> }).query.type).toBe(
+      'in',
+    )
   })
 
   it('uses the exact FR/EN/AR labels for the 4 financial KPI cards', async () => {
@@ -590,6 +593,57 @@ describe('DashboardView', () => {
       .findAllComponents({ name: 'RouterLink' })
       .find((link) => link.text() === 'Voir le détail')
     expect(stockLink?.props('to')).toEqual({ name: 'company-stock' })
+
+    // Client request (2026-09-06): the 3-card pipeline (reliquat -> en
+    // cours -> stock), all present here since the shared fixture gives
+    // each a non-zero quantity.
+    const pipelineCards = wrapper.findAll('[data-test="pipeline-card"]')
+    expect(pipelineCards).toHaveLength(3)
+    expect(pipelineCards.map((card) => card.text())).toEqual([
+      expect.stringContaining('Reliquat fournisseur'),
+      expect.stringContaining('En cours'),
+      expect.stringContaining('Stock entreprise'),
+    ])
+    const pipelineRouterLinks = wrapper
+      .findAllComponents({ name: 'RouterLink' })
+      .filter((link) => link.attributes('data-test') === 'pipeline-card')
+    expect(pipelineRouterLinks.map((link) => link.props('to'))).toEqual([
+      { name: 'suppliers' },
+      { name: 'trips' },
+      { name: 'company-stock' },
+    ])
+  })
+
+  it('hides a pipeline card entirely (not as a "0" tile) when its bucket is empty, and reflows the rest', async () => {
+    // Client request (2026-09-06): "on ne doit pas afficher les cartes
+    // avec zéro... on doit laisser sa place" - a zero-quantity stage
+    // disappears outright, and the remaining cards use flex (not a
+    // fixed-column grid) so they share the row instead of leaving a gap.
+    fetchDashboardSummary.mockResolvedValueOnce({
+      ...summary,
+      supplier_reliquat: { quantity: '0.00', value: '0.00' },
+      in_transit: { quantity: '0.00', value: '0.00' },
+    })
+    const wrapper = mount(DashboardView, { global: { plugins: [makeRouter()] } })
+    await flushPromises()
+
+    const pipelineCards = wrapper.findAll('[data-test="pipeline-card"]')
+    expect(pipelineCards).toHaveLength(1)
+    expect(pipelineCards[0].text()).toContain('Stock entreprise')
+    expect(wrapper.text()).not.toContain('Reliquat fournisseur')
+  })
+
+  it('hides the whole pipeline row when all three buckets are empty, leaving no empty shell', async () => {
+    fetchDashboardSummary.mockResolvedValueOnce({
+      ...summary,
+      supplier_reliquat: { quantity: '0.00', value: '0.00' },
+      in_transit: { quantity: '0.00', value: '0.00' },
+      company_stock: { ...summary.company_stock, total_quantity: '0.00', value: '0.00' },
+    })
+    const wrapper = mount(DashboardView, { global: { plugins: [makeRouter()] } })
+    await flushPromises()
+
+    expect(wrapper.findAll('[data-test="pipeline-card"]')).toHaveLength(0)
   })
 
   it('renders the fond de roulement section with debts added, not subtracted', async () => {
@@ -722,7 +776,9 @@ describe('DashboardView', () => {
     // text-critique/red for the "action items" section only, not routine
     // debt states (see 'keeps action work prominent...' test above) - the
     // label alone conveys the sign, per the actual requirement.
-    expect(supplierCard.find('[data-test="party-balance-amount"]').classes()).toContain('text-texte')
+    expect(supplierCard.find('[data-test="party-balance-amount"]').classes()).toContain(
+      'text-texte',
+    )
   })
 
   it('shows "aucun solde ouvert" when a party has net_balance exactly zero', async () => {

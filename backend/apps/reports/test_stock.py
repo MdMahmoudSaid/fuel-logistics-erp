@@ -126,6 +126,101 @@ def test_get_total_theoretical_stock_sums_both_components():
 
 
 @pytest.mark.django_db
+def test_get_supplier_reliquat_value_prices_each_order_at_its_own_unit_price():
+    """Client decision (2026-09-06): two purchases at two different prices
+    must each keep their own price for what's left of them - never a
+    single blended average across a supplier's orders."""
+    admin_user = _make_admin("RELIQVAL")
+    cheap = _make_supplier_order("RELIQVAL-CHEAP", admin_user, quantity=Decimal("100000.00"))
+    cheap.unit_price = Decimal("500.0000")
+    cheap.save(update_fields=["unit_price"])
+    pricey = _make_supplier_order("RELIQVAL-PRICEY", admin_user, quantity=Decimal("50000.00"))
+    pricey.unit_price = Decimal("700.0000")
+    pricey.save(update_fields=["unit_price"])
+    # Partially consume the cheap order only - 60,000 L left at 500, all
+    # 50,000 L of the pricey one still untouched at 700.
+    _make_trip("RELIQVAL", admin_user, cheap, Decimal("40000.00"))
+
+    assert TheoreticalStockService.get_supplier_reliquats() == Decimal("110000.00")
+    assert TheoreticalStockService.get_supplier_reliquat_value() == (
+        Decimal("60000.00") * Decimal("500.0000") + Decimal("50000.00") * Decimal("700.0000")
+    )
+
+
+@pytest.mark.django_db
+def test_in_transit_and_company_stock_split_by_arrival_status():
+    """Client's own 3-bucket split (2026-09-06): a loaded trip is "en
+    cours" (valued at pure purchase price) until it physically arrives -
+    at that point, if headed to company stock, it moves to the stock
+    bucket (valued at full cost basis instead)."""
+    admin_user = _make_admin("SPLIT")
+    order = _make_supplier_order("SPLIT", admin_user, quantity=Decimal("200000.00"))
+    order.unit_price = Decimal("600.0000")
+    order.save(update_fields=["unit_price"])
+
+    en_route = _make_trip("SPLIT-ENROUTE", admin_user, order, Decimal("45000.00"), status=Trip.Status.ROAD_TRANSIT)
+    arrived = _make_trip("SPLIT-ARRIVED", admin_user, order, Decimal("30000.00"), status=Trip.Status.STOCKED)
+    _make_trip("SPLIT-CANCELLED", admin_user, order, Decimal("40000.00"), status=Trip.Status.CANCELLED)
+
+    assert TheoreticalStockService.get_in_transit_quantity() == en_route.quantity_loaded
+    assert TheoreticalStockService.get_in_transit_value() == Decimal("45000.00") * Decimal("600.0000")
+    # No transport/expense allocations on this trip - full cost basis
+    # collapses to the raw fuel purchase cost.
+    assert TheoreticalStockService.get_company_stock_value() == Decimal("30000.00") * Decimal(
+        "600.0000"
+    )
+    assert arrived.quantity_loaded == Decimal("30000.00")
+
+
+@pytest.mark.django_db
+def test_delivered_trip_counts_in_none_of_the_three_pipeline_buckets():
+    """Client's explicit instruction (2026-09-06): the instant a trip is
+    delivered to a client it must stop counting anywhere in the pipeline -
+    it becomes a customer receivable instead, never company stock or
+    en-cours."""
+    admin_user = _make_admin("NOBUCKET")
+    order = _make_supplier_order("NOBUCKET", admin_user, quantity=Decimal("100000.00"))
+    trip = _make_trip("NOBUCKET", admin_user, order, Decimal("45000.00"), status=Trip.Status.DELIVERED)
+    customer = Customer.objects.create(name="Client NOBUCKET")
+    Sale.objects.create(
+        trip=trip, customer=customer, product=trip.product,
+        delivered_quantity=Decimal("45000.00"), unit_selling_price=Decimal("650.0000"),
+    )
+
+    assert TheoreticalStockService.get_in_transit_quantity() == Decimal("0.00")
+    assert TheoreticalStockService.get_in_transit_value() == Decimal("0.00")
+    assert TheoreticalStockService.get_company_stock_value() == Decimal("0.00")
+    # Only the reliquat still reflects it (55,000 L left of the 100,000 L
+    # purchase) - that part of the story doesn't change once delivered.
+    assert TheoreticalStockService.get_supplier_reliquats() == Decimal("55000.00")
+
+
+@pytest.mark.django_db
+def test_get_company_stock_value_includes_transport_and_expense_costs():
+    """Unlike en-cours, the stock card is valued at full cost basis
+    (TripCostService.calculate_trip_cost_basis) - purchase price plus
+    whatever transport/expenses have actually been allocated to the trip
+    by the time it reaches the depot."""
+    from apps.finance.models import TransportPayment
+    from apps.transport.models import Transporter
+
+    admin_user = _make_admin("STOCKCOST")
+    order = _make_supplier_order("STOCKCOST", admin_user, quantity=Decimal("100000.00"))
+    order.unit_price = Decimal("600.0000")
+    order.save(update_fields=["unit_price"])
+    trip = _make_trip("STOCKCOST", admin_user, order, Decimal("45000.00"), status=Trip.Status.STOCKED)
+    TransportPayment.objects.create(
+        trip=trip,
+        transporter=trip.transporter,
+        calculation_method=TransportPayment.CalculationMethod.FIXED,
+        base_amount=Decimal("2000000.00"),
+    )
+
+    # fuel: 45000 x 600 = 27,000,000 + transport 2,000,000 = 29,000,000
+    assert TheoreticalStockService.get_company_stock_value() == Decimal("29000000.00")
+
+
+@pytest.mark.django_db
 def test_theoretical_stock_reacts_to_purchase_loading_and_sale_lifecycle():
     """Plan Section 4.1 manual recette scenario, exercised as an automated
     test: purchase increases stock, loading moves it between the two

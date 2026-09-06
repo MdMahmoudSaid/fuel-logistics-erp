@@ -157,6 +157,11 @@
       "other": "أخرى: {amount}",
       "otherFees": "رسوم أخرى: {amount}"
     },
+    "pipeline": {
+      "supplierReliquat": "رصيد المورد",
+      "inTransit": "قيد النقل",
+      "companyStock": "مخزون الشركة"
+    },
     "sections": {
       "operations": "العمليات",
       "fuel": "الوقود",

@@ -136,6 +136,10 @@ export interface DashboardSummary {
   }
   company_stock: {
     total_quantity: string
+    // Client request (2026-09-06): "prix de revient" value of everything
+    // sitting in company stock - purchase price + every trip fee incurred
+    // so far (TripCostService.calculate_trip_cost_basis's total_cost).
+    value: string
     trips_count: number
     by_product: { product: string; quantity: string }[]
     trips: {
@@ -150,6 +154,12 @@ export interface DashboardSummary {
       status: string
     }[]
   }
+  // Client request (2026-09-06): the pipeline's other two cards - fuel
+  // purchased but never loaded (still at the supplier) and fuel loaded on
+  // a truck but not yet arrived anywhere. Both valued at the raw supplier
+  // purchase price per litre, unlike company_stock.value above.
+  supplier_reliquat: { quantity: string; value: string }
+  in_transit: { quantity: string; value: string }
   action_items: {
     kind: string
     label: string

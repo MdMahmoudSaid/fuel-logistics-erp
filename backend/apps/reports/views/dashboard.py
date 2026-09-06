@@ -409,6 +409,10 @@ class DashboardViewSet(viewsets.ViewSet):
         company_stock = {
             "total_quantity": stock_trips.aggregate(total=Sum("quantity_loaded"))["total"]
             or ZERO,
+            # Client request (2026-09-06): valorisation pipeline - see
+            # TheoreticalStockService.get_company_stock_value() docstring
+            # for the "prix de revient" formula (purchase + trip fees).
+            "value": TheoreticalStockService.get_company_stock_value(),
             "trips_count": stock_trips.count(),
             "by_product": stock_by_product,
             "trips": [
@@ -425,6 +429,20 @@ class DashboardViewSet(viewsets.ViewSet):
                 }
                 for trip in stock_trips[:25]
             ],
+        }
+
+        # Client request (2026-09-06): "pipeline" cards - reliquat chez le
+        # fournisseur (jamais charge) -> en cours (charge, pas encore
+        # arrive) -> stock entreprise (arrive, valeur ci-dessus). Each is
+        # its own dict so the frontend can hide a card outright when its
+        # quantity is zero rather than show a dead "0" tile.
+        supplier_reliquat = {
+            "quantity": TheoreticalStockService.get_supplier_reliquats(),
+            "value": TheoreticalStockService.get_supplier_reliquat_value(),
+        }
+        in_transit = {
+            "quantity": TheoreticalStockService.get_in_transit_quantity(),
+            "value": TheoreticalStockService.get_in_transit_value(),
         }
 
         action_items = [
@@ -470,6 +488,8 @@ class DashboardViewSet(viewsets.ViewSet):
                     "party_balances": party_balances,
                     "working_capital": working_capital,
                     "company_stock": company_stock,
+                    "supplier_reliquat": supplier_reliquat,
+                    "in_transit": in_transit,
                     "action_items": action_items,
                 }
             )

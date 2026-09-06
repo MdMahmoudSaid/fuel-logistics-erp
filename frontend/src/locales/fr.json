@@ -157,6 +157,11 @@
       "other": "Autres : {amount}",
       "otherFees": "Autres frais : {amount}"
     },
+    "pipeline": {
+      "supplierReliquat": "Reliquat fournisseur",
+      "inTransit": "En cours",
+      "companyStock": "Stock entreprise"
+    },
     "sections": {
       "operations": "Opérations",
       "fuel": "Carburant",
