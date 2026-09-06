@@ -242,6 +242,32 @@ describe('ShareholderView', () => {
     expect(wrapper.find('button[type="submit"]').attributes('disabled')).toBeUndefined()
   })
 
+  // Recette bug (2026-09-06): a manager was able to create AND validate a
+  // profit distribution while the Shareholder list was completely empty -
+  // the money was "distributed" to nobody. The form must refuse this
+  // outright: a visible warning, a disabled submit button, and no API call
+  // even if triggered directly.
+  it('disables distribution creation and warns when there is no active shareholder', async () => {
+    shareholderResourceList.mockResolvedValue(emptyList())
+    const wrapper = mount(ShareholderView)
+    await flushPromises()
+
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Répartition des bénéfices')!
+      .trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="distribution-no-active-shareholder"]').exists()).toBe(true)
+    const submitButton = wrapper.find('button[type="submit"]')
+    expect(submitButton.attributes('disabled')).toBeDefined()
+
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(shareholderDistributionResourceCreate).not.toHaveBeenCalled()
+  })
+
   it("loads a shareholder's ledger and shows the combined available_balance", async () => {
     const wrapper = mount(ShareholderView)
     await flushPromises()

@@ -41,6 +41,7 @@ from apps.finance.services import (
     IndirectSettlementService,
     PaymentAllocationError,
     PaymentAllocationService,
+    ShareholderDistributionError,
     ShareholderDistributionService,
     ShareholderLedgerService,
     ShareholderLoanError,
@@ -3453,6 +3454,54 @@ def test_distribution_percent_snapshot_unaffected_by_later_shareholder_change():
 
 
 @pytest.mark.django_db
+def test_create_distribution_raises_when_no_active_shareholders():
+    """Recette bug (2026-09-06): a manager created AND validated a profit
+    distribution while the Shareholder list was completely empty - the
+    money was "distributed" to nobody, with zero ShareholderProfitShare
+    rows. create_distribution must refuse outright instead."""
+    actor = _make_admin_user("NOSHR")
+
+    with pytest.raises(ShareholderDistributionError):
+        ShareholderDistributionService.create_distribution(
+            period_start="2026-07-01",
+            period_end="2026-07-31",
+            total_profit=Decimal("1000000.00"),
+            actor=actor,
+        )
+
+    assert ShareholderProfitDistribution.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_create_distribution_raises_when_only_inactive_shareholders():
+    """Same bug, but with a Shareholder row that exists yet is inactive -
+    still zero shares would result, so it must still be refused."""
+    Shareholder.objects.create(name="Inactive", participation_percent=Decimal("50"), is_active=False)
+    actor = _make_admin_user("NOSHRINACT")
+
+    with pytest.raises(ShareholderDistributionError):
+        ShareholderDistributionService.create_distribution(
+            period_start="2026-07-01",
+            period_end="2026-07-31",
+            total_profit=Decimal("1000000.00"),
+            actor=actor,
+        )
+
+    assert ShareholderProfitDistribution.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_create_distribution_via_api_rejects_when_no_active_shareholders(admin_client):
+    response = admin_client.post(
+        "/api/shareholder-distributions/",
+        {"period_start": "2026-07-01", "period_end": "2026-07-31", "total_profit": "300000.00"},
+    )
+
+    assert response.status_code == 400, response.data
+    assert ShareholderProfitDistribution.objects.count() == 0
+
+
+@pytest.mark.django_db
 def test_distribution_validate_action_via_admin_api(admin_client):
     _make_shareholders([Decimal("100")])
 
@@ -3468,6 +3517,34 @@ def test_distribution_validate_action_via_admin_api(admin_client):
     assert validated.data["status"] == "VALIDATED"
     assert validated.data["validated_by"] is not None
     assert validated.data["validated_at"] is not None
+
+
+@pytest.mark.django_db
+def test_validate_distribution_rejects_when_shares_became_empty(admin_client):
+    """Defense in depth alongside create_distribution's own guard: the
+    DRAFT's only shareholder is deactivated AFTER creation (so its
+    ShareholderProfitShare row still exists, but the invariant "a validated
+    distribution always has at least one live share" is what actually
+    matters) - simulate the zero-share case directly, the way the recette
+    bug (2026-09-06) manifested, and confirm validate refuses it."""
+    _make_shareholders([Decimal("100")])
+    actor = _make_admin_user("VALEMPTY")
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("300000.00"),
+        actor=actor,
+    )
+    ShareholderProfitShare.objects.filter(distribution=distribution).delete()
+
+    with pytest.raises(ShareholderDistributionError):
+        ShareholderDistributionService.validate_distribution(distribution.id, actor)
+
+    distribution.refresh_from_db()
+    assert distribution.status == ShareholderProfitDistribution.Status.DRAFT
+
+    response = admin_client.post(f"/api/shareholder-distributions/{distribution.id}/validate/")
+    assert response.status_code == 400, response.data
 
 
 @pytest.mark.django_db

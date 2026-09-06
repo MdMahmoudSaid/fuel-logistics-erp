@@ -935,6 +935,7 @@
         "periodStart": "بداية الفترة",
         "periodEnd": "نهاية الفترة",
         "totalProfit": "إجمالي الربح",
+        "noActiveShareholder": "لا يوجد مساهم/شريك نشط: أضف واحدًا في تبويب «الشركاء» قبل إنشاء توزيع.",
         "exceedsDistributableResultWarning": "المبلغ المدخل يتجاوز النتيجة القابلة للتوزيع المحسوبة.",
         "create": "إنشاء التوزيع",
         "period": "الفترة",

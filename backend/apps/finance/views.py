@@ -68,6 +68,7 @@ from .services import (
     ExpensePostingService,
     IndirectSettlementService,
     PaymentAllocationError,
+    ShareholderDistributionError,
     ShareholderDistributionService,
     ShareholderLedgerService,
     ShareholderLoanError,
@@ -590,9 +591,12 @@ class ShareholderProfitDistributionViewSet(viewsets.ModelViewSet):
         POST /api/shareholder-distributions/{id}/validate/
         """
         distribution = self.get_object()
-        distribution = ShareholderDistributionService.validate_distribution(
-            distribution.id, request.user
-        )
+        try:
+            distribution = ShareholderDistributionService.validate_distribution(
+                distribution.id, request.user
+            )
+        except ShareholderDistributionError as exc:
+            return Response({"detail": str(exc)}, status=http_status.HTTP_400_BAD_REQUEST)
         return Response(
             ShareholderProfitDistributionSerializer(distribution, context={"request": request}).data
         )

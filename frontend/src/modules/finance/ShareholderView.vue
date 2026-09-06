@@ -203,6 +203,10 @@ async function loadDistributions() {
 }
 
 async function onCreateDistribution() {
+  if (activeShareholders.value.length === 0) {
+    distributionError.value = t('finance.shareholder.distribution.noActiveShareholder')
+    return
+  }
   savingDistribution.value = true
   distributionError.value = ''
   try {
@@ -558,6 +562,13 @@ async function onViewLedger() {
       :title="t('finance.shareholder.distribution.title')"
     >
       <p v-if="distributionError" class="text-critique mb-3 text-sm">{{ distributionError }}</p>
+      <p
+        v-if="activeShareholders.length === 0"
+        data-test="distribution-no-active-shareholder"
+        class="border-critique bg-critique-tint text-critique mb-3 rounded-lg border p-2.5 text-sm font-medium"
+      >
+        {{ t('finance.shareholder.distribution.noActiveShareholder') }}
+      </p>
 
       <form class="mb-5 grid grid-cols-1 md:grid-cols-4 gap-3" @submit.prevent="onCreateDistribution">
         <div class="space-y-1.5">
@@ -610,7 +621,13 @@ async function onViewLedger() {
           </div>
         </div>
         <div class="flex items-end">
-          <Button type="submit" variant="primary" class="w-full" :loading="savingDistribution">
+          <Button
+            type="submit"
+            variant="primary"
+            class="w-full"
+            :loading="savingDistribution"
+            :disabled="activeShareholders.length === 0"
+          >
             {{ t('finance.shareholder.distribution.create') }}
           </Button>
         </div>

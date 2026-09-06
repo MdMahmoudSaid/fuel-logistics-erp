@@ -44,6 +44,7 @@ from .services import (
     PaymentAllocationService,
     ShareholderContributionError,
     ShareholderContributionService,
+    ShareholderDistributionError,
     ShareholderDistributionService,
     ShareholderLoanError,
     ShareholderLoanService,
@@ -1074,12 +1075,15 @@ class ShareholderProfitDistributionSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         actor = self.context["request"].user
-        return ShareholderDistributionService.create_distribution(
-            period_start=validated_data["period_start"],
-            period_end=validated_data["period_end"],
-            total_profit=validated_data["total_profit"],
-            actor=actor,
-        )
+        try:
+            return ShareholderDistributionService.create_distribution(
+                period_start=validated_data["period_start"],
+                period_end=validated_data["period_end"],
+                total_profit=validated_data["total_profit"],
+                actor=actor,
+            )
+        except ShareholderDistributionError as exc:
+            raise serializers.ValidationError(str(exc))
 
     def update(self, instance, validated_data):
         raise serializers.ValidationError(

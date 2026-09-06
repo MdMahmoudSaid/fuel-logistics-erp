@@ -907,6 +907,68 @@ def test_distributable_result_equals_net_profit_after_full_settlement_with_trans
 
 
 @pytest.mark.django_db
+def test_distributable_result_still_counts_company_absorbed_loss_after_same_day_distribution():
+    """Recette bug (2026-09-06, live QA): the Actionnaires page banner
+    ("Montant disponible pour repartition") and the Benefices page's own
+    "Resultat distribuable" card showed two different figures for what is
+    supposed to be the exact same metric - 386,000,000 vs 385,937,000, a
+    63,000 XOF gap.
+
+    Root cause: get_preview()'s auto date_from (last_validated.period_end +
+    1 day, so a period's profit is never counted twice across successive
+    distributions) was ALSO applied to total_company_absorbed_loss's
+    underlying query - correct for the profit *flow* it was designed for,
+    wrong for this write-off *state* term (no cash counterpart anywhere in
+    WorkingCapitalService, same "as of right now" nature as working_capital
+    itself). A distribution validated with period_end = D permanently hides
+    any company-absorbed loss dated on D from every later preview, even one
+    booked after that validation - inflating distributable_result forever.
+    Reproduced here with a distribution whose period_end lands on the very
+    day the lossy trip was loaded/delivered.
+    """
+    admin_user = _make_admin("DISTSAMEDAY")
+    fx = _deliver_trip_with_transporter_loss(
+        "DISTSAMEDAY", admin_user,
+        received_qty=Decimal("44600.00"), base_amount=Decimal("5000000.00"),
+    )
+    assert fx["trip"].loading_date.isoformat() == "2026-08-18"
+    from apps.reports.services.profit import TripProfitService
+
+    breakdown = TripProfitService.get_cost_breakdown(fx["trip"])
+    assert breakdown["company_absorbed_loss_amount"] == Decimal("90000.00")
+
+    shareholder = Shareholder.objects.create(
+        name="DistSameDay", participation_percent=Decimal("100")
+    )
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-08-01",
+        period_end="2026-08-18",
+        total_profit=Decimal("1.00"),
+        actor=admin_user,
+    )
+    ShareholderDistributionService.validate_distribution(distribution.id, admin_user)
+
+    # Same-day sanity check: the correct, explicit-period figure (what the
+    # Benefices page shows for a period that actually includes 2026-08-18)
+    # already counts the loss.
+    explicit_preview = ShareholderProfitPreviewService.get_preview(
+        date_from="2026-08-01", date_to="2026-08-18"
+    )
+    assert explicit_preview["total_company_absorbed_loss"] == Decimal("90000.00")
+
+    # The bug: get_preview() with no args (as the Actionnaires page banner
+    # calls it) shifts date_from to 2026-08-19 - the loss must still show
+    # up instead of silently dropping to 0.00.
+    preview = ShareholderProfitPreviewService.get_preview()
+    assert preview["period_start"] == date(2026, 8, 19)
+    assert preview["total_company_absorbed_loss"] == Decimal("90000.00")
+    assert preview["distributable_result"] == explicit_preview["distributable_result"]
+
+    share = next(s for s in preview["shareholders"] if s["shareholder_id"] == shareholder.id)
+    assert share["indicative_share"] == preview["distributable_result"].quantize(Decimal("0.01"))
+
+
+@pytest.mark.django_db
 def test_transporter_loss_indemnity_stays_visible_and_is_not_double_counted():
     """Second half of the mandated regression: the indemnisation perte
     transporteur line must stay visible in the trip's cost/profit breakdown

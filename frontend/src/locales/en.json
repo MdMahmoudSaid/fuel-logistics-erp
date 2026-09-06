@@ -935,6 +935,7 @@
         "periodStart": "Period start",
         "periodEnd": "Period end",
         "totalProfit": "Total profit",
+        "noActiveShareholder": "No active shareholder/associate: add one in the \"Associates\" tab before creating a distribution.",
         "exceedsDistributableResultWarning": "The entered amount exceeds the calculated distributable result.",
         "create": "Create distribution",
         "period": "Period",

@@ -1620,6 +1620,14 @@ class ShareholderService:
         return prospective_total
 
 
+class ShareholderDistributionError(ValueError):
+    """Raised when a ShareholderProfitDistribution would be created with no
+    active shareholder to receive any share of it (recette bug, 2026-09-06:
+    a manager was able to create AND validate a distribution while the
+    Shareholder list was empty - the money was "distributed" to nobody, with
+    zero ShareholderProfitShare rows ever created)."""
+
+
 class ShareholderDistributionService:
     """Owns ShareholderProfitDistribution creation and validation (Task 7,
     client modifications plan)."""
@@ -1635,7 +1643,19 @@ class ShareholderDistributionService:
         amount_due = total_profit * percent_snapshot / 100, quantized to
         the cent - so a later edit to Shareholder.participation_percent can
         never retroactively change this distribution's amounts.
+
+        Raises ShareholderDistributionError before creating anything if
+        there is no active shareholder at all - a distribution with zero
+        shares would otherwise be created (and even validated) while
+        distributing nothing to nobody (recette bug, 2026-09-06).
         """
+        active_shareholders = list(Shareholder.objects.filter(is_active=True))
+        if not active_shareholders:
+            raise ShareholderDistributionError(
+                "Aucun actionnaire/associe actif : impossible de creer une "
+                "repartition des benefices."
+            )
+
         distribution = ShareholderProfitDistribution.objects.create(
             period_start=period_start,
             period_end=period_end,
@@ -1644,7 +1664,6 @@ class ShareholderDistributionService:
             created_by=actor,
         )
 
-        active_shareholders = Shareholder.objects.filter(is_active=True)
         for shareholder in active_shareholders:
             percent_snapshot = shareholder.participation_percent
             amount_due = (
@@ -1663,12 +1682,26 @@ class ShareholderDistributionService:
     @transaction.atomic
     def validate_distribution(distribution_id, actor) -> ShareholderProfitDistribution:
         """Freeze a DRAFT distribution (mirrors InvoiceService.validate_invoice's
-        DRAFT -> VALIDATED stamp of validated_by/validated_at)."""
+        DRAFT -> VALIDATED stamp of validated_by/validated_at).
+
+        Defense in depth alongside create_distribution's own guard: refuses
+        to validate a distribution that ended up with zero
+        ShareholderProfitShare rows (e.g. its only shareholder was made
+        inactive after the DRAFT was created) - the exact recette bug
+        (2026-09-06) was money "distributed" while validated with nobody
+        to receive it.
+        """
         distribution = ShareholderProfitDistribution.objects.select_for_update().get(
             pk=distribution_id
         )
         if distribution.status == ShareholderProfitDistribution.Status.VALIDATED:
             return distribution
+
+        if not distribution.shares.exists():
+            raise ShareholderDistributionError(
+                "Cette repartition n'a aucune part calculee (aucun actionnaire/"
+                "associe actif) : impossible de la valider."
+            )
 
         distribution.status = ShareholderProfitDistribution.Status.VALIDATED
         distribution.validated_by = actor
@@ -2236,8 +2269,32 @@ class ShareholderProfitPreviewService:
         # formula itself (already correct) nor transporter_loss_indemnity's
         # existing netting into TransportPayment.net_amount (a separate,
         # already-correct mechanism).
+        #
+        # Bug fix (recette critique, 2026-09-06 - second pass): this sum
+        # must NEVER be scoped to the same [date_from, date_to] window as
+        # current_profit/operational_profit above. That window exists so a
+        # period's operational profit isn't counted twice across
+        # successive distributions (get_preview's own auto date_from =
+        # last_validated.period_end + 1 day), which is correct for a *flow*
+        # like trip margin. But company_absorbed_loss_amount funds
+        # distributable_result's *write-off* term - a standing state with
+        # no cash counterpart anywhere in WorkingCapitalService, exactly
+        # like working_capital itself (always computed as of "right now",
+        # never date-scoped). Reusing the period-scoped `rows` here meant
+        # any loss dated on or before that auto-shifted date_from became
+        # permanently invisible to every later preview, silently and
+        # irreversibly inflating distributable_result from that point on
+        # (reproduced live: a distribution validated with period_end =
+        # today shifts date_from to tomorrow, so a loss booked later THAT
+        # SAME day never appears again - distributable_result showed
+        # 386,000,000 on the Actionnaires page while the Benefices page,
+        # querying an explicit period that actually includes today, showed
+        # the correct 385,937,000, a 63,000 XOF gap equal to exactly that
+        # loss). Always recompute it from every trip regardless of any
+        # period filter.
+        loss_rows = rows if date_from is None and date_to is None else MarginReportQuery.run()
         total_company_absorbed_loss = sum(
-            (row["company_absorbed_loss_amount"] for row in rows), ZERO
+            (row["company_absorbed_loss_amount"] for row in loss_rows), ZERO
         )
 
         # Client modifications (2026-09-04, third pass - confirmed bug

@@ -937,6 +937,7 @@
         "periodStart": "Début de période",
         "periodEnd": "Fin de période",
         "totalProfit": "Bénéfice total",
+        "noActiveShareholder": "Aucun actionnaire/associé actif : ajoutez-en un dans l'onglet « Associés » avant de créer une répartition.",
         "exceedsDistributableResultWarning": "Le montant saisi dépasse le résultat distribuable calculé.",
         "create": "Créer la répartition",
         "period": "Période",
