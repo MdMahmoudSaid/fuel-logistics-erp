@@ -10,6 +10,7 @@ from apps.core.models import LossToleranceConfig, Product
 from apps.customers.models import Customer
 from apps.documents.models import Document
 from apps.finance.models import (
+    AdvanceConsumption,
     BankAccount,
     CashAccount,
     CustomerPayment,
@@ -22,6 +23,7 @@ from apps.finance.models import (
     ShareholderLoan,
     ShareholderProfitDistribution,
     ShareholderWithdrawal,
+    SupplierAdvance,
     SupplierPayment,
     TreasuryTransaction,
     TransportDeduction,
@@ -29,6 +31,7 @@ from apps.finance.models import (
     TransporterAdvance,
 )
 from apps.purchasing.models import CessionLetter, SupplierOrder
+from apps.quotations.models import Quotation
 from apps.sales.models import (
     CustomerOrder,
     Invoice,
@@ -147,6 +150,17 @@ class Command(BaseCommand):
             PaymentAllocation,
             InvoiceCorrection,
             TreasuryTransaction,
+            # Bug fix (found while preparing a clean environment for the
+            # 2026-09-06 recette): AdvanceConsumption.supplier_advance/
+            # transporter_advance are both on_delete=PROTECT - this command
+            # never deleted AdvanceConsumption rows at all before, so a
+            # database with any recorded supplier/transporter advance
+            # consumption could never actually reach zero via this command
+            # (SupplierAdvance was missing from this list entirely; a
+            # TransporterAdvance delete below would raise ProtectedError
+            # the moment a consumption row existed). Must precede both
+            # advance models below.
+            AdvanceConsumption,
             ShareholderWithdrawal,
             # Must precede Shareholder/BankAccount/CashAccount/User below -
             # shareholder/bank_account/cash_account/recorded_by are all
@@ -158,6 +172,9 @@ class Command(BaseCommand):
             SupplierPayment,
             TransportPayment,
             TransporterAdvance,
+            # Bug fix (2026-09-06): was missing from this command entirely -
+            # see the AdvanceConsumption comment above.
+            SupplierAdvance,
             TransportDeduction,
             ExpenseAllocation,
             Expense,
@@ -175,6 +192,12 @@ class Command(BaseCommand):
             Driver,
             Transporter,
             Supplier,
+            # Bug fix (2026-09-06): Quotation.customer is on_delete=PROTECT
+            # and this command never accounted for it - deleting Customer
+            # below would fail (ProtectedError) as soon as any quotation
+            # existed. QuotationLine cascades from Quotation, no separate
+            # entry needed.
+            Quotation,
             Customer,
             BankAccount,
             CashAccount,
@@ -253,6 +276,11 @@ class Command(BaseCommand):
             "transport_payments": TransportPayment.objects.count(),
             "transport_deductions": TransportDeduction.objects.count(),
             "transporter_advances": TransporterAdvance.objects.count(),
+            # Bug fix (2026-09-06): these two were silently never checked -
+            # see the deletion-order comments above.
+            "supplier_advances": SupplierAdvance.objects.count(),
+            "advance_consumptions": AdvanceConsumption.objects.count(),
+            "quotations": Quotation.objects.count(),
             "expenses": Expense.objects.count(),
             "treasury_transactions": TreasuryTransaction.objects.count(),
             "documents": Document.objects.count(),

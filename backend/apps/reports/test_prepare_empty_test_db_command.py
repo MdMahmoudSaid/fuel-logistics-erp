@@ -178,3 +178,53 @@ def test_prepare_empty_test_db_can_create_login_admin_without_business_data():
     assert Supplier.objects.count() == 0
     assert Trip.objects.count() == 0
     assert "Admin cree: +22200000000 / PIN 1234" in out.getvalue()
+
+
+@pytest.mark.django_db
+def test_prepare_empty_test_db_resets_quotations_and_advance_consumptions_too():
+    """Bug fix (found 2026-09-06 while preparing a clean environment for a
+    full manual recette): this command previously crashed with
+    ProtectedError the moment a Quotation existed (Quotation.customer is
+    PROTECT), and silently left SupplierAdvance/AdvanceConsumption rows
+    behind forever (SupplierAdvance was missing from the delete list
+    entirely, and AdvanceConsumption - PROTECT on both its advance FKs -
+    was never deleted by anything)."""
+    from apps.finance.models import AdvanceConsumption, SupplierAdvance
+    from apps.quotations.models import Quotation
+
+    admin_role = Role.objects.get(name=Role.NAME_ADMIN)
+    admin_user = User.objects.create_user(phone="+222RESETQUOTE", pin="1234", role=admin_role)
+    product = Product.objects.get(code="gasoil")
+    supplier = Supplier.objects.create(name="Reset Quote Supplier", country="Senegal")
+    customer = Customer.objects.create(name="Reset Quote Customer")
+
+    Quotation.objects.create(
+        reference="DEV-RESET-0001",
+        customer=customer,
+        issue_date="2026-08-18",
+        created_by=admin_user,
+    )
+
+    cash_account = CashAccount.objects.create(name="Reset Quote Cash")
+    advance = SupplierAdvance.objects.create(
+        supplier=supplier, amount=Decimal("100000.00"), date="2026-08-17",
+        cash_account=cash_account, recorded_by=admin_user,
+    )
+    order = SupplierOrder.objects.create(
+        reference="SO-RESET-QUOTE", supplier=supplier, product=product,
+        purchase_date="2026-08-18", quantity_litres=Decimal("100.00"),
+        unit_price=Decimal("1000.0000"), status=SupplierOrder.Status.CONFIRMED,
+        created_by=admin_user,
+    )
+    assert AdvanceConsumption.objects.filter(supplier_advance=advance).exists()
+    assert SupplierAdvance.objects.count() == 1
+
+    out = StringIO()
+    call_command("prepare_empty_test_db", "--reset", stdout=out)
+
+    assert "Base vide prete" in out.getvalue()
+    assert Quotation.objects.count() == 0
+    assert SupplierAdvance.objects.count() == 0
+    assert AdvanceConsumption.objects.count() == 0
+    assert Customer.objects.count() == 0
+    assert SupplierOrder.objects.count() == 0
