@@ -1,6 +1,7 @@
 # Report query classes tests (docs/PHASE_6_PLAN.md Etape 4/6;
 # ERP_Implementation_Experience_Guide.md Section 9.7).
 
+from datetime import date
 from decimal import Decimal
 
 import pytest
@@ -26,6 +27,8 @@ from apps.finance.models import (
     TreasuryTransaction,
 )
 from apps.finance.services import (
+    ControlledDebtPaymentService,
+    PaymentAllocationService,
     ShareholderContributionService,
     ShareholderDistributionService,
     ShareholderLedgerService,
@@ -47,6 +50,8 @@ from apps.sales.models import Invoice, Sale
 from apps.suppliers.models import Supplier
 from apps.transport.models import Transporter, Truck
 from apps.trips.models import DeliveryControl, Trip
+from apps.trips.services import DeliveryService, TripWorkflowService
+from apps.trips.tests import FULL_SEQUENCE_AFTER_ASSIGNED
 
 
 def _make_admin(suffix):
@@ -735,6 +740,209 @@ def test_distributable_result_formula_term_by_term():
     # net_profit itself must stay exactly what it was before capital ever
     # entered the picture - distributable_result never feeds it back.
     assert preview["net_profit"] == preview["operational_profit"]
+
+
+def _deliver_trip_with_transporter_loss(suffix, admin_user, *, received_qty, base_amount):
+    """Full delivery cycle through the real services (not _make_full_trip's
+    direct-ORM shortcut, which never creates a DeliveryControl at all): trip
+    assigned -> delivered (defaults to full quantity_loaded, no mandatory
+    quantity control) -> client verification reports `received_qty`,
+    splitting any shortfall into a tolerance-absorbed part (company_absorbed_
+    loss_quantity) and a transporter-chargeable part (TransportDeduction).
+
+    The TransportPayment is created BEFORE delivery (contractual fee agreed
+    at dispatch) so both sync_transport_shortage_deduction call sites
+    (record_delivery, record_client_verification) find it and keep
+    deduction_amount/net_amount correctly in sync as the loss is discovered -
+    the transporter payment sync gap when a payment is created after the
+    fact (TransportPaymentForm.vue never sends deduction_amount) is a
+    separate, pre-existing issue, out of scope for this bug fix.
+    """
+    product = Product.objects.get(code="gasoil")
+    supplier = Supplier.objects.create(name=f"Supplier {suffix}", country="Senegal")
+    transporter = Transporter.objects.create(name=f"Trans {suffix}")
+    supplier_order = SupplierOrder.objects.create(
+        reference=f"SO-{suffix}", supplier=supplier, product=product,
+        purchase_date="2026-08-18", quantity_litres=Decimal("45000.00"),
+        unit_price=Decimal("600.0000"), status=SupplierOrder.Status.CONFIRMED,
+        created_by=admin_user,
+    )
+    cession = CessionLetter.objects.create(
+        reference=f"CL-{suffix}", supplier_order=supplier_order,
+        authorized_quantity=Decimal("45000.00"), issue_date="2026-08-18", created_by=admin_user,
+    )
+    truck = Truck.objects.create(
+        internal_id=f"TRK-{suffix}", tractor_registration=f"{suffix}-TRACTOR",
+        tanker_registration=f"{suffix}-TANKER", capacity_litres=Decimal("45000.00"),
+    )
+    customer = Customer.objects.create(name=f"Client {suffix}")
+    trip = Trip.objects.create(
+        reference=f"TRIP-{suffix}", truck=truck, transporter=transporter, supplier=supplier,
+        supplier_order=supplier_order, cession_letter=cession, product=product,
+        quantity_loaded=Decimal("45000.00"), loading_date="2026-08-18",
+        bl_reference=f"BL-{suffix}", client=customer, created_by=admin_user,
+    )
+    for target in FULL_SEQUENCE_AFTER_ASSIGNED[:-2]:
+        TripWorkflowService.transition_trip(trip.id, target, admin_user)
+        trip.refresh_from_db()
+
+    transport_payment = TransportPayment.objects.create(
+        trip=trip, transporter=transporter,
+        calculation_method=TransportPayment.CalculationMethod.FIXED,
+        base_amount=base_amount,
+    )
+
+    DeliveryService.record_delivery(
+        trip_id=trip.id, control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE, controller=admin_user,
+        unit_selling_price=Decimal("900.0000"),
+    )
+    control = DeliveryService.record_client_verification(
+        trip_id=trip.id, received_qty=received_qty,
+        verified_at=date.today(), actor=admin_user,
+    )
+    transport_payment.refresh_from_db()
+    return {
+        "trip": trip,
+        "supplier": supplier,
+        "transporter": transporter,
+        "customer": customer,
+        "control": control,
+        "transport_payment": transport_payment,
+        "invoice": Invoice.objects.get(sale__trip=trip),
+    }
+
+
+def _settle_all_debts_and_collect_customer(fx, admin_user):
+    bank = BankAccount.objects.create(name=f"Bank {fx['trip'].reference}", opening_balance=Decimal("0.00"))
+    ShareholderContributionService.record_contribution(
+        shareholder_id=Shareholder.objects.create(
+            name=f"Actionnaire {fx['trip'].reference}", participation_percent=Decimal("100.00")
+        ).id,
+        amount=Decimal("50000000.00"), date="2026-08-01",
+        actor=admin_user, attachment=None, bank_account_id=bank.id,
+    )
+
+    supplier_due = ControlledDebtPaymentService.describe_supplier_balance(fx["supplier"])["total_due"]
+    ControlledDebtPaymentService.record_payment(
+        debt_type=ControlledDebtPaymentService.SUPPLIER, debt_id=fx["supplier"].id,
+        bank_account_id=bank.id, amount=supplier_due, date="2026-08-19",
+        reference=f"PAY-SUP-{fx['trip'].reference}", actor=admin_user,
+    )
+    transporter_due = ControlledDebtPaymentService.describe_transporter_balance(
+        fx["transporter"]
+    )["total_due"]
+    if transporter_due > Decimal("0.00"):
+        ControlledDebtPaymentService.record_payment(
+            debt_type=ControlledDebtPaymentService.TRANSPORTER, debt_id=fx["transporter"].id,
+            bank_account_id=bank.id, amount=transporter_due, date="2026-08-19",
+            reference=f"PAY-TRANS-{fx['trip'].reference}", actor=admin_user,
+        )
+
+    from apps.finance.services import FinancePostingService
+
+    outstanding = PaymentAllocationService.get_customer_outstanding(fx["customer"])
+    payment = CustomerPayment.objects.create(
+        customer=fx["customer"], amount=outstanding, payment_date="2026-08-19",
+        method=CustomerPayment.Method.BANK_TRANSFER, destination=CustomerPayment.Destination.BANK,
+        bank_account=bank, recorded_by=admin_user,
+    )
+    PaymentAllocationService.allocate_payment(
+        payment.id, [{"invoice_id": fx["invoice"].id, "amount": outstanding}]
+    )
+    FinancePostingService.record_customer_payment_treasury(payment)
+
+
+@pytest.mark.django_db
+def test_distributable_result_equals_net_profit_after_full_settlement_with_transporter_loss():
+    """Bug recette critique (2026-09-06): a transporter-chargeable delivery
+    loss (indemnisation perte transporteur) must never leave a surplus in
+    distributable_result once every debt is paid and every receivable is
+    collected - the two figures must reconcile exactly, per the client's
+    explicit rule.
+
+    Root cause found: NOT the indemnity itself (it was already correctly
+    netted into TransportPayment.net_amount and correctly credited once in
+    trip margin - see the second test below). The real gap was the OTHER
+    half of the same delivery-loss split: DeliveryControl.company_absorbed_
+    loss_quantity (the tolerance-absorbed portion, <=100L by default) is
+    subtracted from trip margin/net_profit (TripProfitService.get_cost_
+    breakdown, a real write-off - the company paid its supplier for the full
+    quantity_loaded and recovers nothing for the missing litres), but has NO
+    counterpart anywhere in WorkingCapitalService: the customer's invoice
+    stays frozen at the full delivered quantity ("Delivered Quantity is
+    Commercial Truth"), so treasury/receivables never reflect this loss
+    either. distributable_result (purely treasury-based) therefore stayed
+    artificially higher than net_profit by exactly company_absorbed_loss_
+    amount. Fixed by summing it across MarginReportQuery's rows and
+    subtracting it in ShareholderProfitPreviewService.get_preview(), the
+    same way general_expenses_paid already is - the trip margin formula
+    itself is untouched.
+    """
+    admin_user = _make_admin("DISTREC")
+    # 400L short of 45,000L loaded: 100L tolerance-absorbed (default
+    # LossToleranceConfig) + 300L transporter-chargeable @ 900.0000 XOF/L =
+    # 270,000 XOF indemnisation perte transporteur, matching the bug report.
+    fx = _deliver_trip_with_transporter_loss(
+        "DISTREC", admin_user,
+        received_qty=Decimal("44600.00"), base_amount=Decimal("5000000.00"),
+    )
+    assert fx["control"].company_absorbed_loss_quantity == Decimal("100.00")
+    assert fx["control"].chargeable_loss_quantity == Decimal("300.00")
+    from apps.reports.services.profit import TripProfitService
+
+    breakdown = TripProfitService.get_cost_breakdown(fx["trip"])
+    assert breakdown["transporter_loss_indemnity"] == Decimal("270000.00")
+    assert breakdown["company_absorbed_loss_amount"] == Decimal("90000.00")
+
+    _settle_all_debts_and_collect_customer(fx, admin_user)
+
+    assert ControlledDebtPaymentService.describe_supplier_balance(fx["supplier"])["total_due"] == Decimal("0.00")
+    assert ControlledDebtPaymentService.describe_transporter_balance(fx["transporter"])["total_due"] == Decimal("0.00")
+    assert PaymentAllocationService.get_customer_outstanding(fx["customer"]) == Decimal("0.00")
+
+    preview = ShareholderProfitPreviewService.get_preview()
+
+    assert preview["distributable_result"] == preview["net_profit"]
+
+
+@pytest.mark.django_db
+def test_transporter_loss_indemnity_stays_visible_and_is_not_double_counted():
+    """Second half of the mandated regression: the indemnisation perte
+    transporteur line must stay visible in the trip's cost/profit breakdown
+    (never hidden to "fix" the surplus), and must be counted exactly once -
+    isolated here with zero tolerance-absorbed loss (received_qty exactly
+    quantity_loaded - chargeable_loss, no shortfall inside tolerance) so
+    company_absorbed_loss_amount can't mask a double count of the indemnity
+    itself.
+    """
+    admin_user = _make_admin("INDVIS")
+    fx = _deliver_trip_with_transporter_loss(
+        "INDVIS", admin_user,
+        # 400L short: 100L tolerance-absorbed + 300L chargeable @ 900.0000 =
+        # 270,000 XOF indemnity - company_absorbed_loss_amount (90,000) is
+        # nonzero too here, but is exercised on its own in the first test.
+        received_qty=Decimal("44600.00"), base_amount=Decimal("5000000.00"),
+    )
+
+    from apps.reports.services.profit import TripProfitService
+
+    breakdown = TripProfitService.get_cost_breakdown(fx["trip"])
+    assert breakdown["transporter_loss_indemnity"] == Decimal("270000.00")
+    rows = MarginReportQuery.run()
+    row = next(r for r in rows if r["trip_reference"] == fx["trip"].reference)
+    assert row["transporter_loss_indemnity"] == Decimal("270000.00")
+
+    # Counted once in margin (credited back into revenue) and once as a
+    # reduced net_amount owed to the transporter (TransportPayment.
+    # deduction_amount) - never a third time anywhere else.
+    assert fx["transport_payment"].deduction_amount == Decimal("270000.00")
+    assert fx["transport_payment"].net_amount == Decimal("4730000.00")
+
+    _settle_all_debts_and_collect_customer(fx, admin_user)
+
+    preview = ShareholderProfitPreviewService.get_preview()
+    assert preview["distributable_result"] == preview["net_profit"]
 
 
 # ---------------------------------------------------------------------------

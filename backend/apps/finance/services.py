@@ -2115,6 +2115,29 @@ class ShareholderProfitPreviewService:
         )
         net_profit = operational_profit - general_expenses_paid
 
+        # Bug fix (recette critique, 2026-09-06): a post-delivery loss within
+        # tolerance (DeliveryControl.company_absorbed_loss_quantity) is a
+        # real write-off - TripProfitService.get_cost_breakdown() correctly
+        # subtracts it from trip margin, because the company paid its
+        # supplier for the full quantity_loaded and recovers nothing for the
+        # missing litres. But Sale.delivered_quantity stays frozen at its
+        # original value ("Delivered Quantity is Commercial Truth" - the
+        # customer's invoice is never reduced for it, DeliveryService.
+        # record_client_verification's own docstring), and no debt or
+        # TransportDeduction is ever created for the tolerance-absorbed
+        # portion either - so this loss has no cash counterpart anywhere in
+        # WorkingCapitalService. Once every debt is paid and every
+        # receivable collected, distributable_result (purely treasury/
+        # receivables-based) never saw this write-off, while net_profit did -
+        # creating an artificial surplus equal to exactly this amount. Sum
+        # and subtract it here explicitly, never touching the trip margin
+        # formula itself (already correct) nor transporter_loss_indemnity's
+        # existing netting into TransportPayment.net_amount (a separate,
+        # already-correct mechanism).
+        total_company_absorbed_loss = sum(
+            (row["company_absorbed_loss_amount"] for row in rows), ZERO
+        )
+
         # Client modifications (2026-09-04, third pass - confirmed bug
         # during actual recette testing): working_capital["total"] now ADDS
         # open debts (see WorkingCapitalService), so "resultat distribuable
@@ -2129,6 +2152,7 @@ class ShareholderProfitPreviewService:
             - working_capital["transporter_debt_total"]
             - working_capital["other_debts"]
             - working_capital["capital"]
+            - total_company_absorbed_loss
         )
 
         # Business decision (2026-09-04, distribution basis change): a
@@ -2162,6 +2186,7 @@ class ShareholderProfitPreviewService:
             "operational_profit": operational_profit,
             "general_expenses_paid": general_expenses_paid,
             "net_profit": net_profit,
+            "total_company_absorbed_loss": total_company_absorbed_loss,
             "working_capital": working_capital,
             "distributable_result": distributable_result,
             "shareholders": shareholders,

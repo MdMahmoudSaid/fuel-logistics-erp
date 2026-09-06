@@ -25,6 +25,8 @@ FIELDS = [
     "quantity_invoiced",
     "transporter_loss_quantity",
     "transporter_loss_indemnity",
+    "company_absorbed_loss_quantity",
+    "company_absorbed_loss_amount",
     "supplier_unit_price",
     "transport_cost",
     "customs_cost",
@@ -99,6 +101,12 @@ class MarginReportQuery:
                     "transporter_loss_quantity": breakdown["transporter_loss_quantity"],
                     "transporter_loss_indemnity": breakdown[
                         "transporter_loss_indemnity"
+                    ],
+                    "company_absorbed_loss_quantity": breakdown[
+                        "company_absorbed_loss_quantity"
+                    ],
+                    "company_absorbed_loss_amount": breakdown[
+                        "company_absorbed_loss_amount"
                     ],
                     "supplier_unit_price": trip.supplier_order.unit_price,
                     "transport_cost": breakdown["transport_cost"],
