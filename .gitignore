@@ -24,3 +24,6 @@ frontend/.vite/
 
 # Local worktrees
 .worktrees/
+
+# Superpowers brainstorming companion (local tooling)
+.superpowers/
