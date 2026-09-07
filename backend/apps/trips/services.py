@@ -20,7 +20,7 @@ from apps.core.models import LossToleranceConfig
 from apps.core.reference import generate_monthly_reference
 from apps.finance.models import Expense, ExpenseAllocation, TransportDeduction, TransportPayment
 from apps.sales.models import Invoice, ProductSellingPriceHistory, Sale
-from apps.sales.services import CustomerOrderService
+from apps.sales.services import CustomerOrderService, InvoiceService
 from apps.transport.models import Transporter, Truck
 from apps.trips.models import DeliveryControl, Trip, TripStatusHistory
 
@@ -664,11 +664,14 @@ class DeliveryService:
         """Post-delivery client quantity check (client modifications
         2026-09-04): updates the DeliveryControl created at delivery time
         (defaulted to full quantity_loaded) with what the client actually
-        reports having received. Never touches Sale/Invoice ("Delivered
-        Quantity is Commercial Truth" stays frozen) - the loss below
-        tolerance is instead subtracted from margin by TripProfitService,
-        and the loss above tolerance re-syncs the existing
-        TransportDeduction mechanism.
+        reports having received. Spec 2026-09-07: the corrected received
+        quantity is now propagated to the Sale + Invoice via
+        InvoiceService.adjust_delivered_quantity (DRAFT -> direct edit,
+        VALIDATED -> audited InvoiceCorrection, (partially) paid / cancelled
+        -> InvoicePaidCorrectionUnsupported, surfaced as a 400 by the view).
+        The loss below tolerance is still subtracted from margin by
+        TripProfitService, and the loss above tolerance re-syncs the
+        existing TransportDeduction mechanism.
         """
         trip = Trip.objects.select_for_update().get(pk=trip_id)
         if trip.status not in (Trip.Status.DELIVERED, Trip.Status.COMPLETED):
@@ -707,6 +710,21 @@ class DeliveryService:
         )
 
         sale = getattr(trip, "sale", None)
+        if sale is not None and getattr(sale, "invoice", None) is not None:
+            # Spec 2026-09-07: the client pays for what actually arrived.
+            # Propagate the corrected quantity to the Sale + Invoice (DRAFT
+            # -> direct, VALIDATED -> audited, PAID -> refused).
+            InvoiceService.adjust_delivered_quantity(
+                sale.invoice.id,
+                received_qty,
+                reason=(
+                    "Vérification client : quantité reçue corrigée de "
+                    f"{sale.delivered_quantity} L à {received_qty} L"
+                ),
+                actor=actor,
+            )
+            sale.refresh_from_db()
+
         DeliveryService.sync_transport_shortage_deduction(
             trip=trip,
             received_qty=received_qty,

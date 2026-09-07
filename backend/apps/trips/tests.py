@@ -22,8 +22,18 @@ from apps.finance.models import (
     TransportPayment,
 )
 from apps.purchasing.models import CessionLetter, SupplierOrder
-from apps.sales.models import CustomerOrder, ProductSellingPriceHistory, Sale
-from apps.sales.services import CustomerOrderService
+from apps.sales.models import (
+    CustomerOrder,
+    Invoice,
+    InvoiceCorrection,
+    ProductSellingPriceHistory,
+    Sale,
+)
+from apps.sales.services import (
+    CustomerOrderService,
+    InvoicePaidCorrectionUnsupported,
+    InvoiceService,
+)
 from apps.suppliers.models import Supplier
 from apps.transport.models import Transporter, Truck
 from apps.trips.models import DeliveryControl, Trip, TripStatusHistory
@@ -1974,6 +1984,122 @@ def test_record_client_verification_does_not_error_when_trip_already_completed()
     # No extra history row - transition_trip() was never called since the
     # trip was already at the target status.
     assert TripStatusHistory.objects.filter(trip=trip).count() == history_count_before
+
+
+# ---------------------------------------------------------------------------
+# Spec 2026-09-07: record_client_verification propagates the corrected
+# received quantity to the Sale + Invoice (Task 3).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_client_verification_reduces_a_draft_invoice_to_the_received_quantity():
+    fx = _fixtures_with_customer("CV-DRAFT-INV")
+    trip = _deliverable_trip(fx, "TRIP-CV-DRAFT-INV-001")  # quantity_loaded 45000
+    ProductSellingPriceHistory.objects.create(
+        product=fx["product"], customer=fx["customer"],
+        price=Decimal("900.0000"), changed_by=fx["admin_user"],
+    )
+    DeliveryService.record_delivery(
+        trip_id=trip.id, control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE, controller=fx["admin_user"],
+    )
+    trip.refresh_from_db()
+    invoice = trip.sale.invoice
+    assert invoice.status == Invoice.Status.DRAFT
+    assert trip.sale.delivered_quantity == Decimal("45000.00")
+    assert invoice.total_amount == Decimal("40500000.00")
+
+    DeliveryService.record_client_verification(
+        trip_id=trip.id, received_qty=Decimal("44800.00"),
+        verified_at=date.today(), actor=fx["admin_user"],
+    )
+
+    trip = Trip.objects.get(pk=trip.id)
+    assert trip.sale.delivered_quantity == Decimal("44800.00")
+    invoice.refresh_from_db()
+    assert invoice.total_amount == Decimal("40320000.00")
+    assert InvoiceCorrection.objects.filter(invoice=invoice).count() == 0
+
+
+@pytest.mark.django_db
+def test_client_verification_on_a_validated_invoice_writes_a_correction_row():
+    fx = _fixtures_with_customer("CV-VALID-INV")
+    trip = _deliverable_trip(fx, "TRIP-CV-VALID-INV-001")
+    ProductSellingPriceHistory.objects.create(
+        product=fx["product"], customer=fx["customer"],
+        price=Decimal("900.0000"), changed_by=fx["admin_user"],
+    )
+    DeliveryService.record_delivery(
+        trip_id=trip.id, control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE, controller=fx["admin_user"],
+    )
+    trip.refresh_from_db()
+    invoice = trip.sale.invoice
+    InvoiceService.validate_invoice(invoice.id, fx["admin_user"])
+
+    DeliveryService.record_client_verification(
+        trip_id=trip.id, received_qty=Decimal("44800.00"),
+        verified_at=date.today(), actor=fx["admin_user"],
+    )
+
+    invoice.refresh_from_db()
+    assert invoice.total_amount == Decimal("40320000.00")
+    correction = InvoiceCorrection.objects.get(invoice=invoice)
+    assert correction.field_name == "delivered_quantity"
+    assert "Vérification client" in correction.reason
+
+
+@pytest.mark.django_db
+def test_client_verification_is_blocked_when_the_invoice_is_paid():
+    fx = _fixtures_with_customer("CV-PAID-INV")
+    trip = _deliverable_trip(fx, "TRIP-CV-PAID-INV-001")
+    ProductSellingPriceHistory.objects.create(
+        product=fx["product"], customer=fx["customer"],
+        price=Decimal("900.0000"), changed_by=fx["admin_user"],
+    )
+    DeliveryService.record_delivery(
+        trip_id=trip.id, control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE, controller=fx["admin_user"],
+    )
+    trip.refresh_from_db()
+    invoice = trip.sale.invoice
+    InvoiceService.validate_invoice(invoice.id, fx["admin_user"])
+    Invoice.objects.filter(pk=invoice.id).update(status=Invoice.Status.PAID)
+
+    with pytest.raises(InvoicePaidCorrectionUnsupported):
+        DeliveryService.record_client_verification(
+            trip_id=trip.id, received_qty=Decimal("44800.00"),
+            verified_at=date.today(), actor=fx["admin_user"],
+        )
+
+    trip = Trip.objects.get(pk=trip.id)
+    assert trip.status == Trip.Status.DELIVERED  # not completed
+    assert trip.sale.delivered_quantity == Decimal("45000.00")
+    assert DeliveryControl.objects.get(trip=trip).verified_at is None
+
+
+@pytest.mark.django_db
+def test_client_verification_api_returns_400_when_invoice_paid():
+    fx = _fixtures_with_customer("CV-PAID-API")
+    trip = _deliverable_trip(fx, "TRIP-CV-PAID-API-001")
+    ProductSellingPriceHistory.objects.create(
+        product=fx["product"], customer=fx["customer"],
+        price=Decimal("900.0000"), changed_by=fx["admin_user"],
+    )
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+    client.post(f"/api/trips/{trip.id}/delivery-control/",
+                {"control_date": "2026-08-18", "method": "MANUAL_GAUGE"})
+    trip.refresh_from_db()
+    invoice = trip.sale.invoice
+    InvoiceService.validate_invoice(invoice.id, fx["admin_user"])
+    Invoice.objects.filter(pk=invoice.id).update(status=Invoice.Status.PAID)
+
+    resp = client.post(f"/api/trips/{trip.id}/client-verification/",
+                       {"received_quantity": "44800.00", "verified_at": "2026-08-18"})
+    assert resp.status_code == 400
+    assert "encaiss" in resp.data["detail"].lower()
 
 
 # ---------------------------------------------------------------------------
