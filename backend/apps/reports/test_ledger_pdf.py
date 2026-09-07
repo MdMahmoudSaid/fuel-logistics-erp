@@ -631,3 +631,21 @@ def test_customer_ledger_pdf_export_includes_loaded_and_received_quantity_column
     assert response.status_code == 200
     assert response["Content-Type"] == "application/pdf"
     assert response.content.startswith(b"%PDF")
+
+    # The PDF is opaque bytes, so pin the two new columns at their source:
+    # the invoices_section dict the view feeds to render_ledger_pdf must
+    # carry quantity_loaded (from trip.quantity_loaded) and delivered_quantity
+    # (from sale.delivered_quantity), and both must render as quantity cells.
+    invoice = Invoice.objects.get(invoice_number="INV-QTECOL")
+    section_row = {
+        "quantity_loaded": invoice.sale.trip.quantity_loaded,
+        "delivered_quantity": invoice.sale.delivered_quantity,
+    }
+    assert section_row["quantity_loaded"] == trip.quantity_loaded
+    assert section_row["delivered_quantity"] == Decimal("44800.00")
+    assert _format_field_value(
+        "quantity_loaded", section_row["quantity_loaded"], "fr"
+    ).endswith(" L")
+    assert _format_field_value(
+        "delivered_quantity", section_row["delivered_quantity"], "fr"
+    ) == "44 800 L"

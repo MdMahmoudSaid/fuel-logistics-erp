@@ -338,6 +338,9 @@ export interface CustomerLedgerInvoice {
   outstanding: string
   // Task 8: SaleSerializer now exposes the linked trip's loaded quantity
   // alongside the delivered quantity, so the ledger can show both per row.
+  // subset of sales/types.ts Sale (the ledger only needs these two fields;
+  // the full Sale interface carries customer/product detail this view never
+  // reads).
   sale_detail?: {
     quantity_loaded: string
     delivered_quantity: string

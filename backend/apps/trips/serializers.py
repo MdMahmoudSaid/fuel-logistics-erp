@@ -12,7 +12,6 @@ from apps.documents.models import Document
 from apps.purchasing.serializers import CessionLetterSerializer
 from apps.purchasing.services import SupplierStockService
 from apps.suppliers.serializers import SupplierSerializer
-from apps.transport.models import Truck
 from apps.transport.serializers import DriverSerializer, TransporterSerializer, TruckSerializer
 from apps.trips.models import DeliveryControl, Trip, TripStatusHistory
 from apps.trips.services import TruckAvailabilityService

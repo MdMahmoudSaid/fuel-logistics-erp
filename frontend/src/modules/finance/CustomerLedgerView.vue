@@ -218,10 +218,22 @@ function badgeVariant(status: string) {
                 <td class="text-texte px-2 py-1.5 font-medium">{{ invoice.invoice_number }}</td>
                 <td class="px-2 py-1.5">{{ invoice.issued_date }}</td>
                 <td class="px-2 py-1.5 text-right">
-                  <MonoValue :value="formatQuantity(invoice.sale_detail?.quantity_loaded ?? 0)" />
+                  <MonoValue
+                    :value="
+                      invoice.sale_detail
+                        ? formatQuantity(invoice.sale_detail.quantity_loaded)
+                        : ''
+                    "
+                  />
                 </td>
                 <td class="px-2 py-1.5 text-right">
-                  <MonoValue :value="formatQuantity(invoice.sale_detail?.delivered_quantity ?? 0)" />
+                  <MonoValue
+                    :value="
+                      invoice.sale_detail
+                        ? formatQuantity(invoice.sale_detail.delivered_quantity)
+                        : ''
+                    "
+                  />
                 </td>
                 <td class="px-2 py-1.5 text-right">
                   {{ formatMoney(invoice.total_amount) }}

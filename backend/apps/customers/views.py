@@ -43,7 +43,7 @@ class CustomerViewSet(viewsets.ModelViewSet):
 
         customer = self.get_object()
         invoices = Invoice.objects.filter(sale__customer=customer).select_related(
-            "sale", "sale__customer"
+            "sale", "sale__customer", "sale__trip"
         )
         payments = customer.payments.select_related(
             "bank_account", "cash_account", "recorded_by"
