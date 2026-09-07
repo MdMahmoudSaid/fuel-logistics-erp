@@ -131,6 +131,7 @@
       "supplierDebtTotal": "ديون الموردين",
       "transporterDebtTotal": "ديون الناقلين",
       "otherDebts": "ديون الجمارك / العبور / الرسوم",
+      "companyAbsorbedLoss": "الخسارة المتحملة من الشركة",
       "partyBalances": "الأرصدة حسب الطرف",
       "customers": "العملاء",
       "suppliers": "الموردون",
@@ -388,6 +389,7 @@
       "transporterLossIndemnity": "تعويض فاقد الناقل",
       "companyAbsorbedLoss": "الخسارة المتحملة من الشركة",
       "companyAbsorbedLossDetail": "{quantity} × {unitPrice}",
+      "companyAbsorbedLossInfoNote": "معلومة — منعكسة مسبقًا في رقم الأعمال",
       "fuelPurchaseCost": "شراء الوقود",
       "transportCost": "تكلفة الناقل",
       "totalExpenses": "مصاريف إضافية",
@@ -737,6 +739,8 @@
       "table": {
         "invoice": "الفاتورة",
         "issued": "تاريخ الإصدار",
+        "loadedQuantity": "الكمية المحمّلة",
+        "receivedQuantity": "الكمية المستلمة",
         "total": "الإجمالي",
         "outstanding": "المستحق",
         "status": "الحالة"
@@ -1032,6 +1036,7 @@
       "workingCapitalGross": "الخزينة + مستحقات العملاء",
       "workingCapitalDebts": "الديون المفتوحة",
       "capitalContributed": "رأس المال المُقدَّم",
+      "companyAbsorbedLoss": "الخسارة المتحملة من الشركة",
       "distributableResult": "النتيجة القابلة للتوزيع بعد الديون ورأس المال",
       "tripsCount": "عدد الرحلات المحتسبة",
       "revenue": "رقم الأعمال",
@@ -1307,7 +1312,13 @@
       "customer": "العميل",
       "product": "المنتج",
       "deliveredQuantity": "الكمية المسلَّمة (المستلمة، غير المحمَّلة)",
+      "loadedQuantity": "الكمية المحمّلة",
       "unitSellingPrice": "سعر البيع للوحدة",
+      "correctionFields": {
+        "unit_selling_price": "سعر البيع الوحدوي",
+        "total_amount": "المبلغ الإجمالي",
+        "delivered_quantity": "الكمية المسلَّمة"
+      },
       "trip": "الرحلة",
       "totalAmount": "المبلغ الإجمالي",
       "issuedDate": "تاريخ الإصدار",

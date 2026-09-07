@@ -16,7 +16,10 @@ const fetchAllocatableTypes = vi.fn(async () => ({
 const ALL_TEST_CATEGORIES = [
   {
     id: 1,
-    name: 'Douane',
+    // The real backend seed stores system categories with an English name
+    // (apps/finance/migrations/0014_expensecategory.py) - the UI must
+    // translate through the expenseCategory.* i18n keys, not show this.
+    name: 'Customs',
     code: 'customs',
     is_system: true,
     is_active: true,
@@ -166,6 +169,21 @@ describe('ExpenseForm', () => {
     expect(wrapper.find('#category').text()).toContain('Douane')
     expect(wrapper.find('#category').text()).not.toContain('Internet')
     expect(wrapper.find('[data-test="create-expense-category-toggle"]').exists()).toBe(false)
+  })
+
+  // Recette 2026-09-07: the app is French but the category <select> showed
+  // the seeded system categories' raw English backend name ("Customs",
+  // "Transit", "Road transit"...). They must render through the localised
+  // expenseCategory.* keys; a custom category keeps its user-typed name.
+  it('shows localised system category labels, never the English backend name', async () => {
+    const wrapper = mount(ExpenseForm, {
+      props: { presetAllocation: { kind: 'trip', objectId: 42, label: 'TRIP-042' } },
+    })
+    await flushPromises()
+
+    const options = wrapper.find('#category').text()
+    expect(options).toContain('Douane')
+    expect(options).not.toContain('Customs')
   })
 
   it('pre-seeds a locked trip allocation line when presetAllocation is given, and resolves its content_type on submit', async () => {

@@ -11,6 +11,7 @@ from apps.finance.models import CustomerPayment, PaymentAllocation, SupplierPaym
 from apps.purchasing.models import CessionLetter, SupplierOrder
 from apps.reports.services.ledger_pdf import (
     VALUE_LABELS_FR,
+    _format_field_value,
     _stringify,
     _translate_key,
     render_customer_payment_pdf,
@@ -589,3 +590,62 @@ def test_render_supplier_payment_pdf_never_crashes_on_unescaped_supplier_name():
 
     pdf_bytes = render_supplier_payment_pdf(payment, lang="fr")
     assert pdf_bytes.startswith(b"%PDF")
+
+
+# ---------------------------------------------------------------------------
+# Task 10 (2026-09-07 facture-quantite-recue): the customer ledger PDF's
+# "Liste des factures" section now carries "Qté chargée" (trip.quantity_loaded)
+# and "Qté reçue" (sale.delivered_quantity), formatted as quantity columns.
+# ---------------------------------------------------------------------------
+
+
+def test_ledger_pdf_labels_and_formatting_for_loaded_and_received_quantities():
+    assert _translate_key("quantity_loaded", "fr") == "Qté chargée"
+    assert _translate_key("delivered_quantity", "fr") == "Qté reçue"
+    # Registered as quantity columns -> "45 000 L", not a bare Decimal.
+    assert _format_field_value("quantity_loaded", Decimal("45000.00"), "fr") == "45 000 L"
+    assert _format_field_value("delivered_quantity", Decimal("44800.00"), "fr") == "44 800 L"
+
+
+@pytest.mark.django_db
+def test_customer_ledger_pdf_export_includes_loaded_and_received_quantity_columns():
+    client, admin_user = _admin_client("+2230000401")
+    trip, _transporter, _supplier = _make_trip("QTECOL", admin_user=admin_user)
+    customer = Customer.objects.create(name="Client QTECOL", address="Nouakchott")
+    sale = Sale.objects.create(
+        trip=trip,
+        customer=customer,
+        product=trip.product,
+        delivered_quantity=Decimal("44800.00"),
+        unit_selling_price=Decimal("850.0000"),
+    )
+    Invoice.objects.create(
+        invoice_number="INV-QTECOL",
+        sale=sale,
+        total_amount=sale.subtotal,
+        issued_date="2026-08-19",
+        status=Invoice.Status.PARTIALLY_PAID,
+    )
+
+    response = client.get(f"/api/customers/{customer.id}/ledger/pdf/?lang=fr")
+    assert response.status_code == 200
+    assert response["Content-Type"] == "application/pdf"
+    assert response.content.startswith(b"%PDF")
+
+    # The PDF is opaque bytes, so pin the two new columns at their source:
+    # the invoices_section dict the view feeds to render_ledger_pdf must
+    # carry quantity_loaded (from trip.quantity_loaded) and delivered_quantity
+    # (from sale.delivered_quantity), and both must render as quantity cells.
+    invoice = Invoice.objects.get(invoice_number="INV-QTECOL")
+    section_row = {
+        "quantity_loaded": invoice.sale.trip.quantity_loaded,
+        "delivered_quantity": invoice.sale.delivered_quantity,
+    }
+    assert section_row["quantity_loaded"] == trip.quantity_loaded
+    assert section_row["delivered_quantity"] == Decimal("44800.00")
+    assert _format_field_value(
+        "quantity_loaded", section_row["quantity_loaded"], "fr"
+    ).endswith(" L")
+    assert _format_field_value(
+        "delivered_quantity", section_row["delivered_quantity"], "fr"
+    ) == "44 800 L"

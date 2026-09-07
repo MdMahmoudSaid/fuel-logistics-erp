@@ -16,6 +16,7 @@ def _preview(**overrides) -> dict:
         "operational_profit": Decimal("4874000.00"),
         "general_expenses_paid": Decimal("0.00"),
         "net_profit": Decimal("4874000.00"),
+        "total_company_absorbed_loss": Decimal("0.00"),
         "working_capital": {
             "capital": Decimal("0.00"),
             "treasury_available": Decimal("300000000.00"),

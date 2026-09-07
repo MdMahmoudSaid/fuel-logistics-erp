@@ -49,6 +49,7 @@ const summary: DashboardSummary = {
   shareholders_summary: {
     current_profit: '900000.00',
     distributable_result: '500000.00',
+    total_company_absorbed_loss: '0.00',
     total_withdrawn: '300000.00',
     remaining_undistributed: '600000.00',
     open_loans_total: '50000.00',

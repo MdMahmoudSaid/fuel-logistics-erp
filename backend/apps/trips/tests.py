@@ -22,8 +22,18 @@ from apps.finance.models import (
     TransportPayment,
 )
 from apps.purchasing.models import CessionLetter, SupplierOrder
-from apps.sales.models import CustomerOrder, ProductSellingPriceHistory, Sale
-from apps.sales.services import CustomerOrderService
+from apps.sales.models import (
+    CustomerOrder,
+    Invoice,
+    InvoiceCorrection,
+    ProductSellingPriceHistory,
+    Sale,
+)
+from apps.sales.services import (
+    CustomerOrderService,
+    InvoicePaidCorrectionUnsupported,
+    InvoiceService,
+)
 from apps.suppliers.models import Supplier
 from apps.transport.models import Transporter, Truck
 from apps.trips.models import DeliveryControl, Trip, TripStatusHistory
@@ -929,6 +939,10 @@ def test_trip_status_history_serializer_is_fully_read_only():
 # confirm the same rules hold end-to-end through HTTP + permissions.
 # ---------------------------------------------------------------------------
 
+# Everything the raw status bar (POST /status/) is still allowed to do -
+# stops at ARRIVED_AT_CLIENT. DELIVERED/COMPLETED are form-only now (they
+# come out of /delivery-control/ and /client-verification/, never a manual
+# transition - 2026-09-07 recette), see _drive_trip_through_delivery below.
 _FORWARD_SEQUENCE_STATUS_NAMES = [
     "SENT_FOR_LOADING",
     "LOADING",
@@ -939,11 +953,33 @@ _FORWARD_SEQUENCE_STATUS_NAMES = [
     "CUSTOMS",
     "GOING_TO_CLIENT",
     "ARRIVED_AT_CLIENT",
-    # Client correction (2026-09-04 recette): QUANTITY_CONTROL is no longer
-    # a mandatory intermediate stop before DELIVERED.
-    "DELIVERED",
-    "COMPLETED",
 ]
+
+
+def _drive_trip_through_delivery(client, trip_id):
+    """Walk a freshly-created trip all the way to COMPLETED the way the UI
+    does: the status bar up to ARRIVED_AT_CLIENT, then the delivery control
+    (-> DELIVERED + Sale) and the client verification (-> auto COMPLETED)."""
+    for target in _FORWARD_SEQUENCE_STATUS_NAMES:
+        response = client.post(f"/api/trips/{trip_id}/status/", {"new_status": target})
+        assert response.status_code == 200, response.data
+
+    delivery_response = client.post(
+        f"/api/trips/{trip_id}/delivery-control/",
+        {
+            "received_quantity": "45000.00",
+            "control_date": "2026-08-18",
+            "method": "MANUAL_GAUGE",
+            "unit_selling_price": "900.0000",
+        },
+    )
+    assert delivery_response.status_code == 201, delivery_response.data
+
+    verification_response = client.post(
+        f"/api/trips/{trip_id}/client-verification/",
+        {"received_quantity": "45000.00", "verified_at": "2026-08-18"},
+    )
+    assert verification_response.status_code == 200, verification_response.data
 
 
 def _api_trip_payload(fx, truck, quantity="45000.00", **overrides):
@@ -1007,9 +1043,7 @@ def test_api_repeated_truck_scenario_450000_litres():
         round_one_trip_ids.append(response.data["id"])
 
     for trip_id in round_one_trip_ids:
-        for target in _FORWARD_SEQUENCE_STATUS_NAMES:
-            response = client.post(f"/api/trips/{trip_id}/status/", {"new_status": target})
-            assert response.status_code == 200, response.data
+        _drive_trip_through_delivery(client, trip_id)
 
     order_after_round_one = client.get(f"/api/customer-orders/{order_id}/").data
     assert order_after_round_one["delivered_quantity"] == "270000.00"
@@ -1032,9 +1066,7 @@ def test_api_repeated_truck_scenario_450000_litres():
         round_two_trip_ids.append(response.data["id"])
 
     for trip_id in round_two_trip_ids:
-        for target in _FORWARD_SEQUENCE_STATUS_NAMES:
-            response = client.post(f"/api/trips/{trip_id}/status/", {"new_status": target})
-            assert response.status_code == 200, response.data
+        _drive_trip_through_delivery(client, trip_id)
 
     final_order = client.get(f"/api/customer-orders/{order_id}/").data
     assert final_order["delivered_quantity"] == "450000.00"
@@ -1955,6 +1987,186 @@ def test_record_client_verification_does_not_error_when_trip_already_completed()
 
 
 # ---------------------------------------------------------------------------
+# Spec 2026-09-07: record_client_verification propagates the corrected
+# received quantity to the Sale + Invoice (Task 3).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_client_verification_reduces_a_draft_invoice_to_the_received_quantity():
+    fx = _fixtures_with_customer("CV-DRAFT-INV")
+    trip = _deliverable_trip(fx, "TRIP-CV-DRAFT-INV-001")  # quantity_loaded 45000
+    ProductSellingPriceHistory.objects.create(
+        product=fx["product"], customer=fx["customer"],
+        price=Decimal("900.0000"), changed_by=fx["admin_user"],
+    )
+    DeliveryService.record_delivery(
+        trip_id=trip.id, control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE, controller=fx["admin_user"],
+    )
+    trip.refresh_from_db()
+    invoice = trip.sale.invoice
+    assert invoice.status == Invoice.Status.DRAFT
+    assert trip.sale.delivered_quantity == Decimal("45000.00")
+    assert invoice.total_amount == Decimal("40500000.00")
+
+    DeliveryService.record_client_verification(
+        trip_id=trip.id, received_qty=Decimal("44800.00"),
+        verified_at=date.today(), actor=fx["admin_user"],
+    )
+
+    trip = Trip.objects.get(pk=trip.id)
+    assert trip.sale.delivered_quantity == Decimal("44800.00")
+    invoice.refresh_from_db()
+    assert invoice.total_amount == Decimal("40320000.00")
+    assert InvoiceCorrection.objects.filter(invoice=invoice).count() == 0
+
+
+@pytest.mark.django_db
+def test_customer_ledger_invoice_exposes_loaded_and_received_quantities():
+    # Task 8: SaleSerializer (nested as sale_detail in the client ledger)
+    # exposes trip.quantity_loaded alongside the now-received
+    # delivered_quantity so the ledger UI can show loaded vs received.
+    fx = _fixtures_with_customer("CV-LEDGER-QTY")
+    trip = _deliverable_trip(fx, "TRIP-CV-LEDGER-QTY-001")  # quantity_loaded 45000
+    ProductSellingPriceHistory.objects.create(
+        product=fx["product"], customer=fx["customer"],
+        price=Decimal("900.0000"), changed_by=fx["admin_user"],
+    )
+    DeliveryService.record_delivery(
+        trip_id=trip.id, control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE, controller=fx["admin_user"],
+    )
+    DeliveryService.record_client_verification(
+        trip_id=trip.id, received_qty=Decimal("44800.00"),
+        verified_at=date.today(), actor=fx["admin_user"],
+    )
+
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+    resp = client.get(f"/api/customers/{fx['customer'].id}/ledger/")
+
+    assert resp.status_code == 200
+    sale_detail = resp.data["invoices"][0]["sale_detail"]
+    assert sale_detail["quantity_loaded"] == "45000.00"
+    assert sale_detail["delivered_quantity"] == "44800.00"
+
+
+@pytest.mark.django_db
+def test_client_verification_on_a_validated_invoice_writes_a_correction_row():
+    fx = _fixtures_with_customer("CV-VALID-INV")
+    trip = _deliverable_trip(fx, "TRIP-CV-VALID-INV-001")
+    ProductSellingPriceHistory.objects.create(
+        product=fx["product"], customer=fx["customer"],
+        price=Decimal("900.0000"), changed_by=fx["admin_user"],
+    )
+    DeliveryService.record_delivery(
+        trip_id=trip.id, control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE, controller=fx["admin_user"],
+    )
+    trip.refresh_from_db()
+    invoice = trip.sale.invoice
+    InvoiceService.validate_invoice(invoice.id, fx["admin_user"])
+
+    DeliveryService.record_client_verification(
+        trip_id=trip.id, received_qty=Decimal("44800.00"),
+        verified_at=date.today(), actor=fx["admin_user"],
+    )
+
+    invoice.refresh_from_db()
+    assert invoice.total_amount == Decimal("40320000.00")
+    correction = InvoiceCorrection.objects.get(invoice=invoice)
+    assert correction.field_name == "delivered_quantity"
+    assert "Vérification client" in correction.reason
+
+
+@pytest.mark.django_db
+def test_client_verification_is_blocked_when_the_invoice_is_paid():
+    fx = _fixtures_with_customer("CV-PAID-INV")
+    trip = _deliverable_trip(fx, "TRIP-CV-PAID-INV-001")
+    ProductSellingPriceHistory.objects.create(
+        product=fx["product"], customer=fx["customer"],
+        price=Decimal("900.0000"), changed_by=fx["admin_user"],
+    )
+    DeliveryService.record_delivery(
+        trip_id=trip.id, control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE, controller=fx["admin_user"],
+    )
+    trip.refresh_from_db()
+    invoice = trip.sale.invoice
+    InvoiceService.validate_invoice(invoice.id, fx["admin_user"])
+    Invoice.objects.filter(pk=invoice.id).update(status=Invoice.Status.PAID)
+
+    with pytest.raises(InvoicePaidCorrectionUnsupported):
+        DeliveryService.record_client_verification(
+            trip_id=trip.id, received_qty=Decimal("44800.00"),
+            verified_at=date.today(), actor=fx["admin_user"],
+        )
+
+    trip = Trip.objects.get(pk=trip.id)
+    assert trip.status == Trip.Status.DELIVERED  # not completed
+    assert trip.sale.delivered_quantity == Decimal("45000.00")
+    assert DeliveryControl.objects.get(trip=trip).verified_at is None
+
+
+@pytest.mark.django_db
+def test_client_verification_api_returns_400_when_invoice_paid():
+    fx = _fixtures_with_customer("CV-PAID-API")
+    trip = _deliverable_trip(fx, "TRIP-CV-PAID-API-001")
+    ProductSellingPriceHistory.objects.create(
+        product=fx["product"], customer=fx["customer"],
+        price=Decimal("900.0000"), changed_by=fx["admin_user"],
+    )
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+    client.post(f"/api/trips/{trip.id}/delivery-control/",
+                {"control_date": "2026-08-18", "method": "MANUAL_GAUGE"})
+    trip.refresh_from_db()
+    invoice = trip.sale.invoice
+    InvoiceService.validate_invoice(invoice.id, fx["admin_user"])
+    Invoice.objects.filter(pk=invoice.id).update(status=Invoice.Status.PAID)
+
+    resp = client.post(f"/api/trips/{trip.id}/client-verification/",
+                       {"received_quantity": "44800.00", "verified_at": "2026-08-18"})
+    assert resp.status_code == 400
+    assert "encaiss" in resp.data["detail"].lower()
+
+
+@pytest.mark.django_db
+def test_client_verification_with_zero_received_quantity_returns_400():
+    # C1 regression: a total-loss verification (received_quantity = 0) used
+    # to pass the serializer/form and then hit Sale's
+    # CheckConstraint(delivered_quantity__gt=0) -> IntegrityError -> HTTP 500.
+    # The InvoiceService guard now rejects it as a plain ValueError -> 400,
+    # and record_client_verification's @transaction.atomic rolls everything
+    # back.
+    fx = _fixtures_with_customer("CV-ZERO-API")
+    trip = _deliverable_trip(fx, "TRIP-CV-ZERO-API-001")
+    ProductSellingPriceHistory.objects.create(
+        product=fx["product"], customer=fx["customer"],
+        price=Decimal("900.0000"), changed_by=fx["admin_user"],
+    )
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+    client.post(f"/api/trips/{trip.id}/delivery-control/",
+                {"control_date": "2026-08-18", "method": "MANUAL_GAUGE"})
+    trip.refresh_from_db()
+    invoice = trip.sale.invoice
+    original_qty = trip.sale.delivered_quantity
+
+    resp = client.post(f"/api/trips/{trip.id}/client-verification/",
+                       {"received_quantity": "0", "verified_at": "2026-08-18"})
+
+    assert resp.status_code == 400
+    assert invoice.invoice_number in resp.data["detail"]
+
+    trip = Trip.objects.get(pk=trip.id)
+    assert trip.status == Trip.Status.DELIVERED
+    assert trip.sale.delivered_quantity == original_qty
+    assert DeliveryControl.objects.get(trip=trip).verified_at is None
+
+
+# ---------------------------------------------------------------------------
 # Recette corrections Task 6 (2026-09-04): POST /api/trips/{id}/client-
 # verification/ - thin HTTP wrapper around
 # DeliveryService.record_client_verification(), same conventions as the
@@ -2404,7 +2616,7 @@ def test_api_invoice_amount_based_on_received_quantity_not_loaded():
     assert trip_response.status_code == 201, trip_response.data
     trip_id = trip_response.data["id"]
 
-    for target in _FORWARD_SEQUENCE_STATUS_NAMES[:-2]:  # stop right before DELIVERED
+    for target in _FORWARD_SEQUENCE_STATUS_NAMES:  # walks up to ARRIVED_AT_CLIENT
         response = client.post(f"/api/trips/{trip_id}/status/", {"new_status": target})
         assert response.status_code == 200, response.data
 
@@ -2464,8 +2676,57 @@ def test_api_allowed_statuses_after_delivery_control_does_not_offer_delivered_ag
     allowed_response = client.get(f"/api/trips/{trip.id}/allowed-statuses/")
 
     assert allowed_response.status_code == 200
+    # Neither form-only status is ever offered as a manual status-bar choice:
+    # DELIVERED is behind, and COMPLETED is only reached via the client
+    # verification flow, never a raw transition (2026-09-07 recette).
     assert Trip.Status.DELIVERED not in allowed_response.data["statuses"]
-    assert Trip.Status.COMPLETED in allowed_response.data["statuses"]
+    assert Trip.Status.COMPLETED not in allowed_response.data["statuses"]
+
+
+@pytest.mark.django_db
+def test_api_status_bar_rejects_manual_delivered_and_completed():
+    """2026-09-07 recette: the raw status bar (POST /status/) must not be a
+    shortcut past the delivery control / client verification - jumping
+    straight to DELIVERED or COMPLETED skipped the sale price and the loss
+    declaration and left the trip with no Sale."""
+    fx = _fixtures_with_customer("API-FORMONLY")
+    trip = _deliverable_trip(fx, "TRIP-API-FORMONLY-001")
+    assert trip.status == Trip.Status.ARRIVED_AT_CLIENT
+
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+
+    delivered_response = client.post(
+        f"/api/trips/{trip.id}/status/", {"new_status": Trip.Status.DELIVERED}
+    )
+    assert delivered_response.status_code == 400
+    assert "controle de livraison" in delivered_response.data["detail"].lower()
+
+    trip.refresh_from_db()
+    assert trip.status == Trip.Status.ARRIVED_AT_CLIENT
+
+    # Take it to DELIVERED the legitimate way, then check COMPLETED is
+    # blocked from the bar too.
+    ProductSellingPriceHistory.objects.create(
+        product=fx["product"],
+        customer=fx["customer"],
+        price=Decimal("650.0000"),
+        changed_by=fx["admin_user"],
+    )
+    delivery_response = client.post(
+        f"/api/trips/{trip.id}/delivery-control/",
+        {"received_quantity": "45000.00", "control_date": "2026-08-18", "method": "MANUAL_GAUGE"},
+    )
+    assert delivery_response.status_code == 201, delivery_response.data
+
+    completed_response = client.post(
+        f"/api/trips/{trip.id}/status/", {"new_status": Trip.Status.COMPLETED}
+    )
+    assert completed_response.status_code == 400
+    assert "verification client" in completed_response.data["detail"].lower()
+
+    trip.refresh_from_db()
+    assert trip.status == Trip.Status.DELIVERED
 
 
 @pytest.mark.django_db
@@ -2523,11 +2784,13 @@ def test_api_trip_margin_breakdown_after_delivery():
     assert response.data["transport_cost"] == "0.00"
     assert response.data["total_expenses"] == "0.00"
     assert response.data["real_total_cost"] == "27000000.000000"
-    # Recette corrections Task 4 (2026-09-04): 100 L absorbed by the company
-    # (150 L loss - 50 L chargeable to the transporter) at 650.0000 XOF/L is
-    # now subtracted from margin too: 2,185,000.00 - 65,000.00.
+    # As of spec 2026-09-07: the 100 L absorbed by the company (150 L loss -
+    # 50 L chargeable to the transporter) is NOT subtracted from margin. The
+    # invoice reflects the received quantity, so revenue already integrates it;
+    # the absorbed loss stays exposed as company_absorbed_loss_amount for display.
+    # Margin = 29,152,500 + 32,500 - 27,000,000 = 2,185,000.00.
     assert response.data["company_absorbed_loss_amount"] == "65000.00"
-    assert response.data["margin"] == "2120000.00"
+    assert response.data["margin"] == "2185000.00"
 
 
 # ---------------------------------------------------------------------------

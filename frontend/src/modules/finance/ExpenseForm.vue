@@ -16,6 +16,7 @@ import {
   recordIndirectExpense,
 } from './api'
 import { EXPENSE_CATEGORIES } from './types'
+import { useExpenseCategoryLabel } from './expenseCategoryLabel'
 import Button from '@/components/ui/Button.vue'
 import EntityAllocationPicker, { type AllocationDraft } from './EntityAllocationPicker.vue'
 import { formatMoney, formatQuantity, formatUnitMoney } from '@/utils/currency'
@@ -53,6 +54,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ success: [customerId: number | null]; cancel: [] }>()
 const { t } = useI18n()
+const categoryLabel = useExpenseCategoryLabel()
 
 interface ExpenseFormState {
   category: string
@@ -367,7 +369,7 @@ async function onSubmit() {
             class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           >
             <option v-for="c in categories" :key="c.code" :value="c.code">
-              {{ c.name }}
+              {{ categoryLabel(c) }}
             </option>
           </select>
           <div v-if="!isTripAllocation" class="space-y-2">

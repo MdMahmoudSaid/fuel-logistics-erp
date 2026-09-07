@@ -65,6 +65,11 @@ export interface DashboardSummary {
     // single source of truth is ShareholderProfitPreviewService, reused here
     // rather than a second, possibly divergent computation.
     distributable_result: string
+    // Tolerance-absorbed delivery loss already subtracted from
+    // distributable_result (recette 2026-09-07) - shown as its own line so
+    // the "tresorerie + creances - dettes - capital" chain visibly reaches
+    // distributable_result instead of leaving an unexplained gap.
+    total_company_absorbed_loss: string
     total_withdrawn: string
     remaining_undistributed: string
     open_loans_total: string

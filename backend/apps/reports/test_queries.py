@@ -855,29 +855,18 @@ def _settle_all_debts_and_collect_customer(fx, admin_user):
 
 @pytest.mark.django_db
 def test_distributable_result_equals_net_profit_after_full_settlement_with_transporter_loss():
-    """Bug recette critique (2026-09-06): a transporter-chargeable delivery
-    loss (indemnisation perte transporteur) must never leave a surplus in
-    distributable_result once every debt is paid and every receivable is
-    collected - the two figures must reconcile exactly, per the client's
-    explicit rule.
+    """Mandated regression (client rule): a transporter-chargeable delivery
+    loss must never leave a surplus in distributable_result once every debt
+    is paid and every receivable is collected - the two independently
+    computed figures (distributable_result, treasury-based; net_profit,
+    margin-based) must reconcile exactly.
 
-    Root cause found: NOT the indemnity itself (it was already correctly
-    netted into TransportPayment.net_amount and correctly credited once in
-    trip margin - see the second test below). The real gap was the OTHER
-    half of the same delivery-loss split: DeliveryControl.company_absorbed_
-    loss_quantity (the tolerance-absorbed portion, <=100L by default) is
-    subtracted from trip margin/net_profit (TripProfitService.get_cost_
-    breakdown, a real write-off - the company paid its supplier for the full
-    quantity_loaded and recovers nothing for the missing litres), but has NO
-    counterpart anywhere in WorkingCapitalService: the customer's invoice
-    stays frozen at the full delivered quantity ("Delivered Quantity is
-    Commercial Truth"), so treasury/receivables never reflect this loss
-    either. distributable_result (purely treasury-based) therefore stayed
-    artificially higher than net_profit by exactly company_absorbed_loss_
-    amount. Fixed by summing it across MarginReportQuery's rows and
-    subtracting it in ShareholderProfitPreviewService.get_preview(), the
-    same way general_expenses_paid already is - the trip margin formula
-    itself is untouched.
+    Spec 2026-09-07: the invoice now bills the received quantity, so the
+    tolerance-absorbed loss shows up as reduced revenue on the margin side
+    and as reduced treasury/receivables on the distributable side. NEITHER
+    formula needs a company_absorbed_loss correction term any more, and the
+    two figures still meet exactly once every debt is settled and the
+    customer has fully paid. The trip margin formula itself is untouched.
     """
     admin_user = _make_admin("DISTREC")
     # 400L short of 45,000L loaded: 100L tolerance-absorbed (default
@@ -907,65 +896,29 @@ def test_distributable_result_equals_net_profit_after_full_settlement_with_trans
 
 
 @pytest.mark.django_db
-def test_distributable_result_still_counts_company_absorbed_loss_after_same_day_distribution():
-    """Recette bug (2026-09-06, live QA): the Actionnaires page banner
-    ("Montant disponible pour repartition") and the Benefices page's own
-    "Resultat distribuable" card showed two different figures for what is
-    supposed to be the exact same metric - 386,000,000 vs 385,937,000, a
-    63,000 XOF gap.
-
-    Root cause: get_preview()'s auto date_from (last_validated.period_end +
-    1 day, so a period's profit is never counted twice across successive
-    distributions) was ALSO applied to total_company_absorbed_loss's
-    underlying query - correct for the profit *flow* it was designed for,
-    wrong for this write-off *state* term (no cash counterpart anywhere in
-    WorkingCapitalService, same "as of right now" nature as working_capital
-    itself). A distribution validated with period_end = D permanently hides
-    any company-absorbed loss dated on D from every later preview, even one
-    booked after that validation - inflating distributable_result forever.
-    Reproduced here with a distribution whose period_end lands on the very
-    day the lossy trip was loaded/delivered.
-    """
-    admin_user = _make_admin("DISTSAMEDAY")
+def test_distributable_result_no_longer_subtracts_company_absorbed_loss():
+    """Spec 2026-09-07: the client now pays the received quantity, so the
+    lower treasury already reflects the absorbed loss - distributable_result
+    is a clean treasury/debts/capital figure with no separate loss term."""
+    admin_user = _make_admin("DISTNOLOSS")
     fx = _deliver_trip_with_transporter_loss(
-        "DISTSAMEDAY", admin_user,
+        "DISTNOLOSS", admin_user,
         received_qty=Decimal("44600.00"), base_amount=Decimal("5000000.00"),
     )
-    assert fx["trip"].loading_date.isoformat() == "2026-08-18"
     from apps.reports.services.profit import TripProfitService
-
     breakdown = TripProfitService.get_cost_breakdown(fx["trip"])
-    assert breakdown["company_absorbed_loss_amount"] == Decimal("90000.00")
+    assert breakdown["company_absorbed_loss_amount"] == Decimal("90000.00")  # still exposed
 
-    shareholder = Shareholder.objects.create(
-        name="DistSameDay", participation_percent=Decimal("100")
-    )
-    distribution = ShareholderDistributionService.create_distribution(
-        period_start="2026-08-01",
-        period_end="2026-08-18",
-        total_profit=Decimal("1.00"),
-        actor=admin_user,
-    )
-    ShareholderDistributionService.validate_distribution(distribution.id, admin_user)
-
-    # Same-day sanity check: the correct, explicit-period figure (what the
-    # Benefices page shows for a period that actually includes 2026-08-18)
-    # already counts the loss.
-    explicit_preview = ShareholderProfitPreviewService.get_preview(
-        date_from="2026-08-01", date_to="2026-08-18"
-    )
-    assert explicit_preview["total_company_absorbed_loss"] == Decimal("90000.00")
-
-    # The bug: get_preview() with no args (as the Actionnaires page banner
-    # calls it) shifts date_from to 2026-08-19 - the loss must still show
-    # up instead of silently dropping to 0.00.
+    _settle_all_debts_and_collect_customer(fx, admin_user)
     preview = ShareholderProfitPreviewService.get_preview()
-    assert preview["period_start"] == date(2026, 8, 19)
-    assert preview["total_company_absorbed_loss"] == Decimal("90000.00")
-    assert preview["distributable_result"] == explicit_preview["distributable_result"]
 
-    share = next(s for s in preview["shareholders"] if s["shareholder_id"] == shareholder.id)
-    assert share["indicative_share"] == preview["distributable_result"].quantize(Decimal("0.01"))
+    wc = preview["working_capital"]
+    assert Decimal(str(preview["distributable_result"])) == (
+        wc["total"] - wc["supplier_debt_total"] - wc["transporter_debt_total"]
+        - wc["other_debts"] - wc["capital"]
+    )
+    # the key is still there, just not a term:
+    assert "total_company_absorbed_loss" in preview
 
 
 @pytest.mark.django_db

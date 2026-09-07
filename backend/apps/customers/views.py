@@ -43,7 +43,7 @@ class CustomerViewSet(viewsets.ModelViewSet):
 
         customer = self.get_object()
         invoices = Invoice.objects.filter(sale__customer=customer).select_related(
-            "sale", "sale__customer"
+            "sale", "sale__customer", "sale__trip"
         )
         payments = customer.payments.select_related(
             "bank_account", "cash_account", "recorded_by"
@@ -103,7 +103,7 @@ class CustomerViewSet(viewsets.ModelViewSet):
         from apps.sales.models import Invoice
 
         customer = self.get_object()
-        invoices = list(Invoice.objects.filter(sale__customer=customer).select_related("sale"))
+        invoices = list(Invoice.objects.filter(sale__customer=customer).select_related("sale__trip"))
         payments = list(customer.payments.all())
         outstanding_balance = PaymentAllocationService.get_customer_outstanding(customer)
         lang = request.query_params.get("lang", "fr")
@@ -143,6 +143,8 @@ class CustomerViewSet(viewsets.ModelViewSet):
             {
                 "invoice_number": invoice.invoice_number,
                 "issued_date": invoice.issued_date,
+                "quantity_loaded": invoice.sale.trip.quantity_loaded,
+                "delivered_quantity": invoice.sale.delivered_quantity,
                 "total_amount": invoice.total_amount,
                 "outstanding": PaymentAllocationService.get_invoice_outstanding(invoice),
                 "status": invoice.status,

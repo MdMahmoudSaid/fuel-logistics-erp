@@ -33,6 +33,7 @@ describe('ProfitView', () => {
       operational_profit: '900000.00',
       general_expenses_paid: '150000.00',
       net_profit: '750000.00',
+      total_company_absorbed_loss: '0.00',
       working_capital: {
         capital: '100000.00',
         treasury_available: '400000.00',

@@ -849,12 +849,13 @@ const cessionProofUrl = computed(
                     unitPrice: formatUnitMoney(companyAbsorbedLossUnitPrice),
                   })
                 }}
+                · {{ t('trips.detail.companyAbsorbedLossInfoNote') }}
               </span>
             </dt>
             <dd>
               <MonoValue
-                class="text-critique"
-                :value="`-${formatMoney(margin.company_absorbed_loss_amount)}`"
+                class="text-texte-3"
+                :value="formatMoney(margin.company_absorbed_loss_amount)"
                 align="left"
               />
             </dd>

@@ -81,6 +81,42 @@ def _make_trip(suffix, customer_order=None, status=Trip.Status.DELIVERED):
     return trip, transporter, admin_user
 
 
+def _make_admin(suffix):
+    admin_role, _ = Role.objects.get_or_create(
+        name=Role.NAME_ADMIN,
+        defaults={"permissions": {module: Role.ACTIONS for module in Role.MODULES}},
+    )
+    return User.objects.create_user(
+        phone=(f"+222{suffix}")[:20], pin="1234", role=admin_role
+    )
+
+
+def _deliver_via_services(suffix, admin_user, *, loaded, received, unit_selling_price):
+    """Full delivery cycle through the real services (trip pipeline ->
+    record_delivery -> record_client_verification), so that Task 3's
+    propagation of the corrected received quantity to Sale.delivered_quantity
+    + Invoice.total_amount actually runs - unlike _make_delivered_trip_with_sale,
+    which builds a Sale with no Invoice and so never triggers it.
+
+    Wraps apps.reports.test_queries._deliver_trip_with_transporter_loss, which
+    already does exactly this; that helper fixes quantity_loaded=45000 and
+    unit_selling_price=900, so this wrapper only supports those values.
+    """
+    from apps.reports.test_queries import _deliver_trip_with_transporter_loss
+
+    if loaded != Decimal("45000.00") or unit_selling_price != Decimal("900.0000"):
+        raise NotImplementedError(
+            "_deliver_via_services only supports loaded=45000 / unit_selling_price=900 "
+            "(the values _deliver_trip_with_transporter_loss hardcodes)."
+        )
+    fx = _deliver_trip_with_transporter_loss(
+        suffix, admin_user, received_qty=received, base_amount=Decimal("5000000.00")
+    )
+    trip = fx["trip"]
+    trip.refresh_from_db()
+    return trip
+
+
 def _make_delivered_trip_with_sale(suffix):
     trip, transporter, admin_user = _make_trip(suffix)
     customer = Customer.objects.create(name=f"Client {suffix}")
@@ -289,45 +325,29 @@ def test_current_margin_includes_transporter_loss_indemnity():
 
 
 @pytest.mark.django_db
-def test_margin_subtracts_company_absorbed_loss():
-    """Client modifications (recette corrections) Task 4: a post-delivery
-    loss reported via DeliveryService.record_client_verification and within
-    tolerance is never billed to the transporter (Task 3) and never changes
-    the frozen Sale.delivered_quantity (guide Section 1.4) - so it must come
-    out of margin here, the only place a DeliveryControl's real received
-    quantity feeds profitability."""
-    trip, admin_user = _make_delivered_trip_with_sale("ABSORBED")
-    DeliveryControl.objects.create(
-        trip=trip,
-        loaded_quantity=trip.quantity_loaded,
-        received_quantity=trip.quantity_loaded,
-        tolerance_quantity=Decimal("100.00"),
-        control_date="2026-08-18",
-        controller=admin_user,
-        method=DeliveryControl.Method.MANUAL_GAUGE,
+def test_margin_reflects_absorbed_loss_via_reduced_revenue_not_a_separate_term():
+    """Spec 2026-09-07: once the invoice bills the received quantity, the
+    tolerance-absorbed loss shows up as a lower revenue - subtracting
+    company_absorbed_loss_amount again would double-count it. The amount is
+    still exposed for display, just not a formula term."""
+    admin_user = _make_admin("ABSORBED2")
+    trip = _deliver_via_services(
+        "ABSORBED2", admin_user,
+        loaded=Decimal("45000.00"), received=Decimal("44920.00"),  # 80 L, all within tolerance
+        unit_selling_price=Decimal("900.0000"),
     )
-    margin_before = TripProfitService.get_cost_breakdown(trip)["margin"]
+    breakdown = TripProfitService.get_cost_breakdown(trip)
 
-    DeliveryService.record_client_verification(
-        trip_id=trip.id,
-        received_qty=Decimal("44920.00"),  # 80 L loss, all within the 100 L tolerance
-        verified_at=date.today(),
-        actor=admin_user,
+    # A hypothetical no-loss version of the same trip:
+    no_loss_margin = (
+        Decimal("45000.00") * Decimal("900.0000")
+        + Decimal("0.00")  # no transporter indemnity
+        - breakdown["real_total_cost"]
     )
-
-    # Refetch: `trip`'s reverse one-to-one `delivery_control` accessor caches
-    # its first lookup (already resolved above via margin_before), so it
-    # would otherwise keep returning the pre-verification received_quantity.
-    trip = Trip.objects.get(pk=trip.id)
-    breakdown_after = TripProfitService.get_cost_breakdown(trip)
-    # Sale.unit_selling_price for this trip (set by _make_delivered_trip_with_sale) is 650.0000.
-    expected_drop = Decimal("80.00") * Decimal("650.0000")
-    assert breakdown_after["margin"] == (margin_before - expected_drop).quantize(Decimal("0.01"))
-    assert breakdown_after["company_absorbed_loss_amount"] == expected_drop.quantize(Decimal("0.01"))
-    # UI recette bug (2026-09-04): company_absorbed_loss_quantity must be
-    # exposed too, so the frontend can show "80 L x 650 XOF/L" alongside the
-    # amount - it was computed internally but never returned before.
-    assert breakdown_after["company_absorbed_loss_quantity"] == Decimal("80.00")
+    assert breakdown["margin"] == (no_loss_margin - Decimal("80.00") * Decimal("900.0000")).quantize(Decimal("0.01"))
+    # still exposed, for the greyed "information" line on the trip screen:
+    assert breakdown["company_absorbed_loss_quantity"] == Decimal("80.00")
+    assert breakdown["company_absorbed_loss_amount"] == Decimal("72000.00")
 
 
 @pytest.mark.django_db

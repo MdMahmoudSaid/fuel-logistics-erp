@@ -447,11 +447,12 @@ def test_scenario_complet_production_like(capsys):
     report.check("11. Benefices", "perte transporteur benefice", "(45 000 - 44 850) - 100 tolerance", D("50.00"), profit_breakdown["transporter_loss_quantity"])
     report.check("11. Benefices", "indemnisation perte transporteur", "50 x 900", money(45000), profit_breakdown["transporter_loss_indemnity"])
     report.check("11. Benefices", "cout total reel", "45 000 x 800", money(36000000), profit_breakdown["real_total_cost"])
-    # Recette corrections Task 4 (2026-09-04): the 100 L absorbed by the
-    # company (150 L loss - 50 L chargeable to the transporter) at the 900
-    # XOF/L selling price is now subtracted from margin too.
+    # Spec 2026-09-07: the 100 L absorbed by the company (150 L loss - 50 L
+    # chargeable to the transporter) is still exposed for display, but is no
+    # longer a margin term - the client invoice already bills the received
+    # quantity, so `revenue` (44 850 x 900) integrates the loss.
     report.check("11. Benefices", "perte absorbee par l'entreprise", "(150 - 50) x 900", money(90000), profit_breakdown["company_absorbed_loss_amount"])
-    report.check("11. Benefices", "benefice trajet", "40 365 000 + 45 000 - 90 000 - 36 000 000", money(4320000), profit_breakdown["margin"])
+    report.check("11. Benefices", "benefice trajet", "40 365 000 + 45 000 - 36 000 000", money(4410000), profit_breakdown["margin"])
     report.check("11. Benefices", "prix revient benefice", "800 XOF/L", D("800.00"), profit_breakdown["unit_cost"].quantize(D("0.01")))
     report.check("11. Benefices", "benefice par litre", "900 - 800", D("100.00"), profit_breakdown["unit_profit"].quantize(D("0.01")))
 

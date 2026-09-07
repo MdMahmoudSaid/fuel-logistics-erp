@@ -331,8 +331,6 @@ def render_profit_report_pdf(
     ]
     wc_table = Table(wc_rows, colWidths=[110 * mm, 60 * mm])
     wc_table.setStyle(_SUMMARY_TABLE_STYLE)
-    # Bold the 4 subtotal/total rows (gross, total debts, total working
-    # capital, distributable result) - their index in wc_rows above.
     wc_table.setStyle(TableStyle([_bold_row(idx) for idx in (2, 9, 10, 12)]))
     elements.append(wc_table)
     elements.append(Spacer(1, 8 * mm))

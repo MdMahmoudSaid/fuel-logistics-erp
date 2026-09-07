@@ -218,6 +218,13 @@ class DashboardViewSet(viewsets.ViewSet):
         shareholders_summary = {
             "current_profit": profit_preview["current_profit"],
             "distributable_result": profit_preview["distributable_result"],
+            # Kept so the typed frontend API contract does not diverge;
+            # deliberately not rendered on the dashboard (spec 2026-09-07 §3).
+            # Since the invoice now bills the received quantity,
+            # distributable_result no longer subtracts this term. The trip
+            # detail still shows company_absorbed_loss_amount, but it reads it
+            # from /api/trips/{id}/margin/, a different endpoint.
+            "total_company_absorbed_loss": profit_preview["total_company_absorbed_loss"],
             "total_withdrawn": ShareholderWithdrawal.objects.aggregate(total=Sum("amount"))[
                 "total"
             ]

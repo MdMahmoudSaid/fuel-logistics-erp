@@ -571,7 +571,9 @@ describe('TripDetail expenses section', () => {
   // within the 100 L tolerance, absorbed by the company, already baked
   // into margin) but the frontend never rendered a line for it - fixed by
   // exposing the row only when the amount is > 0, client's own example.
-  it('shows a red "perte supportee par l\'entreprise" row when a loss within tolerance is absorbed', async () => {
+  // Task 12 (Version A): the row stays visible but reads as greyed information
+  // (it is already reflected in the reduced revenue), not as a red deduction.
+  it('shows a greyed "perte supportee par l\'entreprise" information row when a loss within tolerance is absorbed', async () => {
     setUser({ operations: ['view'], finance: ['view'] })
     marginToReturn = makeMargin({
       company_absorbed_loss_quantity: '100.00',
@@ -584,8 +586,13 @@ describe('TripDetail expenses section', () => {
     const row = wrapper.find('[data-test="company-absorbed-loss-row"]')
     expect(row.exists()).toBe(true)
     expect(row.text()).toContain("Perte supportée par l'entreprise")
+    // no critical (red) styling any more - it is information, not a deduction
+    expect(row.find('.text-critique').exists()).toBe(false)
     const text = row.text().replace(/[⁦⁩]/g, '')
-    expect(text).toContain('-90 000 XOF')
+    expect(text).toContain('information')
+    // amount shown without a leading "-" (not a deduction)
+    expect(text).toContain('90 000 XOF')
+    expect(text).not.toContain('-90 000 XOF')
     // detail: 100 L x 900,0000 XOF/L (900 = 90000 / 100, derived, never sent by the backend)
     expect(text).toContain('100 L')
     expect(text).toContain('900,0000 XOF/L')
@@ -619,9 +626,11 @@ describe('TripDetail expenses section', () => {
     const row = wrapper.find('[data-test="company-absorbed-loss-row"]')
     expect(row.exists()).toBe(true)
     const text = wrapper.text().replace(/[⁦⁩]/g, '')
-    // Company-absorbed: 100 L, -65 000 XOF.
+    // Company-absorbed: 100 L, 65 000 XOF shown as information (no leading "-").
     expect(row.text().replace(/[⁦⁩]/g, '')).toContain('100 L')
-    expect(row.text().replace(/[⁦⁩]/g, '')).toContain('-65 000 XOF')
+    expect(row.text().replace(/[⁦⁩]/g, '')).toContain('65 000 XOF')
+    expect(row.text().replace(/[⁦⁩]/g, '')).not.toContain('-65 000 XOF')
+    expect(row.find('.text-critique').exists()).toBe(false)
     // Transporter part stays displayed separately, unaffected.
     expect(text).toContain('50 L')
     expect(text).toContain('32 500 XOF')
@@ -741,14 +750,19 @@ describe('TripDetail expenses section', () => {
     expect(optionText).not.toContain('Contrôle de quantité')
   })
 
-  it('refreshes backend-allowed statuses after delivery confirmation so Delivered is not offered again', async () => {
+  it('never offers Livré/Terminé in the status bar and still refreshes allowed statuses after delivery', async () => {
+    // 2026-09-07 recette: DELIVERED and COMPLETED are form-only - the
+    // backend allowed-statuses endpoint strips them, so the status bar must
+    // never list them however the trip is sitting. The delivery form (not
+    // the bar) drives the DELIVERED transition; this only checks the bar
+    // stays clean and that onDeliveryConfirmed still re-fetches the list.
     setUser({ operations: ['view', 'edit'], finance: ['view'] })
     tripResourceGet
       .mockResolvedValueOnce(makeTrip({ status: 'QUANTITY_CONTROL', client: 10 }))
       .mockResolvedValueOnce(makeTrip({ status: 'DELIVERED', client: 10 }))
-    allowedStatusesToReturn = ['DELIVERED']
+    allowedStatusesToReturn = ['CANCELLED', 'BLOCKED']
     postDeliveryControl.mockImplementationOnce(async (_tripId, payload) => {
-      allowedStatusesToReturn = ['COMPLETED']
+      allowedStatusesToReturn = ['BLOCKED']
       return {
         id: 1,
         trip: 9,
@@ -772,7 +786,7 @@ describe('TripDetail expenses section', () => {
     })
 
     const wrapper = await mountAt()
-    expect(wrapper.find('#next_status').text()).toContain('Livré')
+    expect(wrapper.find('#next_status').text()).not.toContain('Livré')
 
     await wrapper.find('#control_date').setValue('2026-08-18')
     await wrapper.find('form').trigger('submit.prevent')
@@ -780,18 +794,20 @@ describe('TripDetail expenses section', () => {
 
     const optionText = wrapper.find('#next_status').text()
     expect(fetchAllowedTripStatuses).toHaveBeenCalledTimes(2)
-    expect(optionText).toContain('Terminé')
+    expect(optionText).not.toContain('Terminé')
     expect(optionText).not.toContain('Livré')
   })
 
   it('shows the delivery confirmation form straight from ARRIVED_AT_CLIENT (simplified flow)', async () => {
     setUser({ operations: ['view', 'edit'], finance: ['view'] })
     tripResourceGet.mockResolvedValueOnce(makeTrip({ status: 'ARRIVED_AT_CLIENT', client: 10 }))
-    allowedStatusesToReturn = ['DELIVERED']
+    // The backend strips the form-only DELIVERED from allowed-statuses here.
+    allowedStatusesToReturn = ['CANCELLED', 'BLOCKED']
 
     const wrapper = await mountAt()
 
     expect(wrapper.find('#control_date').exists()).toBe(true)
+    expect(wrapper.find('#next_status').text()).not.toContain('Livré')
     expect(
       wrapper
         .findAll('button')

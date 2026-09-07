@@ -28,7 +28,13 @@ class FuelStockReportQuery:
                     "quantity": SupplierStockService.get_purchase_reliquat(order),
                 }
             )
-        for trip in Trip.objects.filter(sale__isnull=True).exclude(status=Trip.Status.CANCELLED):
+        # Mirrors TheoreticalStockService.get_loaded_unsold_quantity()'s own
+        # filter exactly (a forced Sale-less DELIVERED/COMPLETED trip is past
+        # delivery, not loaded-unsold stock) so these rows always sum to the
+        # TOTAL row below.
+        for trip in Trip.objects.filter(sale__isnull=True).exclude(
+            status__in=Trip.NON_OCCUPYING_STATUSES
+        ):
             rows.append(
                 {
                     "component": "LOADED_UNSOLD",

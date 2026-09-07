@@ -220,6 +220,16 @@ function formatDateTime(value: string) {
             </p>
           </div>
           <div>
+            <span class="text-texte-2">{{ t('sales.invoiceDetail.loadedQuantity') }}</span>
+            <p>
+              <MonoValue
+                class="font-medium"
+                align="left"
+                :value="formatQuantity(invoice.sale_detail?.quantity_loaded ?? 0)"
+              />
+            </p>
+          </div>
+          <div>
             <span class="text-texte-2">{{ t('sales.invoiceDetail.unitSellingPrice') }}</span>
             <p>
               <MonoValue
@@ -299,7 +309,9 @@ function formatDateTime(value: string) {
                 v-model="correctionForm.field"
                 class="border-ligne-forte h-11 w-full rounded-lg border bg-white px-3 text-sm"
               >
-                <option v-for="f in CORRECTABLE_INVOICE_FIELDS" :key="f" :value="f">{{ f }}</option>
+                <option v-for="f in CORRECTABLE_INVOICE_FIELDS" :key="f" :value="f">
+                  {{ t(`sales.invoiceDetail.correctionFields.${f}`) }}
+                </option>
               </select>
             </div>
             <div class="space-y-1">

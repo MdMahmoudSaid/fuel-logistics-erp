@@ -44,9 +44,11 @@ class CustomerOrderViewSet(viewsets.ModelViewSet):
 class SaleViewSet(viewsets.ModelViewSet):
     """List/retrieve only in practice (docs/PHASE_4_PLAN.md Etape 6): a Sale
     is generated exclusively by DeliveryService.record_delivery() (POST
-    /api/trips/{id}/delivery-control/), so delivered_quantity can never
-    drift from the confirming DeliveryControl.received_quantity (guide
-    Section 7.6/§19).
+    /api/trips/{id}/delivery-control/). Its delivered_quantity is afterwards
+    mutable only through InvoiceService (adjust_delivered_quantity from the
+    client verification, or correct_invoice(field="delivered_quantity") for a
+    manual audited correction) and MAY then differ from
+    DeliveryControl.received_quantity (spec 2026-09-07 §"Cohérence").
 
     A plain ReadOnlyModelViewSet would leave POST/PATCH/DELETE unrouted
     entirely - but HasModulePermission.has_permission() runs before DRF

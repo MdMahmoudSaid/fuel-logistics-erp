@@ -65,11 +65,13 @@ class Sale(AuditableModel, TimeStampedModel):
     (docs/PHASE_4_PLAN.md Etape 4;
     ERP_Implementation_Experience_Guide.md Section 7.6).
 
-    Critical invariant (guide Section 7.6/7.7/§19): delivered_quantity is
-    always a copy of the confirming DeliveryControl.received_quantity, never
-    Trip.quantity_loaded - "Delivered Quantity is Commercial Truth". Written
-    once by DeliveryService and marked editable=False here so nothing else
-    can silently substitute the loaded quantity later.
+    delivered_quantity is written at delivery, then mutable ONLY through
+    InvoiceService - adjust_delivered_quantity() (driven by the client
+    verification) or correct_invoice(field="delivered_quantity") (a manual
+    audited correction). editable=False still guards the Django admin /
+    ModelForm paths. It MAY legitimately differ from
+    DeliveryControl.received_quantity after a manual correction
+    (spec 2026-09-07 §"Cohérence").
 
     No customer_order FK: the order (if any) is already reachable via
     trip.customer_order, so duplicating it here would be exactly the kind of

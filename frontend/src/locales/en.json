@@ -131,6 +131,7 @@
       "supplierDebtTotal": "Supplier debts",
       "transporterDebtTotal": "Transporter debts",
       "otherDebts": "Customs / transit / fee debts",
+      "companyAbsorbedLoss": "Loss absorbed by the company",
       "partyBalances": "Balances by party",
       "customers": "Customers",
       "suppliers": "Suppliers",
@@ -388,6 +389,7 @@
       "transporterLossIndemnity": "Transporter loss indemnity",
       "companyAbsorbedLoss": "Loss absorbed by the company",
       "companyAbsorbedLossDetail": "{quantity} × {unitPrice}",
+      "companyAbsorbedLossInfoNote": "information — already reflected in revenue",
       "fuelPurchaseCost": "Fuel purchase",
       "transportCost": "Transporter cost",
       "totalExpenses": "Other expenses",
@@ -737,6 +739,8 @@
       "table": {
         "invoice": "Invoice",
         "issued": "Issued",
+        "loadedQuantity": "Loaded qty",
+        "receivedQuantity": "Received qty",
         "total": "Total",
         "outstanding": "Outstanding",
         "status": "Status"
@@ -1032,6 +1036,7 @@
       "workingCapitalGross": "Cash + customer receivables",
       "workingCapitalDebts": "Open debts",
       "capitalContributed": "Capital contributed",
+      "companyAbsorbedLoss": "Loss absorbed by the company",
       "distributableResult": "Distributable result after debts and capital",
       "tripsCount": "Trips counted",
       "revenue": "Revenue",
@@ -1307,7 +1312,13 @@
       "customer": "Customer",
       "product": "Product",
       "deliveredQuantity": "Delivered quantity (received, not loaded)",
+      "loadedQuantity": "Loaded quantity",
       "unitSellingPrice": "Unit selling price",
+      "correctionFields": {
+        "unit_selling_price": "Unit selling price",
+        "total_amount": "Total amount",
+        "delivered_quantity": "Delivered quantity"
+      },
       "trip": "Trip",
       "totalAmount": "Total amount",
       "issuedDate": "Issued date",

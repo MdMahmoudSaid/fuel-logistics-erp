@@ -131,6 +131,7 @@
       "supplierDebtTotal": "Dettes fournisseurs",
       "transporterDebtTotal": "Dettes transporteurs",
       "otherDebts": "Dettes douane / transit / frais",
+      "companyAbsorbedLoss": "Perte supportée par l'entreprise",
       "partyBalances": "Soldes par partie",
       "customers": "Clients",
       "suppliers": "Fournisseurs",
@@ -389,6 +390,7 @@
       "transporterLossIndemnity": "Indemnisation perte transporteur",
       "companyAbsorbedLoss": "Perte supportée par l'entreprise",
       "companyAbsorbedLossDetail": "{quantity} × {unitPrice}",
+      "companyAbsorbedLossInfoNote": "information — déjà reflété dans le chiffre d'affaires",
       "fuelPurchaseCost": "Achat carburant",
       "transportCost": "Coût transporteur",
       "totalExpenses": "Frais annexes",
@@ -739,6 +741,8 @@
       "table": {
         "invoice": "Facture",
         "issued": "Émise",
+        "loadedQuantity": "Qté chargée",
+        "receivedQuantity": "Qté reçue",
         "total": "Total",
         "outstanding": "Impayé",
         "status": "Statut"
@@ -1034,6 +1038,7 @@
       "workingCapitalGross": "Trésorerie + créances clients",
       "workingCapitalDebts": "Dettes ouvertes",
       "capitalContributed": "Capital apporté",
+      "companyAbsorbedLoss": "Perte supportée par l'entreprise",
       "distributableResult": "Résultat distribuable après dettes et capital",
       "tripsCount": "Trajets pris en compte",
       "revenue": "Chiffre d'affaires",
@@ -1311,7 +1316,13 @@
       "customer": "Client",
       "product": "Produit",
       "deliveredQuantity": "Quantité livrée (reçue, non chargée)",
+      "loadedQuantity": "Quantité chargée",
       "unitSellingPrice": "Prix de vente unitaire",
+      "correctionFields": {
+        "unit_selling_price": "Prix de vente unitaire",
+        "total_amount": "Montant total",
+        "delivered_quantity": "Quantité livrée"
+      },
       "trip": "Trajet",
       "totalAmount": "Montant total",
       "issuedDate": "Date d'émission",

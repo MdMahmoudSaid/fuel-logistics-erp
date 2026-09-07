@@ -1,3 +1,4 @@
+import itertools
 from decimal import Decimal
 
 import pytest
@@ -19,6 +20,7 @@ from apps.sales.serializers import CustomerOrderSerializer
 from apps.sales.services import (
     CustomerOrderService,
     InvoiceNotValidated,
+    InvoicePaidCorrectionUnsupported,
     InvoiceService,
     InvoiceValidationError,
     UnsupportedCorrectionField,
@@ -524,3 +526,163 @@ def test_api_invoice_correct_rejected_while_still_draft():
         {"field": "unit_selling_price", "new_value": "605.0000", "reason": "typo"},
     )
     assert response.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Spec 2026-09-07 "facture quantité reçue": InvoiceService.adjust_delivered_quantity
+# ---------------------------------------------------------------------------
+
+_adjust_qty_counter = itertools.count(1)
+
+
+def _actor():
+    admin_role = Role.objects.get(name=Role.NAME_ADMIN)
+    return User.objects.create_user(
+        phone=f"+222ADJ{next(_adjust_qty_counter):05d}",
+        pin="1234",
+        role=admin_role,
+    )
+
+
+def _sale_with_invoice(status):
+    suffix = f"ADJ{next(_adjust_qty_counter)}"
+    fx = _setup_fixtures(suffix)
+    trip = _make_trip(
+        fx, None, f"TRIP-{suffix}", Decimal("45000.00"), Trip.Status.DELIVERED
+    )
+    sale = Sale.objects.create(
+        trip=trip,
+        customer=fx["customer"],
+        product=fx["product"],
+        delivered_quantity=Decimal("45000.00"),
+        unit_selling_price=Decimal("900.0000"),
+    )
+    invoice = Invoice.objects.create(
+        invoice_number=f"INV-{suffix}",
+        sale=sale,
+        total_amount=sale.subtotal,
+        status=status,
+        issued_date="2026-08-18",
+    )
+    return sale, invoice
+
+
+@pytest.mark.django_db
+def test_adjust_delivered_quantity_draft_edits_directly_no_correction_row():
+    sale, invoice = _sale_with_invoice(Invoice.Status.DRAFT)  # 45000 L x 900 = 40,500,000
+
+    result = InvoiceService.adjust_delivered_quantity(
+        invoice.id, Decimal("44800.00"), reason="Vérification client", actor=_actor()
+    )
+
+    sale.refresh_from_db()
+    result.refresh_from_db()
+    assert sale.delivered_quantity == Decimal("44800.00")
+    assert sale.subtotal == Decimal("40320000.00")
+    assert result.total_amount == Decimal("40320000.00")
+    assert InvoiceCorrection.objects.filter(invoice=invoice).count() == 0
+
+
+@pytest.mark.django_db
+def test_adjust_delivered_quantity_validated_writes_correction_row():
+    sale, invoice = _sale_with_invoice(Invoice.Status.VALIDATED)
+
+    InvoiceService.adjust_delivered_quantity(
+        invoice.id, Decimal("44800.00"),
+        reason="Vérification client : quantité reçue corrigée de 45000.00 L à 44800.00 L",
+        actor=_actor(),
+    )
+
+    sale.refresh_from_db()
+    invoice.refresh_from_db()
+    assert sale.delivered_quantity == Decimal("44800.00")
+    assert invoice.total_amount == Decimal("40320000.00")
+    correction = InvoiceCorrection.objects.get(invoice=invoice)
+    assert correction.field_name == "delivered_quantity"
+    assert correction.previous_value == "45000.00"
+    assert correction.new_value == "44800.00"
+    assert "Vérification client" in correction.reason
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "status",
+    [Invoice.Status.PARTIALLY_PAID, Invoice.Status.PAID, Invoice.Status.CANCELLED],
+)
+def test_adjust_delivered_quantity_paid_is_refused(status):
+    sale, invoice = _sale_with_invoice(status)
+
+    with pytest.raises(InvoicePaidCorrectionUnsupported):
+        InvoiceService.adjust_delivered_quantity(
+            invoice.id, Decimal("44800.00"), reason="x", actor=_actor()
+        )
+
+    sale.refresh_from_db()
+    assert sale.delivered_quantity == Decimal("45000.00")
+
+
+@pytest.mark.django_db
+def test_adjust_delivered_quantity_noop_when_unchanged():
+    sale, invoice = _sale_with_invoice(Invoice.Status.VALIDATED)
+
+    result = InvoiceService.adjust_delivered_quantity(
+        invoice.id, Decimal("45000.00"), reason="x", actor=_actor()
+    )
+
+    assert result.id == invoice.id
+    assert InvoiceCorrection.objects.filter(invoice=invoice).count() == 0
+    invoice.refresh_from_db()
+    assert invoice.total_amount == Decimal("40500000.00")
+
+
+@pytest.mark.django_db
+def test_adjust_delivered_quantity_rejects_zero():
+    # C1: a zero (total-loss) quantity would hit Sale's
+    # CheckConstraint(delivered_quantity__gt=0) -> IntegrityError, which the
+    # viewsets' `except ValueError` misses -> HTTP 500. Reject it upfront as
+    # a ValueError instead.
+    sale, invoice = _sale_with_invoice(Invoice.Status.VALIDATED)
+
+    with pytest.raises(ValueError) as exc:
+        InvoiceService.adjust_delivered_quantity(
+            invoice.id, Decimal("0"), reason="Perte totale", actor=_actor()
+        )
+    assert invoice.invoice_number in str(exc.value)
+
+    sale.refresh_from_db()
+    assert sale.delivered_quantity == Decimal("45000.00")
+    assert InvoiceCorrection.objects.filter(invoice=invoice).count() == 0
+
+
+@pytest.mark.django_db
+def test_correct_invoice_rejects_zero_delivered_quantity():
+    sale, invoice = _sale_with_invoice(Invoice.Status.VALIDATED)
+
+    with pytest.raises(ValueError) as exc:
+        InvoiceService.correct_invoice(
+            invoice.id, "delivered_quantity", "0",
+            reason="Perte totale", actor=_actor(),
+        )
+    assert invoice.invoice_number in str(exc.value)
+
+    sale.refresh_from_db()
+    assert sale.delivered_quantity == Decimal("45000.00")
+    assert InvoiceCorrection.objects.filter(invoice=invoice).count() == 0
+
+
+@pytest.mark.django_db
+def test_correct_invoice_supports_delivered_quantity_field():
+    sale, invoice = _sale_with_invoice(Invoice.Status.VALIDATED)  # 45000 x 900
+
+    InvoiceService.correct_invoice(
+        invoice.id, "delivered_quantity", "44750.00",
+        reason="Client conteste 250 L", actor=_actor(),
+    )
+
+    sale.refresh_from_db()
+    invoice.refresh_from_db()
+    assert sale.delivered_quantity == Decimal("44750.00")
+    assert invoice.total_amount == Decimal("40275000.00")
+    correction = InvoiceCorrection.objects.get(invoice=invoice, field_name="delivered_quantity")
+    assert correction.previous_value == "45000.00"
+    assert correction.new_value == "44750.00"

@@ -118,6 +118,27 @@ class UnsupportedCorrectionField(ValueError):
     know how to apply/recompute."""
 
 
+class InvoicePaidCorrectionUnsupported(ValueError):
+    """Raised when a delivered-quantity adjustment is attempted on an
+    invoice that is already (partially) paid or cancelled - reducing it
+    would create a customer overpayment/credit, which has no automated
+    handling yet (spec 2026-09-07). The operator must resolve the payment
+    situation manually first."""
+
+
+def _reject_non_billable_quantity(qty: Decimal, invoice_number: str) -> None:
+    """Guard against a delivered quantity that `Sale`'s
+    `CheckConstraint(delivered_quantity__gt=0)` would reject at the DB level
+    (an IntegrityError, which the viewsets' `except ValueError` would miss ->
+    HTTP 500). A total-loss client verification (received_quantity = 0) must
+    be handled by cancelling the invoice / trip, not by billing a zero."""
+    if qty <= 0:
+        raise ValueError(
+            f"Une quantité livrée nulle ou négative ne peut pas être facturée "
+            f"(facture {invoice_number}) ; annulez plutôt la facture / le trajet."
+        )
+
+
 class InvoiceService:
     """Owns Invoice validation and post-validation corrections
     (docs/PHASE_4_PLAN.md Etape 5;
@@ -167,6 +188,13 @@ class InvoiceService:
             sale.save()  # recomputes subtotal via Sale.save()
             invoice.total_amount = sale.subtotal
             invoice.save(update_fields=["total_amount", "updated_at"])
+        elif field == "delivered_quantity":
+            _reject_non_billable_quantity(Decimal(str(new_value)), invoice.invoice_number)
+            previous_value = str(sale.delivered_quantity)
+            sale.delivered_quantity = Decimal(str(new_value))
+            sale.save()  # recomputes subtotal via Sale.save()
+            invoice.total_amount = sale.subtotal
+            invoice.save(update_fields=["total_amount", "updated_at"])
         elif field == "total_amount":
             previous_value = str(invoice.total_amount)
             invoice.total_amount = Decimal(str(new_value))
@@ -184,4 +212,56 @@ class InvoiceService:
             corrected_by=actor,
             reason=reason,
         )
+        return invoice
+
+    @staticmethod
+    @transaction.atomic
+    def adjust_delivered_quantity(invoice_id, new_quantity, *, reason, actor) -> Invoice:
+        """Set an invoice's billed quantity to `new_quantity` (the quantity
+        the client actually received - spec 2026-09-07). This is the
+        automated owner of a post-creation Sale.delivered_quantity mutation;
+        `correct_invoice(field="delivered_quantity")` is the manual,
+        VALIDATED-only equivalent.
+
+        DRAFT      -> Sale + Invoice edited directly, no audit row.
+        VALIDATED  -> same, plus an InvoiceCorrection row.
+        (PARTIALLY_)PAID / CANCELLED -> InvoicePaidCorrectionUnsupported.
+        No-op if new_quantity already equals the current delivered_quantity.
+        """
+        invoice = Invoice.objects.select_for_update().get(pk=invoice_id)
+        sale = invoice.sale
+        new_quantity = Decimal(str(new_quantity))
+        _reject_non_billable_quantity(new_quantity, invoice.invoice_number)
+
+        # no-op next: a call that changes nothing needs no guard, even on a
+        # paid/cancelled invoice.
+        if new_quantity == sale.delivered_quantity:
+            return invoice
+
+        if invoice.status in (
+            Invoice.Status.PARTIALLY_PAID,
+            Invoice.Status.PAID,
+            Invoice.Status.CANCELLED,
+        ):
+            raise InvoicePaidCorrectionUnsupported(
+                f"La facture {invoice.invoice_number} est {invoice.status} ; "
+                "la correction de la quantité d'une facture encaissée ou "
+                "annulée n'est pas prise en charge automatiquement."
+            )
+
+        previous_value = str(sale.delivered_quantity)
+        sale.delivered_quantity = new_quantity
+        sale.save()  # recomputes subtotal via Sale.save()
+        invoice.total_amount = sale.subtotal
+        invoice.save(update_fields=["total_amount", "updated_at"])
+
+        if invoice.status == Invoice.Status.VALIDATED:
+            InvoiceCorrection.objects.create(
+                invoice=invoice,
+                field_name="delivered_quantity",
+                previous_value=previous_value,
+                new_value=str(new_quantity),
+                corrected_by=actor,
+                reason=reason,
+            )
         return invoice

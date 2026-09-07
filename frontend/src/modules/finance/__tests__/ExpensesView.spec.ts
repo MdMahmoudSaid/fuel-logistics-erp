@@ -59,8 +59,10 @@ describe('ExpensesView', () => {
       next: null,
       previous: null,
       results: [
-        { id: 1, name: 'Douane', code: 'customs', is_system: true, is_active: true, display_order: 0 },
-        { id: 2, name: 'Loyer', code: 'rent', is_system: false, is_active: true, display_order: 9 },
+        // Backend seed ships system categories with an English name - the
+        // table must render the localised expenseCategory.* label instead.
+        { id: 1, name: 'Customs', code: 'customs', is_system: true, is_active: true, display_order: 0 },
+        { id: 2, name: 'Rent', code: 'rent', is_system: true, is_active: true, display_order: 9 },
       ],
     })
     fetchPayableDebts.mockResolvedValue([
@@ -110,6 +112,7 @@ describe('ExpensesView', () => {
     await flushPromises()
 
     expect(expenseList).toHaveBeenCalledWith({ unallocated: 'true' })
+    // Localised label, not the mock's English backend name ('Rent').
     expect(wrapper.text()).toContain('Loyer')
     expect(wrapper.text()).toContain('Bureau')
     expect(wrapper.text()).toContain('300 000 XOF')

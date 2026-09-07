@@ -2250,51 +2250,14 @@ class ShareholderProfitPreviewService:
         )
         net_profit = operational_profit - general_expenses_paid
 
-        # Bug fix (recette critique, 2026-09-06): a post-delivery loss within
-        # tolerance (DeliveryControl.company_absorbed_loss_quantity) is a
-        # real write-off - TripProfitService.get_cost_breakdown() correctly
-        # subtracts it from trip margin, because the company paid its
-        # supplier for the full quantity_loaded and recovers nothing for the
-        # missing litres. But Sale.delivered_quantity stays frozen at its
-        # original value ("Delivered Quantity is Commercial Truth" - the
-        # customer's invoice is never reduced for it, DeliveryService.
-        # record_client_verification's own docstring), and no debt or
-        # TransportDeduction is ever created for the tolerance-absorbed
-        # portion either - so this loss has no cash counterpart anywhere in
-        # WorkingCapitalService. Once every debt is paid and every
-        # receivable collected, distributable_result (purely treasury/
-        # receivables-based) never saw this write-off, while net_profit did -
-        # creating an artificial surplus equal to exactly this amount. Sum
-        # and subtract it here explicitly, never touching the trip margin
-        # formula itself (already correct) nor transporter_loss_indemnity's
-        # existing netting into TransportPayment.net_amount (a separate,
-        # already-correct mechanism).
-        #
-        # Bug fix (recette critique, 2026-09-06 - second pass): this sum
-        # must NEVER be scoped to the same [date_from, date_to] window as
-        # current_profit/operational_profit above. That window exists so a
-        # period's operational profit isn't counted twice across
-        # successive distributions (get_preview's own auto date_from =
-        # last_validated.period_end + 1 day), which is correct for a *flow*
-        # like trip margin. But company_absorbed_loss_amount funds
-        # distributable_result's *write-off* term - a standing state with
-        # no cash counterpart anywhere in WorkingCapitalService, exactly
-        # like working_capital itself (always computed as of "right now",
-        # never date-scoped). Reusing the period-scoped `rows` here meant
-        # any loss dated on or before that auto-shifted date_from became
-        # permanently invisible to every later preview, silently and
-        # irreversibly inflating distributable_result from that point on
-        # (reproduced live: a distribution validated with period_end =
-        # today shifts date_from to tomorrow, so a loss booked later THAT
-        # SAME day never appears again - distributable_result showed
-        # 386,000,000 on the Actionnaires page while the Benefices page,
-        # querying an explicit period that actually includes today, showed
-        # the correct 385,937,000, a 63,000 XOF gap equal to exactly that
-        # loss). Always recompute it from every trip regardless of any
-        # period filter.
-        loss_rows = rows if date_from is None and date_to is None else MarginReportQuery.run()
+        # total_company_absorbed_loss is still computed for the typed API
+        # contract (dashboard shareholders_summary). Since spec 2026-09-07 it
+        # is no longer a distributable_result term - the customer invoice now
+        # bills the received quantity, so the lower treasury already
+        # integrates the absorbed loss - so it is now period-scoped like
+        # every other figure in this dict.
         total_company_absorbed_loss = sum(
-            (row["company_absorbed_loss_amount"] for row in loss_rows), ZERO
+            (row["company_absorbed_loss_amount"] for row in rows), ZERO
         )
 
         # Client modifications (2026-09-04, third pass - confirmed bug
@@ -2311,7 +2274,6 @@ class ShareholderProfitPreviewService:
             - working_capital["transporter_debt_total"]
             - working_capital["other_debts"]
             - working_capital["capital"]
-            - total_company_absorbed_loss
         )
 
         # Business decision (2026-09-04, distribution basis change): a
