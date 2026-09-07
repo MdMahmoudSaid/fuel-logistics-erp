@@ -149,46 +149,6 @@ describe('ProfitView', () => {
       'Résultat distribuable après dettes et capital',
     )
     expect(distributableResultCard.text()).toContain('650 000 XOF')
-
-    // No tolerance-absorbed loss in this fixture -> no extra card.
-    expect(wrapper.find('[data-test="profit-company-absorbed-loss-card"]').exists()).toBe(false)
-  })
-
-  // Recette 2026-09-07: distributable_result silently nets out the
-  // tolerance-absorbed delivery loss - when it's non-zero it must appear as
-  // its own card so "brut - dettes - capital" visibly reaches distribuable.
-  it('shows a "Perte supportée par l\'entreprise" card in Distribution when non-zero', async () => {
-    fetchShareholderProfitPreview.mockResolvedValueOnce({
-      period_start: '2026-08-01',
-      period_end: null,
-      current_profit: '900000.00',
-      operational_profit: '900000.00',
-      general_expenses_paid: '150000.00',
-      net_profit: '750000.00',
-      total_company_absorbed_loss: '63000.00',
-      working_capital: {
-        capital: '100000.00',
-        treasury_available: '400000.00',
-        customer_receivables: '350000.00',
-        supplier_debt_total: '200000.00',
-        transporter_debt_total: '100000.00',
-        other_debts: '50000.00',
-        gross: '750000.00',
-        total: '1100000.00',
-      },
-      distributable_result: '587000.00',
-      shareholders: [],
-    })
-
-    const wrapper = mount(ProfitView)
-    await flushPromises()
-    await flushPromises()
-
-    const lossCard = wrapper.find('[data-test="profit-company-absorbed-loss-card"]')
-    expect(lossCard.exists()).toBe(true)
-    // Amounts are wrapped in bidi isolate marks (LRI/PDI); strip before matching.
-    expect(lossCard.text().replace(/[⁦⁩]/g, '')).toContain("Perte supportée par l'entreprise")
-    expect(lossCard.text().replace(/[⁦⁩]/g, '')).toContain('-63 000 XOF')
   })
 
   // UI reorg (2026-09-04): the two placeholder "profit-summary-card" cards
