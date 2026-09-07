@@ -636,6 +636,41 @@ def test_adjust_delivered_quantity_noop_when_unchanged():
 
 
 @pytest.mark.django_db
+def test_adjust_delivered_quantity_rejects_zero():
+    # C1: a zero (total-loss) quantity would hit Sale's
+    # CheckConstraint(delivered_quantity__gt=0) -> IntegrityError, which the
+    # viewsets' `except ValueError` misses -> HTTP 500. Reject it upfront as
+    # a ValueError instead.
+    sale, invoice = _sale_with_invoice(Invoice.Status.VALIDATED)
+
+    with pytest.raises(ValueError) as exc:
+        InvoiceService.adjust_delivered_quantity(
+            invoice.id, Decimal("0"), reason="Perte totale", actor=_actor()
+        )
+    assert invoice.invoice_number in str(exc.value)
+
+    sale.refresh_from_db()
+    assert sale.delivered_quantity == Decimal("45000.00")
+    assert InvoiceCorrection.objects.filter(invoice=invoice).count() == 0
+
+
+@pytest.mark.django_db
+def test_correct_invoice_rejects_zero_delivered_quantity():
+    sale, invoice = _sale_with_invoice(Invoice.Status.VALIDATED)
+
+    with pytest.raises(ValueError) as exc:
+        InvoiceService.correct_invoice(
+            invoice.id, "delivered_quantity", "0",
+            reason="Perte totale", actor=_actor(),
+        )
+    assert invoice.invoice_number in str(exc.value)
+
+    sale.refresh_from_db()
+    assert sale.delivered_quantity == Decimal("45000.00")
+    assert InvoiceCorrection.objects.filter(invoice=invoice).count() == 0
+
+
+@pytest.mark.django_db
 def test_correct_invoice_supports_delivered_quantity_field():
     sale, invoice = _sale_with_invoice(Invoice.Status.VALIDATED)  # 45000 x 900
 

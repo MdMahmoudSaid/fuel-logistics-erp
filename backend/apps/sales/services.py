@@ -126,6 +126,19 @@ class InvoicePaidCorrectionUnsupported(ValueError):
     situation manually first."""
 
 
+def _reject_non_billable_quantity(qty: Decimal, invoice_number: str) -> None:
+    """Guard against a delivered quantity that `Sale`'s
+    `CheckConstraint(delivered_quantity__gt=0)` would reject at the DB level
+    (an IntegrityError, which the viewsets' `except ValueError` would miss ->
+    HTTP 500). A total-loss client verification (received_quantity = 0) must
+    be handled by cancelling the invoice / trip, not by billing a zero."""
+    if qty <= 0:
+        raise ValueError(
+            f"Une quantité livrée nulle ou négative ne peut pas être facturée "
+            f"(facture {invoice_number}) ; annulez plutôt la facture / le trajet."
+        )
+
+
 class InvoiceService:
     """Owns Invoice validation and post-validation corrections
     (docs/PHASE_4_PLAN.md Etape 5;
@@ -176,6 +189,7 @@ class InvoiceService:
             invoice.total_amount = sale.subtotal
             invoice.save(update_fields=["total_amount", "updated_at"])
         elif field == "delivered_quantity":
+            _reject_non_billable_quantity(Decimal(str(new_value)), invoice.invoice_number)
             previous_value = str(sale.delivered_quantity)
             sale.delivered_quantity = Decimal(str(new_value))
             sale.save()  # recomputes subtotal via Sale.save()
@@ -204,8 +218,10 @@ class InvoiceService:
     @transaction.atomic
     def adjust_delivered_quantity(invoice_id, new_quantity, *, reason, actor) -> Invoice:
         """Set an invoice's billed quantity to `new_quantity` (the quantity
-        the client actually received - spec 2026-09-07). Sole owner of a
-        post-creation Sale.delivered_quantity mutation.
+        the client actually received - spec 2026-09-07). This is the
+        automated owner of a post-creation Sale.delivered_quantity mutation;
+        `correct_invoice(field="delivered_quantity")` is the manual,
+        VALIDATED-only equivalent.
 
         DRAFT      -> Sale + Invoice edited directly, no audit row.
         VALIDATED  -> same, plus an InvoiceCorrection row.
@@ -215,8 +231,9 @@ class InvoiceService:
         invoice = Invoice.objects.select_for_update().get(pk=invoice_id)
         sale = invoice.sale
         new_quantity = Decimal(str(new_quantity))
+        _reject_non_billable_quantity(new_quantity, invoice.invoice_number)
 
-        # no-op first: a call that changes nothing needs no guard, even on a
+        # no-op next: a call that changes nothing needs no guard, even on a
         # paid/cancelled invoice.
         if new_quantity == sale.delivered_quantity:
             return invoice

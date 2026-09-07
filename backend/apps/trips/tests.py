@@ -2132,6 +2132,40 @@ def test_client_verification_api_returns_400_when_invoice_paid():
     assert "encaiss" in resp.data["detail"].lower()
 
 
+@pytest.mark.django_db
+def test_client_verification_with_zero_received_quantity_returns_400():
+    # C1 regression: a total-loss verification (received_quantity = 0) used
+    # to pass the serializer/form and then hit Sale's
+    # CheckConstraint(delivered_quantity__gt=0) -> IntegrityError -> HTTP 500.
+    # The InvoiceService guard now rejects it as a plain ValueError -> 400,
+    # and record_client_verification's @transaction.atomic rolls everything
+    # back.
+    fx = _fixtures_with_customer("CV-ZERO-API")
+    trip = _deliverable_trip(fx, "TRIP-CV-ZERO-API-001")
+    ProductSellingPriceHistory.objects.create(
+        product=fx["product"], customer=fx["customer"],
+        price=Decimal("900.0000"), changed_by=fx["admin_user"],
+    )
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+    client.post(f"/api/trips/{trip.id}/delivery-control/",
+                {"control_date": "2026-08-18", "method": "MANUAL_GAUGE"})
+    trip.refresh_from_db()
+    invoice = trip.sale.invoice
+    original_qty = trip.sale.delivered_quantity
+
+    resp = client.post(f"/api/trips/{trip.id}/client-verification/",
+                       {"received_quantity": "0", "verified_at": "2026-08-18"})
+
+    assert resp.status_code == 400
+    assert invoice.invoice_number in resp.data["detail"]
+
+    trip = Trip.objects.get(pk=trip.id)
+    assert trip.status == Trip.Status.DELIVERED
+    assert trip.sale.delivered_quantity == original_qty
+    assert DeliveryControl.objects.get(trip=trip).verified_at is None
+
+
 # ---------------------------------------------------------------------------
 # Recette corrections Task 6 (2026-09-04): POST /api/trips/{id}/client-
 # verification/ - thin HTTP wrapper around
