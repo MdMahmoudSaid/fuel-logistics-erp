@@ -175,6 +175,12 @@ class InvoiceService:
             sale.save()  # recomputes subtotal via Sale.save()
             invoice.total_amount = sale.subtotal
             invoice.save(update_fields=["total_amount", "updated_at"])
+        elif field == "delivered_quantity":
+            previous_value = str(sale.delivered_quantity)
+            sale.delivered_quantity = Decimal(str(new_value))
+            sale.save()  # recomputes subtotal via Sale.save()
+            invoice.total_amount = sale.subtotal
+            invoice.save(update_fields=["total_amount", "updated_at"])
         elif field == "total_amount":
             previous_value = str(invoice.total_amount)
             invoice.total_amount = Decimal(str(new_value))
@@ -210,6 +216,8 @@ class InvoiceService:
         sale = invoice.sale
         new_quantity = Decimal(str(new_quantity))
 
+        # no-op first: a call that changes nothing needs no guard, even on a
+        # paid/cancelled invoice.
         if new_quantity == sale.delivered_quantity:
             return invoice
 

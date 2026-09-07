@@ -605,7 +605,10 @@ def test_adjust_delivered_quantity_validated_writes_correction_row():
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("status", [Invoice.Status.PARTIALLY_PAID, Invoice.Status.PAID])
+@pytest.mark.parametrize(
+    "status",
+    [Invoice.Status.PARTIALLY_PAID, Invoice.Status.PAID, Invoice.Status.CANCELLED],
+)
 def test_adjust_delivered_quantity_paid_is_refused(status):
     sale, invoice = _sale_with_invoice(status)
 
@@ -622,8 +625,29 @@ def test_adjust_delivered_quantity_paid_is_refused(status):
 def test_adjust_delivered_quantity_noop_when_unchanged():
     sale, invoice = _sale_with_invoice(Invoice.Status.VALIDATED)
 
-    InvoiceService.adjust_delivered_quantity(
+    result = InvoiceService.adjust_delivered_quantity(
         invoice.id, Decimal("45000.00"), reason="x", actor=_actor()
     )
 
+    assert result.id == invoice.id
     assert InvoiceCorrection.objects.filter(invoice=invoice).count() == 0
+    invoice.refresh_from_db()
+    assert invoice.total_amount == Decimal("40500000.00")
+
+
+@pytest.mark.django_db
+def test_correct_invoice_supports_delivered_quantity_field():
+    sale, invoice = _sale_with_invoice(Invoice.Status.VALIDATED)  # 45000 x 900
+
+    InvoiceService.correct_invoice(
+        invoice.id, "delivered_quantity", "44750.00",
+        reason="Client conteste 250 L", actor=_actor(),
+    )
+
+    sale.refresh_from_db()
+    invoice.refresh_from_db()
+    assert sale.delivered_quantity == Decimal("44750.00")
+    assert invoice.total_amount == Decimal("40275000.00")
+    correction = InvoiceCorrection.objects.get(invoice=invoice, field_name="delivered_quantity")
+    assert correction.previous_value == "45000.00"
+    assert correction.new_value == "44750.00"
