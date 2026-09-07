@@ -855,29 +855,18 @@ def _settle_all_debts_and_collect_customer(fx, admin_user):
 
 @pytest.mark.django_db
 def test_distributable_result_equals_net_profit_after_full_settlement_with_transporter_loss():
-    """Bug recette critique (2026-09-06): a transporter-chargeable delivery
-    loss (indemnisation perte transporteur) must never leave a surplus in
-    distributable_result once every debt is paid and every receivable is
-    collected - the two figures must reconcile exactly, per the client's
-    explicit rule.
+    """Mandated regression (client rule): a transporter-chargeable delivery
+    loss must never leave a surplus in distributable_result once every debt
+    is paid and every receivable is collected - the two independently
+    computed figures (distributable_result, treasury-based; net_profit,
+    margin-based) must reconcile exactly.
 
-    Root cause found: NOT the indemnity itself (it was already correctly
-    netted into TransportPayment.net_amount and correctly credited once in
-    trip margin - see the second test below). The real gap was the OTHER
-    half of the same delivery-loss split: DeliveryControl.company_absorbed_
-    loss_quantity (the tolerance-absorbed portion, <=100L by default) is
-    subtracted from trip margin/net_profit (TripProfitService.get_cost_
-    breakdown, a real write-off - the company paid its supplier for the full
-    quantity_loaded and recovers nothing for the missing litres), but has NO
-    counterpart anywhere in WorkingCapitalService: the customer's invoice
-    stays frozen at the full delivered quantity ("Delivered Quantity is
-    Commercial Truth"), so treasury/receivables never reflect this loss
-    either. distributable_result (purely treasury-based) therefore stayed
-    artificially higher than net_profit by exactly company_absorbed_loss_
-    amount. Fixed by summing it across MarginReportQuery's rows and
-    subtracting it in ShareholderProfitPreviewService.get_preview(), the
-    same way general_expenses_paid already is - the trip margin formula
-    itself is untouched.
+    Spec 2026-09-07: the invoice now bills the received quantity, so the
+    tolerance-absorbed loss shows up as reduced revenue on the margin side
+    and as reduced treasury/receivables on the distributable side. NEITHER
+    formula needs a company_absorbed_loss correction term any more, and the
+    two figures still meet exactly once every debt is settled and the
+    customer has fully paid. The trip margin formula itself is untouched.
     """
     admin_user = _make_admin("DISTREC")
     # 400L short of 45,000L loaded: 100L tolerance-absorbed (default

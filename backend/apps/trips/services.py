@@ -632,14 +632,13 @@ class DeliveryService:
             unit_selling_price=unit_selling_price,
         )
 
-        invoice = None
         for _ in range(_MAX_INVOICE_REFERENCE_ATTEMPTS):
             invoice_number = generate_monthly_reference(
                 Invoice, "invoice_number", _INVOICE_REFERENCE_PREFIX
             )
             try:
                 with transaction.atomic():
-                    invoice = Invoice.objects.create(
+                    Invoice.objects.create(
                         invoice_number=invoice_number,
                         sale=sale,
                         total_amount=sale.subtotal,
@@ -669,9 +668,11 @@ class DeliveryService:
         InvoiceService.adjust_delivered_quantity (DRAFT -> direct edit,
         VALIDATED -> audited InvoiceCorrection, (partially) paid / cancelled
         -> InvoicePaidCorrectionUnsupported, surfaced as a 400 by the view).
-        The loss below tolerance is still subtracted from margin by
-        TripProfitService, and the loss above tolerance re-syncs the
-        existing TransportDeduction mechanism.
+        The below-tolerance loss is now reflected by the reduced revenue
+        (the invoice bills the received quantity); TripProfitService only
+        *exposes* company_absorbed_loss_amount for display, it does not
+        subtract it. The loss above tolerance re-syncs the existing
+        TransportDeduction mechanism.
         """
         trip = Trip.objects.select_for_update().get(pk=trip_id)
         if trip.status not in (Trip.Status.DELIVERED, Trip.Status.COMPLETED):
@@ -710,6 +711,8 @@ class DeliveryService:
         )
 
         sale = getattr(trip, "sale", None)
+        # The invoice guard is defensive-only: record_delivery always creates
+        # the Invoice, so a Sale without one is not a supported state.
         if sale is not None and getattr(sale, "invoice", None) is not None:
             # Spec 2026-09-07: the client pays for what actually arrived.
             # Propagate the corrected quantity to the Sale + Invoice (DRAFT

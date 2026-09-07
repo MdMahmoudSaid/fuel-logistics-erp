@@ -2250,17 +2250,14 @@ class ShareholderProfitPreviewService:
         )
         net_profit = operational_profit - general_expenses_paid
 
-        # total_company_absorbed_loss stays computed for display (trip
-        # detail) and is still returned in the dict (consumed by
-        # dashboard.py), but since the spec 2026-09-07 it is no longer
-        # subtracted from distributable_result - the customer invoice now
-        # reflects the received quantity, so the lower treasury already
-        # integrates the absorbed loss. Still recomputed from every trip
-        # regardless of any period filter (it is a standing state with no
-        # cash counterpart, like working_capital itself).
-        loss_rows = rows if date_from is None and date_to is None else MarginReportQuery.run()
+        # total_company_absorbed_loss is still computed for the typed API
+        # contract (dashboard shareholders_summary). Since spec 2026-09-07 it
+        # is no longer a distributable_result term - the customer invoice now
+        # bills the received quantity, so the lower treasury already
+        # integrates the absorbed loss - so it is now period-scoped like
+        # every other figure in this dict.
         total_company_absorbed_loss = sum(
-            (row["company_absorbed_loss_amount"] for row in loss_rows), ZERO
+            (row["company_absorbed_loss_amount"] for row in rows), ZERO
         )
 
         # Client modifications (2026-09-04, third pass - confirmed bug

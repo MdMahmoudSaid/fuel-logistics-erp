@@ -78,9 +78,12 @@ class CustomerOrderSerializer(serializers.ModelSerializer):
 class SaleSerializer(serializers.ModelSerializer):
     """Read-only representation (docs/PHASE_4_PLAN.md Etape 6;
     ERP_Implementation_Experience_Guide.md Section 7.6/§19): a Sale is
-    created exclusively by DeliveryService.record_delivery() so
-    delivered_quantity can never drift from the confirming
-    DeliveryControl.received_quantity - see SaleViewSet for the enforcement.
+    created by DeliveryService.record_delivery(); its delivered_quantity is
+    then mutable only through InvoiceService (adjust_delivered_quantity from
+    the client verification, or correct_invoice(field="delivered_quantity")
+    for a manual audited correction). It MAY legitimately differ from
+    DeliveryControl.received_quantity after such a correction
+    (spec 2026-09-07 §"Cohérence").
 
     trip_reference (a plain string) is exposed instead of a nested
     TripSerializer: apps.sales sits below apps.trips in the app dependency
