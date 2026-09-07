@@ -92,6 +92,9 @@ class SaleSerializer(serializers.ModelSerializer):
     customer_detail = CustomerSerializer(source="customer", read_only=True)
     product_detail = ProductSerializer(source="product", read_only=True)
     trip_reference = serializers.CharField(source="trip.reference", read_only=True)
+    quantity_loaded = serializers.DecimalField(
+        source="trip.quantity_loaded", max_digits=14, decimal_places=2, read_only=True
+    )
 
     class Meta:
         model = Sale
@@ -103,6 +106,7 @@ class SaleSerializer(serializers.ModelSerializer):
             "customer_detail",
             "product",
             "product_detail",
+            "quantity_loaded",
             "delivered_quantity",
             "unit_selling_price",
             "currency",

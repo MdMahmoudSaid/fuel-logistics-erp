@@ -2023,6 +2023,36 @@ def test_client_verification_reduces_a_draft_invoice_to_the_received_quantity():
 
 
 @pytest.mark.django_db
+def test_customer_ledger_invoice_exposes_loaded_and_received_quantities():
+    # Task 8: SaleSerializer (nested as sale_detail in the client ledger)
+    # exposes trip.quantity_loaded alongside the now-received
+    # delivered_quantity so the ledger UI can show loaded vs received.
+    fx = _fixtures_with_customer("CV-LEDGER-QTY")
+    trip = _deliverable_trip(fx, "TRIP-CV-LEDGER-QTY-001")  # quantity_loaded 45000
+    ProductSellingPriceHistory.objects.create(
+        product=fx["product"], customer=fx["customer"],
+        price=Decimal("900.0000"), changed_by=fx["admin_user"],
+    )
+    DeliveryService.record_delivery(
+        trip_id=trip.id, control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE, controller=fx["admin_user"],
+    )
+    DeliveryService.record_client_verification(
+        trip_id=trip.id, received_qty=Decimal("44800.00"),
+        verified_at=date.today(), actor=fx["admin_user"],
+    )
+
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+    resp = client.get(f"/api/customers/{fx['customer'].id}/ledger/")
+
+    assert resp.status_code == 200
+    sale_detail = resp.data["invoices"][0]["sale_detail"]
+    assert sale_detail["quantity_loaded"] == "45000.00"
+    assert sale_detail["delivered_quantity"] == "44800.00"
+
+
+@pytest.mark.django_db
 def test_client_verification_on_a_validated_invoice_writes_a_correction_row():
     fx = _fixtures_with_customer("CV-VALID-INV")
     trip = _deliverable_trip(fx, "TRIP-CV-VALID-INV-001")
