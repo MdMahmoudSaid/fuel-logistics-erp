@@ -54,7 +54,6 @@ PROFIT_PDF_LABELS = {
         "totalDebts": "= Total des dettes ouvertes",
         "totalWorkingCapital": "= Fond de roulement total",
         "capital": "Capital apporte",
-        "companyAbsorbedLoss": "Perte supportee par l'entreprise",
         "distributableResult": "= Resultat distribuable apres dettes et capital",
         "tripDetail": "Detail des couts par trajet",
         "table": {
@@ -96,7 +95,6 @@ PROFIT_PDF_LABELS = {
         "totalDebts": "= Total open debts",
         "totalWorkingCapital": "= Total working capital",
         "capital": "Capital contributed",
-        "companyAbsorbedLoss": "Loss absorbed by the company",
         "distributableResult": "= Distributable result after debts and capital",
         "tripDetail": "Trip cost detail",
         "table": {
@@ -329,24 +327,11 @@ def render_profit_report_pdf(
         ),
         (labels["totalWorkingCapital"], _format_money(wc["total"])),
         (labels["capital"], _format_money(wc["capital"])),
+        (labels["distributableResult"], _format_money(preview["distributable_result"])),
     ]
-    # Recette 2026-09-07: distributable_result also nets out the tolerance-
-    # absorbed delivery loss (a real write-off with no cash counterpart).
-    # Show it as its own row - only when non-zero - so "total - capital"
-    # visibly reaches distributable_result instead of leaving a silent gap.
-    absorbed_loss = preview["total_company_absorbed_loss"]
-    if absorbed_loss > ZERO:
-        wc_rows.append((labels["companyAbsorbedLoss"], f"-{_format_money(absorbed_loss)}"))
-    wc_rows.append(
-        (labels["distributableResult"], _format_money(preview["distributable_result"]))
-    )
     wc_table = Table(wc_rows, colWidths=[110 * mm, 60 * mm])
     wc_table.setStyle(_SUMMARY_TABLE_STYLE)
-    # Bold the subtotal/total rows (gross, total debts, total working
-    # capital, distributable result) - distributable is always the last row.
-    wc_table.setStyle(
-        TableStyle([_bold_row(idx) for idx in (2, 9, 10, len(wc_rows) - 1)])
-    )
+    wc_table.setStyle(TableStyle([_bold_row(idx) for idx in (2, 9, 10, 12)]))
     elements.append(wc_table)
     elements.append(Spacer(1, 8 * mm))
 

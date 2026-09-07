@@ -137,20 +137,6 @@ def test_render_profit_report_pdf_handles_negative_distributable_result():
     assert pdf_bytes.startswith(b"%PDF")
 
 
-def test_render_profit_report_pdf_shows_company_absorbed_loss_row_when_nonzero():
-    # Recette 2026-09-07: when a tolerance-absorbed delivery loss has been
-    # netted out of distributable_result, the working-capital breakdown must
-    # carry its own "Perte supportee par l'entreprise" row so total - capital
-    # visibly reaches distributable_result.
-    pdf_bytes = render_profit_report_pdf(
-        preview=_preview(total_company_absorbed_loss=Decimal("63000.00")),
-        other_debts_breakdown=_other_debts_breakdown(),
-        rows=[_margin_row()],
-        lang="fr",
-    )
-    assert pdf_bytes.startswith(b"%PDF")
-
-
 def test_render_profit_report_pdf_many_trips_do_not_crash():
     rows = [_margin_row(trip_reference=f"TRIP-{i:06d}") for i in range(50)]
     pdf_bytes = render_profit_report_pdf(
