@@ -741,14 +741,19 @@ describe('TripDetail expenses section', () => {
     expect(optionText).not.toContain('Contrôle de quantité')
   })
 
-  it('refreshes backend-allowed statuses after delivery confirmation so Delivered is not offered again', async () => {
+  it('never offers Livré/Terminé in the status bar and still refreshes allowed statuses after delivery', async () => {
+    // 2026-09-07 recette: DELIVERED and COMPLETED are form-only - the
+    // backend allowed-statuses endpoint strips them, so the status bar must
+    // never list them however the trip is sitting. The delivery form (not
+    // the bar) drives the DELIVERED transition; this only checks the bar
+    // stays clean and that onDeliveryConfirmed still re-fetches the list.
     setUser({ operations: ['view', 'edit'], finance: ['view'] })
     tripResourceGet
       .mockResolvedValueOnce(makeTrip({ status: 'QUANTITY_CONTROL', client: 10 }))
       .mockResolvedValueOnce(makeTrip({ status: 'DELIVERED', client: 10 }))
-    allowedStatusesToReturn = ['DELIVERED']
+    allowedStatusesToReturn = ['CANCELLED', 'BLOCKED']
     postDeliveryControl.mockImplementationOnce(async (_tripId, payload) => {
-      allowedStatusesToReturn = ['COMPLETED']
+      allowedStatusesToReturn = ['BLOCKED']
       return {
         id: 1,
         trip: 9,
@@ -772,7 +777,7 @@ describe('TripDetail expenses section', () => {
     })
 
     const wrapper = await mountAt()
-    expect(wrapper.find('#next_status').text()).toContain('Livré')
+    expect(wrapper.find('#next_status').text()).not.toContain('Livré')
 
     await wrapper.find('#control_date').setValue('2026-08-18')
     await wrapper.find('form').trigger('submit.prevent')
@@ -780,18 +785,20 @@ describe('TripDetail expenses section', () => {
 
     const optionText = wrapper.find('#next_status').text()
     expect(fetchAllowedTripStatuses).toHaveBeenCalledTimes(2)
-    expect(optionText).toContain('Terminé')
+    expect(optionText).not.toContain('Terminé')
     expect(optionText).not.toContain('Livré')
   })
 
   it('shows the delivery confirmation form straight from ARRIVED_AT_CLIENT (simplified flow)', async () => {
     setUser({ operations: ['view', 'edit'], finance: ['view'] })
     tripResourceGet.mockResolvedValueOnce(makeTrip({ status: 'ARRIVED_AT_CLIENT', client: 10 }))
-    allowedStatusesToReturn = ['DELIVERED']
+    // The backend strips the form-only DELIVERED from allowed-statuses here.
+    allowedStatusesToReturn = ['CANCELLED', 'BLOCKED']
 
     const wrapper = await mountAt()
 
     expect(wrapper.find('#control_date').exists()).toBe(true)
+    expect(wrapper.find('#next_status').text()).not.toContain('Livré')
     expect(
       wrapper
         .findAll('button')

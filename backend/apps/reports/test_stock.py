@@ -196,6 +196,25 @@ def test_delivered_trip_counts_in_none_of_the_three_pipeline_buckets():
 
 
 @pytest.mark.django_db
+def test_delivered_or_completed_trip_without_a_sale_is_out_of_the_pipeline_too():
+    """Regression (2026-09-07 recette): a trip whose status was forced to
+    DELIVERED/COMPLETED through the raw status bar - skipping the delivery
+    control that would have created the Sale - has `sale__isnull=True` yet
+    is emphatically NOT still "en cours". "Past delivery" is decided by the
+    trip status, never by the mere presence of a Sale row, so a forced,
+    Sale-less completion must drop out of every pipeline bucket exactly like
+    a normal delivered trip does."""
+    admin_user = _make_admin("FORCED")
+    order = _make_supplier_order("FORCED", admin_user, quantity=Decimal("100000.00"))
+    _make_trip("FORCED-DELIV", admin_user, order, Decimal("45000.00"), status=Trip.Status.DELIVERED)
+    _make_trip("FORCED-DONE", admin_user, order, Decimal("30000.00"), status=Trip.Status.COMPLETED)
+
+    assert TheoreticalStockService.get_in_transit_quantity() == Decimal("0.00")
+    assert TheoreticalStockService.get_in_transit_value() == Decimal("0.00")
+    assert TheoreticalStockService.get_loaded_unsold_quantity() == Decimal("0.00")
+
+
+@pytest.mark.django_db
 def test_get_company_stock_value_includes_transport_and_expense_costs():
     """Unlike en-cours, the stock card is valued at full cost basis
     (TripCostService.calculate_trip_cost_basis) - purchase price plus

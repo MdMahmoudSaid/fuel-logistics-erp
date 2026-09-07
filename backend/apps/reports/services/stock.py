@@ -69,10 +69,16 @@ class TheoreticalStockService:
         created (plan Section 1.B), not from trip.status alone (guide
         Section 9.5). Cancelled trips never held stock, mirroring the same
         exclusion SupplierStockService already applies to loaded-quantity
-        sums."""
+        sums.
+
+        `sale__isnull=True` alone does NOT mean "still company-held fuel": a
+        trip forced to DELIVERED/COMPLETED through the raw status bar (which
+        skips the delivery control that creates the Sale) has no Sale row yet
+        has physically left for the client - so every non-occupying status
+        is excluded here too (regression 2026-09-07 recette)."""
         return (
             Trip.objects.filter(sale__isnull=True)
-            .exclude(status=Trip.Status.CANCELLED)
+            .exclude(status__in=Trip.NON_OCCUPYING_STATUSES)
             .aggregate(total=Sum("quantity_loaded"))["total"]
             or ZERO
         )
@@ -84,15 +90,21 @@ class TheoreticalStockService:
         definition (2026-09-06): "en cours" is every truck currently on the
         road, whatever its destination, until it physically arrives
         somewhere. Once it arrives at the depot it moves to the company-
-        stock bucket below; once it's delivered to a client, sale__isnull
-        becomes False and it drops out of both (it's now a customer debt,
-        not company-held fuel)."""
+        stock bucket below; once it's delivered to a client it drops out of
+        both (it's now a customer debt, not company-held fuel).
+
+        A delivered/completed trip drops out on its STATUS, not on
+        sale__isnull: the normal delivery flow creates a Sale, but a status
+        forced straight to DELIVERED/COMPLETED through the raw status bar
+        does not - and that trip is just as done (regression 2026-09-07
+        recette: a Sale-less forced completion was still counted "en cours",
+        inflating the dashboard card by a whole phantom trip)."""
         return Trip.objects.filter(sale__isnull=True).exclude(
-            status__in=[
-                Trip.Status.CANCELLED,
+            status__in={
                 Trip.Status.ARRIVED_AT_COMPANY_STOCK,
                 Trip.Status.STOCKED,
-            ]
+                *Trip.NON_OCCUPYING_STATUSES,
+            }
         )
 
     @classmethod

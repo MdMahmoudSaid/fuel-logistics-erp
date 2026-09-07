@@ -929,6 +929,10 @@ def test_trip_status_history_serializer_is_fully_read_only():
 # confirm the same rules hold end-to-end through HTTP + permissions.
 # ---------------------------------------------------------------------------
 
+# Everything the raw status bar (POST /status/) is still allowed to do -
+# stops at ARRIVED_AT_CLIENT. DELIVERED/COMPLETED are form-only now (they
+# come out of /delivery-control/ and /client-verification/, never a manual
+# transition - 2026-09-07 recette), see _drive_trip_through_delivery below.
 _FORWARD_SEQUENCE_STATUS_NAMES = [
     "SENT_FOR_LOADING",
     "LOADING",
@@ -939,11 +943,33 @@ _FORWARD_SEQUENCE_STATUS_NAMES = [
     "CUSTOMS",
     "GOING_TO_CLIENT",
     "ARRIVED_AT_CLIENT",
-    # Client correction (2026-09-04 recette): QUANTITY_CONTROL is no longer
-    # a mandatory intermediate stop before DELIVERED.
-    "DELIVERED",
-    "COMPLETED",
 ]
+
+
+def _drive_trip_through_delivery(client, trip_id):
+    """Walk a freshly-created trip all the way to COMPLETED the way the UI
+    does: the status bar up to ARRIVED_AT_CLIENT, then the delivery control
+    (-> DELIVERED + Sale) and the client verification (-> auto COMPLETED)."""
+    for target in _FORWARD_SEQUENCE_STATUS_NAMES:
+        response = client.post(f"/api/trips/{trip_id}/status/", {"new_status": target})
+        assert response.status_code == 200, response.data
+
+    delivery_response = client.post(
+        f"/api/trips/{trip_id}/delivery-control/",
+        {
+            "received_quantity": "45000.00",
+            "control_date": "2026-08-18",
+            "method": "MANUAL_GAUGE",
+            "unit_selling_price": "900.0000",
+        },
+    )
+    assert delivery_response.status_code == 201, delivery_response.data
+
+    verification_response = client.post(
+        f"/api/trips/{trip_id}/client-verification/",
+        {"received_quantity": "45000.00", "verified_at": "2026-08-18"},
+    )
+    assert verification_response.status_code == 200, verification_response.data
 
 
 def _api_trip_payload(fx, truck, quantity="45000.00", **overrides):
@@ -1007,9 +1033,7 @@ def test_api_repeated_truck_scenario_450000_litres():
         round_one_trip_ids.append(response.data["id"])
 
     for trip_id in round_one_trip_ids:
-        for target in _FORWARD_SEQUENCE_STATUS_NAMES:
-            response = client.post(f"/api/trips/{trip_id}/status/", {"new_status": target})
-            assert response.status_code == 200, response.data
+        _drive_trip_through_delivery(client, trip_id)
 
     order_after_round_one = client.get(f"/api/customer-orders/{order_id}/").data
     assert order_after_round_one["delivered_quantity"] == "270000.00"
@@ -1032,9 +1056,7 @@ def test_api_repeated_truck_scenario_450000_litres():
         round_two_trip_ids.append(response.data["id"])
 
     for trip_id in round_two_trip_ids:
-        for target in _FORWARD_SEQUENCE_STATUS_NAMES:
-            response = client.post(f"/api/trips/{trip_id}/status/", {"new_status": target})
-            assert response.status_code == 200, response.data
+        _drive_trip_through_delivery(client, trip_id)
 
     final_order = client.get(f"/api/customer-orders/{order_id}/").data
     assert final_order["delivered_quantity"] == "450000.00"
@@ -2404,7 +2426,7 @@ def test_api_invoice_amount_based_on_received_quantity_not_loaded():
     assert trip_response.status_code == 201, trip_response.data
     trip_id = trip_response.data["id"]
 
-    for target in _FORWARD_SEQUENCE_STATUS_NAMES[:-2]:  # stop right before DELIVERED
+    for target in _FORWARD_SEQUENCE_STATUS_NAMES:  # walks up to ARRIVED_AT_CLIENT
         response = client.post(f"/api/trips/{trip_id}/status/", {"new_status": target})
         assert response.status_code == 200, response.data
 
@@ -2464,8 +2486,57 @@ def test_api_allowed_statuses_after_delivery_control_does_not_offer_delivered_ag
     allowed_response = client.get(f"/api/trips/{trip.id}/allowed-statuses/")
 
     assert allowed_response.status_code == 200
+    # Neither form-only status is ever offered as a manual status-bar choice:
+    # DELIVERED is behind, and COMPLETED is only reached via the client
+    # verification flow, never a raw transition (2026-09-07 recette).
     assert Trip.Status.DELIVERED not in allowed_response.data["statuses"]
-    assert Trip.Status.COMPLETED in allowed_response.data["statuses"]
+    assert Trip.Status.COMPLETED not in allowed_response.data["statuses"]
+
+
+@pytest.mark.django_db
+def test_api_status_bar_rejects_manual_delivered_and_completed():
+    """2026-09-07 recette: the raw status bar (POST /status/) must not be a
+    shortcut past the delivery control / client verification - jumping
+    straight to DELIVERED or COMPLETED skipped the sale price and the loss
+    declaration and left the trip with no Sale."""
+    fx = _fixtures_with_customer("API-FORMONLY")
+    trip = _deliverable_trip(fx, "TRIP-API-FORMONLY-001")
+    assert trip.status == Trip.Status.ARRIVED_AT_CLIENT
+
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+
+    delivered_response = client.post(
+        f"/api/trips/{trip.id}/status/", {"new_status": Trip.Status.DELIVERED}
+    )
+    assert delivered_response.status_code == 400
+    assert "controle de livraison" in delivered_response.data["detail"].lower()
+
+    trip.refresh_from_db()
+    assert trip.status == Trip.Status.ARRIVED_AT_CLIENT
+
+    # Take it to DELIVERED the legitimate way, then check COMPLETED is
+    # blocked from the bar too.
+    ProductSellingPriceHistory.objects.create(
+        product=fx["product"],
+        customer=fx["customer"],
+        price=Decimal("650.0000"),
+        changed_by=fx["admin_user"],
+    )
+    delivery_response = client.post(
+        f"/api/trips/{trip.id}/delivery-control/",
+        {"received_quantity": "45000.00", "control_date": "2026-08-18", "method": "MANUAL_GAUGE"},
+    )
+    assert delivery_response.status_code == 201, delivery_response.data
+
+    completed_response = client.post(
+        f"/api/trips/{trip.id}/status/", {"new_status": Trip.Status.COMPLETED}
+    )
+    assert completed_response.status_code == 400
+    assert "verification client" in completed_response.data["detail"].lower()
+
+    trip.refresh_from_db()
+    assert trip.status == Trip.Status.DELIVERED
 
 
 @pytest.mark.django_db

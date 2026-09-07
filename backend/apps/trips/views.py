@@ -41,6 +41,32 @@ _REFERENCE_PREFIX = "TRIP-"
 _REFERENCE_WIDTH = 6
 _MAX_REFERENCE_ATTEMPTS = 5
 
+# Statuses that are the OUTCOME of a dedicated, data-collecting flow - never
+# a plain status-bar transition. DELIVERED is produced only by the delivery
+# control (POST /delivery-control/: captures the sale price, creates the
+# Sale + DRAFT invoice); COMPLETED only by the client verification (POST
+# /client-verification/: captures the received quantity / losses). Letting
+# the raw status bar jump straight to either one skipped those steps and
+# left a trip with no Sale - which then showed up wrongly as "en cours" on
+# the dashboard (2026-09-07 recette). get_allowed_targets() itself is left
+# untouched: DELIVERED/COMPLETED stay valid *workflow* transitions so the
+# two services above can still reach them - this is a guard on the manual
+# entry point only.
+_FORM_ONLY_STATUSES = {Trip.Status.DELIVERED, Trip.Status.COMPLETED}
+
+_FORM_ONLY_STATUS_DETAIL = {
+    Trip.Status.DELIVERED: (
+        "Le passage au statut « Livre » se fait uniquement via le controle "
+        "de livraison : saisissez le prix de vente unitaire puis cliquez sur "
+        "« Confirmer la livraison »."
+    ),
+    Trip.Status.COMPLETED: (
+        "Le passage au statut « Termine » se fait uniquement via la "
+        "verification client : saisissez la quantite recue / les pertes puis "
+        "cliquez sur « Enregistrer la verification »."
+    ),
+}
+
 
 def _generate_next_reference() -> str:
     """Sequential, zero-padded reference (TRIP-000001, TRIP-000002, ...).
@@ -136,6 +162,12 @@ class TripViewSet(viewsets.ModelViewSet):
                 status=http_status.HTTP_400_BAD_REQUEST,
             )
 
+        if new_status in _FORM_ONLY_STATUSES:
+            return Response(
+                {"detail": _FORM_ONLY_STATUS_DETAIL[new_status]},
+                status=http_status.HTTP_400_BAD_REQUEST,
+            )
+
         try:
             trip = TripWorkflowService.transition_trip(
                 trip.id, new_status, request.user, notes=notes
@@ -160,7 +192,10 @@ class TripViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"], url_path="allowed-statuses")
     def allowed_statuses(self, request, pk=None):
         trip = self.get_object()
-        allowed = TripWorkflowService.get_allowed_targets(trip)
+        # Strip the form-only statuses: they're valid workflow targets (the
+        # delivery-control / client-verification services still transition
+        # into them) but must never be offered as a manual status-bar choice.
+        allowed = TripWorkflowService.get_allowed_targets(trip) - _FORM_ONLY_STATUSES
         return Response(
             {
                 "statuses": [status for status in Trip.Status.values if status in allowed],
