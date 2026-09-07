@@ -254,6 +254,8 @@ FIELD_LABELS_FR = {
     "open_invoices": "Factures ouvertes",
     "invoice_number": "Facture",
     "issued_date": "Date d'emission",
+    "quantity_loaded": "Qté chargée",
+    "delivered_quantity": "Qté reçue",
     "total_amount": "Montant total",
     "outstanding": "Solde restant",
     "payment_date": "Date de paiement",
@@ -381,7 +383,10 @@ _MONEY_FIELDS = {
     "total_paid", "invoice_amount", "already_paid", "remaining_balance",
     "order_amount", "advance_used", "amount_paid",
 }
-_QUANTITY_FIELDS = {"quantity_litres", "total_reliquat", "quantity", "quantity_delivered", "loss"}
+_QUANTITY_FIELDS = {
+    "quantity_litres", "total_reliquat", "quantity", "quantity_delivered", "loss",
+    "quantity_loaded", "delivered_quantity",
+}
 _UNIT_PRICE_FIELDS = {"unit_price"}
 
 
