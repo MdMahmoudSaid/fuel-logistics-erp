@@ -95,4 +95,32 @@ describe('CustomerLedgerView', () => {
 
     expect(exportCustomerPaymentPdf).toHaveBeenCalledWith(7, 'fr')
   })
+
+  it('shows loaded and received quantity columns per invoice', async () => {
+    fetchCustomerLedger.mockResolvedValue({
+      customer: { id: 1, name: 'Client X', company_name: '' },
+      outstanding_balance: '0.00',
+      invoices: [
+        {
+          id: 3,
+          invoice_number: 'INV-003',
+          status: 'PAID',
+          total_amount: '900000.00',
+          issued_date: '2026-08-10',
+          outstanding: '0.00',
+          sale_detail: { quantity_loaded: '45000.00', delivered_quantity: '44800.00' },
+        },
+      ],
+      payments: [],
+    })
+
+    const wrapper = mount(CustomerLedgerView)
+    await flushPromises()
+
+    const text = wrapper.text().replace(/[⁦⁩]/g, '')
+    expect(text).toContain('Qté chargée')
+    expect(text).toContain('Qté reçue')
+    expect(text).toContain('45 000 L')
+    expect(text).toContain('44 800 L')
+  })
 })

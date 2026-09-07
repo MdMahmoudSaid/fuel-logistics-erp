@@ -738,6 +738,8 @@
       "table": {
         "invoice": "Invoice",
         "issued": "Issued",
+        "loadedQuantity": "Loaded qty",
+        "receivedQuantity": "Received qty",
         "total": "Total",
         "outstanding": "Outstanding",
         "status": "Status"

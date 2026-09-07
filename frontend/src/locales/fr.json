@@ -740,6 +740,8 @@
       "table": {
         "invoice": "Facture",
         "issued": "Émise",
+        "loadedQuantity": "Qté chargée",
+        "receivedQuantity": "Qté reçue",
         "total": "Total",
         "outstanding": "Impayé",
         "status": "Statut"

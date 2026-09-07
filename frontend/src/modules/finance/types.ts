@@ -336,6 +336,12 @@ export interface CustomerLedgerInvoice {
   // via PaymentAllocationService.get_invoice_outstanding() - not present on
   // the plain Invoice resource itself.
   outstanding: string
+  // Task 8: SaleSerializer now exposes the linked trip's loaded quantity
+  // alongside the delivered quantity, so the ledger can show both per row.
+  sale_detail?: {
+    quantity_loaded: string
+    delivered_quantity: string
+  }
 }
 
 export interface CustomerLedger {

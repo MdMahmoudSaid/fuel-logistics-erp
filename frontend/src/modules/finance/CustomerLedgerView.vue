@@ -9,7 +9,7 @@ import { fetchCustomerLedger, exportLedgerPdf, exportCustomerPaymentPdf } from '
 import Modal from '@/components/ui/Modal.vue'
 import PaymentAllocationForm from './PaymentAllocationForm.vue'
 import type { CustomerLedger } from './types'
-import { formatMoney } from '@/utils/currency'
+import { formatMoney, formatQuantity } from '@/utils/currency'
 import AppLogo from '@/components/AppLogo.vue'
 import Badge from '@/components/ui/Badge.vue'
 import Button from '@/components/ui/Button.vue'
@@ -192,6 +192,12 @@ function badgeVariant(status: string) {
                   {{ t('finance.customerLedger.table.issued') }}
                 </th>
                 <th class="px-2 py-1.5 font-medium text-right">
+                  {{ t('finance.customerLedger.table.loadedQuantity') }}
+                </th>
+                <th class="px-2 py-1.5 font-medium text-right">
+                  {{ t('finance.customerLedger.table.receivedQuantity') }}
+                </th>
+                <th class="px-2 py-1.5 font-medium text-right">
                   {{ t('finance.customerLedger.table.total') }}
                 </th>
                 <th class="px-2 py-1.5 font-medium text-right">
@@ -212,6 +218,12 @@ function badgeVariant(status: string) {
                 <td class="text-texte px-2 py-1.5 font-medium">{{ invoice.invoice_number }}</td>
                 <td class="px-2 py-1.5">{{ invoice.issued_date }}</td>
                 <td class="px-2 py-1.5 text-right">
+                  <MonoValue :value="formatQuantity(invoice.sale_detail?.quantity_loaded ?? 0)" />
+                </td>
+                <td class="px-2 py-1.5 text-right">
+                  <MonoValue :value="formatQuantity(invoice.sale_detail?.delivered_quantity ?? 0)" />
+                </td>
+                <td class="px-2 py-1.5 text-right">
                   {{ formatMoney(invoice.total_amount) }}
                 </td>
                 <td class="text-texte px-2 py-1.5 text-right font-medium">
@@ -224,7 +236,7 @@ function badgeVariant(status: string) {
                 </td>
               </tr>
               <tr v-if="ledger.invoices.length === 0">
-                <td colspan="5" class="text-texte-3 px-2 py-4 text-center">
+                <td colspan="7" class="text-texte-3 px-2 py-4 text-center">
                   {{ t('finance.customerLedger.noInvoices') }}
                 </td>
               </tr>

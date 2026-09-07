@@ -738,6 +738,8 @@
       "table": {
         "invoice": "الفاتورة",
         "issued": "تاريخ الإصدار",
+        "loadedQuantity": "الكمية المحمّلة",
+        "receivedQuantity": "الكمية المستلمة",
         "total": "الإجمالي",
         "outstanding": "المستحق",
         "status": "الحالة"
