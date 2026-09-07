@@ -7,10 +7,12 @@ import MonoValue from '@/components/ui/MonoValue.vue'
 import { translateApiError } from '@/i18n/apiErrors'
 import { formatMoney } from '@/utils/currency'
 import ExpenseForm from './ExpenseForm.vue'
+import { useExpenseCategoryLabel } from './expenseCategoryLabel'
 import { cancelExpense, expenseCategoryResource, expenseResource, fetchPayableDebts } from './api'
 import type { DebtPaymentType, Expense, ExpenseCategoryOption, PayableDebt } from './types'
 
 const { t } = useI18n()
+const localisedCategoryLabel = useExpenseCategoryLabel()
 
 const expenses = ref<Expense[]>([])
 const categories = ref<ExpenseCategoryOption[]>([])
@@ -65,7 +67,10 @@ const filteredExpenses = computed(() =>
 )
 
 function categoryLabel(code: string): string {
-  return categoryNames.value[code] ?? t(`expenseCategory.${code}`)
+  // Prefer the localised label; fall back to the backend name only for
+  // user-created categories that have no i18n key (seeded system categories
+  // ship an English name that must not leak into a French/Arabic UI).
+  return localisedCategoryLabel({ code, name: categoryNames.value[code] })
 }
 
 function debtLabel(type: (typeof monitoredDebtTypes)[number]): string {
