@@ -231,6 +231,10 @@ const treasuryCard = computed(() => {
 const workingCapitalCard = computed(() => {
   if (!summary.value) return null
   const wc = summary.value.working_capital
+  // Recette 2026-09-07: distributable_result also nets out this tolerance-
+  // absorbed delivery loss; shown as its own row so the chain from
+  // "tresorerie + creances" down to distributable visibly reconciles.
+  const absorbedLoss = Number(summary.value.shareholders_summary.total_company_absorbed_loss)
   return {
     // Client modifications (2026-09-04, third pass - confirmed bug during
     // actual recette testing): headline figure is tresorerie + creances +
@@ -246,6 +250,10 @@ const workingCapitalCard = computed(() => {
     supplierParts: formatMoneyParts(wc.supplier_debt_total),
     transporterParts: formatMoneyParts(wc.transporter_debt_total),
     otherDebtsParts: formatMoneyParts(wc.other_debts),
+    companyAbsorbedLoss: absorbedLoss,
+    companyAbsorbedLossParts: formatMoneyParts(
+      summary.value.shareholders_summary.total_company_absorbed_loss,
+    ),
   }
 })
 
@@ -618,6 +626,16 @@ const compactEnRouteTrips = computed(() => enRouteTrips.value.slice(0, 5))
                 <dt class="text-texte-2">{{ t('dashboard.final.otherDebts') }}</dt>
                 <dd class="text-texte font-medium">
                   <MonoValue v-bind="workingCapitalCard.otherDebtsParts" />
+                </dd>
+              </div>
+              <div
+                v-if="workingCapitalCard.companyAbsorbedLoss > 0"
+                data-test="working-capital-company-absorbed-loss"
+                class="bg-sable flex items-center justify-between gap-3 rounded-lg px-3 py-2"
+              >
+                <dt class="text-texte-2">{{ t('dashboard.final.companyAbsorbedLoss') }}</dt>
+                <dd class="text-critique font-medium">
+                  <MonoValue v-bind="workingCapitalCard.companyAbsorbedLossParts" />
                 </dd>
               </div>
             </dl>
@@ -1108,6 +1126,19 @@ const compactEnRouteTrips = computed(() => enRouteTrips.value.slice(0, 5))
               <dd class="text-texte font-medium">
                 <MonoValue
                   v-bind="formatMoneyParts(summary.shareholders_summary.open_loans_total)"
+                />
+              </dd>
+            </div>
+            <div
+              v-if="Number(summary.shareholders_summary.total_company_absorbed_loss) > 0"
+              class="flex justify-between"
+            >
+              <dt class="text-texte-2">{{ t('dashboard.final.companyAbsorbedLoss') }}</dt>
+              <dd class="text-critique font-medium">
+                <MonoValue
+                  v-bind="
+                    formatMoneyParts(summary.shareholders_summary.total_company_absorbed_loss)
+                  "
                 />
               </dd>
             </div>

@@ -218,6 +218,12 @@ class DashboardViewSet(viewsets.ViewSet):
         shareholders_summary = {
             "current_profit": profit_preview["current_profit"],
             "distributable_result": profit_preview["distributable_result"],
+            # Recette 2026-09-07: distributable_result subtracts this
+            # tolerance-absorbed delivery loss (a real write-off with no cash
+            # counterpart - see ShareholderProfitPreviewService), which made
+            # "tresorerie + creances - dettes - capital" not visibly add up
+            # to it. Exposed here so the UI can show the missing line.
+            "total_company_absorbed_loss": profit_preview["total_company_absorbed_loss"],
             "total_withdrawn": ShareholderWithdrawal.objects.aggregate(total=Sum("amount"))[
                 "total"
             ]

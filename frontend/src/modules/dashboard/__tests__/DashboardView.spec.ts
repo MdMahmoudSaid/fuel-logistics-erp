@@ -49,6 +49,7 @@ const summary: DashboardSummary = {
   shareholders_summary: {
     current_profit: '900000.00',
     distributable_result: '500000.00',
+    total_company_absorbed_loss: '0.00',
     total_withdrawn: '300000.00',
     remaining_undistributed: '600000.00',
     open_loans_total: '50000.00',
@@ -686,6 +687,32 @@ describe('DashboardView', () => {
 
     expect(wrapper.text()).toContain('Résultat distribuable après dettes et capital')
     expect(wrapper.text()).toContain('500 000 XOF')
+  })
+
+  // Recette 2026-09-07: distributable_result silently nets out the
+  // tolerance-absorbed delivery loss - surface it as its own line in both
+  // the Fond de roulement breakdown and the shareholders section when > 0.
+  it('shows the "Perte supportée par l\'entreprise" line when non-zero, hides it at zero', async () => {
+    const zeroWrapper = mount(DashboardView, { global: { plugins: [makeRouter()] } })
+    await flushPromises()
+    expect(zeroWrapper.find('[data-test="working-capital-company-absorbed-loss"]').exists()).toBe(
+      false,
+    )
+
+    fetchDashboardSummary.mockResolvedValueOnce({
+      ...summary,
+      shareholders_summary: {
+        ...summary.shareholders_summary,
+        total_company_absorbed_loss: '63000.00',
+      },
+    })
+    const wrapper = mount(DashboardView, { global: { plugins: [makeRouter()] } })
+    await flushPromises()
+
+    const fdrLine = wrapper.find('[data-test="working-capital-company-absorbed-loss"]')
+    expect(fdrLine.exists()).toBe(true)
+    expect(fdrLine.text()).toContain("Perte supportée par l'entreprise")
+    expect(fdrLine.text()).toContain('63 000 XOF')
   })
 
   it('keeps action work prominent, live trips compact, and period detail collapsed', async () => {

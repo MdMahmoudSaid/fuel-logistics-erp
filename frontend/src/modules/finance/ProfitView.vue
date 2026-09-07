@@ -317,6 +317,20 @@ async function onExportPdf() {
             />
           </div>
           <div
+            v-if="Number(preview.total_company_absorbed_loss) > 0"
+            data-test="profit-company-absorbed-loss-card"
+            class="border-ligne rounded-lg border bg-white p-4 shadow-sm"
+          >
+            <p class="text-texte-2 text-xs font-medium tracking-wide uppercase">
+              {{ t('finance.profit.companyAbsorbedLoss') }}
+            </p>
+            <MonoValue
+              class="text-critique mt-2 text-lg font-semibold"
+              align="left"
+              :value="`-${formatMoney(preview.total_company_absorbed_loss)}`"
+            />
+          </div>
+          <div
             data-test="profit-distributable-result-card"
             class="border-ligne rounded-lg border bg-white p-4 shadow-sm"
           >

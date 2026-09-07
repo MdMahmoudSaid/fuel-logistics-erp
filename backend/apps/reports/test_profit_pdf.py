@@ -16,6 +16,7 @@ def _preview(**overrides) -> dict:
         "operational_profit": Decimal("4874000.00"),
         "general_expenses_paid": Decimal("0.00"),
         "net_profit": Decimal("4874000.00"),
+        "total_company_absorbed_loss": Decimal("0.00"),
         "working_capital": {
             "capital": Decimal("0.00"),
             "treasury_available": Decimal("300000000.00"),
@@ -131,6 +132,20 @@ def test_render_profit_report_pdf_handles_negative_distributable_result():
         preview=_preview(distributable_result=Decimal("-1500000.00")),
         other_debts_breakdown=_other_debts_breakdown(),
         rows=[_margin_row(current_margin=Decimal("-200000.00"), unit_profit=Decimal("-4.44"))],
+        lang="fr",
+    )
+    assert pdf_bytes.startswith(b"%PDF")
+
+
+def test_render_profit_report_pdf_shows_company_absorbed_loss_row_when_nonzero():
+    # Recette 2026-09-07: when a tolerance-absorbed delivery loss has been
+    # netted out of distributable_result, the working-capital breakdown must
+    # carry its own "Perte supportee par l'entreprise" row so total - capital
+    # visibly reaches distributable_result.
+    pdf_bytes = render_profit_report_pdf(
+        preview=_preview(total_company_absorbed_loss=Decimal("63000.00")),
+        other_debts_breakdown=_other_debts_breakdown(),
+        rows=[_margin_row()],
         lang="fr",
     )
     assert pdf_bytes.startswith(b"%PDF")

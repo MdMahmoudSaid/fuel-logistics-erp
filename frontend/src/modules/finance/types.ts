@@ -607,6 +607,12 @@ export interface ShareholderProfitPreview {
   operational_profit: string
   general_expenses_paid: string
   net_profit: string
+  // Tolerance-absorbed delivery loss (DeliveryControl.company_absorbed_
+  // loss_quantity x unit_selling_price), summed across every trip. Already
+  // subtracted from distributable_result below - surfaced here so the
+  // Distribution breakdown can show it as an explicit line rather than an
+  // invisible gap (recette 2026-09-07).
+  total_company_absorbed_loss: string
   // Client modifications (2026-09-04): "Resultat distribuable apres dettes
   // et capital" replaces the old total_capital_contributed/profit_after_capital
   // pair entirely - informational only, never feeds indicative_share (still

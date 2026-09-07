@@ -295,6 +295,9 @@ def test_dashboard_summary_includes_shareholders_summary_section():
     assert summary["total_withdrawn"] == "30000.00"
     assert summary["remaining_undistributed"] == "70000.00"
     assert summary["open_loans_total"] == "5000.00"
+    # Recette 2026-09-07: exposed so the UI can show the tolerance-absorbed
+    # delivery loss that distributable_result silently nets out.
+    assert "total_company_absorbed_loss" in summary
 
 
 @pytest.mark.django_db
