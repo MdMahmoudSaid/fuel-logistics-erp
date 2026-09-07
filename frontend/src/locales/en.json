@@ -1311,7 +1311,13 @@
       "customer": "Customer",
       "product": "Product",
       "deliveredQuantity": "Delivered quantity (received, not loaded)",
+      "loadedQuantity": "Loaded quantity",
       "unitSellingPrice": "Unit selling price",
+      "correctionFields": {
+        "unit_selling_price": "Unit selling price",
+        "total_amount": "Total amount",
+        "delivered_quantity": "Delivered quantity"
+      },
       "trip": "Trip",
       "totalAmount": "Total amount",
       "issuedDate": "Issued date",

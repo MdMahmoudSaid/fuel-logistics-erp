@@ -70,6 +70,7 @@ export interface Sale {
   product: number
   product_detail: ProductBrief | null
   delivered_quantity: string
+  quantity_loaded: string
   unit_selling_price: string
   currency: string
   subtotal: string
@@ -82,7 +83,11 @@ export type InvoiceStatus = 'DRAFT' | 'VALIDATED' | 'PARTIALLY_PAID' | 'PAID' | 
 // Fields InvoiceService.correct_invoice() knows how to apply/recompute
 // (backend/apps/sales/services.py) - the only ones offered in the
 // correction form below.
-export const CORRECTABLE_INVOICE_FIELDS = ['unit_selling_price', 'total_amount'] as const
+export const CORRECTABLE_INVOICE_FIELDS = [
+  'unit_selling_price',
+  'total_amount',
+  'delivered_quantity',
+] as const
 export type CorrectableInvoiceField = (typeof CORRECTABLE_INVOICE_FIELDS)[number]
 
 export interface InvoiceCorrectionEntry {

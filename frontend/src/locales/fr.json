@@ -1315,7 +1315,13 @@
       "customer": "Client",
       "product": "Produit",
       "deliveredQuantity": "Quantité livrée (reçue, non chargée)",
+      "loadedQuantity": "Quantité chargée",
       "unitSellingPrice": "Prix de vente unitaire",
+      "correctionFields": {
+        "unit_selling_price": "Prix de vente unitaire",
+        "total_amount": "Montant total",
+        "delivered_quantity": "Quantité livrée"
+      },
       "trip": "Trajet",
       "totalAmount": "Montant total",
       "issuedDate": "Date d'émission",

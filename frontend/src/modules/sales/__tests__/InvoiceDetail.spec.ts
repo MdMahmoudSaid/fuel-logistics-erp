@@ -20,6 +20,7 @@ function makeInvoice(overrides: Partial<Invoice> = {}): Invoice {
       product: 1,
       product_detail: { id: 1, name: 'Gasoil', code: 'gasoil' },
       delivered_quantity: '44850.00',
+      quantity_loaded: '45000.00',
       unit_selling_price: '650.0000',
       currency: 'XOF',
       subtotal: '29152500.00',
@@ -124,6 +125,39 @@ describe('InvoiceDetail', () => {
     expect((wrapper.find('#total_amount').element as HTMLInputElement).value).toBe('29152500.00')
     expect(wrapper.find('button#validate-invoice').exists()).toBe(true)
     expect(wrapper.find('button#correct-invoice').exists()).toBe(false)
+  })
+
+  it('shows the loaded quantity next to the received quantity', async () => {
+    setAdminUser()
+    invoiceToReturn = makeInvoice()
+    const router = makeRouter()
+    router.push({ name: 'invoice-detail', params: { id: '3' } })
+    await router.isReady()
+    const wrapper = mount(InvoiceDetail, { global: { plugins: [router] } })
+    await flushPromises()
+
+    const text = wrapper.text().replace(/[⁦⁩]/g, '')
+    expect(text).toContain('Quantité chargée')
+    expect(text).toContain('45 000 L')
+  })
+
+  it('offers delivered_quantity as a correctable field', async () => {
+    setAdminUser()
+    invoiceToReturn = makeInvoice({ status: 'VALIDATED' })
+    const router = makeRouter()
+    router.push({ name: 'invoice-detail', params: { id: '3' } })
+    await router.isReady()
+    const wrapper = mount(InvoiceDetail, { global: { plugins: [router] } })
+    await flushPromises()
+
+    await wrapper.find('button#correct-invoice').trigger('click')
+    await flushPromises()
+
+    const options = wrapper
+      .find('#correction_field')
+      .findAll('option')
+      .map((o) => o.text())
+    expect(options).toContain('Quantité livrée')
   })
 
   it('validates the invoice and re-renders it as VALIDATED with editing hidden', async () => {

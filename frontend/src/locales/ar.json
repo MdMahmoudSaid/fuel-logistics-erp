@@ -1311,7 +1311,13 @@
       "customer": "العميل",
       "product": "المنتج",
       "deliveredQuantity": "الكمية المسلَّمة (المستلمة، غير المحمَّلة)",
+      "loadedQuantity": "الكمية المحمّلة",
       "unitSellingPrice": "سعر البيع للوحدة",
+      "correctionFields": {
+        "unit_selling_price": "سعر البيع الوحدوي",
+        "total_amount": "المبلغ الإجمالي",
+        "delivered_quantity": "الكمية المسلَّمة"
+      },
       "trip": "الرحلة",
       "totalAmount": "المبلغ الإجمالي",
       "issuedDate": "تاريخ الإصدار",
