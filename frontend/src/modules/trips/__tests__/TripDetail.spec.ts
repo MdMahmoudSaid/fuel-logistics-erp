@@ -571,7 +571,9 @@ describe('TripDetail expenses section', () => {
   // within the 100 L tolerance, absorbed by the company, already baked
   // into margin) but the frontend never rendered a line for it - fixed by
   // exposing the row only when the amount is > 0, client's own example.
-  it('shows a red "perte supportee par l\'entreprise" row when a loss within tolerance is absorbed', async () => {
+  // Task 12 (Version A): the row stays visible but reads as greyed information
+  // (it is already reflected in the reduced revenue), not as a red deduction.
+  it('shows a greyed "perte supportee par l\'entreprise" information row when a loss within tolerance is absorbed', async () => {
     setUser({ operations: ['view'], finance: ['view'] })
     marginToReturn = makeMargin({
       company_absorbed_loss_quantity: '100.00',
@@ -584,8 +586,13 @@ describe('TripDetail expenses section', () => {
     const row = wrapper.find('[data-test="company-absorbed-loss-row"]')
     expect(row.exists()).toBe(true)
     expect(row.text()).toContain("Perte supportée par l'entreprise")
+    // no critical (red) styling any more - it is information, not a deduction
+    expect(row.find('.text-critique').exists()).toBe(false)
     const text = row.text().replace(/[⁦⁩]/g, '')
-    expect(text).toContain('-90 000 XOF')
+    expect(text).toContain('information')
+    // amount shown without a leading "-" (not a deduction)
+    expect(text).toContain('90 000 XOF')
+    expect(text).not.toContain('-90 000 XOF')
     // detail: 100 L x 900,0000 XOF/L (900 = 90000 / 100, derived, never sent by the backend)
     expect(text).toContain('100 L')
     expect(text).toContain('900,0000 XOF/L')
@@ -619,9 +626,11 @@ describe('TripDetail expenses section', () => {
     const row = wrapper.find('[data-test="company-absorbed-loss-row"]')
     expect(row.exists()).toBe(true)
     const text = wrapper.text().replace(/[⁦⁩]/g, '')
-    // Company-absorbed: 100 L, -65 000 XOF.
+    // Company-absorbed: 100 L, 65 000 XOF shown as information (no leading "-").
     expect(row.text().replace(/[⁦⁩]/g, '')).toContain('100 L')
-    expect(row.text().replace(/[⁦⁩]/g, '')).toContain('-65 000 XOF')
+    expect(row.text().replace(/[⁦⁩]/g, '')).toContain('65 000 XOF')
+    expect(row.text().replace(/[⁦⁩]/g, '')).not.toContain('-65 000 XOF')
+    expect(row.find('.text-critique').exists()).toBe(false)
     // Transporter part stays displayed separately, unaffected.
     expect(text).toContain('50 L')
     expect(text).toContain('32 500 XOF')

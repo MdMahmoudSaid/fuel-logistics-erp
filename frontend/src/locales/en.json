@@ -389,6 +389,7 @@
       "transporterLossIndemnity": "Transporter loss indemnity",
       "companyAbsorbedLoss": "Loss absorbed by the company",
       "companyAbsorbedLossDetail": "{quantity} × {unitPrice}",
+      "companyAbsorbedLossInfoNote": "information — already reflected in revenue",
       "fuelPurchaseCost": "Fuel purchase",
       "transportCost": "Transporter cost",
       "totalExpenses": "Other expenses",
