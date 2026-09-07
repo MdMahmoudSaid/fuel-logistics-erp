@@ -2750,11 +2750,13 @@ def test_api_trip_margin_breakdown_after_delivery():
     assert response.data["transport_cost"] == "0.00"
     assert response.data["total_expenses"] == "0.00"
     assert response.data["real_total_cost"] == "27000000.000000"
-    # Recette corrections Task 4 (2026-09-04): 100 L absorbed by the company
-    # (150 L loss - 50 L chargeable to the transporter) at 650.0000 XOF/L is
-    # now subtracted from margin too: 2,185,000.00 - 65,000.00.
+    # As of spec 2026-09-07: the 100 L absorbed by the company (150 L loss -
+    # 50 L chargeable to the transporter) is NOT subtracted from margin. The
+    # invoice reflects the received quantity, so revenue already integrates it;
+    # the absorbed loss stays exposed as company_absorbed_loss_amount for display.
+    # Margin = 29,152,500 + 32,500 - 27,000,000 = 2,185,000.00.
     assert response.data["company_absorbed_loss_amount"] == "65000.00"
-    assert response.data["margin"] == "2120000.00"
+    assert response.data["margin"] == "2185000.00"
 
 
 # ---------------------------------------------------------------------------
