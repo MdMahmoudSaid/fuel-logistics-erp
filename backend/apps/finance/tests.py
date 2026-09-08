@@ -3491,6 +3491,76 @@ def test_create_distribution_raises_when_only_inactive_shareholders():
 
 
 @pytest.mark.django_db
+def test_create_distribution_rejects_exact_duplicate_period():
+    """Recette bug (2026-09-08): the exact same period/benefice was
+    distributed three times in a row because create_distribution never
+    checked for an existing distribution covering the same period -
+    shareholders ended up "owed" the same real profit 3x."""
+    _make_shareholders([Decimal("100")])
+    actor = _make_admin_user("DUP1")
+    ShareholderDistributionService.create_distribution(
+        period_start="2026-09-08",
+        period_end="2026-09-08",
+        total_profit=Decimal("9034000.00"),
+        actor=actor,
+    )
+
+    with pytest.raises(ShareholderDistributionError):
+        ShareholderDistributionService.create_distribution(
+            period_start="2026-09-08",
+            period_end="2026-09-08",
+            total_profit=Decimal("9034000.00"),
+            actor=actor,
+        )
+
+    assert ShareholderProfitDistribution.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_create_distribution_rejects_partially_overlapping_period():
+    _make_shareholders([Decimal("100")])
+    actor = _make_admin_user("DUP2")
+    ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=actor,
+    )
+
+    with pytest.raises(ShareholderDistributionError):
+        ShareholderDistributionService.create_distribution(
+            period_start="2026-07-15",
+            period_end="2026-08-15",
+            total_profit=Decimal("50000.00"),
+            actor=actor,
+        )
+
+    assert ShareholderProfitDistribution.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_create_distribution_allows_adjacent_non_overlapping_period():
+    _make_shareholders([Decimal("100")])
+    actor = _make_admin_user("DUP3")
+    ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=actor,
+    )
+
+    second = ShareholderDistributionService.create_distribution(
+        period_start="2026-08-01",
+        period_end="2026-08-31",
+        total_profit=Decimal("50000.00"),
+        actor=actor,
+    )
+
+    assert ShareholderProfitDistribution.objects.count() == 2
+    assert second.period_start.isoformat() == "2026-08-01"
+
+
+@pytest.mark.django_db
 def test_create_distribution_via_api_rejects_when_no_active_shareholders(admin_client):
     response = admin_client.post(
         "/api/shareholder-distributions/",

@@ -7,7 +7,7 @@
 # rows here - once, so no two API paths can compute a different outstanding
 # balance for the same invoice/customer (guide Section 8.4).
 
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 
 from django.contrib.contenttypes.models import ContentType
@@ -1615,11 +1615,35 @@ class ShareholderDistributionService:
         the cent - so a later edit to Shareholder.participation_percent can
         never retroactively change this distribution's amounts.
 
-        Raises ShareholderDistributionError before creating anything if
-        there is no active shareholder at all - a distribution with zero
-        shares would otherwise be created (and even validated) while
-        distributing nothing to nobody (recette bug, 2026-09-06).
+        Raises ShareholderDistributionError before creating anything if:
+        - the requested period overlaps any existing distribution whose
+          status isn't CANCELLED (recette bug, 2026-09-08: the exact same
+          period/benefice was distributed three times in a row with no
+          guard at all - shareholders ended up "owed" the same real
+          profit multiple times);
+        - there is no active shareholder at all - a distribution with zero
+          shares would otherwise be created (and even validated) while
+          distributing nothing to nobody (recette bug, 2026-09-06).
         """
+        if isinstance(period_start, str):
+            period_start = date.fromisoformat(period_start)
+        if isinstance(period_end, str):
+            period_end = date.fromisoformat(period_end)
+
+        overlapping_exists = (
+            ShareholderProfitDistribution.objects.exclude(
+                status=ShareholderProfitDistribution.Status.CANCELLED
+            )
+            .filter(period_start__lte=period_end, period_end__gte=period_start)
+            .exists()
+        )
+        if overlapping_exists:
+            raise ShareholderDistributionError(
+                f"Une repartition existe deja pour une periode qui chevauche "
+                f"{period_start} - {period_end} (statut different de Annulee) : "
+                "impossible d'en creer une autre pour la meme periode."
+            )
+
         active_shareholders = list(Shareholder.objects.filter(is_active=True))
         if not active_shareholders:
             raise ShareholderDistributionError(
