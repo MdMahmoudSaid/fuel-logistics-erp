@@ -50,7 +50,7 @@ PROFIT_PDF_LABELS = {
         "customsDebt": "Douane",
         "transitDebt": "Transit",
         "roadTransitDebt": "Transit routiere",
-        "otherDebt": "Autres frais (frontiere / chargement / divers)",
+        "otherDebt": "Autres frais (frontiere / chargement)",
         "totalDebts": "= Total des dettes ouvertes",
         "totalWorkingCapital": "= Fond de roulement total",
         "capital": "Capital apporte",

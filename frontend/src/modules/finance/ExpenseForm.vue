@@ -101,18 +101,19 @@ const categoryError = ref('')
 const savingCategory = ref(false)
 
 // Bug fix (2026-09-03 recette manuelle): the trip-fee popup (opened with
-// a presetAllocation of kind "trip") must only ever offer the 6 system
-// trip categories - a custom general category like "Internet" created on
-// the Depenses generales page has no business appearing here, and used to
-// show up because this list was never filtered. Matches the backend's own
-// is_system=True set (apps/finance/migrations/0014_expensecategory.py).
+// a presetAllocation of kind "trip") must only ever offer the system trip
+// categories - a custom general category like "Internet" created on the
+// Depenses generales page has no business appearing here, and used to show
+// up because this list was never filtered. Matches the backend's own
+// is_system=True set (apps/finance/migrations/0014, 0019). "transport" was
+// dropped (migration 0019): a manual transport fee had no debt type to pay
+// it - transporter commission is the only transport-cost channel.
 const TRIP_SYSTEM_CATEGORY_CODES = [
   'customs',
   'transit',
   'road_transit',
   'road',
   'loading',
-  'transport',
 ]
 
 function fallbackCategories(): ExpenseCategoryOption[] {

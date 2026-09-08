@@ -301,7 +301,7 @@ def test_expense_created_via_real_jwt_login_is_attributed_to_the_actor():
     response = client.post(
         "/api/expenses/",
         {
-            "category": "transport",
+            "category": "customs",
             "amount": "50000.00",
             "calculation_method": "FIXED",
             "date": "2026-08-27",

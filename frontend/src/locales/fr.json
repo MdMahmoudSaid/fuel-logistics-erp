@@ -554,7 +554,7 @@
     "transport": "Transport",
     "loading": "Chargement",
     "unloading": "Déchargement",
-    "road": "Route",
+    "road": "Frontière",
     "administration": "Administration",
     "rent": "Loyer",
     "salary": "Salaire",
@@ -633,8 +633,7 @@
         "transit": "Transit",
         "roadTransit": "Transit routière",
         "border": "Frontière",
-        "loading": "Chargement",
-        "tripOther": "Autres frais trajet"
+        "loading": "Chargement"
       }
     },
     "transportPayment": {
@@ -838,8 +837,7 @@
         "transit": "Transit",
         "roadTransit": "Transit routière",
         "border": "Frontière",
-        "loading": "Chargement",
-        "tripOther": "Autres frais du trajet"
+        "loading": "Chargement"
       },
       "errors": {
         "debtRequired": "Choisissez une dette à payer.",

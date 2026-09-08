@@ -45,7 +45,6 @@ const DEBT_TYPES: { value: DebtPaymentType; labelKey: string }[] = [
   { value: 'road_transit', labelKey: 'finance.debtPayment.types.roadTransit' },
   { value: 'border', labelKey: 'finance.debtPayment.types.border' },
   { value: 'loading', labelKey: 'finance.debtPayment.types.loading' },
-  { value: 'trip_other', labelKey: 'finance.debtPayment.types.tripOther' },
 ]
 
 const bankAccountResource = createResourceApi<BankOption>('/bank-accounts/')

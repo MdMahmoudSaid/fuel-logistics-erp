@@ -33,6 +33,14 @@ const ALL_TEST_CATEGORIES = [
     is_active: true,
     display_order: 10,
   },
+  {
+    id: 4,
+    name: 'Road',
+    code: 'road',
+    is_system: true,
+    is_active: true,
+    display_order: 5,
+  },
 ]
 // Mirrors the real backend's filterset_fields = ["is_system", "is_active"]
 // (apps/finance/views.py ExpenseCategoryViewSet) so tests can assert on
@@ -169,6 +177,35 @@ describe('ExpenseForm', () => {
     expect(wrapper.find('#category').text()).toContain('Douane')
     expect(wrapper.find('#category').text()).not.toContain('Internet')
     expect(wrapper.find('[data-test="create-expense-category-toggle"]').exists()).toBe(false)
+  })
+
+  // A manual "Transport" trip fee reduced trip margin but no debt type
+  // could pay it - the category is retired backend-side, and the offline
+  // fallback list must not resurrect it either.
+  it('never offers the retired "Transport" category in the trip-fee fallback', async () => {
+    listExpenseCategories.mockRejectedValueOnce(new Error('offline'))
+    const wrapper = mount(ExpenseForm, {
+      props: { presetAllocation: { kind: 'trip', objectId: 42, label: 'TRIP-042' } },
+    })
+    await flushPromises()
+
+    const options = wrapper.find('#category').text()
+    expect(options).toContain('Douane')
+    expect(options).not.toContain('Transport')
+  })
+
+  // The "road" category is entered as a trip fee under one name but paid
+  // in "Nouveau paiement" under the debt type "Frontière" - the picker
+  // must use that same term, not the stale "Route".
+  it('labels the "road" trip category "Frontière", consistent with the debt type', async () => {
+    const wrapper = mount(ExpenseForm, {
+      props: { presetAllocation: { kind: 'trip', objectId: 42, label: 'TRIP-042' } },
+    })
+    await flushPromises()
+
+    const options = wrapper.find('#category').text()
+    expect(options).toContain('Frontière')
+    expect(options).not.toContain('Route')
   })
 
   // Recette 2026-09-07: the app is French but the category <select> showed

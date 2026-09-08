@@ -224,7 +224,6 @@ class Command(BaseCommand):
             ("customs", "Customs", 0),
             ("transit", "Transit", 2),
             ("road_transit", "Road transit", 3),
-            ("transport", "Transport", 4),
             ("loading", "Loading", 5),
             ("road", "Road", 7),
         ]
@@ -232,6 +231,13 @@ class Command(BaseCommand):
             ExpenseCategory.objects.create(
                 code=code, name=name, is_system=True, display_order=display_order
             )
+        # migration 0019: "transport" exists but is retired (no debt type
+        # can settle a manual transport fee - transporter commission is the
+        # only transport-cost channel).
+        ExpenseCategory.objects.create(
+            code="transport", name="Transport", is_system=False,
+            is_active=False, display_order=4,
+        )
         Transporter.objects.create(name="Flotte propre / Interne", is_internal=True)
 
     def _create_admin(self):

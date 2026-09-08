@@ -552,7 +552,7 @@
     "transport": "النقل",
     "loading": "التحميل",
     "unloading": "التفريغ",
-    "road": "الطريق",
+    "road": "الحدود",
     "administration": "الإدارة",
     "rent": "الإيجار",
     "salary": "الراتب",
@@ -631,8 +631,7 @@
         "transit": "العبور",
         "roadTransit": "العبور البري",
         "border": "الحدود",
-        "loading": "التحميل",
-        "tripOther": "رسوم رحلات أخرى"
+        "loading": "التحميل"
       }
     },
     "transportPayment": {
@@ -836,8 +835,7 @@
         "transit": "ترانزيت",
         "roadTransit": "عبور بري",
         "border": "حدود",
-        "loading": "تحميل",
-        "tripOther": "مصروفات رحلة أخرى"
+        "loading": "تحميل"
       },
       "errors": {
         "debtRequired": "اختر دينًا للدفع.",

@@ -552,7 +552,7 @@
     "transport": "Transport",
     "loading": "Loading",
     "unloading": "Unloading",
-    "road": "Road",
+    "road": "Border",
     "administration": "Administration",
     "rent": "Rent",
     "salary": "Salary",
@@ -631,8 +631,7 @@
         "transit": "Transit",
         "roadTransit": "Road transit",
         "border": "Border",
-        "loading": "Loading",
-        "tripOther": "Other trip fees"
+        "loading": "Loading"
       }
     },
     "transportPayment": {
@@ -836,8 +835,7 @@
         "transit": "Transit",
         "roadTransit": "Road transit",
         "border": "Border",
-        "loading": "Loading",
-        "tripOther": "Other trip expenses"
+        "loading": "Loading"
       },
       "errors": {
         "debtRequired": "Choose a debt to pay.",

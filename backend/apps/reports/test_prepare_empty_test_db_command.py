@@ -158,9 +158,14 @@ def test_prepare_empty_test_db_resets_domain_data_to_zero_without_admin():
 
     system_categories = ExpenseCategory.objects.filter(is_system=True)
     assert set(system_categories.values_list("code", flat=True)) == {
-        "customs", "transit", "road_transit", "transport", "loading", "road",
+        "customs", "transit", "road_transit", "loading", "road",
     }
-    assert ExpenseCategory.objects.exclude(is_system=True).count() == 0
+    # "transport" is reseeded but retired (migration 0019): present so
+    # legacy rows still resolve a label, never offered as a fee.
+    transport = ExpenseCategory.objects.get(code="transport")
+    assert transport.is_system is False
+    assert transport.is_active is False
+    assert ExpenseCategory.objects.exclude(is_system=True).exclude(code="transport").count() == 0
 
 
 @pytest.mark.django_db
