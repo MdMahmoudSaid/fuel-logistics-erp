@@ -1783,6 +1783,138 @@ git commit -m "feat(finance): add a cancel action for shareholder distributions 
 
 ---
 
+### Task 8b: Close the cancelled-share withdrawal gap (found during Task 8 manual QA)
+
+Added after Task 8 shipped: manual browser QA for Task 8 found that cancelling a distribution does not actually stop money from being paid out against it. `ShareholderLedgerService.get_available_balance` (Task 5) and `ShareholderProfitPreviewService.get_preview`'s `already_distributed` (Task 5) both correctly exclude a CANCELLED distribution's shares from the shareholder's aggregate balance — but `ShareholderWithdrawalService.record_withdrawal`'s per-share check, when a caller passes a specific `profit_share_id`, only compares the requested amount against `profit_share.remaining_due` (`amount_due - amount_withdrawn`, a property that has no idea what status its distribution is in). If a shareholder has enough *other*, legitimate balance to pass the aggregate `available_balance` check, they can still tag a withdrawal to a CANCELLED distribution's `profit_share_id` and it goes through — a real `ShareholderWithdrawal` row, a real `TreasuryTransaction(MONEY_OUT)`, for a distribution that was supposed to be void. Separately, `ShareholderLedgerService.get_shareholder_summary` (the per-shareholder ledger the frontend renders, and the source of the withdrawal form's "Part de bénéfice" dropdown) never excludes CANCELLED shares from its `shares` list or its `total_amount_due`/`total_withdrawn`/`remaining_due` figures either — so the dropdown still visibly offers a cancelled share as a withdrawal target, and the ledger's headline totals stay inflated by money that no longer exists. This directly undermines `cancel_distribution`'s entire purpose (Task 3): cancelling is supposed to mean "this money is not owed," not just "this money doesn't count toward the aggregate, but can still be paid out if you name it specifically."
+
+**Files:**
+- Modify: `backend/apps/finance/services.py` (`ShareholderLedgerService.get_shareholder_summary`, `ShareholderWithdrawalService.record_withdrawal`)
+- Test: `backend/apps/finance/tests.py`
+
+**Interfaces:**
+- Consumes: `ShareholderProfitDistribution.Status.CANCELLED` (Task 1), the existing `ShareholderWithdrawalError` (already defined, already imported everywhere it's used).
+- Produces: `get_shareholder_summary`'s `shares`/`total_amount_due`/`total_withdrawn`/`remaining_due` now exclude CANCELLED distributions' shares, consistent with `get_available_balance`; `record_withdrawal` now raises `ShareholderWithdrawalError` if the given `profit_share_id` belongs to a CANCELLED distribution, before any amount comparison.
+
+- [ ] **Step 1: Write the failing tests**
+
+Add to `backend/apps/finance/tests.py`, near the other `get_shareholder_summary`/withdrawal tests:
+
+```python
+@pytest.mark.django_db
+def test_get_shareholder_summary_excludes_cancelled_distribution_shares():
+    shareholder = _make_shareholders([Decimal("100")])[0]
+    actor = _make_admin_user("SUMMARYCANCEL")
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=actor,
+    )
+    ShareholderDistributionService.cancel_distribution(distribution.id, actor)
+
+    summary = ShareholderLedgerService.get_shareholder_summary(shareholder.id)
+
+    assert summary["shares"] == []
+    assert summary["total_amount_due"] == Decimal("0.00")
+    assert summary["total_withdrawn"] == Decimal("0.00")
+    assert summary["remaining_due"] == Decimal("0.00")
+
+
+@pytest.mark.django_db
+def test_shareholder_withdrawal_rejects_profit_share_from_cancelled_distribution():
+    """The shareholder has enough OTHER, legitimate balance (from a second,
+    non-overlapping, still-VALIDATED distribution) to pass the aggregate
+    available_balance check - the withdrawal must still be refused because
+    it explicitly names a profit_share_id belonging to a CANCELLED
+    distribution, not because of the aggregate."""
+    shareholder = _make_shareholders([Decimal("100")])[0]
+    actor = _make_admin_user("WDRAWCANCEL")
+    cancelled_distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=actor,
+    )
+    ShareholderDistributionService.validate_distribution(cancelled_distribution.id, actor)
+    ShareholderDistributionService.cancel_distribution(cancelled_distribution.id, actor)
+    cancelled_share = cancelled_distribution.shares.get(shareholder=shareholder)
+
+    other_distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-08-01",
+        period_end="2026-08-31",
+        total_profit=Decimal("50000.00"),
+        actor=actor,
+    )
+    ShareholderDistributionService.validate_distribution(other_distribution.id, actor)
+
+    cash_account = CashAccount.objects.create(
+        name="Gap Cash", opening_balance=Decimal("100000.00")
+    )
+
+    with pytest.raises(ShareholderWithdrawalError):
+        ShareholderWithdrawalService.record_withdrawal(
+            shareholder_id=shareholder.id,
+            profit_share_id=cancelled_share.id,
+            amount=Decimal("30000.00"),
+            date="2026-09-01",
+            cash_account_id=cash_account.id,
+            actor=actor,
+        )
+
+    cancelled_share.refresh_from_db()
+    assert cancelled_share.amount_withdrawn == Decimal("0.00")
+    assert not ShareholderWithdrawal.objects.filter(profit_share=cancelled_share).exists()
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `docker compose -p sdd-shareholder-guard exec -T backend python -m pytest apps/finance/tests.py -k "excludes_cancelled_distribution_shares or rejects_profit_share_from_cancelled" -v --create-db`
+Expected: FAIL — `test_get_shareholder_summary_excludes_cancelled_distribution_shares` fails because `shares`/`total_amount_due`/etc. still include the cancelled share; `test_shareholder_withdrawal_rejects_profit_share_from_cancelled_distribution` fails because no `ShareholderWithdrawalError` is raised (the withdrawal succeeds).
+
+- [ ] **Step 3: Fix get_shareholder_summary**
+
+In `backend/apps/finance/services.py`, modify the `shares` query inside `ShareholderLedgerService.get_shareholder_summary`:
+
+```python
+        shares = list(
+            shareholder.profit_shares.select_related("distribution")
+            .exclude(distribution__status=ShareholderProfitDistribution.Status.CANCELLED)
+            .order_by("-distribution_id")
+        )
+```
+
+(Everything below that line — `total_amount_due`, `total_withdrawn`, `remaining_due`, and the per-share dicts in the returned payload — already derives from this `shares` list, so excluding cancelled shares here alone fixes all four.)
+
+- [ ] **Step 4: Fix record_withdrawal**
+
+In `backend/apps/finance/services.py`, inside `ShareholderWithdrawalService.record_withdrawal`, right after the existing ownership check (`if profit_share.shareholder_id != shareholder.id: raise ...`) and before the `remaining_due` check, add:
+
+```python
+            if profit_share.distribution.status == ShareholderProfitDistribution.Status.CANCELLED:
+                raise ShareholderWithdrawalError(
+                    "Cette part de benefice appartient a une repartition annulee."
+                )
+```
+
+- [ ] **Step 5: Run tests to verify they pass**
+
+Run: `docker compose -p sdd-shareholder-guard exec -T backend python -m pytest apps/finance/tests.py -k "excludes_cancelled_distribution_shares or rejects_profit_share_from_cancelled" -v --create-db`
+Expected: PASS for both.
+
+- [ ] **Step 6: Run the full backend suite**
+
+Run: `docker compose -p sdd-shareholder-guard exec -T backend python -m pytest -q --create-db`
+Expected: all pass, no regressions (in particular, re-confirm `test_shareholder_withdrawal_rejects_amount_exceeding_bank_balance` and every other pre-existing withdrawal test still pass — none of them use a CANCELLED distribution, so this change should be additive only).
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add backend/apps/finance/services.py backend/apps/finance/tests.py
+git commit -m "fix(finance): stop a cancelled distribution's share from being withdrawn or counted in the ledger"
+```
+
+---
+
 ### Task 9: Clean up the 3 duplicate distributions in Admin/Test Vide (manual, not code)
 
 This is a one-off data fix on the test environment described in the bug report, not something to script into the codebase — do it through the UI itself once Tasks 1-8 are deployed there, using the new `cancel` action so it goes through the exact same audited path as any other cancellation:
