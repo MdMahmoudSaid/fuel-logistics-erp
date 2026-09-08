@@ -1805,7 +1805,7 @@ class ShareholderDistributionService:
         rows (audit trail); every downstream calculation
         (ShareholderLedgerService.get_available_balance,
         ShareholderProfitPreviewService.get_preview, the dashboard's
-        remaining_undistributed) excludes a CANCELLED distribution's
+        remaining_to_pay_shareholders) excludes a CANCELLED distribution's
         shares instead.
 
         Idempotent: cancelling an already-CANCELLED distribution is a

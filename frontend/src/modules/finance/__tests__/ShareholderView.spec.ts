@@ -104,6 +104,7 @@ describe('ShareholderView', () => {
         gross: '750000.00',
         total: '750000.00',
       },
+      already_distributed: '0.00',
       distributable_result: '500000.00',
       shareholders: [
         {
@@ -149,24 +150,27 @@ describe('ShareholderView', () => {
     expect(wrapper.text()).toContain('500 000 XOF')
   })
 
-  // Business decision (2026-09-04, distribution basis change): the banner
-  // used to show preview.net_profit - it must now show
-  // preview.distributable_result (500 000, distinct from both
-  // operational_profit 850 000 and net_profit 750 000), matching the same
-  // basis already used by the per-shareholder indicative_share cards right
-  // below it, so the two never contradict each other on this page.
-  it('shows distributable_result (not net or operational profit) in the banner, consistent with the per-shareholder shares', async () => {
+  // Business decision (2026-09-04): the per-shareholder indicative_share
+  // is based on distributable_result (500 000), not operational_profit
+  // (850 000) or net_profit (750 000). 2026-09-08 review, point 7: the
+  // banner now also shows the period profit and the already-validated
+  // engagements as their own clearly-labelled lines - shown, but never
+  // conflated with the distributable figure or with each other.
+  it('bases the per-shareholder share on distributable_result and labels each amount distinctly', async () => {
     const wrapper = mount(ShareholderView)
     await flushPromises()
 
     const banner = wrapper.findAll('.border-ecart').at(0)
     expect(banner!.text()).toContain('500 000 XOF')
     expect(banner!.text()).not.toContain('850 000 XOF')
-    expect(banner!.text()).not.toContain('750 000 XOF')
     // The per-shareholder share (Ahmed, 80%) must equal 400 000 (80% of
     // distributable_result), not the operational or net one.
     expect(banner!.text()).toContain('Ahmed (80.00%):')
     expect(banner!.text()).toContain('400 000 XOF')
+    // net_profit appears, but only against its own label.
+    const breakdown = wrapper.find('[data-test="preview-breakdown"]')
+    expect(breakdown.text()).toContain('Bénéfice de la période')
+    expect(breakdown.text()).toContain('750 000 XOF')
   })
 
   // Recette bug (2026-09-08): the banner never showed what had already
@@ -210,11 +214,23 @@ describe('ShareholderView', () => {
     expect(banner!.text()).toContain('100 000 XOF')
   })
 
-  it('does not show the already-distributed line when nothing has been distributed yet', async () => {
+  // 2026-09-08 review, point 7: the three amounts (period profit, already
+  // validated engagements, still distributable) are always shown
+  // distinctly - never conflated, never hidden.
+  it('always shows the three-amount breakdown, including a zero already-validated line', async () => {
     const wrapper = mount(ShareholderView)
     await flushPromises()
 
-    expect(wrapper.find('[data-test="preview-already-distributed"]').exists()).toBe(false)
+    const breakdown = wrapper.find('[data-test="preview-breakdown"]')
+    expect(breakdown.exists()).toBe(true)
+    expect(breakdown.text()).toContain('Bénéfice de la période')
+    expect(breakdown.text()).toContain('Engagements déjà validés envers les associés')
+    expect(breakdown.text()).toContain('Reste disponible pour répartition')
+    // default preview mock: net_profit 750 000, already_distributed 0,
+    // distributable_result 500 000
+    expect(breakdown.text()).toContain('750 000 XOF')
+    expect(breakdown.text()).toContain('500 000 XOF')
+    expect(wrapper.find('[data-test="preview-already-distributed"]').text()).toContain('0 XOF')
   })
 
   // Bug report (2026-09-08): creating a distribution gave no visible

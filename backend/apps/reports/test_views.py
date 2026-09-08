@@ -294,7 +294,7 @@ def test_dashboard_summary_includes_shareholders_summary_section():
     assert response.status_code == 200, response.data
     summary = response.data["shareholders_summary"]
     assert summary["total_withdrawn"] == "30000.00"
-    assert summary["remaining_undistributed"] == "70000.00"
+    assert summary["remaining_to_pay_shareholders"] == "70000.00"
     assert summary["open_loans_total"] == "5000.00"
     # Recette 2026-09-07: exposed so the UI can show the tolerance-absorbed
     # delivery loss that distributable_result silently nets out.
@@ -302,7 +302,7 @@ def test_dashboard_summary_includes_shareholders_summary_section():
 
 
 @pytest.mark.django_db
-def test_dashboard_summary_remaining_undistributed_excludes_cancelled_distribution():
+def test_dashboard_summary_remaining_to_pay_shareholders_excludes_cancelled():
     admin_user = _make_admin("DASHCANCEL")
     Shareholder.objects.create(name="Dash Cancel", participation_percent=Decimal("100"))
     CashAccount.objects.create(name="Dash Cancel Till", opening_balance=Decimal("1000000.00"))
@@ -320,7 +320,7 @@ def test_dashboard_summary_remaining_undistributed_excludes_cancelled_distributi
     response = client.get("/api/dashboard/summary/")
 
     assert response.status_code == 200, response.data
-    assert response.data["shareholders_summary"]["remaining_undistributed"] == "0.00"
+    assert response.data["shareholders_summary"]["remaining_to_pay_shareholders"] == "0.00"
 
 
 @pytest.mark.django_db

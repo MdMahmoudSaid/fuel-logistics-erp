@@ -1017,9 +1017,11 @@
       },
       "preview": {
         "badge": "Indicative",
-        "notice": "Amount available for distribution after debts and capital",
+        "notice": "Amount still available for distribution (after debts and capital)",
         "summaryLabel": "Suggested distributable result",
-        "alreadyDistributed": "Already distributed (not withdrawn)"
+        "periodProfit": "Profit for the period",
+        "alreadyValidatedEngagements": "Engagements already validated to shareholders (all periods)",
+        "remainingDistributable": "Still available for distribution"
       }
     },
     "profit": {

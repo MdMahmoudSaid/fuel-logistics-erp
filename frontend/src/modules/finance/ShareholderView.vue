@@ -480,14 +480,28 @@ async function onViewLedger() {
           :value="formatMoney(preview.distributable_result)"
         />
       </div>
-      <p
-        v-if="Number(preview.already_distributed) > 0"
-        data-test="preview-already-distributed"
-        class="text-texte-2 mt-1 text-sm"
-      >
-        {{ t('finance.shareholder.preview.alreadyDistributed') }}:
-        <MonoValue class="inline" :value="formatMoney(preview.already_distributed)" />
-      </p>
+      <!-- 2026-09-08 review, point 7: the three amounts must be shown
+           distinctly and never conflated - the period benefit, what is
+           already validated as owed to the associates (all periods), and
+           what is still free to distribute. -->
+      <dl data-test="preview-breakdown" class="mt-3 space-y-1 text-sm">
+        <div class="flex flex-wrap justify-between gap-2">
+          <dt class="text-texte-2">{{ t('finance.shareholder.preview.periodProfit') }}</dt>
+          <dd><MonoValue class="inline" :value="formatMoney(preview.net_profit)" /></dd>
+        </div>
+        <div class="flex flex-wrap justify-between gap-2">
+          <dt class="text-texte-2">
+            {{ t('finance.shareholder.preview.alreadyValidatedEngagements') }}
+          </dt>
+          <dd data-test="preview-already-distributed">
+            <MonoValue class="inline" :value="formatMoney(preview.already_distributed)" />
+          </dd>
+        </div>
+        <div class="border-ligne flex flex-wrap justify-between gap-2 border-t pt-1 font-medium">
+          <dt>{{ t('finance.shareholder.preview.remainingDistributable') }}</dt>
+          <dd><MonoValue class="inline" :value="formatMoney(preview.distributable_result)" /></dd>
+        </div>
+      </dl>
       <div v-if="preview.shareholders.length" class="mt-3 flex flex-wrap gap-4">
         <div v-for="row in preview.shareholders" :key="row.shareholder_id" class="text-sm">
           <span class="text-texte-2">{{ row.name }} ({{ row.participation_percent }}%):</span>

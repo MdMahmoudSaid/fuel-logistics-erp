@@ -1099,7 +1099,7 @@ const compactEnRouteTrips = computed(() => enRouteTrips.value.slice(0, 5))
               <dt class="text-texte-2">{{ t('dashboard.fields.shareholdersRemaining') }}</dt>
               <dd class="text-texte font-medium">
                 <MonoValue
-                  v-bind="formatMoneyParts(summary.shareholders_summary.remaining_undistributed)"
+                  v-bind="formatMoneyParts(summary.shareholders_summary.remaining_to_pay_shareholders)"
                 />
               </dd>
             </div>

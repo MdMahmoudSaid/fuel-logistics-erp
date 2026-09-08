@@ -895,7 +895,7 @@ class ShareholderProfitDistribution(AuditableModel, TimeStampedModel):
     Every downstream calculation (ShareholderLedgerService.
     get_available_balance / get_shareholder_summary,
     ShareholderProfitPreviewService.get_preview's already_distributed, the
-    dashboard's remaining_undistributed) counts VALIDATED shares only, so
+    dashboard's remaining_to_pay_shareholders) counts VALIDATED shares only, so
     the state of a distribution is reflected everywhere at once.
     """
 

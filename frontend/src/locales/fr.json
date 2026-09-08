@@ -1019,9 +1019,11 @@
       },
       "preview": {
         "badge": "Indicatif",
-        "notice": "Montant disponible pour répartition après dettes et capital",
+        "notice": "Reste disponible pour répartition (après dettes et capital)",
         "summaryLabel": "Résultat distribuable proposé",
-        "alreadyDistributed": "Déjà réparti (non retiré)"
+        "periodProfit": "Bénéfice de la période",
+        "alreadyValidatedEngagements": "Engagements déjà validés envers les associés (toutes périodes)",
+        "remainingDistributable": "Reste disponible pour répartition"
       }
     },
     "profit": {

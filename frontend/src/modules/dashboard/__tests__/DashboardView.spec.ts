@@ -51,7 +51,7 @@ const summary: DashboardSummary = {
     distributable_result: '500000.00',
     total_company_absorbed_loss: '0.00',
     total_withdrawn: '300000.00',
-    remaining_undistributed: '600000.00',
+    remaining_to_pay_shareholders: '600000.00',
     open_loans_total: '50000.00',
   },
   financial_summary: {
@@ -82,7 +82,7 @@ const summary: DashboardSummary = {
     },
     shareholders: {
       balance: '550000.00',
-      remaining_undistributed: '600000.00',
+      remaining_to_pay_shareholders: '600000.00',
       total_withdrawn: '300000.00',
       open_loans_total: '50000.00',
     },
