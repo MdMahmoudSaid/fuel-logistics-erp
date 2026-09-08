@@ -854,10 +854,18 @@ class Shareholder(TimeStampedModel):
         return self.name
 
 
-class ShareholderProfitDistribution(TimeStampedModel):
+class ShareholderProfitDistribution(AuditableModel, TimeStampedModel):
     """One profit-sharing period: a total company profit figure split
     across active shareholders as of the moment it is created (Task 7,
     client modifications plan).
+
+    AuditableModel (2026-09-08 review, point 9): creation, validation and
+    cancellation each write an AuditLog row (CREATE / UPDATE / CANCEL - the
+    status->CANCELLED move is inferred as a CANCEL action). The service
+    methods pass the acting user explicitly via save(user=actor) so the
+    trail is attributed even outside an HTTP request. Never hard-deletable
+    (is_locked_for_deletion defaults True) - cancellation is the only way
+    to void one.
 
     Created DRAFT with its ShareholderProfitShare rows already calculated
     (ShareholderDistributionService.create_distribution) so managers can

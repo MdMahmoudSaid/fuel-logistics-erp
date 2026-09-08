@@ -1653,13 +1653,14 @@ class ShareholderDistributionService:
                 "repartition des benefices."
             )
 
-        distribution = ShareholderProfitDistribution.objects.create(
+        distribution = ShareholderProfitDistribution(
             period_start=period_start,
             period_end=period_end,
             total_profit=total_profit,
             status=ShareholderProfitDistribution.Status.DRAFT,
             created_by=actor,
         )
+        distribution.save(user=actor)
 
         # 2026-09-08 review, point 8: split total_profit so the shares add
         # up to the exact target (total_profit * sum_of_percents / 100) to
@@ -1757,7 +1758,10 @@ class ShareholderDistributionService:
         distribution.status = ShareholderProfitDistribution.Status.VALIDATED
         distribution.validated_by = actor
         distribution.validated_at = timezone.now()
-        distribution.save(update_fields=["status", "validated_by", "validated_at", "updated_at"])
+        distribution.save(
+            update_fields=["status", "validated_by", "validated_at", "updated_at"],
+            user=actor,
+        )
         return distribution
 
     @staticmethod
@@ -1799,7 +1803,10 @@ class ShareholderDistributionService:
         distribution.status = ShareholderProfitDistribution.Status.CANCELLED
         distribution.cancelled_by = actor
         distribution.cancelled_at = timezone.now()
-        distribution.save(update_fields=["status", "cancelled_by", "cancelled_at", "updated_at"])
+        distribution.save(
+            update_fields=["status", "cancelled_by", "cancelled_at", "updated_at"],
+            user=actor,
+        )
         return distribution
 
 

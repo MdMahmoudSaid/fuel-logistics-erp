@@ -10,6 +10,7 @@ from rest_framework.test import APIClient
 from django.contrib.contenttypes.models import ContentType
 
 from apps.accounts.models import Role, User
+from apps.audit.models import AuditLog
 from apps.core.models import Product
 from apps.customers.models import Customer
 from apps.documents.models import Document
@@ -3765,6 +3766,67 @@ def test_distribution_cancel_action_requires_cancel_permission():
     response = client.post(f"/api/shareholder-distributions/{distribution.id}/cancel/")
 
     assert response.status_code == 403
+
+
+@pytest.mark.django_db
+def test_distribution_cancel_action_allowed_for_management():
+    """2026-09-08 review, point 9: migration 0006 grants the cancel tier
+    to Admin AND Management - Management must be able to cancel."""
+    mgmt_role = Role.objects.get(name=Role.NAME_MANAGEMENT)
+    user = User.objects.create_user(phone="+2220000210", pin="1234", role=mgmt_role)
+    admin_user = _make_admin_user("MGMTADM")
+    _make_shareholders([Decimal("100")])
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=admin_user,
+    )
+
+    client = APIClient()
+    client.force_authenticate(user)
+    response = client.post(f"/api/shareholder-distributions/{distribution.id}/cancel/")
+
+    assert response.status_code == 200, response.data
+    assert response.data["status"] == "CANCELLED"
+
+
+@pytest.mark.django_db
+def test_distribution_create_validate_cancel_are_all_audited():
+    """2026-09-08 review, point 9: every lifecycle transition of a
+    distribution lands in the journal d'audit, attributed to its actor."""
+    _make_shareholders([Decimal("100")])
+    _seed_distributable()
+    actor = _make_admin_user("AUDITLC")
+    ct = ContentType.objects.get_for_model(ShareholderProfitDistribution)
+
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=actor,
+    )
+    create_log = AuditLog.objects.get(
+        content_type=ct, object_id=distribution.id, action=AuditLog.Action.CREATE
+    )
+    assert create_log.user_id == actor.id
+
+    ShareholderDistributionService.validate_distribution(distribution.id, actor)
+    assert AuditLog.objects.filter(
+        content_type=ct, object_id=distribution.id, action=AuditLog.Action.UPDATE
+    ).exists()
+
+    ShareholderDistributionService.cancel_distribution(distribution.id, actor)
+    cancel_log = AuditLog.objects.get(
+        content_type=ct, object_id=distribution.id, action=AuditLog.Action.CANCEL
+    )
+    assert cancel_log.user_id == actor.id
+    assert cancel_log.previous_value["status"] == "VALIDATED"
+    assert cancel_log.new_value["status"] == "CANCELLED"
+
+    distribution.refresh_from_db()
+    assert distribution.cancelled_by_id == actor.id
+    assert distribution.cancelled_at is not None
 
 
 @pytest.mark.django_db
