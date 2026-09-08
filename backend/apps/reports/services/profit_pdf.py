@@ -54,6 +54,7 @@ PROFIT_PDF_LABELS = {
         "totalDebts": "= Total des dettes ouvertes",
         "totalWorkingCapital": "= Fond de roulement total",
         "capital": "Capital apporte",
+        "alreadyDistributed": "Deja reparti (non retire)",
         "distributableResult": "= Resultat distribuable apres dettes et capital",
         "tripDetail": "Detail des couts par trajet",
         "table": {
@@ -95,6 +96,7 @@ PROFIT_PDF_LABELS = {
         "totalDebts": "= Total open debts",
         "totalWorkingCapital": "= Total working capital",
         "capital": "Capital contributed",
+        "alreadyDistributed": "Already distributed (not withdrawn)",
         "distributableResult": "= Distributable result after debts and capital",
         "tripDetail": "Trip cost detail",
         "table": {
@@ -327,11 +329,12 @@ def render_profit_report_pdf(
         ),
         (labels["totalWorkingCapital"], _format_money(wc["total"])),
         (labels["capital"], _format_money(wc["capital"])),
+        (labels["alreadyDistributed"], _format_money(preview["already_distributed"])),
         (labels["distributableResult"], _format_money(preview["distributable_result"])),
     ]
     wc_table = Table(wc_rows, colWidths=[110 * mm, 60 * mm])
     wc_table.setStyle(_SUMMARY_TABLE_STYLE)
-    wc_table.setStyle(TableStyle([_bold_row(idx) for idx in (2, 9, 10, 12)]))
+    wc_table.setStyle(TableStyle([_bold_row(idx) for idx in (2, 9, 10, 13)]))
     elements.append(wc_table)
     elements.append(Spacer(1, 8 * mm))
 

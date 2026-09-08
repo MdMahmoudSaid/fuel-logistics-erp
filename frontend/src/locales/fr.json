@@ -946,14 +946,20 @@
         "status": "Statut",
         "statusValues": {
           "DRAFT": "Brouillon",
-          "VALIDATED": "Validée"
+          "VALIDATED": "Validée",
+          "CANCELLED": "Annulée"
         },
         "validate": "Valider",
+        "validateBlockedHint": "Bénéfice supérieur au reste disponible pour répartition : validation impossible.",
+        "cancel": "Annuler",
+        "cancelConfirm": "Annuler cette répartition ? Les parts déjà créditées aux associés seront retirées si aucun retrait n'a encore été effectué dessus.",
+        "cancelError": "Impossible d'annuler cette répartition.",
         "shareholder": "Actionnaire",
         "percent": "Pourcentage",
         "amountDue": "Montant dû",
         "remainingDue": "Reste à percevoir",
-        "saveError": "Impossible de créer cette répartition — vérifiez les champs."
+        "saveError": "Impossible de créer cette répartition — vérifiez les champs.",
+        "createdSuccess": "Répartition créée pour la période {start} — {end} : {amount} répartis entre les associés."
       },
       "loan": {
         "title": "Avances entre associés",
@@ -977,7 +983,7 @@
         "title": "Retrait d'argent de l'associé",
         "shareholder": "Actionnaire",
         "profitShare": "Part de bénéfice",
-        "general": "Retrait général (sans répartition)",
+        "selectProfitShare": "Choisir la répartition validée…",
         "amount": "Montant",
         "date": "Date",
         "accountType": "Type de compte",
@@ -1013,8 +1019,11 @@
       },
       "preview": {
         "badge": "Indicatif",
-        "notice": "Montant disponible pour répartition après dettes et capital",
-        "summaryLabel": "Résultat distribuable proposé"
+        "notice": "Reste disponible pour répartition (après dettes et capital)",
+        "summaryLabel": "Résultat distribuable proposé",
+        "periodProfit": "Bénéfice de la période",
+        "alreadyValidatedEngagements": "Engagements déjà validés envers les associés (toutes périodes)",
+        "remainingDistributable": "Reste disponible pour répartition"
       }
     },
     "profit": {
@@ -1037,6 +1046,7 @@
       "workingCapitalDebts": "Dettes ouvertes",
       "capitalContributed": "Capital apporté",
       "companyAbsorbedLoss": "Perte supportée par l'entreprise",
+      "alreadyDistributed": "Déjà réparti (non retiré)",
       "distributableResult": "Résultat distribuable après dettes et capital",
       "tripsCount": "Trajets pris en compte",
       "revenue": "Chiffre d'affaires",

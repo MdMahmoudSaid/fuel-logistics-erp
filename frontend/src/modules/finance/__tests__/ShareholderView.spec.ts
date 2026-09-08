@@ -14,14 +14,18 @@ const fetchShareholderLedger = vi.fn()
 const fetchShareholderProfitPreview = vi.fn()
 const shareholderResourceList = vi.fn()
 const shareholderContributionResourceList = vi.fn()
-const shareholderDistributionResourceCreate = vi.fn(async (payload: Record<string, unknown>) => ({
-  id: 1,
-  status: 'DRAFT',
-  ...payload,
-}))
+const shareholderDistributionResourceCreate = vi.fn(
+  async (payload: Record<string, unknown>): Promise<Record<string, unknown>> => ({
+    id: 1,
+    status: 'DRAFT',
+    ...payload,
+  }),
+)
+const shareholderDistributionResourceList = vi.fn()
+const cancelShareholderDistribution = vi.fn()
 
 function emptyList() {
-  return { count: 0, next: null, previous: null, results: [] }
+  return { count: 0, next: null, previous: null, results: [] as Record<string, unknown>[] }
 }
 
 function shareholderListPayload() {
@@ -55,7 +59,7 @@ vi.mock('../api', () => ({
   shareholderLoanResource: { list: vi.fn(async () => emptyList()) },
   shareholderWithdrawalResource: { list: vi.fn(async () => emptyList()) },
   shareholderDistributionResource: {
-    list: vi.fn(async () => emptyList()),
+    list: (...args: unknown[]) => shareholderDistributionResourceList(...args),
     create: (payload: Record<string, unknown>) => shareholderDistributionResourceCreate(payload),
   },
   shareholderContributionResource: {
@@ -64,6 +68,7 @@ vi.mock('../api', () => ({
   fetchShareholderLedger: (...args: unknown[]) => fetchShareholderLedger(...args),
   fetchShareholderProfitPreview: (...args: unknown[]) => fetchShareholderProfitPreview(...args),
   validateShareholderDistribution: vi.fn(),
+  cancelShareholderDistribution: (...args: unknown[]) => cancelShareholderDistribution(...args),
   recordShareholderLoanRepayment: vi.fn(),
   createShareholderContribution: vi.fn(),
 }))
@@ -78,6 +83,7 @@ describe('ShareholderView', () => {
     i18n.global.locale.value = 'fr'
     shareholderResourceList.mockResolvedValue(shareholderListPayload())
     shareholderContributionResourceList.mockResolvedValue(emptyList())
+    shareholderDistributionResourceList.mockResolvedValue(emptyList())
     fetchShareholderProfitPreview.mockResolvedValue({
       period_start: '2026-08-01',
       period_end: null,
@@ -101,6 +107,7 @@ describe('ShareholderView', () => {
         gross: '750000.00',
         total: '750000.00',
       },
+      already_distributed: '0.00',
       distributable_result: '500000.00',
       shareholders: [
         {
@@ -146,24 +153,128 @@ describe('ShareholderView', () => {
     expect(wrapper.text()).toContain('500 000 XOF')
   })
 
-  // Business decision (2026-09-04, distribution basis change): the banner
-  // used to show preview.net_profit - it must now show
-  // preview.distributable_result (500 000, distinct from both
-  // operational_profit 850 000 and net_profit 750 000), matching the same
-  // basis already used by the per-shareholder indicative_share cards right
-  // below it, so the two never contradict each other on this page.
-  it('shows distributable_result (not net or operational profit) in the banner, consistent with the per-shareholder shares', async () => {
+  // Business decision (2026-09-04): the per-shareholder indicative_share
+  // is based on distributable_result (500 000), not operational_profit
+  // (850 000) or net_profit (750 000). 2026-09-08 review, point 7: the
+  // banner now also shows the period profit and the already-validated
+  // engagements as their own clearly-labelled lines - shown, but never
+  // conflated with the distributable figure or with each other.
+  it('bases the per-shareholder share on distributable_result and labels each amount distinctly', async () => {
     const wrapper = mount(ShareholderView)
     await flushPromises()
 
     const banner = wrapper.findAll('.border-ecart').at(0)
     expect(banner!.text()).toContain('500 000 XOF')
     expect(banner!.text()).not.toContain('850 000 XOF')
-    expect(banner!.text()).not.toContain('750 000 XOF')
     // The per-shareholder share (Ahmed, 80%) must equal 400 000 (80% of
     // distributable_result), not the operational or net one.
     expect(banner!.text()).toContain('Ahmed (80.00%):')
     expect(banner!.text()).toContain('400 000 XOF')
+    // net_profit appears, but only against its own label.
+    const breakdown = wrapper.find('[data-test="preview-breakdown"]')
+    expect(breakdown.text()).toContain('Bénéfice de la période')
+    expect(breakdown.text()).toContain('750 000 XOF')
+  })
+
+  // Recette bug (2026-09-08): the banner never showed what had already
+  // been committed to shareholders, so a manager had no way to tell the
+  // displayed distributable_result already accounted for an earlier
+  // distribution (it looked "stuck" instead).
+  it('shows already_distributed in the preview banner when non-zero', async () => {
+    fetchShareholderProfitPreview.mockResolvedValue({
+      period_start: '2026-08-01',
+      period_end: null,
+      current_profit: '850000.00',
+      operational_profit: '850000.00',
+      general_expenses_paid: '100000.00',
+      net_profit: '750000.00',
+      working_capital: {
+        capital: '250000.00',
+        treasury_available: '600000.00',
+        customer_receivables: '150000.00',
+        supplier_debt_total: '0.00',
+        transporter_debt_total: '0.00',
+        other_debts: '0.00',
+        gross: '750000.00',
+        total: '750000.00',
+      },
+      already_distributed: '100000.00',
+      distributable_result: '400000.00',
+      shareholders: [
+        {
+          shareholder_id: 1,
+          name: 'Ahmed',
+          participation_percent: '80.00',
+          indicative_share: '320000.00',
+        },
+      ],
+    })
+
+    const wrapper = mount(ShareholderView)
+    await flushPromises()
+
+    const banner = wrapper.findAll('.border-ecart').at(0)
+    expect(banner!.text()).toContain('100 000 XOF')
+  })
+
+  // 2026-09-08 review, point 7: the three amounts (period profit, already
+  // validated engagements, still distributable) are always shown
+  // distinctly - never conflated, never hidden.
+  it('always shows the three-amount breakdown, including a zero already-validated line', async () => {
+    const wrapper = mount(ShareholderView)
+    await flushPromises()
+
+    const breakdown = wrapper.find('[data-test="preview-breakdown"]')
+    expect(breakdown.exists()).toBe(true)
+    expect(breakdown.text()).toContain('Bénéfice de la période')
+    expect(breakdown.text()).toContain('Engagements déjà validés envers les associés')
+    expect(breakdown.text()).toContain('Reste disponible pour répartition')
+    // default preview mock: net_profit 750 000, already_distributed 0,
+    // distributable_result 500 000
+    expect(breakdown.text()).toContain('750 000 XOF')
+    expect(breakdown.text()).toContain('500 000 XOF')
+    expect(wrapper.find('[data-test="preview-already-distributed"]').text()).toContain('0 XOF')
+  })
+
+  // Bug report (2026-09-08): creating a distribution gave no visible
+  // confirmation at all, only a silently auto-expanded row easy to miss.
+  it('shows a visible success confirmation with the per-shareholder breakdown after creating a distribution', async () => {
+    shareholderDistributionResourceCreate.mockResolvedValue({
+      id: 42,
+      period_start: '2026-08-01',
+      period_end: '2026-08-31',
+      total_profit: '500000.00',
+      status: 'DRAFT',
+      shares: [
+        {
+          id: 1,
+          distribution: 42,
+          shareholder: 1,
+          shareholder_detail: { id: 1, name: 'Ahmed' },
+          percent_snapshot: '80.00',
+          amount_due: '400000.00',
+          amount_withdrawn: '0.00',
+          remaining_due: '400000.00',
+        },
+      ],
+    })
+    const wrapper = mount(ShareholderView)
+    await flushPromises()
+
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Répartition des bénéfices')!
+      .trigger('click')
+    await flushPromises()
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    const success = wrapper.find('[data-test="distribution-success"]')
+    expect(success.exists()).toBe(true)
+    expect(success.text()).toContain('2026-08-01')
+    expect(success.text()).toContain('500 000 XOF')
+    expect(success.text()).toContain('Ahmed')
+    expect(success.text()).toContain('400 000 XOF')
   })
 
   // Business decision (2026-09-04, distribution basis change): the
@@ -412,5 +523,149 @@ describe('ShareholderView', () => {
     await flushPromises()
 
     expect(wrapper.findComponent({ name: 'ContributionForm' }).exists()).toBe(true)
+  })
+
+  it('cancels a distribution after confirmation and refreshes the list', async () => {
+    const listMock = vi.fn(async () => ({
+      count: 1,
+      next: null,
+      previous: null,
+      results: [
+        {
+          id: 7,
+          period_start: '2026-07-01',
+          period_end: '2026-07-31',
+          total_profit: '100000.00',
+          status: 'DRAFT',
+          shares: [],
+        },
+      ],
+    }))
+    shareholderDistributionResourceList.mockImplementationOnce(listMock)
+    cancelShareholderDistribution.mockResolvedValue({
+      id: 7,
+      status: 'CANCELLED',
+    })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    const wrapper = mount(ShareholderView)
+    await flushPromises()
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Répartition des bénéfices')!
+      .trigger('click')
+    await flushPromises()
+
+    const cancelButton = wrapper.find('[data-test="cancel-distribution-7"]')
+    expect(cancelButton.exists()).toBe(true)
+    await cancelButton.trigger('click')
+    await flushPromises()
+
+    expect(cancelShareholderDistribution).toHaveBeenCalledWith(7)
+    expect(listMock).toHaveBeenCalled()
+  })
+
+  it('shows the backend error when cancellation is rejected (a withdrawal already exists)', async () => {
+    shareholderDistributionResourceList.mockResolvedValueOnce({
+      count: 1,
+      next: null,
+      previous: null,
+      results: [
+        {
+          id: 8,
+          period_start: '2026-07-01',
+          period_end: '2026-07-31',
+          total_profit: '100000.00',
+          status: 'VALIDATED',
+          shares: [],
+        },
+      ],
+    })
+    cancelShareholderDistribution.mockRejectedValue({
+      response: { data: { detail: "Impossible d'annuler cette repartition." } },
+    })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    const wrapper = mount(ShareholderView)
+    await flushPromises()
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Répartition des bénéfices')!
+      .trigger('click')
+    await flushPromises()
+
+    await wrapper.find('[data-test="cancel-distribution-8"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain("Impossible d'annuler cette repartition.")
+  })
+
+  // 2026-09-08 review, point 2: the frontend must clearly block (not just
+  // softly warn) a validation whose amount exceeds the still-distributable
+  // result - the backend check stays the real guard.
+  it('disables the Validate button for a DRAFT whose total_profit exceeds distributable_result', async () => {
+    shareholderDistributionResourceList.mockResolvedValueOnce({
+      count: 1,
+      next: null,
+      previous: null,
+      results: [
+        {
+          id: 9,
+          period_start: '2026-07-01',
+          period_end: '2026-07-31',
+          total_profit: '900000.00',
+          status: 'DRAFT',
+          shares: [],
+        },
+      ],
+    })
+
+    const wrapper = mount(ShareholderView)
+    await flushPromises()
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Répartition des bénéfices')!
+      .trigger('click')
+    await flushPromises()
+
+    const validateButton = wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Valider')
+    expect(validateButton).toBeTruthy()
+    expect(validateButton!.attributes('disabled')).toBeDefined()
+    expect(wrapper.find('[data-test="validate-blocked-9"]').exists()).toBe(true)
+  })
+
+  it('keeps the Validate button enabled for a DRAFT within distributable_result', async () => {
+    shareholderDistributionResourceList.mockResolvedValueOnce({
+      count: 1,
+      next: null,
+      previous: null,
+      results: [
+        {
+          id: 10,
+          period_start: '2026-07-01',
+          period_end: '2026-07-31',
+          total_profit: '100000.00',
+          status: 'DRAFT',
+          shares: [],
+        },
+      ],
+    })
+
+    const wrapper = mount(ShareholderView)
+    await flushPromises()
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Répartition des bénéfices')!
+      .trigger('click')
+    await flushPromises()
+
+    const validateButton = wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Valider')
+    expect(validateButton).toBeTruthy()
+    expect(validateButton!.attributes('disabled')).toBeUndefined()
+    expect(wrapper.find('[data-test="validate-blocked-10"]').exists()).toBe(false)
   })
 })

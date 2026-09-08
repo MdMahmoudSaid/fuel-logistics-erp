@@ -27,6 +27,7 @@ def _preview(**overrides) -> dict:
             "gross": Decimal("386000000.00"),
             "total": Decimal("444180000.00"),
         },
+        "already_distributed": Decimal("0.00"),
         "distributable_result": Decimal("385937000.00"),
         "shareholders": [],
     }

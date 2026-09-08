@@ -1054,11 +1054,12 @@ class ShareholderProfitDistributionSerializer(serializers.ModelSerializer):
     distribution plus its snapshotted ShareholderProfitShare rows come back
     read-only in `shares`. Like SupplierPaymentSerializer, update() is
     blocked - once created, a distribution moves forward only via the
-    dedicated `validate` action, never a plain PATCH.
+    dedicated `validate`/`cancel` actions, never a plain PATCH.
     """
 
     created_by_detail = UserSerializer(source="created_by", read_only=True)
     validated_by_detail = UserSerializer(source="validated_by", read_only=True)
+    cancelled_by_detail = UserSerializer(source="cancelled_by", read_only=True)
     shares = ShareholderProfitShareSerializer(many=True, read_only=True)
 
     class Meta:
@@ -1066,11 +1067,12 @@ class ShareholderProfitDistributionSerializer(serializers.ModelSerializer):
         fields = [
             "id", "period_start", "period_end", "total_profit", "status",
             "created_by", "created_by_detail", "validated_by", "validated_by_detail",
-            "validated_at", "shares", "created_at", "updated_at",
+            "validated_at", "cancelled_by", "cancelled_by_detail", "cancelled_at",
+            "shares", "created_at", "updated_at",
         ]
         read_only_fields = [
             "id", "status", "created_by", "validated_by", "validated_at",
-            "created_at", "updated_at",
+            "cancelled_by", "cancelled_at", "created_at", "updated_at",
         ]
 
     def create(self, validated_data):
@@ -1087,7 +1089,7 @@ class ShareholderProfitDistributionSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         raise serializers.ValidationError(
-            "Une distribution ne peut pas etre modifiee ; utilisez l'action 'valider'."
+            "Une distribution ne peut pas etre modifiee ; utilisez l'action 'valider' ou 'annuler'."
         )
 
 
@@ -1171,7 +1173,13 @@ class ShareholderWithdrawalSerializer(serializers.ModelSerializer):
 
         profit_share = data.get("profit_share", getattr(self.instance, "profit_share", None))
         shareholder = data.get("shareholder", getattr(self.instance, "shareholder", None))
-        if profit_share and shareholder and profit_share.shareholder_id != shareholder.id:
+        # 2026-09-08 review, point 5: a profit withdrawal is always tied to
+        # one specific validated share - there is no "retrait general".
+        if not profit_share:
+            raise serializers.ValidationError(
+                {"profit_share": "Selectionnez la part de benefice (repartition) concernee."}
+            )
+        if shareholder and profit_share.shareholder_id != shareholder.id:
             raise serializers.ValidationError(
                 {"profit_share": "Cette part de benefice n'appartient pas a cet actionnaire."}
             )

@@ -11,6 +11,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { createResourceApi } from '@/api/resource'
 import {
+  cancelShareholderDistribution,
   fetchShareholderLedger,
   fetchShareholderProfitPreview,
   recordShareholderLoanRepayment,
@@ -178,6 +179,7 @@ async function onShareholderSubmit() {
 const distributions = ref<ShareholderProfitDistribution[]>([])
 const distributionForm = ref({ period_start: today(), period_end: today(), total_profit: '' })
 const distributionError = ref('')
+const distributionSuccess = ref<ShareholderProfitDistribution | null>(null)
 const savingDistribution = ref(false)
 const expandedDistributionId = ref<number | null>(null)
 
@@ -209,11 +211,14 @@ async function onCreateDistribution() {
   }
   savingDistribution.value = true
   distributionError.value = ''
+  distributionSuccess.value = null
   try {
     const created = await shareholderDistributionResource.create(distributionForm.value)
     distributionForm.value = { period_start: today(), period_end: today(), total_profit: '' }
     expandedDistributionId.value = created.id
+    distributionSuccess.value = created
     await loadDistributions()
+    await loadPreview()
   } catch (e) {
     distributionError.value = extractErrorMessage(
       e,
@@ -224,14 +229,41 @@ async function onCreateDistribution() {
   }
 }
 
+// 2026-09-08 review, point 2: the backend hard-blocks a validation whose
+// total_profit exceeds the still-distributable result. The button is
+// disabled client-side too so an over-distribution is never a one-click
+// accident - but the backend check, not this, is the real guard.
+function distributionExceedsAvailable(distribution: ShareholderProfitDistribution): boolean {
+  if (!preview.value) return false
+  const entered = Number(distribution.total_profit)
+  const available = Number(preview.value.distributable_result)
+  return Number.isFinite(entered) && Number.isFinite(available) && entered > available
+}
+
 async function onValidateDistribution(distribution: ShareholderProfitDistribution) {
+  distributionError.value = ''
   try {
     await validateShareholderDistribution(distribution.id)
     await loadDistributions()
+    await loadPreview()
   } catch (e) {
     distributionError.value = extractErrorMessage(
       e,
       t('finance.shareholder.distribution.saveError'),
+    )
+  }
+}
+
+async function onCancelDistribution(distribution: ShareholderProfitDistribution) {
+  if (!window.confirm(t('finance.shareholder.distribution.cancelConfirm'))) return
+  try {
+    await cancelShareholderDistribution(distribution.id)
+    await loadDistributions()
+    await loadPreview()
+  } catch (e) {
+    distributionError.value = extractErrorMessage(
+      e,
+      t('finance.shareholder.distribution.cancelError'),
     )
   }
 }
@@ -341,9 +373,9 @@ async function onCreateWithdrawal() {
   try {
     await shareholderWithdrawalResource.create({
       shareholder: Number(withdrawalForm.value.shareholder),
-      profit_share: withdrawalForm.value.profit_share
-        ? Number(withdrawalForm.value.profit_share)
-        : null,
+      // 2026-09-08 review, point 5: a profit withdrawal is always tied to
+      // one validated share - the field is required, no "retrait general".
+      profit_share: Number(withdrawalForm.value.profit_share),
       amount: withdrawalForm.value.amount,
       date: withdrawalForm.value.date,
       bank_account:
@@ -448,6 +480,28 @@ async function onViewLedger() {
           :value="formatMoney(preview.distributable_result)"
         />
       </div>
+      <!-- 2026-09-08 review, point 7: the three amounts must be shown
+           distinctly and never conflated - the period benefit, what is
+           already validated as owed to the associates (all periods), and
+           what is still free to distribute. -->
+      <dl data-test="preview-breakdown" class="mt-3 space-y-1 text-sm">
+        <div class="flex flex-wrap justify-between gap-2">
+          <dt class="text-texte-2">{{ t('finance.shareholder.preview.periodProfit') }}</dt>
+          <dd><MonoValue class="inline" :value="formatMoney(preview.net_profit)" /></dd>
+        </div>
+        <div class="flex flex-wrap justify-between gap-2">
+          <dt class="text-texte-2">
+            {{ t('finance.shareholder.preview.alreadyValidatedEngagements') }}
+          </dt>
+          <dd data-test="preview-already-distributed">
+            <MonoValue class="inline" :value="formatMoney(preview.already_distributed)" />
+          </dd>
+        </div>
+        <div class="border-ligne flex flex-wrap justify-between gap-2 border-t pt-1 font-medium">
+          <dt>{{ t('finance.shareholder.preview.remainingDistributable') }}</dt>
+          <dd><MonoValue class="inline" :value="formatMoney(preview.distributable_result)" /></dd>
+        </div>
+      </dl>
       <div v-if="preview.shareholders.length" class="mt-3 flex flex-wrap gap-4">
         <div v-for="row in preview.shareholders" :key="row.shareholder_id" class="text-sm">
           <span class="text-texte-2">{{ row.name }} ({{ row.participation_percent }}%):</span>
@@ -562,6 +616,37 @@ async function onViewLedger() {
       :title="t('finance.shareholder.distribution.title')"
     >
       <p v-if="distributionError" class="text-critique mb-3 text-sm">{{ distributionError }}</p>
+      <div
+        v-if="distributionSuccess"
+        data-test="distribution-success"
+        class="border-livre bg-livre-tint text-livre-texte mb-3 rounded-lg border p-3 text-sm"
+      >
+        <div class="flex items-start justify-between gap-2">
+          <p class="font-medium">
+            {{
+              t('finance.shareholder.distribution.createdSuccess', {
+                start: distributionSuccess.period_start,
+                end: distributionSuccess.period_end,
+                amount: formatMoney(distributionSuccess.total_profit),
+              })
+            }}
+          </p>
+          <button
+            type="button"
+            class="text-livre-texte/70 hover:text-livre-texte shrink-0 text-lg leading-none"
+            :aria-label="t('common.close')"
+            @click="distributionSuccess = null"
+          >
+            &times;
+          </button>
+        </div>
+        <ul class="mt-1.5 space-y-0.5">
+          <li v-for="share in distributionSuccess.shares" :key="share.id">
+            {{ share.shareholder_detail?.name }}:
+            <MonoValue class="inline" :value="formatMoney(share.amount_due)" />
+          </li>
+        </ul>
+      </div>
       <p
         v-if="activeShareholders.length === 0"
         data-test="distribution-no-active-shareholder"
@@ -660,17 +745,37 @@ async function onViewLedger() {
                   <MonoValue :value="formatMoney(d.total_profit)" />
                 </td>
                 <td class="px-3 py-2.5">
-                  <Badge :variant="d.status === 'VALIDATED' ? 'livre' : 'transit'">
+                  <Badge
+                    :variant="
+                      d.status === 'VALIDATED' ? 'livre' : d.status === 'CANCELLED' ? 'neutre' : 'transit'
+                    "
+                  >
                     {{ t(`finance.shareholder.distribution.statusValues.${d.status}`) }}
                   </Badge>
                 </td>
                 <td class="px-3 py-2.5 text-end">
+                  <p
+                    v-if="d.status === 'DRAFT' && distributionExceedsAvailable(d)"
+                    :data-test="`validate-blocked-${d.id}`"
+                    class="text-critique mb-1 text-xs"
+                  >
+                    {{ t('finance.shareholder.distribution.validateBlockedHint') }}
+                  </p>
                   <Button
                     v-if="d.status === 'DRAFT'"
                     variant="ghost"
+                    :disabled="distributionExceedsAvailable(d)"
                     @click.stop="onValidateDistribution(d)"
                   >
                     {{ t('finance.shareholder.distribution.validate') }}
+                  </Button>
+                  <Button
+                    v-if="d.status !== 'CANCELLED'"
+                    :data-test="`cancel-distribution-${d.id}`"
+                    variant="danger"
+                    @click.stop="onCancelDistribution(d)"
+                  >
+                    {{ t('finance.shareholder.distribution.cancel') }}
                   </Button>
                 </td>
               </tr>
@@ -888,9 +993,10 @@ async function onViewLedger() {
           <select
             id="wd_share"
             v-model="withdrawalForm.profit_share"
+            required
             class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           >
-            <option value="">{{ t('finance.shareholder.withdrawal.general') }}</option>
+            <option value="" disabled>{{ t('finance.shareholder.withdrawal.selectProfitShare') }}</option>
             <option v-for="share in availableSharesForWithdrawal" :key="share.id" :value="share.id">
               {{ share.period_start }} — {{ share.period_end }} ({{ share.remaining_due }})
             </option>

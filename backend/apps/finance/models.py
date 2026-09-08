@@ -2,6 +2,8 @@ from decimal import Decimal
 
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
+from django.contrib.postgres.constraints import ExclusionConstraint
+from django.contrib.postgres.fields import DateRangeField, RangeOperators
 from django.db import models
 
 from apps.audit.mixins import AuditableModel
@@ -854,25 +856,53 @@ class Shareholder(TimeStampedModel):
         return self.name
 
 
-class ShareholderProfitDistribution(TimeStampedModel):
+class ShareholderProfitDistribution(AuditableModel, TimeStampedModel):
     """One profit-sharing period: a total company profit figure split
     across active shareholders as of the moment it is created (Task 7,
     client modifications plan).
+
+    AuditableModel (2026-09-08 review, point 9): creation, validation and
+    cancellation each write an AuditLog row (CREATE / UPDATE / CANCEL - the
+    status->CANCELLED move is inferred as a CANCEL action). The service
+    methods pass the acting user explicitly via save(user=actor) so the
+    trail is attributed even outside an HTTP request. Never hard-deletable
+    (is_locked_for_deletion defaults True) - cancellation is the only way
+    to void one.
 
     Created DRAFT with its ShareholderProfitShare rows already calculated
     (ShareholderDistributionService.create_distribution) so managers can
     review the split before committing to it; `validate` (mirroring
     Invoice's DRAFT -> VALIDATED flow) freezes it by stamping
-    validated_by/validated_at. There is no CANCELLED state here - the
-    "shareholders" module permission tier deliberately omits "cancel"
-    (Task 7 ruling 2), so a mistaken distribution is corrected by editing
-    it back to DRAFT territory is out of scope for this task, not by a
-    cancel workflow.
+    validated_by/validated_at.
+
+    Financial effect is gated strictly on status (2026-09-08 review,
+    "modele metier definitif"):
+    - DRAFT: a preparatory proposal only. Its ShareholderProfitShare rows
+      may exist to preview the split, but they credit no available
+      balance, reduce no distributable result, and no withdrawal may be
+      booked against them.
+    - VALIDATED: the split becomes a real engagement of the company. The
+      validated shares raise each shareholder's available balance and
+      lower the still-distributable result (never any treasury movement -
+      that only happens on an actual ShareholderWithdrawal).
+    - CANCELLED (added 2026-09-08, reversing "Task 7 ruling 2"): a DRAFT or
+      VALIDATED distribution voided by
+      ShareholderDistributionService.cancel_distribution, only while no
+      ShareholderWithdrawal has ever been recorded against one of its
+      shares. It is kept for audit history (its shares are never deleted)
+      but grants no further right and can never be validated again.
+
+    Every downstream calculation (ShareholderLedgerService.
+    get_available_balance / get_shareholder_summary,
+    ShareholderProfitPreviewService.get_preview's already_distributed, the
+    dashboard's remaining_to_pay_shareholders) counts VALIDATED shares only, so
+    the state of a distribution is reflected everywhere at once.
     """
 
     class Status(models.TextChoices):
         DRAFT = "DRAFT", "Draft"
         VALIDATED = "VALIDATED", "Validated"
+        CANCELLED = "CANCELLED", "Cancelled"
 
     period_start = models.DateField()
     period_end = models.DateField()
@@ -889,6 +919,14 @@ class ShareholderProfitDistribution(TimeStampedModel):
         related_name="shareholder_distributions_validated",
     )
     validated_at = models.DateTimeField(null=True, blank=True)
+    cancelled_by = models.ForeignKey(
+        "accounts.User",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="shareholder_distributions_cancelled",
+    )
+    cancelled_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-period_start", "-id"]
@@ -896,6 +934,28 @@ class ShareholderProfitDistribution(TimeStampedModel):
             models.CheckConstraint(
                 condition=models.Q(total_profit__gt=0),
                 name="finance_shareholderprofitdistribution_total_profit_positive",
+            ),
+            # 2026-09-08 review, point 6: a DB-level guarantee that two
+            # non-cancelled distributions can never cover overlapping
+            # periods - the service-level .exists() check is not atomic
+            # against two concurrent creates. Partial exclusion constraint
+            # (needs btree_gist): CANCELLED rows are exempt so a corrected
+            # distribution can reuse a voided one's period.
+            ExclusionConstraint(
+                name="finance_shrdist_no_overlapping_active_period",
+                expressions=[
+                    (
+                        models.Func(
+                            models.F("period_start"),
+                            models.F("period_end"),
+                            models.Value("[]"),
+                            function="daterange",
+                            output_field=DateRangeField(),
+                        ),
+                        RangeOperators.OVERLAPS,
+                    ),
+                ],
+                condition=models.Q(status__in=["DRAFT", "VALIDATED"]),
             ),
         ]
         indexes = [

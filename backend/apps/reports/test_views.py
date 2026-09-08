@@ -264,6 +264,7 @@ def test_dashboard_summary_includes_shareholders_summary_section():
     detailed source."""
     admin_user = _make_admin("DASHSH")
     a = Shareholder.objects.create(name="Dash A", participation_percent=Decimal("100"))
+    CashAccount.objects.create(name="Dash A Till", opening_balance=Decimal("1000000.00"))
     distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",
@@ -293,11 +294,33 @@ def test_dashboard_summary_includes_shareholders_summary_section():
     assert response.status_code == 200, response.data
     summary = response.data["shareholders_summary"]
     assert summary["total_withdrawn"] == "30000.00"
-    assert summary["remaining_undistributed"] == "70000.00"
+    assert summary["remaining_to_pay_shareholders"] == "70000.00"
     assert summary["open_loans_total"] == "5000.00"
     # Recette 2026-09-07: exposed so the UI can show the tolerance-absorbed
     # delivery loss that distributable_result silently nets out.
     assert "total_company_absorbed_loss" in summary
+
+
+@pytest.mark.django_db
+def test_dashboard_summary_remaining_to_pay_shareholders_excludes_cancelled():
+    admin_user = _make_admin("DASHCANCEL")
+    Shareholder.objects.create(name="Dash Cancel", participation_percent=Decimal("100"))
+    CashAccount.objects.create(name="Dash Cancel Till", opening_balance=Decimal("1000000.00"))
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=admin_user,
+    )
+    ShareholderDistributionService.validate_distribution(distribution.id, admin_user)
+    ShareholderDistributionService.cancel_distribution(distribution.id, admin_user)
+
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    response = client.get("/api/dashboard/summary/")
+
+    assert response.status_code == 200, response.data
+    assert response.data["shareholders_summary"]["remaining_to_pay_shareholders"] == "0.00"
 
 
 @pytest.mark.django_db

@@ -944,14 +944,20 @@
         "status": "Status",
         "statusValues": {
           "DRAFT": "Draft",
-          "VALIDATED": "Validated"
+          "VALIDATED": "Validated",
+          "CANCELLED": "Cancelled"
         },
         "validate": "Validate",
+        "validateBlockedHint": "Profit exceeds the amount still available for distribution: validation is blocked.",
+        "cancel": "Cancel",
+        "cancelConfirm": "Cancel this distribution? Shares already credited to shareholders will be withdrawn if no withdrawal has been recorded against them yet.",
+        "cancelError": "Could not cancel this distribution.",
         "shareholder": "Shareholder",
         "percent": "Percent",
         "amountDue": "Amount due",
         "remainingDue": "Remaining due",
-        "saveError": "Could not create this distribution — check the fields."
+        "saveError": "Could not create this distribution — check the fields.",
+        "createdSuccess": "Distribution created for period {start} — {end}: {amount} split among shareholders."
       },
       "loan": {
         "title": "Advances between associates",
@@ -975,7 +981,7 @@
         "title": "Shareholder withdrawal",
         "shareholder": "Shareholder",
         "profitShare": "Profit share",
-        "general": "General withdrawal (not tied to a distribution)",
+        "selectProfitShare": "Choose the validated distribution…",
         "amount": "Amount",
         "date": "Date",
         "accountType": "Account type",
@@ -1011,8 +1017,11 @@
       },
       "preview": {
         "badge": "Indicative",
-        "notice": "Amount available for distribution after debts and capital",
-        "summaryLabel": "Suggested distributable result"
+        "notice": "Amount still available for distribution (after debts and capital)",
+        "summaryLabel": "Suggested distributable result",
+        "periodProfit": "Profit for the period",
+        "alreadyValidatedEngagements": "Engagements already validated to shareholders (all periods)",
+        "remainingDistributable": "Still available for distribution"
       }
     },
     "profit": {
@@ -1035,6 +1044,7 @@
       "workingCapitalDebts": "Open debts",
       "capitalContributed": "Capital contributed",
       "companyAbsorbedLoss": "Loss absorbed by the company",
+      "alreadyDistributed": "Already distributed (not withdrawn)",
       "distributableResult": "Distributable result after debts and capital",
       "tripsCount": "Trips counted",
       "revenue": "Revenue",

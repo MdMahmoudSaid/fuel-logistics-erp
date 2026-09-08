@@ -7,11 +7,11 @@
 # rows here - once, so no two API paths can compute a different outstanding
 # balance for the same invoice/customer (guide Section 8.4).
 
-from datetime import timedelta
-from decimal import Decimal, InvalidOperation
+from datetime import date, timedelta
+from decimal import ROUND_DOWN, Decimal, InvalidOperation
 
 from django.contrib.contenttypes.models import ContentType
-from django.db import transaction
+from django.db import connection, transaction
 from django.db.models import F, Sum
 from django.utils import timezone
 
@@ -1603,6 +1603,25 @@ class ShareholderDistributionService:
     """Owns ShareholderProfitDistribution creation and validation (Task 7,
     client modifications plan)."""
 
+    # 2026-09-08 review, point 6: a single transaction-scoped Postgres
+    # advisory lock serialises every distribution mutation (create /
+    # validate / cancel). The DB exclusion constraint already makes
+    # overlapping active periods impossible, but two concurrent
+    # validations of *different, non-overlapping* distributions could
+    # still each read the same distributable_result and jointly commit
+    # more than is available - this lock makes that recompute-then-write
+    # sequence run one at a time. Arbitrary constant, unique to this
+    # concern.
+    _MUTATION_LOCK_KEY = 738_5290_11
+
+    @staticmethod
+    def _lock_mutations() -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT pg_advisory_xact_lock(%s)",
+                [ShareholderDistributionService._MUTATION_LOCK_KEY],
+            )
+
     @staticmethod
     @transaction.atomic
     def create_distribution(
@@ -1610,16 +1629,48 @@ class ShareholderDistributionService:
     ) -> ShareholderProfitDistribution:
         """Create a DRAFT distribution and immediately snapshot every
         active shareholder's current participation_percent into a
-        ShareholderProfitShare row (percent_snapshot), with
-        amount_due = total_profit * percent_snapshot / 100, quantized to
-        the cent - so a later edit to Shareholder.participation_percent can
-        never retroactively change this distribution's amounts.
+        ShareholderProfitShare row (percent_snapshot). amount_due is
+        total_profit * percent_snapshot / 100, but the shares are balanced
+        by the largest-remainder method so they sum to exactly
+        total_profit * sum(percents) / 100 to the cent (2026-09-08 review,
+        point 8) - and a later edit to Shareholder.participation_percent
+        can never retroactively change this distribution's amounts.
 
-        Raises ShareholderDistributionError before creating anything if
-        there is no active shareholder at all - a distribution with zero
-        shares would otherwise be created (and even validated) while
-        distributing nothing to nobody (recette bug, 2026-09-06).
+        Raises ShareholderDistributionError before creating anything if:
+        - the requested period overlaps any existing distribution whose
+          status isn't CANCELLED (recette bug, 2026-09-08: the exact same
+          period/benefice was distributed three times in a row with no
+          guard at all - shareholders ended up "owed" the same real
+          profit multiple times);
+        - there is no active shareholder at all - a distribution with zero
+          shares would otherwise be created (and even validated) while
+          distributing nothing to nobody (recette bug, 2026-09-06).
         """
+        ShareholderDistributionService._lock_mutations()
+
+        if isinstance(period_start, str):
+            period_start = date.fromisoformat(period_start)
+        if isinstance(period_end, str):
+            period_end = date.fromisoformat(period_end)
+
+        # Fast, friendly pre-check (a clear French error instead of an
+        # IntegrityError). The finance_shrdist_no_overlapping_active_period
+        # exclusion constraint is the actual guarantee against a
+        # concurrent create slipping through.
+        overlapping_exists = (
+            ShareholderProfitDistribution.objects.exclude(
+                status=ShareholderProfitDistribution.Status.CANCELLED
+            )
+            .filter(period_start__lte=period_end, period_end__gte=period_start)
+            .exists()
+        )
+        if overlapping_exists:
+            raise ShareholderDistributionError(
+                f"Une repartition existe deja pour une periode qui chevauche "
+                f"{period_start} - {period_end} (statut different de Annulee) : "
+                "impossible d'en creer une autre pour la meme periode."
+            )
+
         active_shareholders = list(Shareholder.objects.filter(is_active=True))
         if not active_shareholders:
             raise ShareholderDistributionError(
@@ -1627,19 +1678,43 @@ class ShareholderDistributionService:
                 "repartition des benefices."
             )
 
-        distribution = ShareholderProfitDistribution.objects.create(
+        distribution = ShareholderProfitDistribution(
             period_start=period_start,
             period_end=period_end,
             total_profit=total_profit,
             status=ShareholderProfitDistribution.Status.DRAFT,
             created_by=actor,
         )
+        distribution.save(user=actor)
 
-        for shareholder in active_shareholders:
-            percent_snapshot = shareholder.participation_percent
-            amount_due = (
-                Decimal(str(total_profit)) * percent_snapshot / Decimal("100")
-            ).quantize(Decimal("0.01"))
+        # 2026-09-08 review, point 8: split total_profit so the shares add
+        # up to the exact target (total_profit * sum_of_percents / 100) to
+        # the cent - quantizing each share independently would drop or
+        # invent a centime whenever the percentages don't divide cleanly.
+        # Largest-remainder method: floor every share, then hand the
+        # leftover cents out one at a time to the largest fractional
+        # remainders, tie-broken by shareholder id so the result is
+        # deterministic and reproducible.
+        total = Decimal(str(total_profit))
+        percents = [sh.participation_percent for sh in active_shareholders]
+        exact = [total * p / Decimal("100") for p in percents]
+        target_total = (total * sum(percents) / Decimal("100")).quantize(Decimal("0.01"))
+        amounts = [e.quantize(Decimal("0.01"), rounding=ROUND_DOWN) for e in exact]
+        remainder_cents = int(
+            ((target_total - sum(amounts)) / Decimal("0.01")).to_integral_value()
+        )
+        order = sorted(
+            range(len(active_shareholders)),
+            key=lambda i: (exact[i] - amounts[i], -active_shareholders[i].id),
+            reverse=True,
+        )
+        step = Decimal("0.01") if remainder_cents >= 0 else Decimal("-0.01")
+        for k in range(abs(remainder_cents)):
+            amounts[order[k % len(order)]] += step
+
+        for shareholder, percent_snapshot, amount_due in zip(
+            active_shareholders, percents, amounts
+        ):
             ShareholderProfitShare.objects.create(
                 distribution=distribution,
                 shareholder=shareholder,
@@ -1661,12 +1736,34 @@ class ShareholderDistributionService:
         inactive after the DRAFT was created) - the exact recette bug
         (2026-09-06) was money "distributed" while validated with nobody
         to receive it.
+
+        Hard amount block (2026-09-08 review, point 2): the source of
+        truth is recomputed here, not trusted from creation time - the
+        financial situation can move between drafting and validating.
+        Validation is refused if total_profit exceeds the amount still
+        available for distribution (ShareholderProfitPreviewService.
+        get_preview()["distributable_result"], which already nets out every
+        VALIDATED distribution's still-unwithdrawn engagement but not this
+        DRAFT one). A pre-existing over-engagement can legitimately leave
+        that figure negative so the anomaly stays visible - this never
+        clamps it - but no new validation may push past it.
         """
+        ShareholderDistributionService._lock_mutations()
         distribution = ShareholderProfitDistribution.objects.select_for_update().get(
             pk=distribution_id
         )
         if distribution.status == ShareholderProfitDistribution.Status.VALIDATED:
+            # Idempotent: repeating the action keeps the original
+            # validated_by / validated_at untouched (2026-09-08 review).
             return distribution
+
+        # 2026-09-08 review, point 3: CANCELLED is terminal. A cancelled
+        # distribution can never be resurrected - the only transitions are
+        # DRAFT -> VALIDATED, DRAFT -> CANCELLED, VALIDATED -> CANCELLED.
+        if distribution.status == ShareholderProfitDistribution.Status.CANCELLED:
+            raise ShareholderDistributionError(
+                "Cette repartition est annulee : elle ne peut plus etre validee."
+            )
 
         if not distribution.shares.exists():
             raise ShareholderDistributionError(
@@ -1674,10 +1771,69 @@ class ShareholderDistributionService:
                 "associe actif) : impossible de la valider."
             )
 
+        still_distributable = ShareholderProfitPreviewService.get_preview()[
+            "distributable_result"
+        ]
+        if distribution.total_profit > still_distributable:
+            raise ShareholderDistributionError(
+                f"Le benefice a repartir ({distribution.total_profit}) depasse le "
+                f"montant encore disponible pour repartition "
+                f"({still_distributable}) : validation impossible."
+            )
+
         distribution.status = ShareholderProfitDistribution.Status.VALIDATED
         distribution.validated_by = actor
         distribution.validated_at = timezone.now()
-        distribution.save(update_fields=["status", "validated_by", "validated_at", "updated_at"])
+        distribution.save(
+            update_fields=["status", "validated_by", "validated_at", "updated_at"],
+            user=actor,
+        )
+        return distribution
+
+    @staticmethod
+    @transaction.atomic
+    def cancel_distribution(distribution_id, actor) -> ShareholderProfitDistribution:
+        """Void a DRAFT or VALIDATED distribution (reverses "Task 7 ruling
+        2" - see the ShareholderProfitDistribution docstring - after the
+        2026-09-08 recette bug where the same real profit was distributed
+        three times with no way to undo any of them).
+
+        Refuses to cancel once a ShareholderWithdrawal has been recorded
+        against one of its shares - money that has already left treasury
+        for a shareholder can't be un-committed by cancelling the
+        distribution behind it. Never deletes the ShareholderProfitShare
+        rows (audit trail); every downstream calculation
+        (ShareholderLedgerService.get_available_balance,
+        ShareholderProfitPreviewService.get_preview, the dashboard's
+        remaining_to_pay_shareholders) excludes a CANCELLED distribution's
+        shares instead.
+
+        Idempotent: cancelling an already-CANCELLED distribution is a
+        no-op that returns it unchanged, mirroring
+        validate_distribution's early return for an already-VALIDATED one.
+        """
+        ShareholderDistributionService._lock_mutations()
+        distribution = ShareholderProfitDistribution.objects.select_for_update().get(
+            pk=distribution_id
+        )
+        if distribution.status == ShareholderProfitDistribution.Status.CANCELLED:
+            return distribution
+
+        if ShareholderWithdrawal.objects.filter(
+            profit_share__distribution_id=distribution.id
+        ).exists():
+            raise ShareholderDistributionError(
+                "Impossible d'annuler cette repartition : au moins un retrait "
+                "a deja ete effectue sur l'une de ses parts."
+            )
+
+        distribution.status = ShareholderProfitDistribution.Status.CANCELLED
+        distribution.cancelled_by = actor
+        distribution.cancelled_at = timezone.now()
+        distribution.save(
+            update_fields=["status", "cancelled_by", "cancelled_at", "updated_at"],
+            user=actor,
+        )
         return distribution
 
 
@@ -1712,13 +1868,24 @@ class ShareholderWithdrawalService:
         shareholder = Shareholder.objects.select_for_update().get(pk=shareholder_id)
         amount_decimal = Decimal(str(amount))
 
+        # 2026-09-08 review, point 5: every profit withdrawal must be tied
+        # to one traceable, VALIDATED ShareholderProfitShare. An unlinked
+        # withdrawal debited treasury while decrementing no share at all -
+        # the shareholder kept the same available balance, and a
+        # distribution could later be cancelled while some of its money had
+        # already quietly left the company with no link back to it.
+        if profit_share_id is None:
+            raise ShareholderWithdrawalError(
+                "Un retrait de benefice doit etre rattache a une part validee "
+                "(selectionnez la repartition concernee)."
+            )
+
         # Unconditional balance checks (design doc
-        # 2026-08-26-benefices-associes-refinement-design.md, Fix 1): before
-        # this, a withdrawal without a profit_share_id skipped every
-        # balance check, and even a profit_share-tied withdrawal never
-        # checked the destination account - a shareholder could withdraw an
-        # arbitrary amount regardless of what they were actually owed or
-        # what the bank/cash account actually held.
+        # 2026-08-26-benefices-associes-refinement-design.md, Fix 1): even a
+        # profit_share-tied withdrawal never checked the destination account
+        # before this - a shareholder could withdraw an arbitrary amount
+        # regardless of what they were actually owed or what the bank/cash
+        # account actually held.
         available_balance = ShareholderLedgerService.get_available_balance(shareholder_id)
         if amount_decimal > available_balance:
             raise ShareholderWithdrawalError("Solde associe insuffisant.")
@@ -1738,6 +1905,19 @@ class ShareholderWithdrawalService:
             if profit_share.shareholder_id != shareholder.id:
                 raise ShareholderWithdrawalError(
                     "Cette part de benefice n'appartient pas a cet actionnaire."
+                )
+            distribution = ShareholderProfitDistribution.objects.select_for_update().get(
+                pk=profit_share.distribution_id
+            )
+            # 2026-09-08 review: a withdrawal may only be booked against a
+            # share of a VALIDATED distribution. A DRAFT is a preparatory
+            # proposal (no engagement yet), a CANCELLED one no longer
+            # grants any right - either would let money leave treasury for
+            # a distribution that is not, or no longer, a real debt.
+            if distribution.status != ShareholderProfitDistribution.Status.VALIDATED:
+                raise ShareholderWithdrawalError(
+                    "Cette part de benefice appartient a une repartition non "
+                    "validee (brouillon ou annulee) : aucun retrait possible."
                 )
             remaining_due = profit_share.remaining_due
             if amount_decimal > remaining_due:
@@ -2050,11 +2230,17 @@ class ShareholderLedgerService:
         ShareholderWithdrawalService.record_withdrawal and
         ShareholderLoanService.create_loan so a withdrawal and a loan can
         never be validated against two different numbers.
+
+        Only a VALIDATED distribution's shares count (2026-09-08 review,
+        "modele metier definitif"): a DRAFT distribution is a preparatory
+        proposal with no real debt to the shareholders, and a CANCELLED one
+        no longer grants any right - neither may credit an available
+        balance, everywhere that balance is used.
         """
         shares_remaining = (
-            ShareholderProfitShare.objects.filter(shareholder_id=shareholder_id).aggregate(
-                total=Sum(F("amount_due") - F("amount_withdrawn"))
-            )["total"]
+            ShareholderProfitShare.objects.filter(shareholder_id=shareholder_id)
+            .filter(distribution__status=ShareholderProfitDistribution.Status.VALIDATED)
+            .aggregate(total=Sum(F("amount_due") - F("amount_withdrawn")))["total"]
             or ZERO
         )
         loans_given_remaining = sum(
@@ -2074,8 +2260,15 @@ class ShareholderLedgerService:
     def get_shareholder_summary(shareholder_id) -> dict:
         shareholder = Shareholder.objects.get(pk=shareholder_id)
 
+        # Only VALIDATED distributions carry a real engagement to the
+        # shareholder (2026-09-08 review): a DRAFT share is a preview line
+        # with no financial effect, a CANCELLED one no longer grants a
+        # right - neither belongs in the ledger totals nor in the
+        # withdrawal-form "part de benefice" dropdown this feeds.
         shares = list(
-            shareholder.profit_shares.select_related("distribution").order_by("-distribution_id")
+            shareholder.profit_shares.select_related("distribution")
+            .filter(distribution__status=ShareholderProfitDistribution.Status.VALIDATED)
+            .order_by("-distribution_id")
         )
         total_amount_due = sum((s.amount_due for s in shares), ZERO)
         total_withdrawn = sum((s.amount_withdrawn for s in shares), ZERO)
@@ -2238,12 +2431,34 @@ class ShareholderProfitPreviewService:
         # out rather than simplified so the formula stays legible if any
         # one term changes later.
         working_capital = WorkingCapitalService.get_working_capital()
+
+        # Recette bug (2026-09-08): the same real profit was distributed
+        # three times because distributable_result never subtracted what
+        # had already been committed to shareholders via an earlier
+        # distribution - validating a distribution never touches treasury
+        # (the declarative model is intentional, see
+        # ShareholderDistributionService's docstrings), so
+        # working_capital["total"] still contains that money right up
+        # until an actual ShareholderWithdrawal happens. already_distributed
+        # is exactly the liability side of that: every VALIDATED
+        # ShareholderProfitShare's still-unwithdrawn amount, company-wide,
+        # not scoped by date_from/date_to (same "current outstanding
+        # snapshot" contract as working_capital itself). DRAFT shares are a
+        # preview only and must not move this figure (2026-09-08 review).
+        already_distributed = (
+            ShareholderProfitShare.objects.filter(
+                distribution__status=ShareholderProfitDistribution.Status.VALIDATED
+            )
+            .aggregate(total=Sum(F("amount_due") - F("amount_withdrawn")))["total"]
+            or ZERO
+        )
         distributable_result = (
             working_capital["total"]
             - working_capital["supplier_debt_total"]
             - working_capital["transporter_debt_total"]
             - working_capital["other_debts"]
             - working_capital["capital"]
+            - already_distributed
         )
 
         # Business decision (2026-09-04, distribution basis change): a
@@ -2279,6 +2494,7 @@ class ShareholderProfitPreviewService:
             "net_profit": net_profit,
             "total_company_absorbed_loss": total_company_absorbed_loss,
             "working_capital": working_capital,
+            "already_distributed": already_distributed,
             "distributable_result": distributable_result,
             "shareholders": shareholders,
         }

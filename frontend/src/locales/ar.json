@@ -944,14 +944,20 @@
         "status": "الحالة",
         "statusValues": {
           "DRAFT": "مسودة",
-          "VALIDATED": "مصادق عليه"
+          "VALIDATED": "مصادق عليه",
+          "CANCELLED": "ملغى"
         },
         "validate": "مصادقة",
+        "validateBlockedHint": "الربح يتجاوز المبلغ المتبقي المتاح للتوزيع: المصادقة غير ممكنة.",
+        "cancel": "إلغاء",
+        "cancelConfirm": "إلغاء هذا التوزيع؟ ستُسحب الحصص التي أُضيفت بالفعل للشركاء إذا لم يتم أي سحب عليها بعد.",
+        "cancelError": "تعذر إلغاء هذا التوزيع.",
         "shareholder": "المساهم",
         "percent": "النسبة",
         "amountDue": "المبلغ المستحق",
         "remainingDue": "المتبقي للتحصيل",
-        "saveError": "تعذر إنشاء هذا التوزيع — تحقق من الحقول."
+        "saveError": "تعذر إنشاء هذا التوزيع — تحقق من الحقول.",
+        "createdSuccess": "تم إنشاء توزيع للفترة {start} — {end}: تم توزيع {amount} على الشركاء."
       },
       "loan": {
         "title": "سلف بين الشركاء",
@@ -975,7 +981,7 @@
         "title": "سحب أموال المساهم",
         "shareholder": "المساهم",
         "profitShare": "حصة الربح",
-        "general": "سحب عام (غير مرتبط بتوزيع)",
+        "selectProfitShare": "اختر التوزيع المصادق عليه…",
         "amount": "المبلغ",
         "date": "التاريخ",
         "accountType": "نوع الحساب",
@@ -1011,8 +1017,11 @@
       },
       "preview": {
         "badge": "إرشادي",
-        "notice": "المبلغ المتاح للتوزيع بعد الديون ورأس المال",
-        "summaryLabel": "النتيجة المقترحة للتوزيع"
+        "notice": "المبلغ المتبقي المتاح للتوزيع (بعد الديون ورأس المال)",
+        "summaryLabel": "النتيجة المقترحة للتوزيع",
+        "periodProfit": "ربح الفترة",
+        "alreadyValidatedEngagements": "التزامات مصادق عليها بالفعل تجاه الشركاء (كل الفترات)",
+        "remainingDistributable": "المتبقي المتاح للتوزيع"
       }
     },
     "profit": {
@@ -1035,6 +1044,7 @@
       "workingCapitalDebts": "الديون المفتوحة",
       "capitalContributed": "رأس المال المُقدَّم",
       "companyAbsorbedLoss": "الخسارة المتحملة من الشركة",
+      "alreadyDistributed": "تم توزيعه بالفعل (غير مسحوب)",
       "distributableResult": "النتيجة القابلة للتوزيع بعد الديون ورأس المال",
       "tripsCount": "عدد الرحلات المحتسبة",
       "revenue": "رقم الأعمال",

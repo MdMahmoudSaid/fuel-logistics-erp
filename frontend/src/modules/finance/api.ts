@@ -409,6 +409,19 @@ export function validateShareholderDistribution(
     .then((r) => r.data)
 }
 
+// backend/apps/finance/services.py ShareholderDistributionService.cancel_distribution()
+// is the sole authority on this transition (DRAFT/VALIDATED -> CANCELLED,
+// stamps cancelled_by/cancelled_at, refuses if a withdrawal already
+// exists against one of the distribution's shares) - this just posts the
+// request.
+export function cancelShareholderDistribution(
+  distributionId: number,
+): Promise<ShareholderProfitDistribution> {
+  return apiClient
+    .post<ShareholderProfitDistribution>(`/shareholder-distributions/${distributionId}/cancel/`)
+    .then((r) => r.data)
+}
+
 // backend/apps/finance/services.py ShareholderLoanService.record_repayment()
 // is the sole authority on this write (Task 7 fix: loan-repayment
 // lost-update race) - it increments amount_repaid under select_for_update()

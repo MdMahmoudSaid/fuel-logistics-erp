@@ -71,7 +71,7 @@ export interface DashboardSummary {
     // distributable_result instead of leaving an unexplained gap.
     total_company_absorbed_loss: string
     total_withdrawn: string
-    remaining_undistributed: string
+    remaining_to_pay_shareholders: string
     open_loans_total: string
   }
   financial_summary: {
@@ -108,7 +108,7 @@ export interface DashboardSummary {
     }
     shareholders: {
       balance: string
-      remaining_undistributed: string
+      remaining_to_pay_shareholders: string
       total_withdrawn: string
       open_loans_total: string
     }

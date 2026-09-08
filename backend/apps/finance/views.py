@@ -516,6 +516,9 @@ class ShareholderViewSet(viewsets.ModelViewSet):
     permission_classes = [HasModulePermission]
     module = "shareholders"
 
+    def destroy(self, request, *args, **kwargs):
+        raise MethodNotAllowed("DELETE", detail=_NO_HARD_DELETE_DETAIL)
+
     @action(detail=True, methods=["get"])
     def ledger(self, request, pk=None):
         """Per-shareholder summary: profit shares/remaining due, loans in
@@ -601,6 +604,23 @@ class ShareholderProfitDistributionViewSet(viewsets.ModelViewSet):
             ShareholderProfitDistributionSerializer(distribution, context={"request": request}).data
         )
 
+    @action(detail=True, methods=["post"])
+    def cancel(self, request, pk=None):
+        """Void a DRAFT or VALIDATED distribution.
+
+        POST /api/shareholder-distributions/{id}/cancel/
+        """
+        distribution = self.get_object()
+        try:
+            distribution = ShareholderDistributionService.cancel_distribution(
+                distribution.id, request.user
+            )
+        except ShareholderDistributionError as exc:
+            return Response({"detail": str(exc)}, status=http_status.HTTP_400_BAD_REQUEST)
+        return Response(
+            ShareholderProfitDistributionSerializer(distribution, context={"request": request}).data
+        )
+
 
 class ShareholderLoanViewSet(viewsets.ModelViewSet):
     queryset = ShareholderLoan.objects.select_related("borrower", "lender").all()
@@ -608,6 +628,9 @@ class ShareholderLoanViewSet(viewsets.ModelViewSet):
     filterset_fields = ["borrower", "lender", "status"]
     permission_classes = [HasModulePermission]
     module = "shareholders"
+
+    def destroy(self, request, *args, **kwargs):
+        raise MethodNotAllowed("DELETE", detail=_NO_HARD_DELETE_DETAIL)
 
     @action(detail=True, methods=["post"], url_path="record-repayment")
     def record_repayment(self, request, pk=None):

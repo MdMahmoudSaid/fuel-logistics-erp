@@ -22,7 +22,12 @@
 
 from django.utils.dateparse import parse_date
 
-from apps.finance.models import ShareholderLoan, ShareholderProfitShare, ShareholderWithdrawal
+from apps.finance.models import (
+    ShareholderLoan,
+    ShareholderProfitDistribution,
+    ShareholderProfitShare,
+    ShareholderWithdrawal,
+)
 
 FIELDS = ["date", "type", "reference", "debit", "credit", "balance"]
 
@@ -45,9 +50,15 @@ class ShareholderStatementQuery:
     def run(cls, *, shareholder_id, date_from=None, date_to=None) -> list[dict]:
         date_from = _as_date(date_from)
         date_to = _as_date(date_to)
-        shares = ShareholderProfitShare.objects.filter(
-            shareholder_id=shareholder_id
-        ).select_related("distribution")
+        # Only VALIDATED distributions are a real engagement to the
+        # shareholder (2026-09-08 review): a DRAFT is a preview, a
+        # CANCELLED one no longer grants a right - neither belongs in the
+        # grand livre associe.
+        shares = (
+            ShareholderProfitShare.objects.filter(shareholder_id=shareholder_id)
+            .filter(distribution__status=ShareholderProfitDistribution.Status.VALIDATED)
+            .select_related("distribution")
+        )
         withdrawals = ShareholderWithdrawal.objects.filter(shareholder_id=shareholder_id)
         loans_lent = ShareholderLoan.objects.filter(lender_id=shareholder_id)
         loans_borrowed = ShareholderLoan.objects.filter(borrower_id=shareholder_id)

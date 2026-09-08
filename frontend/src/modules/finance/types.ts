@@ -432,7 +432,7 @@ export interface Shareholder {
   updated_at: string
 }
 
-export type ShareholderDistributionStatus = 'DRAFT' | 'VALIDATED'
+export type ShareholderDistributionStatus = 'DRAFT' | 'VALIDATED' | 'CANCELLED'
 
 export interface ShareholderProfitShare {
   id: number
@@ -458,6 +458,9 @@ export interface ShareholderProfitDistribution {
   validated_by: number | null
   validated_by_detail: UserBrief | null
   validated_at: string | null
+  cancelled_by: number | null
+  cancelled_by_detail: UserBrief | null
+  cancelled_at: string | null
   shares: ShareholderProfitShare[]
   created_at: string
   updated_at: string
@@ -627,6 +630,14 @@ export interface ShareholderProfitPreview {
   // pair entirely - informational only, never feeds indicative_share (still
   // net_profit-based) or a distribution's total_profit.
   working_capital: WorkingCapital
+  // Sum of amount_due - amount_withdrawn across every non-cancelled
+  // ShareholderProfitShare, company-wide (recette fix, 2026-09-08):
+  // money already committed to shareholders via an earlier distribution,
+  // even if not yet withdrawn - already subtracted into
+  // distributable_result below, surfaced here so the distribution form
+  // can show "deja reparti" / "reste a repartir" explicitly instead of a
+  // figure that silently never moves.
+  already_distributed: string
   distributable_result: string
   shareholders: ShareholderProfitPreviewShare[]
 }

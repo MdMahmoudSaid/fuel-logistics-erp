@@ -16,6 +16,7 @@ from apps.finance.models import (
     CustomerPayment,
     Expense,
     ShareholderLoan,
+    ShareholderProfitDistribution,
     ShareholderProfitShare,
     ShareholderWithdrawal,
     TransportPayment,
@@ -226,7 +227,12 @@ class DashboardViewSet(viewsets.ViewSet):
                 "total"
             ]
             or ZERO,
-            "remaining_undistributed": ShareholderProfitShare.objects.aggregate(
+            # Only VALIDATED distributions are a real engagement to the
+            # shareholders (2026-09-08 review): DRAFT is a preview, CANCELLED
+            # no longer grants a right.
+            "remaining_to_pay_shareholders": ShareholderProfitShare.objects.filter(
+                distribution__status=ShareholderProfitDistribution.Status.VALIDATED
+            ).aggregate(
                 total=Sum(F("amount_due") - F("amount_withdrawn"))
             )["total"]
             or ZERO,
@@ -346,7 +352,7 @@ class DashboardViewSet(viewsets.ViewSet):
             return {"name": row["label"], "amount": -row["net_balance"]}
 
         shareholder_balance = (
-            shareholders_summary["remaining_undistributed"]
+            shareholders_summary["remaining_to_pay_shareholders"]
             - shareholders_summary["open_loans_total"]
         )
         party_balances = {
@@ -371,7 +377,7 @@ class DashboardViewSet(viewsets.ViewSet):
             },
             "shareholders": {
                 "balance": shareholder_balance,
-                "remaining_undistributed": shareholders_summary["remaining_undistributed"],
+                "remaining_to_pay_shareholders": shareholders_summary["remaining_to_pay_shareholders"],
                 "total_withdrawn": shareholders_summary["total_withdrawn"],
                 "open_loans_total": shareholders_summary["open_loans_total"],
             },
