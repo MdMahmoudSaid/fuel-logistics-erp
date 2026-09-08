@@ -516,6 +516,9 @@ class ShareholderViewSet(viewsets.ModelViewSet):
     permission_classes = [HasModulePermission]
     module = "shareholders"
 
+    def destroy(self, request, *args, **kwargs):
+        raise MethodNotAllowed("DELETE", detail=_NO_HARD_DELETE_DETAIL)
+
     @action(detail=True, methods=["get"])
     def ledger(self, request, pk=None):
         """Per-shareholder summary: profit shares/remaining due, loans in
@@ -625,6 +628,9 @@ class ShareholderLoanViewSet(viewsets.ModelViewSet):
     filterset_fields = ["borrower", "lender", "status"]
     permission_classes = [HasModulePermission]
     module = "shareholders"
+
+    def destroy(self, request, *args, **kwargs):
+        raise MethodNotAllowed("DELETE", detail=_NO_HARD_DELETE_DETAIL)
 
     @action(detail=True, methods=["post"], url_path="record-repayment")
     def record_repayment(self, request, pk=None):

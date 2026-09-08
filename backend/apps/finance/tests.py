@@ -3686,6 +3686,41 @@ def test_distribution_cancel_action_requires_cancel_permission():
 
 
 @pytest.mark.django_db
+def test_shareholder_api_rejects_hard_delete(admin_client):
+    """Regression test (code review, fix round 1): migration
+    0006_grant_shareholder_cancel_permission grants Admin/Management the
+    "cancel" tier on the whole "shareholders" module, not just the
+    distribution viewset. destroy() maps to "cancel" via ACTION_MAP's
+    default fallback, so an admin's DELETE now clears HasModulePermission
+    for every viewset sharing that module - including ShareholderViewSet,
+    which had no destroy() override. Without this override, the request
+    would reach ModelViewSet.destroy() and hard-delete the row (or raise
+    an unhandled ProtectedError if referenced by a ShareholderProfitShare)."""
+    shareholder = _make_shareholders([Decimal("100")])[0]
+
+    response = admin_client.delete(f"/api/shareholders/{shareholder.id}/")
+
+    assert response.status_code == 405
+
+
+@pytest.mark.django_db
+def test_shareholder_loan_api_rejects_hard_delete(admin_client):
+    """Regression test (code review, fix round 1): same gap as
+    test_shareholder_api_rejects_hard_delete above, for
+    ShareholderLoanViewSet - it also had no destroy() override, so an
+    admin's DELETE would silently hard-delete the loan (no protecting FK
+    exists for ShareholderLoan)."""
+    borrower, lender = _make_shareholders([Decimal("50"), Decimal("50")])
+    loan = ShareholderLoan.objects.create(
+        borrower=borrower, lender=lender, amount=Decimal("100000.00"), date="2026-08-01"
+    )
+
+    response = admin_client.delete(f"/api/shareholder-loans/{loan.id}/")
+
+    assert response.status_code == 405
+
+
+@pytest.mark.django_db
 def test_validate_distribution_rejects_when_shares_became_empty(admin_client):
     """Defense in depth alongside create_distribution's own guard: the
     DRAFT's only shareholder is deactivated AFTER creation (so its
