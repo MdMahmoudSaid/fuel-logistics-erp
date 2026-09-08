@@ -11,7 +11,7 @@ import { i18n } from '@/i18n'
 
 const fetchReport = vi.fn()
 const fetchShareholderProfitPreview = vi.fn()
-const exportProfitReportPdf = vi.fn(async () => undefined)
+const exportProfitReportPdf = vi.fn(async (..._args: unknown[]) => undefined)
 
 vi.mock('@/modules/reports/api', () => ({
   fetchReport: (...args: unknown[]) => fetchReport(...args),

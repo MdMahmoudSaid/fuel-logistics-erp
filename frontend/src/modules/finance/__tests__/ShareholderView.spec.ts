@@ -14,16 +14,18 @@ const fetchShareholderLedger = vi.fn()
 const fetchShareholderProfitPreview = vi.fn()
 const shareholderResourceList = vi.fn()
 const shareholderContributionResourceList = vi.fn()
-const shareholderDistributionResourceCreate = vi.fn(async (payload: Record<string, unknown>) => ({
-  id: 1,
-  status: 'DRAFT',
-  ...payload,
-}))
-const shareholderDistributionResourceList = vi.fn(async () => emptyList())
+const shareholderDistributionResourceCreate = vi.fn(
+  async (payload: Record<string, unknown>): Promise<Record<string, unknown>> => ({
+    id: 1,
+    status: 'DRAFT',
+    ...payload,
+  }),
+)
+const shareholderDistributionResourceList = vi.fn()
 const cancelShareholderDistribution = vi.fn()
 
 function emptyList() {
-  return { count: 0, next: null, previous: null, results: [] }
+  return { count: 0, next: null, previous: null, results: [] as Record<string, unknown>[] }
 }
 
 function shareholderListPayload() {
@@ -81,6 +83,7 @@ describe('ShareholderView', () => {
     i18n.global.locale.value = 'fr'
     shareholderResourceList.mockResolvedValue(shareholderListPayload())
     shareholderContributionResourceList.mockResolvedValue(emptyList())
+    shareholderDistributionResourceList.mockResolvedValue(emptyList())
     fetchShareholderProfitPreview.mockResolvedValue({
       period_start: '2026-08-01',
       period_end: null,
