@@ -3423,6 +3423,65 @@ def test_create_distribution_calculates_shares_80_10_10():
 
 
 @pytest.mark.django_db
+def test_create_distribution_allocates_rounding_remainder_deterministically():
+    """2026-09-08 review, point 8: sum(amount_due) equals
+    total_profit * sum(percents)/100 to the cent, with the leftover
+    centime assigned deterministically - never created, never lost."""
+    a, b, c = _make_shareholders(
+        [Decimal("33.33"), Decimal("33.33"), Decimal("33.34")], prefix="ROUND"
+    )
+    actor = _make_admin_user("ROUND")
+
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100.01"),
+        actor=actor,
+    )
+
+    shares = {
+        s.shareholder_id: s.amount_due
+        for s in ShareholderProfitShare.objects.filter(distribution=distribution)
+    }
+    assert sum(shares.values()) == Decimal("100.01")
+    # c holds the largest fractional remainder (33.34% -> .343334), so the
+    # odd centime lands there - and it lands there every time.
+    assert shares[c.id] == Decimal("33.35")
+    assert shares[a.id] == Decimal("33.33")
+    assert shares[b.id] == Decimal("33.33")
+
+    twin = ShareholderDistributionService.create_distribution(
+        period_start="2026-08-01",
+        period_end="2026-08-31",
+        total_profit=Decimal("100.01"),
+        actor=actor,
+    )
+    assert {
+        s.shareholder_id: s.amount_due
+        for s in ShareholderProfitShare.objects.filter(distribution=twin)
+    } == shares
+
+
+@pytest.mark.django_db
+def test_create_distribution_remainder_when_percentages_sum_below_100():
+    """The invariant is against total_profit * sum(percents)/100, not
+    total_profit itself - two associates at 33.33% each only share 66.66%
+    of the profit."""
+    a, b = _make_shareholders([Decimal("33.33"), Decimal("33.33")], prefix="ROUNDLOW")
+    actor = _make_admin_user("ROUNDLOW")
+
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100.01"),
+        actor=actor,
+    )
+
+    shares = ShareholderProfitShare.objects.filter(distribution=distribution)
+    assert sum(s.amount_due for s in shares) == Decimal("66.67")  # 100.01 * 66.66 / 100
+
+
+@pytest.mark.django_db
 def test_create_distribution_only_snapshots_active_shareholders():
     active = Shareholder.objects.create(name="Active", participation_percent=Decimal("70"))
     Shareholder.objects.create(name="Inactive", participation_percent=Decimal("20"), is_active=False)

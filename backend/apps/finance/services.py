@@ -8,7 +8,7 @@
 # balance for the same invoice/customer (guide Section 8.4).
 
 from datetime import date, timedelta
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_DOWN, Decimal, InvalidOperation
 
 from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
@@ -1610,10 +1610,12 @@ class ShareholderDistributionService:
     ) -> ShareholderProfitDistribution:
         """Create a DRAFT distribution and immediately snapshot every
         active shareholder's current participation_percent into a
-        ShareholderProfitShare row (percent_snapshot), with
-        amount_due = total_profit * percent_snapshot / 100, quantized to
-        the cent - so a later edit to Shareholder.participation_percent can
-        never retroactively change this distribution's amounts.
+        ShareholderProfitShare row (percent_snapshot). amount_due is
+        total_profit * percent_snapshot / 100, but the shares are balanced
+        by the largest-remainder method so they sum to exactly
+        total_profit * sum(percents) / 100 to the cent (2026-09-08 review,
+        point 8) - and a later edit to Shareholder.participation_percent
+        can never retroactively change this distribution's amounts.
 
         Raises ShareholderDistributionError before creating anything if:
         - the requested period overlaps any existing distribution whose
@@ -1659,11 +1661,34 @@ class ShareholderDistributionService:
             created_by=actor,
         )
 
-        for shareholder in active_shareholders:
-            percent_snapshot = shareholder.participation_percent
-            amount_due = (
-                Decimal(str(total_profit)) * percent_snapshot / Decimal("100")
-            ).quantize(Decimal("0.01"))
+        # 2026-09-08 review, point 8: split total_profit so the shares add
+        # up to the exact target (total_profit * sum_of_percents / 100) to
+        # the cent - quantizing each share independently would drop or
+        # invent a centime whenever the percentages don't divide cleanly.
+        # Largest-remainder method: floor every share, then hand the
+        # leftover cents out one at a time to the largest fractional
+        # remainders, tie-broken by shareholder id so the result is
+        # deterministic and reproducible.
+        total = Decimal(str(total_profit))
+        percents = [sh.participation_percent for sh in active_shareholders]
+        exact = [total * p / Decimal("100") for p in percents]
+        target_total = (total * sum(percents) / Decimal("100")).quantize(Decimal("0.01"))
+        amounts = [e.quantize(Decimal("0.01"), rounding=ROUND_DOWN) for e in exact]
+        remainder_cents = int(
+            ((target_total - sum(amounts)) / Decimal("0.01")).to_integral_value()
+        )
+        order = sorted(
+            range(len(active_shareholders)),
+            key=lambda i: (exact[i] - amounts[i], -active_shareholders[i].id),
+            reverse=True,
+        )
+        step = Decimal("0.01") if remainder_cents >= 0 else Decimal("-0.01")
+        for k in range(abs(remainder_cents)):
+            amounts[order[k % len(order)]] += step
+
+        for shareholder, percent_snapshot, amount_due in zip(
+            active_shareholders, percents, amounts
+        ):
             ShareholderProfitShare.objects.create(
                 distribution=distribution,
                 shareholder=shareholder,
