@@ -19,6 +19,8 @@ const shareholderDistributionResourceCreate = vi.fn(async (payload: Record<strin
   status: 'DRAFT',
   ...payload,
 }))
+const shareholderDistributionResourceList = vi.fn(async () => emptyList())
+const cancelShareholderDistribution = vi.fn()
 
 function emptyList() {
   return { count: 0, next: null, previous: null, results: [] }
@@ -55,7 +57,7 @@ vi.mock('../api', () => ({
   shareholderLoanResource: { list: vi.fn(async () => emptyList()) },
   shareholderWithdrawalResource: { list: vi.fn(async () => emptyList()) },
   shareholderDistributionResource: {
-    list: vi.fn(async () => emptyList()),
+    list: (...args: unknown[]) => shareholderDistributionResourceList(...args),
     create: (payload: Record<string, unknown>) => shareholderDistributionResourceCreate(payload),
   },
   shareholderContributionResource: {
@@ -64,6 +66,7 @@ vi.mock('../api', () => ({
   fetchShareholderLedger: (...args: unknown[]) => fetchShareholderLedger(...args),
   fetchShareholderProfitPreview: (...args: unknown[]) => fetchShareholderProfitPreview(...args),
   validateShareholderDistribution: vi.fn(),
+  cancelShareholderDistribution: (...args: unknown[]) => cancelShareholderDistribution(...args),
   recordShareholderLoanRepayment: vi.fn(),
   createShareholderContribution: vi.fn(),
 }))
@@ -501,5 +504,80 @@ describe('ShareholderView', () => {
     await flushPromises()
 
     expect(wrapper.findComponent({ name: 'ContributionForm' }).exists()).toBe(true)
+  })
+
+  it('cancels a distribution after confirmation and refreshes the list', async () => {
+    const listMock = vi.fn(async () => ({
+      count: 1,
+      next: null,
+      previous: null,
+      results: [
+        {
+          id: 7,
+          period_start: '2026-07-01',
+          period_end: '2026-07-31',
+          total_profit: '100000.00',
+          status: 'DRAFT',
+          shares: [],
+        },
+      ],
+    }))
+    shareholderDistributionResourceList.mockImplementationOnce(listMock)
+    cancelShareholderDistribution.mockResolvedValue({
+      id: 7,
+      status: 'CANCELLED',
+    })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    const wrapper = mount(ShareholderView)
+    await flushPromises()
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Répartition des bénéfices')!
+      .trigger('click')
+    await flushPromises()
+
+    const cancelButton = wrapper.find('[data-test="cancel-distribution-7"]')
+    expect(cancelButton.exists()).toBe(true)
+    await cancelButton.trigger('click')
+    await flushPromises()
+
+    expect(cancelShareholderDistribution).toHaveBeenCalledWith(7)
+    expect(listMock).toHaveBeenCalled()
+  })
+
+  it('shows the backend error when cancellation is rejected (a withdrawal already exists)', async () => {
+    shareholderDistributionResourceList.mockResolvedValueOnce({
+      count: 1,
+      next: null,
+      previous: null,
+      results: [
+        {
+          id: 8,
+          period_start: '2026-07-01',
+          period_end: '2026-07-31',
+          total_profit: '100000.00',
+          status: 'VALIDATED',
+          shares: [],
+        },
+      ],
+    })
+    cancelShareholderDistribution.mockRejectedValue({
+      response: { data: { detail: "Impossible d'annuler cette repartition." } },
+    })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    const wrapper = mount(ShareholderView)
+    await flushPromises()
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Répartition des bénéfices')!
+      .trigger('click')
+    await flushPromises()
+
+    await wrapper.find('[data-test="cancel-distribution-8"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain("Impossible d'annuler cette repartition.")
   })
 })

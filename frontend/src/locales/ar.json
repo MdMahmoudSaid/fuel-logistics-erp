@@ -944,9 +944,13 @@
         "status": "الحالة",
         "statusValues": {
           "DRAFT": "مسودة",
-          "VALIDATED": "مصادق عليه"
+          "VALIDATED": "مصادق عليه",
+          "CANCELLED": "ملغى"
         },
         "validate": "مصادقة",
+        "cancel": "إلغاء",
+        "cancelConfirm": "إلغاء هذا التوزيع؟ ستُسحب الحصص التي أُضيفت بالفعل للشركاء إذا لم يتم أي سحب عليها بعد.",
+        "cancelError": "تعذر إلغاء هذا التوزيع.",
         "shareholder": "المساهم",
         "percent": "النسبة",
         "amountDue": "المبلغ المستحق",

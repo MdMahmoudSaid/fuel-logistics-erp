@@ -946,9 +946,13 @@
         "status": "Statut",
         "statusValues": {
           "DRAFT": "Brouillon",
-          "VALIDATED": "Validée"
+          "VALIDATED": "Validée",
+          "CANCELLED": "Annulée"
         },
         "validate": "Valider",
+        "cancel": "Annuler",
+        "cancelConfirm": "Annuler cette répartition ? Les parts déjà créditées aux associés seront retirées si aucun retrait n'a encore été effectué dessus.",
+        "cancelError": "Impossible d'annuler cette répartition.",
         "shareholder": "Actionnaire",
         "percent": "Pourcentage",
         "amountDue": "Montant dû",

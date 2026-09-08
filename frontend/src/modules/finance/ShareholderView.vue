@@ -11,6 +11,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { createResourceApi } from '@/api/resource'
 import {
+  cancelShareholderDistribution,
   fetchShareholderLedger,
   fetchShareholderProfitPreview,
   recordShareholderLoanRepayment,
@@ -236,6 +237,20 @@ async function onValidateDistribution(distribution: ShareholderProfitDistributio
     distributionError.value = extractErrorMessage(
       e,
       t('finance.shareholder.distribution.saveError'),
+    )
+  }
+}
+
+async function onCancelDistribution(distribution: ShareholderProfitDistribution) {
+  if (!window.confirm(t('finance.shareholder.distribution.cancelConfirm'))) return
+  try {
+    await cancelShareholderDistribution(distribution.id)
+    await loadDistributions()
+    await loadPreview()
+  } catch (e) {
+    distributionError.value = extractErrorMessage(
+      e,
+      t('finance.shareholder.distribution.cancelError'),
     )
   }
 }
@@ -703,7 +718,11 @@ async function onViewLedger() {
                   <MonoValue :value="formatMoney(d.total_profit)" />
                 </td>
                 <td class="px-3 py-2.5">
-                  <Badge :variant="d.status === 'VALIDATED' ? 'livre' : 'transit'">
+                  <Badge
+                    :variant="
+                      d.status === 'VALIDATED' ? 'livre' : d.status === 'CANCELLED' ? 'neutre' : 'transit'
+                    "
+                  >
                     {{ t(`finance.shareholder.distribution.statusValues.${d.status}`) }}
                   </Badge>
                 </td>
@@ -714,6 +733,14 @@ async function onViewLedger() {
                     @click.stop="onValidateDistribution(d)"
                   >
                     {{ t('finance.shareholder.distribution.validate') }}
+                  </Button>
+                  <Button
+                    v-if="d.status !== 'CANCELLED'"
+                    :data-test="`cancel-distribution-${d.id}`"
+                    variant="danger"
+                    @click.stop="onCancelDistribution(d)"
+                  >
+                    {{ t('finance.shareholder.distribution.cancel') }}
                   </Button>
                 </td>
               </tr>

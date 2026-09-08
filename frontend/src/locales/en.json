@@ -944,9 +944,13 @@
         "status": "Status",
         "statusValues": {
           "DRAFT": "Draft",
-          "VALIDATED": "Validated"
+          "VALIDATED": "Validated",
+          "CANCELLED": "Cancelled"
         },
         "validate": "Validate",
+        "cancel": "Cancel",
+        "cancelConfirm": "Cancel this distribution? Shares already credited to shareholders will be withdrawn if no withdrawal has been recorded against them yet.",
+        "cancelError": "Could not cancel this distribution.",
         "shareholder": "Shareholder",
         "percent": "Percent",
         "amountDue": "Amount due",
