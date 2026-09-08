@@ -8,12 +8,7 @@ from apps.accounts.permissions import HasModulePermission
 
 from .models import CustomerOrder, Invoice, Sale
 from .serializers import CustomerOrderSerializer, InvoiceSerializer, SaleSerializer
-from .services import (
-    InvoiceNotValidated,
-    InvoiceService,
-    InvoiceValidationError,
-    UnsupportedCorrectionField,
-)
+from .services import InvoiceService, InvoiceValidationError
 
 
 class CustomerOrderViewSet(viewsets.ModelViewSet):
@@ -152,7 +147,11 @@ class InvoiceViewSet(viewsets.ModelViewSet):
             invoice = InvoiceService.correct_invoice(
                 invoice.id, field, new_value, reason, request.user
             )
-        except (InvoiceNotValidated, UnsupportedCorrectionField) as exc:
+        except ValueError as exc:
+            # Covers InvoiceNotValidated / UnsupportedCorrectionField (both
+            # ValueError subclasses) plus the non-billable-quantity guard and
+            # any bad Decimal in `new_value` - a correction that the service
+            # refuses is a 400, never a 500.
             return Response({"detail": str(exc)}, status=http_status.HTTP_400_BAD_REQUEST)
 
         return Response(InvoiceSerializer(invoice, context={"request": request}).data)

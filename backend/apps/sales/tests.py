@@ -528,6 +528,25 @@ def test_api_invoice_correct_rejected_while_still_draft():
     assert response.status_code == 400
 
 
+@pytest.mark.django_db
+def test_api_invoice_correct_zero_delivered_quantity_returns_400_not_500():
+    # Spec 2026-09-07 follow-up: _reject_non_billable_quantity raises a plain
+    # ValueError; the /correct/ action must map it to 400, not let it 500.
+    fx = _setup_fixtures("API-CORRECT-ZERO")
+    _, invoice = _make_invoice(fx, "TRIP-CORR-ZERO-01")
+
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+    assert client.post(f"/api/invoices/{invoice.id}/validate/").status_code == 200
+
+    response = client.post(
+        f"/api/invoices/{invoice.id}/correct/",
+        {"field": "delivered_quantity", "new_value": "0", "reason": "client n'a rien reçu"},
+    )
+    assert response.status_code == 400
+    assert "facturée" in response.data["detail"] or "billed" in response.data["detail"]
+
+
 # ---------------------------------------------------------------------------
 # Spec 2026-09-07 "facture quantité reçue": InvoiceService.adjust_delivered_quantity
 # ---------------------------------------------------------------------------
