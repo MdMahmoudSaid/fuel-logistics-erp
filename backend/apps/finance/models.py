@@ -865,19 +865,28 @@ class ShareholderProfitDistribution(TimeStampedModel):
     Invoice's DRAFT -> VALIDATED flow) freezes it by stamping
     validated_by/validated_at.
 
-    CANCELLED (added 2026-09-08, reversing "Task 7 ruling 2" - see the
-    2026-09-08 recette bug where the same real profit was distributed
-    three times because there was no way to undo a mistake): a DRAFT or
-    VALIDATED distribution can be voided by
-    ShareholderDistributionService.cancel_distribution as long as no
-    ShareholderWithdrawal has ever been recorded against one of its
-    shares. Cancelling never deletes the ShareholderProfitShare rows -
-    they stay for audit history, but every downstream calculation
-    (ShareholderLedgerService.get_available_balance,
-    ShareholderProfitPreviewService.get_preview's already_distributed,
-    the dashboard's remaining_undistributed) excludes a CANCELLED
-    distribution's shares, so the money it wrongly committed becomes
-    available again everywhere at once.
+    Financial effect is gated strictly on status (2026-09-08 review,
+    "modele metier definitif"):
+    - DRAFT: a preparatory proposal only. Its ShareholderProfitShare rows
+      may exist to preview the split, but they credit no available
+      balance, reduce no distributable result, and no withdrawal may be
+      booked against them.
+    - VALIDATED: the split becomes a real engagement of the company. The
+      validated shares raise each shareholder's available balance and
+      lower the still-distributable result (never any treasury movement -
+      that only happens on an actual ShareholderWithdrawal).
+    - CANCELLED (added 2026-09-08, reversing "Task 7 ruling 2"): a DRAFT or
+      VALIDATED distribution voided by
+      ShareholderDistributionService.cancel_distribution, only while no
+      ShareholderWithdrawal has ever been recorded against one of its
+      shares. It is kept for audit history (its shares are never deleted)
+      but grants no further right and can never be validated again.
+
+    Every downstream calculation (ShareholderLedgerService.
+    get_available_balance / get_shareholder_summary,
+    ShareholderProfitPreviewService.get_preview's already_distributed, the
+    dashboard's remaining_undistributed) counts VALIDATED shares only, so
+    the state of a distribution is reflected everywhere at once.
     """
 
     class Status(models.TextChoices):

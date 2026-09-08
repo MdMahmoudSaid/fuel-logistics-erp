@@ -1808,9 +1808,15 @@ class ShareholderWithdrawalService:
             distribution = ShareholderProfitDistribution.objects.select_for_update().get(
                 pk=profit_share.distribution_id
             )
-            if distribution.status == ShareholderProfitDistribution.Status.CANCELLED:
+            # 2026-09-08 review: a withdrawal may only be booked against a
+            # share of a VALIDATED distribution. A DRAFT is a preparatory
+            # proposal (no engagement yet), a CANCELLED one no longer
+            # grants any right - either would let money leave treasury for
+            # a distribution that is not, or no longer, a real debt.
+            if distribution.status != ShareholderProfitDistribution.Status.VALIDATED:
                 raise ShareholderWithdrawalError(
-                    "Cette part de benefice appartient a une repartition annulee."
+                    "Cette part de benefice appartient a une repartition non "
+                    "validee (brouillon ou annulee) : aucun retrait possible."
                 )
             remaining_due = profit_share.remaining_due
             if amount_decimal > remaining_due:
@@ -2124,13 +2130,15 @@ class ShareholderLedgerService:
         ShareholderLoanService.create_loan so a withdrawal and a loan can
         never be validated against two different numbers.
 
-        A CANCELLED distribution's shares are excluded (2026-09-08 fix):
-        cancelling a mistaken distribution must release the balance it
-        wrongly granted, everywhere that balance is used.
+        Only a VALIDATED distribution's shares count (2026-09-08 review,
+        "modele metier definitif"): a DRAFT distribution is a preparatory
+        proposal with no real debt to the shareholders, and a CANCELLED one
+        no longer grants any right - neither may credit an available
+        balance, everywhere that balance is used.
         """
         shares_remaining = (
             ShareholderProfitShare.objects.filter(shareholder_id=shareholder_id)
-            .exclude(distribution__status=ShareholderProfitDistribution.Status.CANCELLED)
+            .filter(distribution__status=ShareholderProfitDistribution.Status.VALIDATED)
             .aggregate(total=Sum(F("amount_due") - F("amount_withdrawn")))["total"]
             or ZERO
         )
@@ -2151,9 +2159,14 @@ class ShareholderLedgerService:
     def get_shareholder_summary(shareholder_id) -> dict:
         shareholder = Shareholder.objects.get(pk=shareholder_id)
 
+        # Only VALIDATED distributions carry a real engagement to the
+        # shareholder (2026-09-08 review): a DRAFT share is a preview line
+        # with no financial effect, a CANCELLED one no longer grants a
+        # right - neither belongs in the ledger totals nor in the
+        # withdrawal-form "part de benefice" dropdown this feeds.
         shares = list(
             shareholder.profit_shares.select_related("distribution")
-            .exclude(distribution__status=ShareholderProfitDistribution.Status.CANCELLED)
+            .filter(distribution__status=ShareholderProfitDistribution.Status.VALIDATED)
             .order_by("-distribution_id")
         )
         total_amount_due = sum((s.amount_due for s in shares), ZERO)
@@ -2321,18 +2334,19 @@ class ShareholderProfitPreviewService:
         # Recette bug (2026-09-08): the same real profit was distributed
         # three times because distributable_result never subtracted what
         # had already been committed to shareholders via an earlier
-        # distribution - creating (or validating) a distribution never
-        # touches treasury (the declarative model is intentional, see
+        # distribution - validating a distribution never touches treasury
+        # (the declarative model is intentional, see
         # ShareholderDistributionService's docstrings), so
         # working_capital["total"] still contains that money right up
         # until an actual ShareholderWithdrawal happens. already_distributed
-        # is exactly the liability side of that: every non-cancelled
+        # is exactly the liability side of that: every VALIDATED
         # ShareholderProfitShare's still-unwithdrawn amount, company-wide,
         # not scoped by date_from/date_to (same "current outstanding
-        # snapshot" contract as working_capital itself).
+        # snapshot" contract as working_capital itself). DRAFT shares are a
+        # preview only and must not move this figure (2026-09-08 review).
         already_distributed = (
-            ShareholderProfitShare.objects.exclude(
-                distribution__status=ShareholderProfitDistribution.Status.CANCELLED
+            ShareholderProfitShare.objects.filter(
+                distribution__status=ShareholderProfitDistribution.Status.VALIDATED
             )
             .aggregate(total=Sum(F("amount_due") - F("amount_withdrawn")))["total"]
             or ZERO

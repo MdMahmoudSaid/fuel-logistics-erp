@@ -3847,6 +3847,7 @@ def test_shareholder_withdrawal_creates_treasury_transaction_and_reduces_remaini
         total_profit=Decimal("1000000.00"),
         actor=actor,
     )
+    ShareholderDistributionService.validate_distribution(distribution.id, actor)
     share = ShareholderProfitShare.objects.get(distribution=distribution)
     cash_account = CashAccount.objects.create(name="Main Cash", opening_balance=Decimal("1000000.00"))
 
@@ -3882,6 +3883,7 @@ def test_shareholder_withdrawal_rejects_amount_exceeding_remaining_due():
         total_profit=Decimal("100000.00"),
         actor=actor,
     )
+    ShareholderDistributionService.validate_distribution(distribution.id, actor)
     share = ShareholderProfitShare.objects.get(distribution=distribution)
     cash_account = CashAccount.objects.create(name="Main Cash")
 
@@ -3901,15 +3903,16 @@ def test_shareholder_withdrawal_general_without_profit_share():
     shareholder = _make_shareholders([Decimal("100")])[0]
     actor = _make_admin_user("6")
     # A general withdrawal (no profit_share_id) is still checked against
-    # the shareholder's available_balance - needs a distribution first
-    # (design doc 2026-08-26-benefices-associes-refinement-design.md, Fix
-    # 1) so it has something to draw from.
-    ShareholderDistributionService.create_distribution(
+    # the shareholder's available_balance - needs a VALIDATED distribution
+    # first (2026-09-08 review: a DRAFT credits no balance) so it has
+    # something to draw from.
+    _distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",
         total_profit=Decimal("100000.00"),
         actor=actor,
     )
+    ShareholderDistributionService.validate_distribution(_distribution.id, actor)
     bank_account = BankAccount.objects.create(name="Main BOA", opening_balance=Decimal("100000.00"))
 
     withdrawal = ShareholderWithdrawalService.record_withdrawal(
@@ -3985,6 +3988,11 @@ def test_get_shareholder_summary_excludes_cancelled_distribution_shares():
         total_profit=Decimal("100000.00"),
         actor=actor,
     )
+    ShareholderDistributionService.validate_distribution(distribution.id, actor)
+    assert ShareholderLedgerService.get_shareholder_summary(shareholder.id)["remaining_due"] == (
+        Decimal("100000.00")
+    )
+
     ShareholderDistributionService.cancel_distribution(distribution.id, actor)
 
     summary = ShareholderLedgerService.get_shareholder_summary(shareholder.id)
@@ -4059,12 +4067,14 @@ def test_shareholder_withdrawal_requires_exactly_one_account():
 @pytest.mark.django_db
 def test_shareholder_withdrawal_via_api_posts_treasury(admin_client):
     shareholder = _make_shareholders([Decimal("100")])[0]
-    ShareholderDistributionService.create_distribution(
+    _api_actor = _make_admin_user("6d")
+    _api_distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",
         total_profit=Decimal("100000.00"),
-        actor=_make_admin_user("6d"),
+        actor=_api_actor,
     )
+    ShareholderDistributionService.validate_distribution(_api_distribution.id, _api_actor)
     cash_account = CashAccount.objects.create(name="Main Cash", opening_balance=Decimal("100000.00"))
 
     response = admin_client.post(
@@ -4154,12 +4164,14 @@ def test_shareholder_loan_service_rejects_amount_exceeding_lender_available_bala
 @pytest.mark.django_db
 def test_shareholder_loan_service_creates_loan_within_lender_available_balance():
     borrower, lender = _make_shareholders([Decimal("50"), Decimal("50")], prefix="LOANOK")
-    ShareholderDistributionService.create_distribution(
+    _loanok_actor = _make_admin_user("LOANOK")
+    _loanok_distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",
         total_profit=Decimal("100000.00"),
-        actor=_make_admin_user("LOANOK"),
+        actor=_loanok_actor,
     )
+    ShareholderDistributionService.validate_distribution(_loanok_distribution.id, _loanok_actor)
 
     loan = ShareholderLoanService.create_loan(
         borrower_id=borrower.id,
@@ -4181,12 +4193,14 @@ def test_shareholder_loan_service_never_creates_treasury_transaction():
     associes ne doit pas creer de TreasuryTransaction si l'argent ne sort
     pas d'un compte de l'entreprise")."""
     borrower, lender = _make_shareholders([Decimal("50"), Decimal("50")], prefix="LOANTXN")
-    ShareholderDistributionService.create_distribution(
+    _loantxn_actor = _make_admin_user("LOANTXN")
+    _loantxn_distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",
         total_profit=Decimal("100000.00"),
-        actor=_make_admin_user("LOANTXN"),
+        actor=_loantxn_actor,
     )
+    ShareholderDistributionService.validate_distribution(_loantxn_distribution.id, _loantxn_actor)
     treasury_count_before = TreasuryTransaction.objects.count()
 
     ShareholderLoanService.create_loan(
@@ -4221,12 +4235,13 @@ def test_get_available_balance_loan_given_increases_loan_received_decreases():
     backwards, so this regression test locks it in."""
     a, b = _make_shareholders([Decimal("50"), Decimal("50")], prefix="SIGN")
     actor = _make_admin_user("SIGN")
-    ShareholderDistributionService.create_distribution(
+    _sign_distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",
         total_profit=Decimal("100000.00"),
         actor=actor,
     )
+    ShareholderDistributionService.validate_distribution(_sign_distribution.id, actor)
     # a's own profit share is 50000. a lends 10000 to b (a is lender) and
     # separately receives a 5000 advance from b (a is borrower on this one).
     ShareholderLoan.objects.create(
@@ -4251,11 +4266,71 @@ def test_get_available_balance_excludes_cancelled_distribution_shares():
         total_profit=Decimal("100000.00"),
         actor=actor,
     )
+    ShareholderDistributionService.validate_distribution(distribution.id, actor)
     assert ShareholderLedgerService.get_available_balance(shareholder.id) == Decimal("100000.00")
 
     ShareholderDistributionService.cancel_distribution(distribution.id, actor)
 
     assert ShareholderLedgerService.get_available_balance(shareholder.id) == Decimal("0.00")
+
+
+@pytest.mark.django_db
+def test_get_available_balance_ignores_draft_distribution_shares():
+    """2026-09-08 review, point 1: a DRAFT distribution is a preparatory
+    proposal - its shares must credit no available balance until the
+    distribution is validated."""
+    shareholder = _make_shareholders([Decimal("100")])[0]
+    actor = _make_admin_user("AVAILDRAFT")
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=actor,
+    )
+
+    assert ShareholderLedgerService.get_available_balance(shareholder.id) == Decimal("0.00")
+
+    ShareholderDistributionService.validate_distribution(distribution.id, actor)
+
+    assert ShareholderLedgerService.get_available_balance(shareholder.id) == Decimal("100000.00")
+
+
+@pytest.mark.django_db
+def test_draft_profit_share_blocks_withdrawal_and_loan():
+    """2026-09-08 review, point 1/4: no withdrawal and no loan may be
+    booked on the strength of a DRAFT share."""
+    shareholder, other = _make_shareholders([Decimal("100"), Decimal("0")], prefix="DRAFTBLOCK")
+    actor = _make_admin_user("DRAFTBLOCK")
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=actor,
+    )
+    share = distribution.shares.get(shareholder=shareholder)
+    cash_account = CashAccount.objects.create(
+        name="Draft Cash", opening_balance=Decimal("100000.00")
+    )
+
+    with pytest.raises(ShareholderWithdrawalError):
+        ShareholderWithdrawalService.record_withdrawal(
+            shareholder_id=shareholder.id,
+            profit_share_id=share.id,
+            amount=Decimal("10000.00"),
+            date="2026-08-01",
+            cash_account_id=cash_account.id,
+            actor=actor,
+        )
+
+    with pytest.raises(ShareholderLoanError):
+        ShareholderLoanService.create_loan(
+            borrower_id=other.id,
+            lender_id=shareholder.id,
+            amount=Decimal("10000.00"),
+            date="2026-08-01",
+        )
+
+    assert not ShareholderWithdrawal.objects.filter(profit_share=share).exists()
 
 
 @pytest.mark.django_db
@@ -4270,12 +4345,19 @@ def test_get_preview_subtracts_already_distributed_from_distributable_result():
     before = ShareholderProfitPreviewService.get_preview()
     assert before["already_distributed"] == Decimal("0.00")
 
-    ShareholderDistributionService.create_distribution(
+    distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",
         total_profit=Decimal("100000.00"),
         actor=actor,
     )
+
+    # A DRAFT proposal must not move the figure (2026-09-08 review).
+    draft_preview = ShareholderProfitPreviewService.get_preview()
+    assert draft_preview["already_distributed"] == Decimal("0.00")
+    assert draft_preview["distributable_result"] == before["distributable_result"]
+
+    ShareholderDistributionService.validate_distribution(distribution.id, actor)
 
     after = ShareholderProfitPreviewService.get_preview()
     assert after["already_distributed"] == Decimal("100000.00")
@@ -4292,6 +4374,11 @@ def test_get_preview_already_distributed_excludes_cancelled_distributions():
         total_profit=Decimal("100000.00"),
         actor=actor,
     )
+    ShareholderDistributionService.validate_distribution(distribution.id, actor)
+    assert ShareholderProfitPreviewService.get_preview()["already_distributed"] == Decimal(
+        "100000.00"
+    )
+
     ShareholderDistributionService.cancel_distribution(distribution.id, actor)
 
     preview = ShareholderProfitPreviewService.get_preview()
@@ -4335,13 +4422,16 @@ def test_shareholder_loan_crud_via_api(admin_client):
     borrower, lender = _make_shareholders([Decimal("50"), Decimal("50")])
     # Loan creation now checks the lender's available_balance (design doc
     # 2026-08-26-benefices-associes-refinement-design.md, Fix 2) - give the
-    # lender a distribution to draw from.
-    ShareholderDistributionService.create_distribution(
+    # lender a VALIDATED distribution to draw from (2026-09-08 review: a
+    # DRAFT credits no balance).
+    _loanapi_actor = _make_admin_user("LOANAPI")
+    _loanapi_distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",
         total_profit=Decimal("100000.00"),
-        actor=_make_admin_user("LOANAPI"),
+        actor=_loanapi_actor,
     )
+    ShareholderDistributionService.validate_distribution(_loanapi_distribution.id, _loanapi_actor)
 
     created = admin_client.post(
         "/api/shareholder-loans/",
@@ -4490,6 +4580,7 @@ def test_shareholder_ledger_service_get_shareholder_summary():
         total_profit=Decimal("100000.00"),
         actor=actor,
     )
+    ShareholderDistributionService.validate_distribution(distribution.id, actor)
     share = ShareholderProfitShare.objects.get(distribution=distribution)
     cash_account = CashAccount.objects.create(name="Main Cash", opening_balance=Decimal("100000.00"))
     ShareholderWithdrawalService.record_withdrawal(
@@ -4548,6 +4639,7 @@ def test_shareholder_ledger_endpoint_money_fields_are_strings_not_floats(admin_c
         total_profit=Decimal("100000.00"),
         actor=actor,
     )
+    ShareholderDistributionService.validate_distribution(distribution.id, actor)
     share = ShareholderProfitShare.objects.get(distribution=distribution)
     cash_account = CashAccount.objects.create(
         name="Ledger Test Cash", opening_balance=Decimal("100000.00")

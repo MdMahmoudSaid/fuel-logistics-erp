@@ -50,9 +50,13 @@ class ShareholderStatementQuery:
     def run(cls, *, shareholder_id, date_from=None, date_to=None) -> list[dict]:
         date_from = _as_date(date_from)
         date_to = _as_date(date_to)
+        # Only VALIDATED distributions are a real engagement to the
+        # shareholder (2026-09-08 review): a DRAFT is a preview, a
+        # CANCELLED one no longer grants a right - neither belongs in the
+        # grand livre associe.
         shares = (
             ShareholderProfitShare.objects.filter(shareholder_id=shareholder_id)
-            .exclude(distribution__status=ShareholderProfitDistribution.Status.CANCELLED)
+            .filter(distribution__status=ShareholderProfitDistribution.Status.VALIDATED)
             .select_related("distribution")
         )
         withdrawals = ShareholderWithdrawal.objects.filter(shareholder_id=shareholder_id)

@@ -227,8 +227,11 @@ class DashboardViewSet(viewsets.ViewSet):
                 "total"
             ]
             or ZERO,
-            "remaining_undistributed": ShareholderProfitShare.objects.exclude(
-                distribution__status=ShareholderProfitDistribution.Status.CANCELLED
+            # Only VALIDATED distributions are a real engagement to the
+            # shareholders (2026-09-08 review): DRAFT is a preview, CANCELLED
+            # no longer grants a right.
+            "remaining_undistributed": ShareholderProfitShare.objects.filter(
+                distribution__status=ShareholderProfitDistribution.Status.VALIDATED
             ).aggregate(
                 total=Sum(F("amount_due") - F("amount_withdrawn"))
             )["total"]

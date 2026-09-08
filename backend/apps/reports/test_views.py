@@ -310,6 +310,7 @@ def test_dashboard_summary_remaining_undistributed_excludes_cancelled_distributi
         total_profit=Decimal("100000.00"),
         actor=admin_user,
     )
+    ShareholderDistributionService.validate_distribution(distribution.id, admin_user)
     ShareholderDistributionService.cancel_distribution(distribution.id, admin_user)
 
     client = APIClient()

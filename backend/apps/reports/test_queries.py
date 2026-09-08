@@ -1022,6 +1022,7 @@ def test_shareholder_statement_lists_profit_shares_withdrawals_and_loans():
         total_profit=Decimal("1000000.00"),
         actor=admin_user,
     )
+    ShareholderDistributionService.validate_distribution(distribution.id, admin_user)
     share = ShareholderProfitShare.objects.get(distribution=distribution, shareholder=shareholder)
     # Goes through the service (not a raw ShareholderWithdrawal.objects.create)
     # so amount_withdrawn actually syncs onto `share` - that field is only
@@ -1062,9 +1063,35 @@ def test_shareholder_statement_excludes_cancelled_distribution_shares():
         total_profit=Decimal("500000.00"),
         actor=admin_user,
     )
+    ShareholderDistributionService.validate_distribution(distribution.id, admin_user)
+    assert ShareholderStatementQuery.run(shareholder_id=shareholder.id) != []
+
     ShareholderDistributionService.cancel_distribution(distribution.id, admin_user)
 
     rows = ShareholderStatementQuery.run(shareholder_id=shareholder.id)
 
     assert rows == []
     assert ShareholderLedgerService.get_available_balance(shareholder.id) == Decimal("0.00")
+
+
+@pytest.mark.django_db
+def test_shareholder_statement_excludes_draft_distribution_shares():
+    """2026-09-08 review, point 1: a DRAFT distribution's share is a
+    preview only - it must not appear in the grand livre associe."""
+    admin_user = _make_admin("SHRSTMTDRAFT")
+    shareholder = Shareholder.objects.create(
+        name="Assoc SHRSTMTDRAFT", participation_percent=Decimal("100")
+    )
+
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("500000.00"),
+        actor=admin_user,
+    )
+
+    assert ShareholderStatementQuery.run(shareholder_id=shareholder.id) == []
+
+    ShareholderDistributionService.validate_distribution(distribution.id, admin_user)
+
+    assert ShareholderStatementQuery.run(shareholder_id=shareholder.id) != []
