@@ -1704,6 +1704,48 @@ class ShareholderDistributionService:
         distribution.save(update_fields=["status", "validated_by", "validated_at", "updated_at"])
         return distribution
 
+    @staticmethod
+    @transaction.atomic
+    def cancel_distribution(distribution_id, actor) -> ShareholderProfitDistribution:
+        """Void a DRAFT or VALIDATED distribution (reverses "Task 7 ruling
+        2" - see the ShareholderProfitDistribution docstring - after the
+        2026-09-08 recette bug where the same real profit was distributed
+        three times with no way to undo any of them).
+
+        Refuses to cancel once a ShareholderWithdrawal has been recorded
+        against one of its shares - money that has already left treasury
+        for a shareholder can't be un-committed by cancelling the
+        distribution behind it. Never deletes the ShareholderProfitShare
+        rows (audit trail); every downstream calculation
+        (ShareholderLedgerService.get_available_balance,
+        ShareholderProfitPreviewService.get_preview, the dashboard's
+        remaining_undistributed) excludes a CANCELLED distribution's
+        shares instead.
+
+        Idempotent: cancelling an already-CANCELLED distribution is a
+        no-op that returns it unchanged, mirroring
+        validate_distribution's early return for an already-VALIDATED one.
+        """
+        distribution = ShareholderProfitDistribution.objects.select_for_update().get(
+            pk=distribution_id
+        )
+        if distribution.status == ShareholderProfitDistribution.Status.CANCELLED:
+            return distribution
+
+        if ShareholderWithdrawal.objects.filter(
+            profit_share__distribution_id=distribution.id
+        ).exists():
+            raise ShareholderDistributionError(
+                "Impossible d'annuler cette repartition : au moins un retrait "
+                "a deja ete effectue sur l'une de ses parts."
+            )
+
+        distribution.status = ShareholderProfitDistribution.Status.CANCELLED
+        distribution.cancelled_by = actor
+        distribution.cancelled_at = timezone.now()
+        distribution.save(update_fields=["status", "cancelled_by", "cancelled_at", "updated_at"])
+        return distribution
+
 
 class ShareholderWithdrawalError(ValueError):
     """Raised when a withdrawal would exceed what a shareholder is still

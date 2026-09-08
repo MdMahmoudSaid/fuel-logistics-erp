@@ -3561,6 +3561,34 @@ def test_create_distribution_allows_adjacent_non_overlapping_period():
 
 
 @pytest.mark.django_db
+def test_create_distribution_ignores_cancelled_distribution_when_checking_overlap():
+    """A cancelled distribution must never block re-creating a corrected
+    one for the same period (that's the whole point of cancelling a
+    mistake)."""
+    _make_shareholders([Decimal("100")])
+    actor = _make_admin_user("DUP4")
+    first = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=actor,
+    )
+    ShareholderDistributionService.cancel_distribution(first.id, actor)
+
+    second = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("120000.00"),
+        actor=actor,
+    )
+
+    assert ShareholderProfitDistribution.objects.filter(
+        status=ShareholderProfitDistribution.Status.DRAFT
+    ).count() == 1
+    assert second.total_profit == Decimal("120000.00")
+
+
+@pytest.mark.django_db
 def test_create_distribution_via_api_rejects_when_no_active_shareholders(admin_client):
     response = admin_client.post(
         "/api/shareholder-distributions/",
@@ -3615,6 +3643,76 @@ def test_validate_distribution_rejects_when_shares_became_empty(admin_client):
 
     response = admin_client.post(f"/api/shareholder-distributions/{distribution.id}/validate/")
     assert response.status_code == 400, response.data
+
+
+@pytest.mark.django_db
+def test_cancel_distribution_from_draft():
+    _make_shareholders([Decimal("100")])
+    actor = _make_admin_user("CANCEL1")
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=actor,
+    )
+
+    cancelled = ShareholderDistributionService.cancel_distribution(distribution.id, actor)
+
+    assert cancelled.status == ShareholderProfitDistribution.Status.CANCELLED
+    assert cancelled.cancelled_by == actor
+    assert cancelled.cancelled_at is not None
+    # Shares stay for audit history, they're just excluded downstream.
+    assert ShareholderProfitShare.objects.filter(distribution=distribution).count() == 1
+
+
+@pytest.mark.django_db
+def test_cancel_distribution_rejects_when_withdrawal_already_recorded():
+    shareholder = _make_shareholders([Decimal("100")])[0]
+    actor = _make_admin_user("CANCEL3")
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=actor,
+    )
+    ShareholderDistributionService.validate_distribution(distribution.id, actor)
+    share = distribution.shares.get(shareholder=shareholder)
+    cash_account = CashAccount.objects.create(name="Cancel Cash", opening_balance=Decimal("100000.00"))
+    ShareholderWithdrawalService.record_withdrawal(
+        shareholder_id=shareholder.id,
+        profit_share_id=share.id,
+        amount=Decimal("10000.00"),
+        date="2026-08-01",
+        cash_account_id=cash_account.id,
+        actor=actor,
+    )
+
+    with pytest.raises(ShareholderDistributionError):
+        ShareholderDistributionService.cancel_distribution(distribution.id, actor)
+
+    distribution.refresh_from_db()
+    assert distribution.status == ShareholderProfitDistribution.Status.VALIDATED
+
+
+@pytest.mark.django_db
+def test_cancel_distribution_is_idempotent():
+    _make_shareholders([Decimal("100")])
+    actor = _make_admin_user("CANCEL4")
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=actor,
+    )
+    ShareholderDistributionService.cancel_distribution(distribution.id, actor)
+    distribution.refresh_from_db()
+    first_cancelled_at = distribution.cancelled_at
+
+    result = ShareholderDistributionService.cancel_distribution(distribution.id, actor)
+
+    distribution.refresh_from_db()
+    assert result.status == ShareholderProfitDistribution.Status.CANCELLED
+    assert distribution.cancelled_at == first_cancelled_at
 
 
 @pytest.mark.django_db
