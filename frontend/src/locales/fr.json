@@ -953,7 +953,8 @@
         "percent": "Pourcentage",
         "amountDue": "Montant dû",
         "remainingDue": "Reste à percevoir",
-        "saveError": "Impossible de créer cette répartition — vérifiez les champs."
+        "saveError": "Impossible de créer cette répartition — vérifiez les champs.",
+        "createdSuccess": "Répartition créée pour la période {start} — {end} : {amount} répartis entre les associés."
       },
       "loan": {
         "title": "Avances entre associés",
@@ -1014,7 +1015,8 @@
       "preview": {
         "badge": "Indicatif",
         "notice": "Montant disponible pour répartition après dettes et capital",
-        "summaryLabel": "Résultat distribuable proposé"
+        "summaryLabel": "Résultat distribuable proposé",
+        "alreadyDistributed": "Déjà réparti (non retiré)"
       }
     },
     "profit": {

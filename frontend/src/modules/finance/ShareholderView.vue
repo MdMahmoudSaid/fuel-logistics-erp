@@ -178,6 +178,7 @@ async function onShareholderSubmit() {
 const distributions = ref<ShareholderProfitDistribution[]>([])
 const distributionForm = ref({ period_start: today(), period_end: today(), total_profit: '' })
 const distributionError = ref('')
+const distributionSuccess = ref<ShareholderProfitDistribution | null>(null)
 const savingDistribution = ref(false)
 const expandedDistributionId = ref<number | null>(null)
 
@@ -209,11 +210,14 @@ async function onCreateDistribution() {
   }
   savingDistribution.value = true
   distributionError.value = ''
+  distributionSuccess.value = null
   try {
     const created = await shareholderDistributionResource.create(distributionForm.value)
     distributionForm.value = { period_start: today(), period_end: today(), total_profit: '' }
     expandedDistributionId.value = created.id
+    distributionSuccess.value = created
     await loadDistributions()
+    await loadPreview()
   } catch (e) {
     distributionError.value = extractErrorMessage(
       e,
@@ -448,6 +452,14 @@ async function onViewLedger() {
           :value="formatMoney(preview.distributable_result)"
         />
       </div>
+      <p
+        v-if="Number(preview.already_distributed) > 0"
+        data-test="preview-already-distributed"
+        class="text-texte-2 mt-1 text-sm"
+      >
+        {{ t('finance.shareholder.preview.alreadyDistributed') }}:
+        <MonoValue class="inline" :value="formatMoney(preview.already_distributed)" />
+      </p>
       <div v-if="preview.shareholders.length" class="mt-3 flex flex-wrap gap-4">
         <div v-for="row in preview.shareholders" :key="row.shareholder_id" class="text-sm">
           <span class="text-texte-2">{{ row.name }} ({{ row.participation_percent }}%):</span>
@@ -562,6 +574,37 @@ async function onViewLedger() {
       :title="t('finance.shareholder.distribution.title')"
     >
       <p v-if="distributionError" class="text-critique mb-3 text-sm">{{ distributionError }}</p>
+      <div
+        v-if="distributionSuccess"
+        data-test="distribution-success"
+        class="border-livre bg-livre-tint text-livre-texte mb-3 rounded-lg border p-3 text-sm"
+      >
+        <div class="flex items-start justify-between gap-2">
+          <p class="font-medium">
+            {{
+              t('finance.shareholder.distribution.createdSuccess', {
+                start: distributionSuccess.period_start,
+                end: distributionSuccess.period_end,
+                amount: formatMoney(distributionSuccess.total_profit),
+              })
+            }}
+          </p>
+          <button
+            type="button"
+            class="text-livre-texte/70 hover:text-livre-texte shrink-0 text-lg leading-none"
+            :aria-label="t('common.close')"
+            @click="distributionSuccess = null"
+          >
+            &times;
+          </button>
+        </div>
+        <ul class="mt-1.5 space-y-0.5">
+          <li v-for="share in distributionSuccess.shares" :key="share.id">
+            {{ share.shareholder_detail?.name }}:
+            <MonoValue class="inline" :value="formatMoney(share.amount_due)" />
+          </li>
+        </ul>
+      </div>
       <p
         v-if="activeShareholders.length === 0"
         data-test="distribution-no-active-shareholder"

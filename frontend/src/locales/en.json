@@ -951,7 +951,8 @@
         "percent": "Percent",
         "amountDue": "Amount due",
         "remainingDue": "Remaining due",
-        "saveError": "Could not create this distribution — check the fields."
+        "saveError": "Could not create this distribution — check the fields.",
+        "createdSuccess": "Distribution created for period {start} — {end}: {amount} split among shareholders."
       },
       "loan": {
         "title": "Advances between associates",
@@ -1012,7 +1013,8 @@
       "preview": {
         "badge": "Indicative",
         "notice": "Amount available for distribution after debts and capital",
-        "summaryLabel": "Suggested distributable result"
+        "summaryLabel": "Suggested distributable result",
+        "alreadyDistributed": "Already distributed (not withdrawn)"
       }
     },
     "profit": {

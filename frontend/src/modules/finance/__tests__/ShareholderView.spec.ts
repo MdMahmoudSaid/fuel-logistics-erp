@@ -166,6 +166,95 @@ describe('ShareholderView', () => {
     expect(banner!.text()).toContain('400 000 XOF')
   })
 
+  // Recette bug (2026-09-08): the banner never showed what had already
+  // been committed to shareholders, so a manager had no way to tell the
+  // displayed distributable_result already accounted for an earlier
+  // distribution (it looked "stuck" instead).
+  it('shows already_distributed in the preview banner when non-zero', async () => {
+    fetchShareholderProfitPreview.mockResolvedValue({
+      period_start: '2026-08-01',
+      period_end: null,
+      current_profit: '850000.00',
+      operational_profit: '850000.00',
+      general_expenses_paid: '100000.00',
+      net_profit: '750000.00',
+      working_capital: {
+        capital: '250000.00',
+        treasury_available: '600000.00',
+        customer_receivables: '150000.00',
+        supplier_debt_total: '0.00',
+        transporter_debt_total: '0.00',
+        other_debts: '0.00',
+        gross: '750000.00',
+        total: '750000.00',
+      },
+      already_distributed: '100000.00',
+      distributable_result: '400000.00',
+      shareholders: [
+        {
+          shareholder_id: 1,
+          name: 'Ahmed',
+          participation_percent: '80.00',
+          indicative_share: '320000.00',
+        },
+      ],
+    })
+
+    const wrapper = mount(ShareholderView)
+    await flushPromises()
+
+    const banner = wrapper.findAll('.border-ecart').at(0)
+    expect(banner!.text()).toContain('100 000 XOF')
+  })
+
+  it('does not show the already-distributed line when nothing has been distributed yet', async () => {
+    const wrapper = mount(ShareholderView)
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="preview-already-distributed"]').exists()).toBe(false)
+  })
+
+  // Bug report (2026-09-08): creating a distribution gave no visible
+  // confirmation at all, only a silently auto-expanded row easy to miss.
+  it('shows a visible success confirmation with the per-shareholder breakdown after creating a distribution', async () => {
+    shareholderDistributionResourceCreate.mockResolvedValue({
+      id: 42,
+      period_start: '2026-08-01',
+      period_end: '2026-08-31',
+      total_profit: '500000.00',
+      status: 'DRAFT',
+      shares: [
+        {
+          id: 1,
+          distribution: 42,
+          shareholder: 1,
+          shareholder_detail: { id: 1, name: 'Ahmed' },
+          percent_snapshot: '80.00',
+          amount_due: '400000.00',
+          amount_withdrawn: '0.00',
+          remaining_due: '400000.00',
+        },
+      ],
+    })
+    const wrapper = mount(ShareholderView)
+    await flushPromises()
+
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Répartition des bénéfices')!
+      .trigger('click')
+    await flushPromises()
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    const success = wrapper.find('[data-test="distribution-success"]')
+    expect(success.exists()).toBe(true)
+    expect(success.text()).toContain('2026-08-01')
+    expect(success.text()).toContain('500 000 XOF')
+    expect(success.text()).toContain('Ahmed')
+    expect(success.text()).toContain('400 000 XOF')
+  })
+
   // Business decision (2026-09-04, distribution basis change): the
   // "Repartition des benefices" tab's "Benefice total" field used to
   // default to preview.net_profit (750 000) - it must now default to
