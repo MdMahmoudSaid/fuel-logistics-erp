@@ -3293,6 +3293,17 @@ def _make_shareholders(percents, prefix="SH"):
     ]
 
 
+def _seed_distributable(amount=Decimal("10000000.00"), name="Seed Till"):
+    """Give the company enough treasury that validate_distribution's hard
+    amount block (2026-09-08 review, point 2) clears - for tests where the
+    amount guard is not what is under test.
+
+    distributable_result == treasury + receivables - capital -
+    already_distributed, so a CashAccount opening balance alone lifts it.
+    """
+    return CashAccount.objects.create(name=name, opening_balance=Decimal(str(amount)))
+
+
 @pytest.mark.django_db
 def test_shareholder_percent_must_be_between_0_and_100():
     with pytest.raises(IntegrityError):
@@ -3390,6 +3401,7 @@ def test_finance_role_can_create_but_not_edit_shareholder(finance_client):
 def test_create_distribution_calculates_shares_80_10_10():
     a, b, c = _make_shareholders([Decimal("80"), Decimal("10"), Decimal("10")])
     actor = _make_admin_user("1")
+    _seed_distributable()
 
     distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
@@ -3415,6 +3427,7 @@ def test_create_distribution_only_snapshots_active_shareholders():
     active = Shareholder.objects.create(name="Active", participation_percent=Decimal("70"))
     Shareholder.objects.create(name="Inactive", participation_percent=Decimal("20"), is_active=False)
     actor = _make_admin_user("2")
+    _seed_distributable()
 
     distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
@@ -3435,6 +3448,7 @@ def test_distribution_percent_snapshot_unaffected_by_later_shareholder_change():
     already-calculated shares (Task 7 design guidance)."""
     shareholder = Shareholder.objects.create(name="Solo", participation_percent=Decimal("50"))
     actor = _make_admin_user("3")
+    _seed_distributable()
 
     distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
@@ -3461,6 +3475,7 @@ def test_create_distribution_raises_when_no_active_shareholders():
     money was "distributed" to nobody, with zero ShareholderProfitShare
     rows. create_distribution must refuse outright instead."""
     actor = _make_admin_user("NOSHR")
+    _seed_distributable()
 
     with pytest.raises(ShareholderDistributionError):
         ShareholderDistributionService.create_distribution(
@@ -3479,6 +3494,7 @@ def test_create_distribution_raises_when_only_inactive_shareholders():
     still zero shares would result, so it must still be refused."""
     Shareholder.objects.create(name="Inactive", participation_percent=Decimal("50"), is_active=False)
     actor = _make_admin_user("NOSHRINACT")
+    _seed_distributable()
 
     with pytest.raises(ShareholderDistributionError):
         ShareholderDistributionService.create_distribution(
@@ -3499,6 +3515,7 @@ def test_create_distribution_rejects_exact_duplicate_period():
     shareholders ended up "owed" the same real profit 3x."""
     _make_shareholders([Decimal("100")])
     actor = _make_admin_user("DUP1")
+    _seed_distributable()
     ShareholderDistributionService.create_distribution(
         period_start="2026-09-08",
         period_end="2026-09-08",
@@ -3521,6 +3538,7 @@ def test_create_distribution_rejects_exact_duplicate_period():
 def test_create_distribution_rejects_partially_overlapping_period():
     _make_shareholders([Decimal("100")])
     actor = _make_admin_user("DUP2")
+    _seed_distributable()
     ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",
@@ -3543,6 +3561,7 @@ def test_create_distribution_rejects_partially_overlapping_period():
 def test_create_distribution_allows_adjacent_non_overlapping_period():
     _make_shareholders([Decimal("100")])
     actor = _make_admin_user("DUP3")
+    _seed_distributable()
     ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",
@@ -3568,6 +3587,7 @@ def test_create_distribution_ignores_cancelled_distribution_when_checking_overla
     mistake)."""
     _make_shareholders([Decimal("100")])
     actor = _make_admin_user("DUP4")
+    _seed_distributable()
     first = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",
@@ -3603,6 +3623,7 @@ def test_create_distribution_via_api_rejects_when_no_active_shareholders(admin_c
 @pytest.mark.django_db
 def test_distribution_validate_action_via_admin_api(admin_client):
     _make_shareholders([Decimal("100")])
+    _seed_distributable()
 
     created = admin_client.post(
         "/api/shareholder-distributions/",
@@ -3640,6 +3661,7 @@ def test_distribution_cancel_action_rejects_when_withdrawal_exists(admin_client)
     shareholder = _make_shareholders([Decimal("100")])[0]
     admin_role = Role.objects.get(name=Role.NAME_ADMIN)
     actor = User.objects.create_user(phone="+2220000201", pin="1234", role=admin_role)
+    _seed_distributable()
 
     created = admin_client.post(
         "/api/shareholder-distributions/",
@@ -3731,6 +3753,7 @@ def test_validate_distribution_rejects_when_shares_became_empty(admin_client):
     bug (2026-09-06) manifested, and confirm validate refuses it."""
     _make_shareholders([Decimal("100")])
     actor = _make_admin_user("VALEMPTY")
+    _seed_distributable()
     distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",
@@ -3753,6 +3776,7 @@ def test_validate_distribution_rejects_when_shares_became_empty(admin_client):
 def test_cancel_distribution_from_draft():
     _make_shareholders([Decimal("100")])
     actor = _make_admin_user("CANCEL1")
+    _seed_distributable()
     distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",
@@ -3773,6 +3797,7 @@ def test_cancel_distribution_from_draft():
 def test_cancel_distribution_from_validated_releases_available_balance():
     shareholder = _make_shareholders([Decimal("100")])[0]
     actor = _make_admin_user("CANCEL2")
+    _seed_distributable()
     distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",
@@ -3791,6 +3816,7 @@ def test_cancel_distribution_from_validated_releases_available_balance():
 def test_cancel_distribution_rejects_when_withdrawal_already_recorded():
     shareholder = _make_shareholders([Decimal("100")])[0]
     actor = _make_admin_user("CANCEL3")
+    _seed_distributable()
     distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",
@@ -3820,6 +3846,7 @@ def test_cancel_distribution_rejects_when_withdrawal_already_recorded():
 def test_cancel_distribution_is_idempotent():
     _make_shareholders([Decimal("100")])
     actor = _make_admin_user("CANCEL4")
+    _seed_distributable()
     distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",
@@ -3843,6 +3870,7 @@ def test_validate_distribution_rejects_cancelled_distribution():
     distribution can never be resurrected into VALIDATED."""
     _make_shareholders([Decimal("100")])
     actor = _make_admin_user("REVIVE")
+    _seed_distributable()
     distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",
@@ -3868,6 +3896,7 @@ def test_validate_distribution_is_idempotent_and_keeps_original_stamp():
     _make_shareholders([Decimal("100")])
     first_actor = _make_admin_user("VAL1")
     second_actor = _make_admin_user("VAL2")
+    _seed_distributable()
     distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",
@@ -3892,6 +3921,7 @@ def test_cancel_distribution_rejects_draft_after_cancel_is_terminal():
     VALIDATED->CANCELLED. Nothing leaves CANCELLED."""
     _make_shareholders([Decimal("100")])
     actor = _make_admin_user("TERMINAL")
+    _seed_distributable()
     distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",
@@ -3906,9 +3936,81 @@ def test_cancel_distribution_rejects_draft_after_cancel_is_terminal():
 
 
 @pytest.mark.django_db
+def test_validate_distribution_rejects_amount_over_distributable_result():
+    """2026-09-08 review, point 2: the backend hard-blocks a validation
+    whose total_profit exceeds the amount actually still available for
+    distribution - the soft frontend warning must never be the only
+    guard."""
+    _make_shareholders([Decimal("100")])
+    actor = _make_admin_user("HARDCAP")
+    CashAccount.objects.create(name="Small Till", opening_balance=Decimal("50000.00"))
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=actor,
+    )
+
+    with pytest.raises(ShareholderDistributionError):
+        ShareholderDistributionService.validate_distribution(distribution.id, actor)
+
+    distribution.refresh_from_db()
+    assert distribution.status == ShareholderProfitDistribution.Status.DRAFT
+
+
+@pytest.mark.django_db
+def test_validate_distribution_allows_amount_within_distributable_result():
+    _make_shareholders([Decimal("100")])
+    actor = _make_admin_user("HARDOK")
+    CashAccount.objects.create(name="Full Till", opening_balance=Decimal("500000.00"))
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=actor,
+    )
+
+    ShareholderDistributionService.validate_distribution(distribution.id, actor)
+
+    distribution.refresh_from_db()
+    assert distribution.status == ShareholderProfitDistribution.Status.VALIDATED
+
+
+@pytest.mark.django_db
+def test_validate_distribution_amount_check_is_recomputed_at_validation_time():
+    """2026-09-08 review, point 2: the check is redone at validation even
+    though the amount looked fine at creation - the financial situation
+    moved in between (here: a second distribution was validated and ate
+    the headroom)."""
+    _make_shareholders([Decimal("100")])
+    actor = _make_admin_user("HARDFRESH")
+    CashAccount.objects.create(name="Shared Till", opening_balance=Decimal("150000.00"))
+
+    first = ShareholderDistributionService.create_distribution(
+        period_start="2026-06-01",
+        period_end="2026-06-30",
+        total_profit=Decimal("100000.00"),
+        actor=actor,
+    )
+    second = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=actor,
+    )
+
+    ShareholderDistributionService.validate_distribution(first.id, actor)
+
+    # 150000 treasury - 100000 already committed = 50000 left, < 100000.
+    with pytest.raises(ShareholderDistributionError):
+        ShareholderDistributionService.validate_distribution(second.id, actor)
+
+
+@pytest.mark.django_db
 def test_shareholder_withdrawal_creates_treasury_transaction_and_reduces_remaining_due():
     shareholder = _make_shareholders([Decimal("100")])[0]
     actor = _make_admin_user("4")
+    _seed_distributable()
     distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",
@@ -3945,6 +4047,7 @@ def test_shareholder_withdrawal_creates_treasury_transaction_and_reduces_remaini
 def test_shareholder_withdrawal_rejects_amount_exceeding_remaining_due():
     shareholder = _make_shareholders([Decimal("100")])[0]
     actor = _make_admin_user("5")
+    _seed_distributable()
     distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",
@@ -3970,6 +4073,7 @@ def test_shareholder_withdrawal_rejects_amount_exceeding_remaining_due():
 def test_shareholder_withdrawal_general_without_profit_share():
     shareholder = _make_shareholders([Decimal("100")])[0]
     actor = _make_admin_user("6")
+    _seed_distributable()
     # A general withdrawal (no profit_share_id) is still checked against
     # the shareholder's available_balance - needs a VALIDATED distribution
     # first (2026-09-08 review: a DRAFT credits no balance) so it has
@@ -4027,6 +4131,7 @@ def test_shareholder_withdrawal_rejects_amount_exceeding_bank_balance():
     held."""
     shareholder = _make_shareholders([Decimal("100")])[0]
     actor = _make_admin_user("6c")
+    _seed_distributable()
     ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",
@@ -4050,6 +4155,7 @@ def test_shareholder_withdrawal_rejects_amount_exceeding_bank_balance():
 def test_get_shareholder_summary_excludes_cancelled_distribution_shares():
     shareholder = _make_shareholders([Decimal("100")])[0]
     actor = _make_admin_user("SUMMARYCANCEL")
+    _seed_distributable()
     distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",
@@ -4080,6 +4186,7 @@ def test_shareholder_withdrawal_rejects_profit_share_from_cancelled_distribution
     distribution, not because of the aggregate."""
     shareholder = _make_shareholders([Decimal("100")])[0]
     actor = _make_admin_user("WDRAWCANCEL")
+    _seed_distributable()
     cancelled_distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",
@@ -4136,6 +4243,7 @@ def test_shareholder_withdrawal_requires_exactly_one_account():
 def test_shareholder_withdrawal_via_api_posts_treasury(admin_client):
     shareholder = _make_shareholders([Decimal("100")])[0]
     _api_actor = _make_admin_user("6d")
+    _seed_distributable()
     _api_distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",
@@ -4233,6 +4341,7 @@ def test_shareholder_loan_service_rejects_amount_exceeding_lender_available_bala
 def test_shareholder_loan_service_creates_loan_within_lender_available_balance():
     borrower, lender = _make_shareholders([Decimal("50"), Decimal("50")], prefix="LOANOK")
     _loanok_actor = _make_admin_user("LOANOK")
+    _seed_distributable()
     _loanok_distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",
@@ -4262,6 +4371,7 @@ def test_shareholder_loan_service_never_creates_treasury_transaction():
     pas d'un compte de l'entreprise")."""
     borrower, lender = _make_shareholders([Decimal("50"), Decimal("50")], prefix="LOANTXN")
     _loantxn_actor = _make_admin_user("LOANTXN")
+    _seed_distributable()
     _loantxn_distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",
@@ -4303,6 +4413,7 @@ def test_get_available_balance_loan_given_increases_loan_received_decreases():
     backwards, so this regression test locks it in."""
     a, b = _make_shareholders([Decimal("50"), Decimal("50")], prefix="SIGN")
     actor = _make_admin_user("SIGN")
+    _seed_distributable()
     _sign_distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",
@@ -4328,6 +4439,7 @@ def test_get_available_balance_loan_given_increases_loan_received_decreases():
 def test_get_available_balance_excludes_cancelled_distribution_shares():
     shareholder = _make_shareholders([Decimal("100")])[0]
     actor = _make_admin_user("AVAILCANCEL")
+    _seed_distributable()
     distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",
@@ -4349,6 +4461,7 @@ def test_get_available_balance_ignores_draft_distribution_shares():
     distribution is validated."""
     shareholder = _make_shareholders([Decimal("100")])[0]
     actor = _make_admin_user("AVAILDRAFT")
+    _seed_distributable()
     distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",
@@ -4369,6 +4482,7 @@ def test_draft_profit_share_blocks_withdrawal_and_loan():
     booked on the strength of a DRAFT share."""
     shareholder, other = _make_shareholders([Decimal("100"), Decimal("0")], prefix="DRAFTBLOCK")
     actor = _make_admin_user("DRAFTBLOCK")
+    _seed_distributable()
     distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",
@@ -4409,6 +4523,7 @@ def test_get_preview_subtracts_already_distributed_from_distributable_result():
     was) redistributed on top of itself."""
     _make_shareholders([Decimal("100")])
     actor = _make_admin_user("PREVIEWCOMMIT")
+    _seed_distributable()
 
     before = ShareholderProfitPreviewService.get_preview()
     assert before["already_distributed"] == Decimal("0.00")
@@ -4436,6 +4551,7 @@ def test_get_preview_subtracts_already_distributed_from_distributable_result():
 def test_get_preview_already_distributed_excludes_cancelled_distributions():
     _make_shareholders([Decimal("100")])
     actor = _make_admin_user("PREVIEWCANCEL")
+    _seed_distributable()
     distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",
@@ -4462,6 +4578,7 @@ def test_get_preview_already_distributed_nets_out_partial_withdrawal():
     or it would be subtracted twice."""
     shareholder = _make_shareholders([Decimal("100")])[0]
     actor = _make_admin_user("PREVIEWPARTIAL")
+    _seed_distributable()
     distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",
@@ -4493,6 +4610,7 @@ def test_shareholder_loan_crud_via_api(admin_client):
     # lender a VALIDATED distribution to draw from (2026-09-08 review: a
     # DRAFT credits no balance).
     _loanapi_actor = _make_admin_user("LOANAPI")
+    _seed_distributable()
     _loanapi_distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",
@@ -4642,6 +4760,7 @@ def test_shareholder_loan_record_repayment_endpoint_rejects_non_numeric_amount(a
 def test_shareholder_ledger_service_get_shareholder_summary():
     shareholder = _make_shareholders([Decimal("100")])[0]
     actor = _make_admin_user("8")
+    _seed_distributable()
     distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",
@@ -4701,6 +4820,7 @@ def test_shareholder_ledger_endpoint_money_fields_are_strings_not_floats(admin_c
     fields as `string`."""
     shareholder = _make_shareholders([Decimal("100")])[0]
     actor = _make_admin_user("9")
+    _seed_distributable()
     distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",

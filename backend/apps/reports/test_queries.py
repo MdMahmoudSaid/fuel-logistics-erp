@@ -537,6 +537,7 @@ def test_shareholder_profit_preview_defaults_to_period_after_last_validated_dist
     fx_new["trip"].loading_date = "2026-08-15"
     fx_new["trip"].save(update_fields=["loading_date"])
     Shareholder.objects.create(name="Preview Period", participation_percent=Decimal("100"))
+    CashAccount.objects.create(name="Preview Period Till", opening_balance=Decimal("1000.00"))
 
     distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
@@ -1056,6 +1057,7 @@ def test_shareholder_statement_excludes_cancelled_distribution_shares():
     shareholder = Shareholder.objects.create(
         name="Assoc SHRSTMTCANCEL", participation_percent=Decimal("100")
     )
+    CashAccount.objects.create(name="SHRSTMTCANCEL Till", opening_balance=Decimal("1000000.00"))
 
     distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
@@ -1082,6 +1084,7 @@ def test_shareholder_statement_excludes_draft_distribution_shares():
     shareholder = Shareholder.objects.create(
         name="Assoc SHRSTMTDRAFT", participation_percent=Decimal("100")
     )
+    CashAccount.objects.create(name="SHRSTMTDRAFT Till", opening_balance=Decimal("1000000.00"))
 
     distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",

@@ -264,6 +264,7 @@ def test_dashboard_summary_includes_shareholders_summary_section():
     detailed source."""
     admin_user = _make_admin("DASHSH")
     a = Shareholder.objects.create(name="Dash A", participation_percent=Decimal("100"))
+    CashAccount.objects.create(name="Dash A Till", opening_balance=Decimal("1000000.00"))
     distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",
@@ -304,6 +305,7 @@ def test_dashboard_summary_includes_shareholders_summary_section():
 def test_dashboard_summary_remaining_undistributed_excludes_cancelled_distribution():
     admin_user = _make_admin("DASHCANCEL")
     Shareholder.objects.create(name="Dash Cancel", participation_percent=Decimal("100"))
+    CashAccount.objects.create(name="Dash Cancel Till", opening_balance=Decimal("1000000.00"))
     distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",

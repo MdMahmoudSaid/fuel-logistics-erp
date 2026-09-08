@@ -1685,6 +1685,17 @@ class ShareholderDistributionService:
         inactive after the DRAFT was created) - the exact recette bug
         (2026-09-06) was money "distributed" while validated with nobody
         to receive it.
+
+        Hard amount block (2026-09-08 review, point 2): the source of
+        truth is recomputed here, not trusted from creation time - the
+        financial situation can move between drafting and validating.
+        Validation is refused if total_profit exceeds the amount still
+        available for distribution (ShareholderProfitPreviewService.
+        get_preview()["distributable_result"], which already nets out every
+        VALIDATED distribution's still-unwithdrawn engagement but not this
+        DRAFT one). A pre-existing over-engagement can legitimately leave
+        that figure negative so the anomaly stays visible - this never
+        clamps it - but no new validation may push past it.
         """
         distribution = ShareholderProfitDistribution.objects.select_for_update().get(
             pk=distribution_id
@@ -1706,6 +1717,16 @@ class ShareholderDistributionService:
             raise ShareholderDistributionError(
                 "Cette repartition n'a aucune part calculee (aucun actionnaire/"
                 "associe actif) : impossible de la valider."
+            )
+
+        still_distributable = ShareholderProfitPreviewService.get_preview()[
+            "distributable_result"
+        ]
+        if distribution.total_profit > still_distributable:
+            raise ShareholderDistributionError(
+                f"Le benefice a repartir ({distribution.total_profit}) depasse le "
+                f"montant encore disponible pour repartition "
+                f"({still_distributable}) : validation impossible."
             )
 
         distribution.status = ShareholderProfitDistribution.Status.VALIDATED

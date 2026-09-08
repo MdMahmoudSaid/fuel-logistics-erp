@@ -229,10 +229,23 @@ async function onCreateDistribution() {
   }
 }
 
+// 2026-09-08 review, point 2: the backend hard-blocks a validation whose
+// total_profit exceeds the still-distributable result. The button is
+// disabled client-side too so an over-distribution is never a one-click
+// accident - but the backend check, not this, is the real guard.
+function distributionExceedsAvailable(distribution: ShareholderProfitDistribution): boolean {
+  if (!preview.value) return false
+  const entered = Number(distribution.total_profit)
+  const available = Number(preview.value.distributable_result)
+  return Number.isFinite(entered) && Number.isFinite(available) && entered > available
+}
+
 async function onValidateDistribution(distribution: ShareholderProfitDistribution) {
+  distributionError.value = ''
   try {
     await validateShareholderDistribution(distribution.id)
     await loadDistributions()
+    await loadPreview()
   } catch (e) {
     distributionError.value = extractErrorMessage(
       e,
@@ -727,9 +740,17 @@ async function onViewLedger() {
                   </Badge>
                 </td>
                 <td class="px-3 py-2.5 text-end">
+                  <p
+                    v-if="d.status === 'DRAFT' && distributionExceedsAvailable(d)"
+                    :data-test="`validate-blocked-${d.id}`"
+                    class="text-critique mb-1 text-xs"
+                  >
+                    {{ t('finance.shareholder.distribution.validateBlockedHint') }}
+                  </p>
                   <Button
                     v-if="d.status === 'DRAFT'"
                     variant="ghost"
+                    :disabled="distributionExceedsAvailable(d)"
                     @click.stop="onValidateDistribution(d)"
                   >
                     {{ t('finance.shareholder.distribution.validate') }}

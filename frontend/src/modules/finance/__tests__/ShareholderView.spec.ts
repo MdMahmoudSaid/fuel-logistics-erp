@@ -580,4 +580,73 @@ describe('ShareholderView', () => {
 
     expect(wrapper.text()).toContain("Impossible d'annuler cette repartition.")
   })
+
+  // 2026-09-08 review, point 2: the frontend must clearly block (not just
+  // softly warn) a validation whose amount exceeds the still-distributable
+  // result - the backend check stays the real guard.
+  it('disables the Validate button for a DRAFT whose total_profit exceeds distributable_result', async () => {
+    shareholderDistributionResourceList.mockResolvedValueOnce({
+      count: 1,
+      next: null,
+      previous: null,
+      results: [
+        {
+          id: 9,
+          period_start: '2026-07-01',
+          period_end: '2026-07-31',
+          total_profit: '900000.00',
+          status: 'DRAFT',
+          shares: [],
+        },
+      ],
+    })
+
+    const wrapper = mount(ShareholderView)
+    await flushPromises()
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Répartition des bénéfices')!
+      .trigger('click')
+    await flushPromises()
+
+    const validateButton = wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Valider')
+    expect(validateButton).toBeTruthy()
+    expect(validateButton!.attributes('disabled')).toBeDefined()
+    expect(wrapper.find('[data-test="validate-blocked-9"]').exists()).toBe(true)
+  })
+
+  it('keeps the Validate button enabled for a DRAFT within distributable_result', async () => {
+    shareholderDistributionResourceList.mockResolvedValueOnce({
+      count: 1,
+      next: null,
+      previous: null,
+      results: [
+        {
+          id: 10,
+          period_start: '2026-07-01',
+          period_end: '2026-07-31',
+          total_profit: '100000.00',
+          status: 'DRAFT',
+          shares: [],
+        },
+      ],
+    })
+
+    const wrapper = mount(ShareholderView)
+    await flushPromises()
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Répartition des bénéfices')!
+      .trigger('click')
+    await flushPromises()
+
+    const validateButton = wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Valider')
+    expect(validateButton).toBeTruthy()
+    expect(validateButton!.attributes('disabled')).toBeUndefined()
+    expect(wrapper.find('[data-test="validate-blocked-10"]').exists()).toBe(false)
+  })
 })

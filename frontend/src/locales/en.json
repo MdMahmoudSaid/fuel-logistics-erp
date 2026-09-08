@@ -948,6 +948,7 @@
           "CANCELLED": "Cancelled"
         },
         "validate": "Validate",
+        "validateBlockedHint": "Profit exceeds the amount still available for distribution: validation is blocked.",
         "cancel": "Cancel",
         "cancelConfirm": "Cancel this distribution? Shares already credited to shareholders will be withdrawn if no withdrawal has been recorded against them yet.",
         "cancelError": "Could not cancel this distribution.",

@@ -950,6 +950,7 @@
           "CANCELLED": "Annulée"
         },
         "validate": "Valider",
+        "validateBlockedHint": "Bénéfice supérieur au reste disponible pour répartition : validation impossible.",
         "cancel": "Annuler",
         "cancelConfirm": "Annuler cette répartition ? Les parts déjà créditées aux associés seront retirées si aucun retrait n'a encore été effectué dessus.",
         "cancelError": "Impossible d'annuler cette répartition.",
