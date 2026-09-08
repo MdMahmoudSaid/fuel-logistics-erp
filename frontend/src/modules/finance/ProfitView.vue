@@ -317,6 +317,19 @@ async function onExportPdf() {
             />
           </div>
           <div
+            data-test="profit-already-distributed-card"
+            class="border-ligne rounded-lg border bg-white p-4 shadow-sm"
+          >
+            <p class="text-texte-2 text-xs font-medium tracking-wide uppercase">
+              {{ t('finance.profit.alreadyDistributed') }}
+            </p>
+            <MonoValue
+              class="mt-2 text-lg font-semibold"
+              align="left"
+              :value="formatMoney(preview.already_distributed)"
+            />
+          </div>
+          <div
             data-test="profit-distributable-result-card"
             class="border-ligne rounded-lg border bg-white p-4 shadow-sm"
           >

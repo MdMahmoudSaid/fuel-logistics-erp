@@ -1043,6 +1043,7 @@
       "workingCapitalDebts": "Dettes ouvertes",
       "capitalContributed": "Capital apporté",
       "companyAbsorbedLoss": "Perte supportée par l'entreprise",
+      "alreadyDistributed": "Déjà réparti (non retiré)",
       "distributableResult": "Résultat distribuable après dettes et capital",
       "tripsCount": "Trajets pris en compte",
       "revenue": "Chiffre d'affaires",

@@ -46,6 +46,8 @@ describe('ProfitView', () => {
         gross: '750000.00',
         total: '1100000.00',
       },
+      // No distributions committed in this fixture's scenario.
+      already_distributed: '0.00',
       // distributable_result = total (1100000) - debts (350000) - capital (100000) = 650000
       distributable_result: '650000.00',
       shareholders: [],
@@ -149,6 +151,45 @@ describe('ProfitView', () => {
       'Résultat distribuable après dettes et capital',
     )
     expect(distributableResultCard.text()).toContain('650 000 XOF')
+  })
+
+  // Final whole-branch review (2026-09-08, Fix 2a): distributable_result
+  // now silently nets out already_distributed (money already committed to
+  // shareholders via non-cancelled distributions) - this card makes that
+  // term visible so the brut -> dettes -> capital -> distribuable chain
+  // still reconciles on screen.
+  it('shows already_distributed as its own card between capital and distributable result', async () => {
+    fetchShareholderProfitPreview.mockResolvedValue({
+      period_start: '2026-08-01',
+      period_end: null,
+      current_profit: '900000.00',
+      operational_profit: '900000.00',
+      general_expenses_paid: '150000.00',
+      net_profit: '750000.00',
+      total_company_absorbed_loss: '0.00',
+      working_capital: {
+        capital: '100000.00',
+        treasury_available: '400000.00',
+        customer_receivables: '350000.00',
+        supplier_debt_total: '200000.00',
+        transporter_debt_total: '100000.00',
+        other_debts: '50000.00',
+        gross: '750000.00',
+        total: '1100000.00',
+      },
+      already_distributed: '75000.00',
+      distributable_result: '575000.00',
+      shareholders: [],
+    })
+
+    const wrapper = mount(ProfitView)
+    await flushPromises()
+    await flushPromises()
+
+    const alreadyDistributedCard = wrapper.find('[data-test="profit-already-distributed-card"]')
+    expect(alreadyDistributedCard.exists()).toBe(true)
+    expect(alreadyDistributedCard.text()).toContain('Déjà réparti (non retiré)')
+    expect(alreadyDistributedCard.text()).toContain('75 000 XOF')
   })
 
   // UI reorg (2026-09-04): the two placeholder "profit-summary-card" cards

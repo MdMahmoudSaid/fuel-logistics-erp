@@ -1047,3 +1047,24 @@ def test_shareholder_statement_lists_profit_shares_withdrawals_and_loans():
     assert rows[1]["debit"] == Decimal("300000.00")
     assert rows[2]["credit"] == Decimal("30000.00")  # 50,000 - 20,000 repaid = remaining_amount
     assert rows[-1]["balance"] == ShareholderLedgerService.get_available_balance(shareholder.id)
+
+
+@pytest.mark.django_db
+def test_shareholder_statement_excludes_cancelled_distribution_shares():
+    admin_user = _make_admin("SHRSTMTCANCEL")
+    shareholder = Shareholder.objects.create(
+        name="Assoc SHRSTMTCANCEL", participation_percent=Decimal("100")
+    )
+
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("500000.00"),
+        actor=admin_user,
+    )
+    ShareholderDistributionService.cancel_distribution(distribution.id, admin_user)
+
+    rows = ShareholderStatementQuery.run(shareholder_id=shareholder.id)
+
+    assert rows == []
+    assert ShareholderLedgerService.get_available_balance(shareholder.id) == Decimal("0.00")

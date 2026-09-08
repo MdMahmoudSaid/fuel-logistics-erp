@@ -1805,7 +1805,10 @@ class ShareholderWithdrawalService:
                 raise ShareholderWithdrawalError(
                     "Cette part de benefice n'appartient pas a cet actionnaire."
                 )
-            if profit_share.distribution.status == ShareholderProfitDistribution.Status.CANCELLED:
+            distribution = ShareholderProfitDistribution.objects.select_for_update().get(
+                pk=profit_share.distribution_id
+            )
+            if distribution.status == ShareholderProfitDistribution.Status.CANCELLED:
                 raise ShareholderWithdrawalError(
                     "Cette part de benefice appartient a une repartition annulee."
                 )

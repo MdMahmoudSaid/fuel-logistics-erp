@@ -1041,6 +1041,7 @@
       "workingCapitalDebts": "الديون المفتوحة",
       "capitalContributed": "رأس المال المُقدَّم",
       "companyAbsorbedLoss": "الخسارة المتحملة من الشركة",
+      "alreadyDistributed": "تم توزيعه بالفعل (غير مسحوب)",
       "distributableResult": "النتيجة القابلة للتوزيع بعد الديون ورأس المال",
       "tripsCount": "عدد الرحلات المحتسبة",
       "revenue": "رقم الأعمال",

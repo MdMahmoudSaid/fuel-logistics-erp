@@ -1041,6 +1041,7 @@
       "workingCapitalDebts": "Open debts",
       "capitalContributed": "Capital contributed",
       "companyAbsorbedLoss": "Loss absorbed by the company",
+      "alreadyDistributed": "Already distributed (not withdrawn)",
       "distributableResult": "Distributable result after debts and capital",
       "tripsCount": "Trips counted",
       "revenue": "Revenue",
