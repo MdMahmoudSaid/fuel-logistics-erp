@@ -16,6 +16,7 @@ from apps.finance.models import (
     CustomerPayment,
     Expense,
     ShareholderLoan,
+    ShareholderProfitDistribution,
     ShareholderProfitShare,
     ShareholderWithdrawal,
     TransportPayment,
@@ -226,7 +227,9 @@ class DashboardViewSet(viewsets.ViewSet):
                 "total"
             ]
             or ZERO,
-            "remaining_undistributed": ShareholderProfitShare.objects.aggregate(
+            "remaining_undistributed": ShareholderProfitShare.objects.exclude(
+                distribution__status=ShareholderProfitDistribution.Status.CANCELLED
+            ).aggregate(
                 total=Sum(F("amount_due") - F("amount_withdrawn"))
             )["total"]
             or ZERO,

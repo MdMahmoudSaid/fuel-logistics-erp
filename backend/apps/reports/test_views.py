@@ -301,6 +301,26 @@ def test_dashboard_summary_includes_shareholders_summary_section():
 
 
 @pytest.mark.django_db
+def test_dashboard_summary_remaining_undistributed_excludes_cancelled_distribution():
+    admin_user = _make_admin("DASHCANCEL")
+    Shareholder.objects.create(name="Dash Cancel", participation_percent=Decimal("100"))
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=admin_user,
+    )
+    ShareholderDistributionService.cancel_distribution(distribution.id, admin_user)
+
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    response = client.get("/api/dashboard/summary/")
+
+    assert response.status_code == 200, response.data
+    assert response.data["shareholders_summary"]["remaining_undistributed"] == "0.00"
+
+
+@pytest.mark.django_db
 def test_dashboard_summary_shareholders_section_includes_distributable_result():
     """Client modifications (2026-09-04, third pass - confirmed bug during
     actual recette testing): dashboard must expose the same

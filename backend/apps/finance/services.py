@@ -2116,11 +2116,15 @@ class ShareholderLedgerService:
         ShareholderWithdrawalService.record_withdrawal and
         ShareholderLoanService.create_loan so a withdrawal and a loan can
         never be validated against two different numbers.
+
+        A CANCELLED distribution's shares are excluded (2026-09-08 fix):
+        cancelling a mistaken distribution must release the balance it
+        wrongly granted, everywhere that balance is used.
         """
         shares_remaining = (
-            ShareholderProfitShare.objects.filter(shareholder_id=shareholder_id).aggregate(
-                total=Sum(F("amount_due") - F("amount_withdrawn"))
-            )["total"]
+            ShareholderProfitShare.objects.filter(shareholder_id=shareholder_id)
+            .exclude(distribution__status=ShareholderProfitDistribution.Status.CANCELLED)
+            .aggregate(total=Sum(F("amount_due") - F("amount_withdrawn")))["total"]
             or ZERO
         )
         loans_given_remaining = sum(
@@ -2304,12 +2308,33 @@ class ShareholderProfitPreviewService:
         # out rather than simplified so the formula stays legible if any
         # one term changes later.
         working_capital = WorkingCapitalService.get_working_capital()
+
+        # Recette bug (2026-09-08): the same real profit was distributed
+        # three times because distributable_result never subtracted what
+        # had already been committed to shareholders via an earlier
+        # distribution - creating (or validating) a distribution never
+        # touches treasury (the declarative model is intentional, see
+        # ShareholderDistributionService's docstrings), so
+        # working_capital["total"] still contains that money right up
+        # until an actual ShareholderWithdrawal happens. already_distributed
+        # is exactly the liability side of that: every non-cancelled
+        # ShareholderProfitShare's still-unwithdrawn amount, company-wide,
+        # not scoped by date_from/date_to (same "current outstanding
+        # snapshot" contract as working_capital itself).
+        already_distributed = (
+            ShareholderProfitShare.objects.exclude(
+                distribution__status=ShareholderProfitDistribution.Status.CANCELLED
+            )
+            .aggregate(total=Sum(F("amount_due") - F("amount_withdrawn")))["total"]
+            or ZERO
+        )
         distributable_result = (
             working_capital["total"]
             - working_capital["supplier_debt_total"]
             - working_capital["transporter_debt_total"]
             - working_capital["other_debts"]
             - working_capital["capital"]
+            - already_distributed
         )
 
         # Business decision (2026-09-04, distribution basis change): a
@@ -2345,6 +2370,7 @@ class ShareholderProfitPreviewService:
             "net_profit": net_profit,
             "total_company_absorbed_loss": total_company_absorbed_loss,
             "working_capital": working_capital,
+            "already_distributed": already_distributed,
             "distributable_result": distributable_result,
             "shareholders": shareholders,
         }

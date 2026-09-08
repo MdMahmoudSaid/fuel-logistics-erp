@@ -47,6 +47,7 @@ from apps.finance.services import (
     ShareholderLoanError,
     ShareholderLoanService,
     ShareholderParticipationError,
+    ShareholderProfitPreviewService,
     ShareholderService,
     ShareholderWithdrawalError,
     ShareholderWithdrawalService,
@@ -3769,6 +3770,24 @@ def test_cancel_distribution_from_draft():
 
 
 @pytest.mark.django_db
+def test_cancel_distribution_from_validated_releases_available_balance():
+    shareholder = _make_shareholders([Decimal("100")])[0]
+    actor = _make_admin_user("CANCEL2")
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=actor,
+    )
+    ShareholderDistributionService.validate_distribution(distribution.id, actor)
+    assert ShareholderLedgerService.get_available_balance(shareholder.id) == Decimal("100000.00")
+
+    ShareholderDistributionService.cancel_distribution(distribution.id, actor)
+
+    assert ShareholderLedgerService.get_available_balance(shareholder.id) == Decimal("0.00")
+
+
+@pytest.mark.django_db
 def test_cancel_distribution_rejects_when_withdrawal_already_recorded():
     shareholder = _make_shareholders([Decimal("100")])[0]
     actor = _make_admin_user("CANCEL3")
@@ -4154,6 +4173,95 @@ def test_get_available_balance_loan_given_increases_loan_received_decreases():
     available = ShareholderLedgerService.get_available_balance(a.id)
 
     assert available == Decimal("55000.00")  # 50000 + 10000 (given) - 5000 (received)
+
+
+@pytest.mark.django_db
+def test_get_available_balance_excludes_cancelled_distribution_shares():
+    shareholder = _make_shareholders([Decimal("100")])[0]
+    actor = _make_admin_user("AVAILCANCEL")
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=actor,
+    )
+    assert ShareholderLedgerService.get_available_balance(shareholder.id) == Decimal("100000.00")
+
+    ShareholderDistributionService.cancel_distribution(distribution.id, actor)
+
+    assert ShareholderLedgerService.get_available_balance(shareholder.id) == Decimal("0.00")
+
+
+@pytest.mark.django_db
+def test_get_preview_subtracts_already_distributed_from_distributable_result():
+    """Recette bug (2026-09-08): distributable_result never moved after
+    creating a distribution, because it never subtracted what had already
+    been committed to shareholders - the same real profit could be (and
+    was) redistributed on top of itself."""
+    _make_shareholders([Decimal("100")])
+    actor = _make_admin_user("PREVIEWCOMMIT")
+
+    before = ShareholderProfitPreviewService.get_preview()
+    assert before["already_distributed"] == Decimal("0.00")
+
+    ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=actor,
+    )
+
+    after = ShareholderProfitPreviewService.get_preview()
+    assert after["already_distributed"] == Decimal("100000.00")
+    assert after["distributable_result"] == before["distributable_result"] - Decimal("100000.00")
+
+
+@pytest.mark.django_db
+def test_get_preview_already_distributed_excludes_cancelled_distributions():
+    _make_shareholders([Decimal("100")])
+    actor = _make_admin_user("PREVIEWCANCEL")
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=actor,
+    )
+    ShareholderDistributionService.cancel_distribution(distribution.id, actor)
+
+    preview = ShareholderProfitPreviewService.get_preview()
+
+    assert preview["already_distributed"] == Decimal("0.00")
+
+
+@pytest.mark.django_db
+def test_get_preview_already_distributed_nets_out_partial_withdrawal():
+    """Once part of a distribution has actually been withdrawn, that
+    portion has left treasury already (working_capital reflects it) - only
+    the still-unwithdrawn remainder must keep reducing distributable_result,
+    or it would be subtracted twice."""
+    shareholder = _make_shareholders([Decimal("100")])[0]
+    actor = _make_admin_user("PREVIEWPARTIAL")
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=actor,
+    )
+    ShareholderDistributionService.validate_distribution(distribution.id, actor)
+    share = distribution.shares.get(shareholder=shareholder)
+    cash_account = CashAccount.objects.create(name="Partial Cash", opening_balance=Decimal("100000.00"))
+    ShareholderWithdrawalService.record_withdrawal(
+        shareholder_id=shareholder.id,
+        profit_share_id=share.id,
+        amount=Decimal("40000.00"),
+        date="2026-08-01",
+        cash_account_id=cash_account.id,
+        actor=actor,
+    )
+
+    preview = ShareholderProfitPreviewService.get_preview()
+
+    assert preview["already_distributed"] == Decimal("60000.00")
 
 
 @pytest.mark.django_db
