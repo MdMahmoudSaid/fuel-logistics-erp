@@ -171,6 +171,8 @@ export type ExpenseCategory =
   | 'import_intention'
   | 'transit'
   | 'road_transit'
+  // 'transport' retired (transporter commission is the only transport-cost
+  // channel) - kept in the union purely so legacy Expense rows still type.
   | 'transport'
   | 'loading'
   | 'unloading'
@@ -187,7 +189,6 @@ export const EXPENSE_CATEGORIES: { value: ExpenseCategory; label: string }[] = [
   { value: 'import_intention', label: 'Import intention' },
   { value: 'transit', label: 'Transit' },
   { value: 'road_transit', label: 'Road transit' },
-  { value: 'transport', label: 'Transport' },
   { value: 'loading', label: 'Loading' },
   { value: 'unloading', label: 'Unloading' },
   { value: 'road', label: 'Road' },

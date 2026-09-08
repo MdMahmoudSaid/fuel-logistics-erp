@@ -171,6 +171,21 @@ describe('ExpenseForm', () => {
     expect(wrapper.find('[data-test="create-expense-category-toggle"]').exists()).toBe(false)
   })
 
+  // A manual "Transport" trip fee reduced trip margin but no debt type
+  // could pay it - the category is retired backend-side, and the offline
+  // fallback list must not resurrect it either.
+  it('never offers the retired "Transport" category in the trip-fee fallback', async () => {
+    listExpenseCategories.mockRejectedValueOnce(new Error('offline'))
+    const wrapper = mount(ExpenseForm, {
+      props: { presetAllocation: { kind: 'trip', objectId: 42, label: 'TRIP-042' } },
+    })
+    await flushPromises()
+
+    const options = wrapper.find('#category').text()
+    expect(options).toContain('Douane')
+    expect(options).not.toContain('Transport')
+  })
+
   // Recette 2026-09-07: the app is French but the category <select> showed
   // the seeded system categories' raw English backend name ("Customs",
   // "Transit", "Road transit"...). They must render through the localised

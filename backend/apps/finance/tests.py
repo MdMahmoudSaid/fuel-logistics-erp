@@ -4278,13 +4278,45 @@ def test_describe_treasury_transaction_has_no_counterparty_for_a_manual_entry():
 def test_expense_category_migration_seeds_system_and_custom_categories():
     from apps.finance.models import ExpenseCategory
 
-    system_codes = {"customs", "transit", "road_transit", "road", "loading", "transport"}
+    # "transport" is deliberately excluded here: transport cost only ever
+    # flows through the transporter commission (TransportPayment), never a
+    # manual trip fee, so the category is retired (see
+    # test_transport_category_is_retired).
+    system_codes = {"customs", "transit", "road_transit", "road", "loading"}
     seeded = {category.code: category.is_system for category in ExpenseCategory.objects.all()}
     assert system_codes <= set(seeded)
     for code in system_codes:
         assert seeded[code] is True
     assert seeded["rent"] is False
     assert seeded["other"] is False
+
+
+@pytest.mark.django_db
+def test_transport_category_is_retired():
+    """A manual "Transport" trip fee reduced trip margin but no debt type
+    could ever pay it - the money vanished with no way to settle it. The
+    category is retired: not offered as a trip system fee, not offered as a
+    general expense, and rejected by the expense serializer."""
+    from apps.finance.models import ExpenseCategory
+
+    transport = ExpenseCategory.objects.get(code="transport")
+    assert transport.is_system is False
+    assert transport.is_active is False
+
+
+@pytest.mark.django_db
+def test_expense_rejects_retired_transport_category(finance_client):
+    response = finance_client.post(
+        "/api/expenses/",
+        {
+            "category": "transport",
+            "amount": "100000.00",
+            "calculation_method": "FIXED",
+            "date": "2026-09-08",
+        },
+    )
+    assert response.status_code == 400
+    assert "category" in response.data
 
 
 @pytest.mark.django_db
