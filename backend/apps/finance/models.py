@@ -863,16 +863,27 @@ class ShareholderProfitDistribution(TimeStampedModel):
     (ShareholderDistributionService.create_distribution) so managers can
     review the split before committing to it; `validate` (mirroring
     Invoice's DRAFT -> VALIDATED flow) freezes it by stamping
-    validated_by/validated_at. There is no CANCELLED state here - the
-    "shareholders" module permission tier deliberately omits "cancel"
-    (Task 7 ruling 2), so a mistaken distribution is corrected by editing
-    it back to DRAFT territory is out of scope for this task, not by a
-    cancel workflow.
+    validated_by/validated_at.
+
+    CANCELLED (added 2026-09-08, reversing "Task 7 ruling 2" - see the
+    2026-09-08 recette bug where the same real profit was distributed
+    three times because there was no way to undo a mistake): a DRAFT or
+    VALIDATED distribution can be voided by
+    ShareholderDistributionService.cancel_distribution as long as no
+    ShareholderWithdrawal has ever been recorded against one of its
+    shares. Cancelling never deletes the ShareholderProfitShare rows -
+    they stay for audit history, but every downstream calculation
+    (ShareholderLedgerService.get_available_balance,
+    ShareholderProfitPreviewService.get_preview's already_distributed,
+    the dashboard's remaining_undistributed) excludes a CANCELLED
+    distribution's shares, so the money it wrongly committed becomes
+    available again everywhere at once.
     """
 
     class Status(models.TextChoices):
         DRAFT = "DRAFT", "Draft"
         VALIDATED = "VALIDATED", "Validated"
+        CANCELLED = "CANCELLED", "Cancelled"
 
     period_start = models.DateField()
     period_end = models.DateField()
@@ -889,6 +900,14 @@ class ShareholderProfitDistribution(TimeStampedModel):
         related_name="shareholder_distributions_validated",
     )
     validated_at = models.DateTimeField(null=True, blank=True)
+    cancelled_by = models.ForeignKey(
+        "accounts.User",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="shareholder_distributions_cancelled",
+    )
+    cancelled_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-period_start", "-id"]
