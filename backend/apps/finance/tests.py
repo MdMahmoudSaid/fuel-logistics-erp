@@ -3670,6 +3670,54 @@ def test_create_distribution_ignores_cancelled_distribution_when_checking_overla
 
 
 @pytest.mark.django_db
+def test_overlapping_active_distributions_are_rejected_at_the_database_level():
+    """2026-09-08 review, point 6: even bypassing the service entirely,
+    two non-cancelled distributions covering overlapping periods cannot
+    both be committed - the exclusion constraint is the atomic guard that
+    two concurrent creates would otherwise race straight past."""
+    actor = _make_admin_user("XCON")
+    ShareholderProfitDistribution.objects.create(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        created_by=actor,
+    )
+
+    with pytest.raises(IntegrityError):
+        with transaction.atomic():
+            ShareholderProfitDistribution.objects.create(
+                period_start="2026-07-15",
+                period_end="2026-08-15",
+                total_profit=Decimal("50000.00"),
+                created_by=actor,
+            )
+
+
+@pytest.mark.django_db
+def test_cancelled_distribution_frees_its_period_at_the_database_level():
+    """The exclusion constraint is partial (status in DRAFT/VALIDATED) so
+    a cancelled distribution never blocks a corrected one for the same
+    period."""
+    actor = _make_admin_user("XCON2")
+    ShareholderProfitDistribution.objects.create(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        created_by=actor,
+        status=ShareholderProfitDistribution.Status.CANCELLED,
+    )
+
+    ShareholderProfitDistribution.objects.create(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("120000.00"),
+        created_by=actor,
+    )
+
+    assert ShareholderProfitDistribution.objects.filter(period_start="2026-07-01").count() == 2
+
+
+@pytest.mark.django_db
 def test_create_distribution_via_api_rejects_when_no_active_shareholders(admin_client):
     response = admin_client.post(
         "/api/shareholder-distributions/",

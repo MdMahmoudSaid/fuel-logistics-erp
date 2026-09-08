@@ -11,7 +11,7 @@ from datetime import date, timedelta
 from decimal import ROUND_DOWN, Decimal, InvalidOperation
 
 from django.contrib.contenttypes.models import ContentType
-from django.db import transaction
+from django.db import connection, transaction
 from django.db.models import F, Sum
 from django.utils import timezone
 
@@ -1603,6 +1603,25 @@ class ShareholderDistributionService:
     """Owns ShareholderProfitDistribution creation and validation (Task 7,
     client modifications plan)."""
 
+    # 2026-09-08 review, point 6: a single transaction-scoped Postgres
+    # advisory lock serialises every distribution mutation (create /
+    # validate / cancel). The DB exclusion constraint already makes
+    # overlapping active periods impossible, but two concurrent
+    # validations of *different, non-overlapping* distributions could
+    # still each read the same distributable_result and jointly commit
+    # more than is available - this lock makes that recompute-then-write
+    # sequence run one at a time. Arbitrary constant, unique to this
+    # concern.
+    _MUTATION_LOCK_KEY = 738_5290_11
+
+    @staticmethod
+    def _lock_mutations() -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT pg_advisory_xact_lock(%s)",
+                [ShareholderDistributionService._MUTATION_LOCK_KEY],
+            )
+
     @staticmethod
     @transaction.atomic
     def create_distribution(
@@ -1627,11 +1646,17 @@ class ShareholderDistributionService:
           shares would otherwise be created (and even validated) while
           distributing nothing to nobody (recette bug, 2026-09-06).
         """
+        ShareholderDistributionService._lock_mutations()
+
         if isinstance(period_start, str):
             period_start = date.fromisoformat(period_start)
         if isinstance(period_end, str):
             period_end = date.fromisoformat(period_end)
 
+        # Fast, friendly pre-check (a clear French error instead of an
+        # IntegrityError). The finance_shrdist_no_overlapping_active_period
+        # exclusion constraint is the actual guarantee against a
+        # concurrent create slipping through.
         overlapping_exists = (
             ShareholderProfitDistribution.objects.exclude(
                 status=ShareholderProfitDistribution.Status.CANCELLED
@@ -1723,6 +1748,7 @@ class ShareholderDistributionService:
         that figure negative so the anomaly stays visible - this never
         clamps it - but no new validation may push past it.
         """
+        ShareholderDistributionService._lock_mutations()
         distribution = ShareholderProfitDistribution.objects.select_for_update().get(
             pk=distribution_id
         )
@@ -1786,6 +1812,7 @@ class ShareholderDistributionService:
         no-op that returns it unchanged, mirroring
         validate_distribution's early return for an already-VALIDATED one.
         """
+        ShareholderDistributionService._lock_mutations()
         distribution = ShareholderProfitDistribution.objects.select_for_update().get(
             pk=distribution_id
         )

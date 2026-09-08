@@ -26,6 +26,9 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    # Postgres-specific field/constraint support (btree_gist + the
+    # ExclusionConstraint on ShareholderProfitDistribution's period).
+    "django.contrib.postgres",
     # third-party
     "rest_framework",
     "rest_framework_simplejwt",

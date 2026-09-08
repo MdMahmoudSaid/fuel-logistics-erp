@@ -2,6 +2,8 @@ from decimal import Decimal
 
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
+from django.contrib.postgres.constraints import ExclusionConstraint
+from django.contrib.postgres.fields import DateRangeField, RangeOperators
 from django.db import models
 
 from apps.audit.mixins import AuditableModel
@@ -932,6 +934,28 @@ class ShareholderProfitDistribution(AuditableModel, TimeStampedModel):
             models.CheckConstraint(
                 condition=models.Q(total_profit__gt=0),
                 name="finance_shareholderprofitdistribution_total_profit_positive",
+            ),
+            # 2026-09-08 review, point 6: a DB-level guarantee that two
+            # non-cancelled distributions can never cover overlapping
+            # periods - the service-level .exists() check is not atomic
+            # against two concurrent creates. Partial exclusion constraint
+            # (needs btree_gist): CANCELLED rows are exempt so a corrected
+            # distribution can reuse a voided one's period.
+            ExclusionConstraint(
+                name="finance_shrdist_no_overlapping_active_period",
+                expressions=[
+                    (
+                        models.Func(
+                            models.F("period_start"),
+                            models.F("period_end"),
+                            models.Value("[]"),
+                            function="daterange",
+                            output_field=DateRangeField(),
+                        ),
+                        RangeOperators.OVERLAPS,
+                    ),
+                ],
+                condition=models.Q(status__in=["DRAFT", "VALIDATED"]),
             ),
         ]
         indexes = [
