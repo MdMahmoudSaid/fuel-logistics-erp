@@ -1809,13 +1809,24 @@ class ShareholderWithdrawalService:
         shareholder = Shareholder.objects.select_for_update().get(pk=shareholder_id)
         amount_decimal = Decimal(str(amount))
 
+        # 2026-09-08 review, point 5: every profit withdrawal must be tied
+        # to one traceable, VALIDATED ShareholderProfitShare. An unlinked
+        # withdrawal debited treasury while decrementing no share at all -
+        # the shareholder kept the same available balance, and a
+        # distribution could later be cancelled while some of its money had
+        # already quietly left the company with no link back to it.
+        if profit_share_id is None:
+            raise ShareholderWithdrawalError(
+                "Un retrait de benefice doit etre rattache a une part validee "
+                "(selectionnez la repartition concernee)."
+            )
+
         # Unconditional balance checks (design doc
-        # 2026-08-26-benefices-associes-refinement-design.md, Fix 1): before
-        # this, a withdrawal without a profit_share_id skipped every
-        # balance check, and even a profit_share-tied withdrawal never
-        # checked the destination account - a shareholder could withdraw an
-        # arbitrary amount regardless of what they were actually owed or
-        # what the bank/cash account actually held.
+        # 2026-08-26-benefices-associes-refinement-design.md, Fix 1): even a
+        # profit_share-tied withdrawal never checked the destination account
+        # before this - a shareholder could withdraw an arbitrary amount
+        # regardless of what they were actually owed or what the bank/cash
+        # account actually held.
         available_balance = ShareholderLedgerService.get_available_balance(shareholder_id)
         if amount_decimal > available_balance:
             raise ShareholderWithdrawalError("Solde associe insuffisant.")

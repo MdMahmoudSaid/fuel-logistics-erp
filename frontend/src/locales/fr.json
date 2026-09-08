@@ -983,7 +983,7 @@
         "title": "Retrait d'argent de l'associé",
         "shareholder": "Actionnaire",
         "profitShare": "Part de bénéfice",
-        "general": "Retrait général (sans répartition)",
+        "selectProfitShare": "Choisir la répartition validée…",
         "amount": "Montant",
         "date": "Date",
         "accountType": "Type de compte",

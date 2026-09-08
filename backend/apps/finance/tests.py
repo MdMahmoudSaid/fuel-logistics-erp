@@ -4070,14 +4070,14 @@ def test_shareholder_withdrawal_rejects_amount_exceeding_remaining_due():
 
 
 @pytest.mark.django_db
-def test_shareholder_withdrawal_general_without_profit_share():
+def test_shareholder_withdrawal_requires_a_profit_share():
+    """2026-09-08 review, point 5: a profit withdrawal must always be tied
+    to one traceable validated share - an unlinked "retrait general"
+    debited treasury while decrementing nothing, leaving the shareholder's
+    available balance unchanged."""
     shareholder = _make_shareholders([Decimal("100")])[0]
     actor = _make_admin_user("6")
     _seed_distributable()
-    # A general withdrawal (no profit_share_id) is still checked against
-    # the shareholder's available_balance - needs a VALIDATED distribution
-    # first (2026-09-08 review: a DRAFT credits no balance) so it has
-    # something to draw from.
     _distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",
@@ -4087,41 +4087,57 @@ def test_shareholder_withdrawal_general_without_profit_share():
     ShareholderDistributionService.validate_distribution(_distribution.id, actor)
     bank_account = BankAccount.objects.create(name="Main BOA", opening_balance=Decimal("100000.00"))
 
-    withdrawal = ShareholderWithdrawalService.record_withdrawal(
-        shareholder_id=shareholder.id,
-        profit_share_id=None,
-        amount=Decimal("50000.00"),
-        date="2026-08-01",
-        bank_account_id=bank_account.id,
-        actor=actor,
-    )
-
-    assert withdrawal.profit_share is None
-    assert TreasuryTransaction.objects.filter(
-        source_content_type=ContentType.objects.get_for_model(ShareholderWithdrawal),
-        source_object_id=withdrawal.id,
-    ).exists()
-
-
-@pytest.mark.django_db
-def test_shareholder_withdrawal_general_rejects_amount_exceeding_available_balance():
-    """Fix 1: before this, a general withdrawal (no profit_share_id) never
-    checked the shareholder's balance at all - only a withdrawal tied to a
-    specific profit_share was checked, so an unlinked withdrawal could
-    drain an arbitrary amount."""
-    shareholder = _make_shareholders([Decimal("100")])[0]
-    actor = _make_admin_user("6b")
-    bank_account = BankAccount.objects.create(name="Main BOA", opening_balance=Decimal("100000.00"))
-
     with pytest.raises(ShareholderWithdrawalError):
         ShareholderWithdrawalService.record_withdrawal(
             shareholder_id=shareholder.id,
             profit_share_id=None,
-            amount=Decimal("1.00"),
+            amount=Decimal("50000.00"),
             date="2026-08-01",
             bank_account_id=bank_account.id,
             actor=actor,
         )
+
+    assert not ShareholderWithdrawal.objects.filter(shareholder=shareholder).exists()
+    assert not TreasuryTransaction.objects.filter(
+        source_content_type=ContentType.objects.get_for_model(ShareholderWithdrawal)
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_shareholder_withdrawal_reduces_available_balance_permanently():
+    """2026-09-08 review, point 5: a withdrawal really and definitively
+    lowers the shareholder's available balance - the money left, the
+    remaining_due dropped, and it stays dropped."""
+    shareholder = _make_shareholders([Decimal("100")])[0]
+    actor = _make_admin_user("6b")
+    _seed_distributable()
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=actor,
+    )
+    ShareholderDistributionService.validate_distribution(distribution.id, actor)
+    share = distribution.shares.get(shareholder=shareholder)
+    cash_account = CashAccount.objects.create(
+        name="Perm Cash", opening_balance=Decimal("100000.00")
+    )
+    assert ShareholderLedgerService.get_available_balance(shareholder.id) == Decimal("100000.00")
+
+    ShareholderWithdrawalService.record_withdrawal(
+        shareholder_id=shareholder.id,
+        profit_share_id=share.id,
+        amount=Decimal("40000.00"),
+        date="2026-08-01",
+        cash_account_id=cash_account.id,
+        actor=actor,
+    )
+
+    assert ShareholderLedgerService.get_available_balance(shareholder.id) == Decimal("60000.00")
+    # Re-reading (a fresh service call, no caching) keeps the lower figure.
+    assert ShareholderLedgerService.get_shareholder_summary(shareholder.id)[
+        "remaining_due"
+    ] == Decimal("60000.00")
 
 
 @pytest.mark.django_db
@@ -4132,18 +4148,20 @@ def test_shareholder_withdrawal_rejects_amount_exceeding_bank_balance():
     shareholder = _make_shareholders([Decimal("100")])[0]
     actor = _make_admin_user("6c")
     _seed_distributable()
-    ShareholderDistributionService.create_distribution(
+    distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",
         total_profit=Decimal("1000000.00"),
         actor=actor,
     )
+    ShareholderDistributionService.validate_distribution(distribution.id, actor)
+    share = distribution.shares.get(shareholder=shareholder)
     bank_account = BankAccount.objects.create(name="Poor BOA", opening_balance=Decimal("1000.00"))
 
     with pytest.raises(ShareholderWithdrawalError):
         ShareholderWithdrawalService.record_withdrawal(
             shareholder_id=shareholder.id,
-            profit_share_id=None,
+            profit_share_id=share.id,
             amount=Decimal("50000.00"),
             date="2026-08-01",
             bank_account_id=bank_account.id,
@@ -4251,12 +4269,14 @@ def test_shareholder_withdrawal_via_api_posts_treasury(admin_client):
         actor=_api_actor,
     )
     ShareholderDistributionService.validate_distribution(_api_distribution.id, _api_actor)
+    share = _api_distribution.shares.get(shareholder=shareholder)
     cash_account = CashAccount.objects.create(name="Main Cash", opening_balance=Decimal("100000.00"))
 
     response = admin_client.post(
         "/api/shareholder-withdrawals/",
         {
             "shareholder": shareholder.id,
+            "profit_share": share.id,
             "amount": "25000.00",
             "date": "2026-08-01",
             "cash_account": cash_account.id,
@@ -4268,6 +4288,28 @@ def test_shareholder_withdrawal_via_api_posts_treasury(admin_client):
         source_content_type=ContentType.objects.get_for_model(ShareholderWithdrawal),
         source_object_id=response.data["id"],
     ).exists()
+
+
+@pytest.mark.django_db
+def test_shareholder_withdrawal_via_api_rejects_missing_profit_share(admin_client):
+    """2026-09-08 review, point 5: the API must refuse a withdrawal with no
+    profit_share, independently of the frontend form."""
+    shareholder = _make_shareholders([Decimal("100")])[0]
+    cash_account = CashAccount.objects.create(
+        name="No Share Cash", opening_balance=Decimal("100000.00")
+    )
+
+    response = admin_client.post(
+        "/api/shareholder-withdrawals/",
+        {
+            "shareholder": shareholder.id,
+            "amount": "25000.00",
+            "date": "2026-08-01",
+            "cash_account": cash_account.id,
+        },
+    )
+
+    assert response.status_code == 400, response.data
 
 
 @pytest.mark.django_db

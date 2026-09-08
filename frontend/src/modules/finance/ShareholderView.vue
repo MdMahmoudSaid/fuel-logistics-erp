@@ -373,9 +373,9 @@ async function onCreateWithdrawal() {
   try {
     await shareholderWithdrawalResource.create({
       shareholder: Number(withdrawalForm.value.shareholder),
-      profit_share: withdrawalForm.value.profit_share
-        ? Number(withdrawalForm.value.profit_share)
-        : null,
+      // 2026-09-08 review, point 5: a profit withdrawal is always tied to
+      // one validated share - the field is required, no "retrait general".
+      profit_share: Number(withdrawalForm.value.profit_share),
       amount: withdrawalForm.value.amount,
       date: withdrawalForm.value.date,
       bank_account:
@@ -979,9 +979,10 @@ async function onViewLedger() {
           <select
             id="wd_share"
             v-model="withdrawalForm.profit_share"
+            required
             class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           >
-            <option value="">{{ t('finance.shareholder.withdrawal.general') }}</option>
+            <option value="" disabled>{{ t('finance.shareholder.withdrawal.selectProfitShare') }}</option>
             <option v-for="share in availableSharesForWithdrawal" :key="share.id" :value="share.id">
               {{ share.period_start }} — {{ share.period_end }} ({{ share.remaining_due }})
             </option>

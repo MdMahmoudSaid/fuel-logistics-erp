@@ -981,7 +981,7 @@
         "title": "Shareholder withdrawal",
         "shareholder": "Shareholder",
         "profitShare": "Profit share",
-        "general": "General withdrawal (not tied to a distribution)",
+        "selectProfitShare": "Choose the validated distribution…",
         "amount": "Amount",
         "date": "Date",
         "accountType": "Account type",

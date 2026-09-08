@@ -981,7 +981,7 @@
         "title": "سحب أموال المساهم",
         "shareholder": "المساهم",
         "profitShare": "حصة الربح",
-        "general": "سحب عام (غير مرتبط بتوزيع)",
+        "selectProfitShare": "اختر التوزيع المصادق عليه…",
         "amount": "المبلغ",
         "date": "التاريخ",
         "accountType": "نوع الحساب",

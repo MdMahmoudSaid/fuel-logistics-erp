@@ -1173,7 +1173,13 @@ class ShareholderWithdrawalSerializer(serializers.ModelSerializer):
 
         profit_share = data.get("profit_share", getattr(self.instance, "profit_share", None))
         shareholder = data.get("shareholder", getattr(self.instance, "shareholder", None))
-        if profit_share and shareholder and profit_share.shareholder_id != shareholder.id:
+        # 2026-09-08 review, point 5: a profit withdrawal is always tied to
+        # one specific validated share - there is no "retrait general".
+        if not profit_share:
+            raise serializers.ValidationError(
+                {"profit_share": "Selectionnez la part de benefice (repartition) concernee."}
+            )
+        if shareholder and profit_share.shareholder_id != shareholder.id:
             raise serializers.ValidationError(
                 {"profit_share": "Cette part de benefice n'appartient pas a cet actionnaire."}
             )
