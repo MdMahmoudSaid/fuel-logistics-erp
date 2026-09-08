@@ -601,6 +601,23 @@ class ShareholderProfitDistributionViewSet(viewsets.ModelViewSet):
             ShareholderProfitDistributionSerializer(distribution, context={"request": request}).data
         )
 
+    @action(detail=True, methods=["post"])
+    def cancel(self, request, pk=None):
+        """Void a DRAFT or VALIDATED distribution.
+
+        POST /api/shareholder-distributions/{id}/cancel/
+        """
+        distribution = self.get_object()
+        try:
+            distribution = ShareholderDistributionService.cancel_distribution(
+                distribution.id, request.user
+            )
+        except ShareholderDistributionError as exc:
+            return Response({"detail": str(exc)}, status=http_status.HTTP_400_BAD_REQUEST)
+        return Response(
+            ShareholderProfitDistributionSerializer(distribution, context={"request": request}).data
+        )
+
 
 class ShareholderLoanViewSet(viewsets.ModelViewSet):
     queryset = ShareholderLoan.objects.select_related("borrower", "lender").all()

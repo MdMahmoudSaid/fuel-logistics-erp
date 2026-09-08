@@ -3618,6 +3618,74 @@ def test_distribution_validate_action_via_admin_api(admin_client):
 
 
 @pytest.mark.django_db
+def test_distribution_cancel_action_via_admin_api(admin_client):
+    _make_shareholders([Decimal("100")])
+
+    created = admin_client.post(
+        "/api/shareholder-distributions/",
+        {"period_start": "2026-07-01", "period_end": "2026-07-31", "total_profit": "300000.00"},
+    )
+    assert created.status_code == 201, created.data
+
+    cancelled = admin_client.post(f"/api/shareholder-distributions/{created.data['id']}/cancel/")
+    assert cancelled.status_code == 200, cancelled.data
+    assert cancelled.data["status"] == "CANCELLED"
+    assert cancelled.data["cancelled_by"] is not None
+    assert cancelled.data["cancelled_at"] is not None
+
+
+@pytest.mark.django_db
+def test_distribution_cancel_action_rejects_when_withdrawal_exists(admin_client):
+    shareholder = _make_shareholders([Decimal("100")])[0]
+    admin_role = Role.objects.get(name=Role.NAME_ADMIN)
+    actor = User.objects.create_user(phone="+2220000201", pin="1234", role=admin_role)
+
+    created = admin_client.post(
+        "/api/shareholder-distributions/",
+        {"period_start": "2026-07-01", "period_end": "2026-07-31", "total_profit": "300000.00"},
+    )
+    admin_client.post(f"/api/shareholder-distributions/{created.data['id']}/validate/")
+    share = ShareholderProfitShare.objects.get(distribution_id=created.data["id"])
+    cash_account = CashAccount.objects.create(name="API Cash", opening_balance=Decimal("300000.00"))
+    ShareholderWithdrawalService.record_withdrawal(
+        shareholder_id=shareholder.id,
+        profit_share_id=share.id,
+        amount=Decimal("1000.00"),
+        date="2026-08-01",
+        cash_account_id=cash_account.id,
+        actor=actor,
+    )
+
+    response = admin_client.post(f"/api/shareholder-distributions/{created.data['id']}/cancel/")
+
+    assert response.status_code == 400, response.data
+
+
+@pytest.mark.django_db
+def test_distribution_cancel_action_requires_cancel_permission():
+    """Finance role only has view/create on the shareholders module (see
+    backend/apps/accounts/migrations/0005_seed_shareholder_permissions.py)
+    - it must not be able to cancel a distribution."""
+    finance_role = Role.objects.get(name=Role.NAME_FINANCE)
+    user = User.objects.create_user(phone="+2220000202", pin="1234", role=finance_role)
+    admin_role = Role.objects.get(name=Role.NAME_ADMIN)
+    admin_user = User.objects.create_user(phone="+2220000203", pin="1234", role=admin_role)
+    _make_shareholders([Decimal("100")])
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=admin_user,
+    )
+
+    client = APIClient()
+    client.force_authenticate(user)
+    response = client.post(f"/api/shareholder-distributions/{distribution.id}/cancel/")
+
+    assert response.status_code == 403
+
+
+@pytest.mark.django_db
 def test_validate_distribution_rejects_when_shares_became_empty(admin_client):
     """Defense in depth alongside create_distribution's own guard: the
     DRAFT's only shareholder is deactivated AFTER creation (so its

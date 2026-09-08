@@ -282,11 +282,16 @@ def test_contribution_api_rejects_update_and_hard_delete():
     assert patch_response.status_code == 400
 
     delete_response = client.delete(f"/api/shareholder-contributions/{contribution.id}/")
-    # destroy() raises MethodNotAllowed, but HasModulePermission rejects "destroy" (mapped to "cancel",
-    # a permission no role has on the "shareholders" module — see 0005_seed_shareholder_permissions)
-    # before destroy() is ever reached, so the actual response is 403, not 405. Matches
-    # ShareholderWithdrawalViewSet's identical (if latent) behavior.
-    assert delete_response.status_code == 403
+    # destroy() unconditionally raises MethodNotAllowed (405). Before
+    # 0006_grant_shareholder_cancel_permission, no role had the "cancel"
+    # tier on the "shareholders" module, so HasModulePermission rejected
+    # "destroy" (mapped to "cancel" via ACTION_MAP's default fallback)
+    # with 403 before destroy() was ever reached. Now that Admin/Management
+    # hold "cancel" on "shareholders" (so they can hit the new distribution
+    # cancel action), an admin's DELETE clears the permission check and
+    # reaches destroy() itself, which still refuses the hard delete — just
+    # with 405 instead of 403.
+    assert delete_response.status_code == 405
 
 
 @pytest.mark.django_db
