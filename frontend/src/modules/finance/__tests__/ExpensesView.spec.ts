@@ -132,17 +132,18 @@ describe('ExpensesView', () => {
     const wrapper = mountView()
     await flushPromises()
 
-    expect(fetchPayableDebts).toHaveBeenCalledTimes(6)
-    for (const type of ['customs', 'transit', 'road_transit', 'border', 'loading', 'trip_other']) {
+    expect(fetchPayableDebts).toHaveBeenCalledTimes(5)
+    for (const type of ['customs', 'transit', 'road_transit', 'border', 'loading']) {
       expect(fetchPayableDebts).toHaveBeenCalledWith(type)
     }
-    expect(wrapper.findAll('[data-test="debt-monitoring-card"]')).toHaveLength(6)
+    expect(fetchPayableDebts).not.toHaveBeenCalledWith('trip_other')
+    expect(wrapper.findAll('[data-test="debt-monitoring-card"]')).toHaveLength(5)
     expect(wrapper.text()).toContain('Douane')
     expect(wrapper.text()).toContain('Transit')
     expect(wrapper.text()).toContain('Transit routière')
     expect(wrapper.text()).toContain('Frontière')
     expect(wrapper.text()).toContain('Chargement')
-    expect(wrapper.text()).toContain('Autres frais trajet')
+    expect(wrapper.text()).not.toContain('Autres frais trajet')
     expect(wrapper.text()).toContain('75 000 XOF')
   })
 

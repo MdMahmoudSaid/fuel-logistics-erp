@@ -405,11 +405,9 @@ def test_dashboard_summary_aggregates_customs_and_other_debts_correctly():
         date="2020-01-01",
         status=Expense.Status.PAID,
     )
-    # Bug fix (2026-09-03 recette manuelle): an unallocated general
-    # expense (Loyer here) must never leak into "Autres frais du trajet" -
-    # only a category ControlledDebtPaymentService buckets under
-    # TRIP_OTHER *and* actually allocated to a trip counts. This RENT
-    # expense is deliberately left unallocated to prove it stays excluded.
+    # A general expense (Loyer here) has no trip-fee debt bucket at all -
+    # "other" is only border + loading. Kept as a regression guard that it
+    # never leaks into the dashboard's trip-debt aggregate.
     Expense.objects.create(
         category=Expense.Category.RENT,
         amount=Decimal("300.00"),
@@ -448,7 +446,7 @@ def test_dashboard_summary_aggregates_customs_and_other_debts_correctly():
     assert response.status_code == 200, response.data
     assert response.data["debts"]["customs"] == "1500.00"
     assert response.data["debts"]["road_transit"] == "450000.00"
-    # Unallocated Loyer (RENT) never counts as trip "other" debt.
+    # Loyer (RENT) has no trip-fee bucket; "other" is border + loading only.
     assert response.data["debts"]["other"] == "0.00"
     assert response.data["party_balances"]["customs_and_other"]["road_transit"] == "450000.00"
 

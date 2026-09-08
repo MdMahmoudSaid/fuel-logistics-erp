@@ -22,7 +22,6 @@ const debtBuckets = ref<Record<DebtPaymentType, PayableDebt[]>>({
   road_transit: [],
   border: [],
   loading: [],
-  trip_other: [],
   supplier: [],
   transporter: [],
 })
@@ -51,7 +50,6 @@ const monitoredDebtTypes = [
   'road_transit',
   'border',
   'loading',
-  'trip_other',
 ] as const
 
 const categoryNames = computed(() =>
@@ -80,7 +78,6 @@ function debtLabel(type: (typeof monitoredDebtTypes)[number]): string {
     road_transit: 'roadTransit',
     border: 'border',
     loading: 'loading',
-    trip_other: 'tripOther',
   } as const
   return t(`finance.expensesView.monitoring.${keyByType[type]}`)
 }

@@ -158,10 +158,7 @@ class DashboardViewSet(viewsets.ViewSet):
         loading_total = ControlledDebtPaymentService.describe_expense_group(
             ControlledDebtPaymentService.LOADING
         )["remaining_amount"]
-        trip_other_total = ControlledDebtPaymentService.describe_expense_group(
-            ControlledDebtPaymentService.TRIP_OTHER
-        )["remaining_amount"]
-        other_total = border_total + loading_total + trip_other_total
+        other_total = border_total + loading_total
 
         debts = {
             "total": (

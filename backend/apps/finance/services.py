@@ -22,7 +22,6 @@ from apps.finance.models import (
     CashAccount,
     CustomerPayment,
     Expense,
-    ExpenseAllocation,
     PaymentAllocation,
     Shareholder,
     ShareholderContribution,
@@ -42,7 +41,6 @@ from apps.reports.queries.margin_report import MarginReportQuery
 from apps.sales.models import Invoice
 from apps.suppliers.models import Supplier
 from apps.transport.models import Transporter
-from apps.trips.models import Trip
 
 ZERO = Decimal("0.00")
 
@@ -851,7 +849,6 @@ class ControlledDebtPaymentService:
     ROAD_TRANSIT = "road_transit"
     BORDER = "border"
     LOADING = "loading"
-    TRIP_OTHER = "trip_other"
 
     _EXPENSE_CATEGORY_BY_DEBT_TYPE = {
         CUSTOMS: [Expense.Category.CUSTOMS],
@@ -859,15 +856,6 @@ class ControlledDebtPaymentService:
         ROAD_TRANSIT: [Expense.Category.ROAD_TRANSIT],
         BORDER: [Expense.Category.ROAD],
         LOADING: [Expense.Category.LOADING],
-        TRIP_OTHER: [
-            Expense.Category.UNLOADING,
-            Expense.Category.ADMINISTRATION,
-            Expense.Category.RENT,
-            Expense.Category.SALARY,
-            Expense.Category.REPAIRS,
-            Expense.Category.BANK_CHARGES,
-            Expense.Category.OTHER,
-        ],
     }
 
     @classmethod
@@ -880,7 +868,6 @@ class ControlledDebtPaymentService:
             cls.ROAD_TRANSIT,
             cls.BORDER,
             cls.LOADING,
-            cls.TRIP_OTHER,
         ]
 
     @classmethod
@@ -1218,35 +1205,17 @@ class ControlledDebtPaymentService:
     @classmethod
     def _open_expenses(cls, debt_type, *, for_update=False):
         categories = cls._EXPENSE_CATEGORY_BY_DEBT_TYPE[debt_type]
+        # Every remaining bucket (CUSTOMS/TRANSIT/ROAD_TRANSIT/BORDER/
+        # LOADING) maps to exactly one trip system expense category that no
+        # general-expense flow can produce, so this stays allocation-
+        # agnostic on purpose: a customs/transit invoice is a real, payable
+        # debt before it's even split across trips (see
+        # test_dashboard_summary_aggregates_customs_and_other_debts_correctly).
         queryset = Expense.objects.filter(
             category__in=categories,
             status__in=[Expense.Status.UNPAID, Expense.Status.PARTIALLY_PAID],
             paid_by_customer_directly=False,
         )
-        if debt_type == cls.TRIP_OTHER:
-            # Bug fix (2026-09-03 recette manuelle): TRIP_OTHER is the only
-            # bucket whose category list (UNLOADING/ADMINISTRATION/RENT/
-            # SALARY/REPAIRS/BANK_CHARGES/OTHER, plus any custom category
-            # via _debt_type_for_expense's fallback) overlaps with plain
-            # general-expense categories from the Depenses generales page.
-            # CUSTOMS/TRANSIT/ROAD_TRANSIT/BORDER/LOADING stay
-            # allocation-agnostic on purpose (a customs/transit invoice is
-            # a real, payable debt before it's even split across trips -
-            # see test_dashboard_summary_aggregates_customs_and_other_debts_correctly).
-            # Only TRIP_OTHER needs a Trip ExpenseAllocation to prove it's
-            # actually a trip fee and not a general company expense (Loyer,
-            # Internet, ...) that happens to share a category with it.
-            #
-            # pk__in=<subquery> rather than a plain allocations__content_type
-            # filter: an Expense split across several trips has several
-            # ExpenseAllocation rows, and joining directly would duplicate
-            # it in the result - .distinct() can't be combined with
-            # select_for_update() (for_update=True below), which Postgres
-            # rejects outright ("FOR UPDATE is not allowed with DISTINCT").
-            trip_allocated_expense_ids = ExpenseAllocation.objects.filter(
-                content_type=ContentType.objects.get_for_model(Trip)
-            ).values_list("expense_id", flat=True)
-            queryset = queryset.filter(pk__in=trip_allocated_expense_ids)
         queryset = queryset.prefetch_related("allocations").order_by("date", "id")
         if for_update:
             queryset = queryset.select_for_update()
@@ -1459,15 +1428,17 @@ class ControlledDebtPaymentService:
             cls.ROAD_TRANSIT: "Transit routiere",
             cls.BORDER: "Frontiere",
             cls.LOADING: "Chargement",
-            cls.TRIP_OTHER: "Autres frais du trajet",
         }.get(debt_type, debt_type)
 
     @classmethod
     def _debt_type_for_expense(cls, expense):
+        # None for a category with no payable-debt bucket (a general
+        # expense, or a legacy trip fee in a retired category): such an
+        # expense is settled on the Depenses generales page, never here.
         for debt_type, categories in cls._EXPENSE_CATEGORY_BY_DEBT_TYPE.items():
             if expense.category in categories:
                 return debt_type
-        return cls.TRIP_OTHER
+        return None
 
     @classmethod
     def _sync_transport_status(cls, payment):
@@ -1903,9 +1874,9 @@ class WorkingCapitalService:
         (client request 2026-09-06), which needs "douane / transit /
         transit routiere / autres frais" as separate lines rather than one
         merged figure (same grouping the Dashboard's customs_and_other
-        card already uses - border+loading+trip_other collapse to
-        "other"). get_working_capital() calls this too, so the two can
-        never drift apart."""
+        card already uses - border+loading collapse to "other").
+        get_working_capital() calls this too, so the two can never drift
+        apart."""
         customs = ControlledDebtPaymentService.describe_expense_group(
             ControlledDebtPaymentService.CUSTOMS
         )["remaining_amount"]
@@ -1921,7 +1892,6 @@ class WorkingCapitalService:
                 for group in (
                     ControlledDebtPaymentService.BORDER,
                     ControlledDebtPaymentService.LOADING,
-                    ControlledDebtPaymentService.TRIP_OTHER,
                 )
             ),
             ZERO,

@@ -4620,58 +4620,18 @@ def test_general_expense_does_not_change_trip_cost_basis():
 
 
 @pytest.mark.django_db
-def test_unallocated_general_expense_never_shows_as_trip_other_debt():
-    """Bug fix (2026-09-03 recette manuelle): a general company expense
-    (Loyer, Internet, or any category ControlledDebtPaymentService buckets
-    under "trip_other" by default) must never appear as an open "Autres
-    frais du trajet" debt unless it is actually allocated to a trip - the
-    Depenses generales page and the trip-fee debt buckets must never
-    mix."""
-    unallocated_rent = Expense.objects.create(
-        category=Expense.Category.RENT,
-        amount=Decimal("300000.00"),
-        calculation_method=Expense.CalculationMethod.MANUAL,
-        date="2026-09-03",
-    )
-    unallocated_custom = Expense.objects.create(
-        category="internet",
-        amount=Decimal("50000.00"),
-        calculation_method=Expense.CalculationMethod.MANUAL,
-        date="2026-09-03",
-    )
+def test_trip_other_debt_bucket_is_removed():
+    """The "Autres frais du trajet" (trip_other) debt type is gone: every
+    fee the trip-fee form can create now maps to a real, correctly-named
+    bucket (Douane / Transit / Transit routiere / Frontiere / Chargement),
+    so the vague catch-all - which also silently swallowed retired
+    "transport" fees the payment screen could not settle - is retired for
+    clarity. A general company expense is settled on the Depenses
+    generales page, never a trip debt bucket."""
+    assert "trip_other" not in ControlledDebtPaymentService.supported_debt_types()
 
-    rows = ControlledDebtPaymentService.get_payable_debts("trip_other")
-
-    assert rows == []
-    all_open_expense_ids = {
-        expense.id for expense in ControlledDebtPaymentService._open_expenses("trip_other")
-    }
-    assert unallocated_rent.id not in all_open_expense_ids
-    assert unallocated_custom.id not in all_open_expense_ids
-
-
-@pytest.mark.django_db
-def test_trip_allocated_general_bucket_expense_still_shows_as_trip_other_debt():
-    """The other half of the fix above: an expense that IS allocated to a
-    trip (e.g. an "unloading" fee, bucketed under trip_other) must still
-    behave exactly as before - only unallocated expenses are excluded."""
-    trip, _transporter = _make_trip_for_deduction("TRIPOTHER-ALLOC")
-    allocated = Expense.objects.create(
-        category=Expense.Category.UNLOADING,
-        amount=Decimal("75000.00"),
-        calculation_method=Expense.CalculationMethod.FIXED,
-        date="2026-09-03",
-    )
-    ExpenseAllocation.objects.create(
-        expense=allocated,
-        content_type=ContentType.objects.get_for_model(Trip),
-        object_id=trip.id,
-        allocated_amount=Decimal("75000.00"),
-    )
-
-    rows = ControlledDebtPaymentService.get_payable_debts("trip_other")
-
-    assert rows[0]["remaining_amount"] == Decimal("75000.00")
+    with pytest.raises(ControlledDebtPaymentError):
+        ControlledDebtPaymentService.get_payable_debts("trip_other")
 
 
 # ---------------------------------------------------------------------------
@@ -4811,7 +4771,7 @@ def test_general_expense_never_appears_in_trip_fee_payable_debts_by_amount(finan
         date="2026-09-02",
     )
 
-    for debt_type in ["customs", "transit", "road_transit", "border", "loading", "trip_other"]:
+    for debt_type in ["customs", "transit", "road_transit", "border", "loading"]:
         rows = ControlledDebtPaymentService.get_payable_debts(debt_type)
         all_expense_ids = {
             line["id"] for row in rows for line in row.get("lines", [])

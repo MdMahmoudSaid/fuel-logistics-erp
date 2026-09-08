@@ -212,7 +212,7 @@ def test_get_other_debts_breakdown_splits_the_lump_sum_into_4_named_buckets():
         category=Expense.Category.ROAD_TRANSIT, amount=Decimal("300000.00"),
         calculation_method=Expense.CalculationMethod.MANUAL, date="2026-08-18",
     )
-    # "other" collapses border (ROAD) + loading + trip_other.
+    # "other" collapses border (ROAD) + loading.
     Expense.objects.create(
         category=Expense.Category.ROAD, amount=Decimal("50000.00"),
         calculation_method=Expense.CalculationMethod.MANUAL, date="2026-08-18",

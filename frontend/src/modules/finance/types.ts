@@ -306,7 +306,6 @@ export type DebtPaymentType =
   | 'road_transit'
   | 'border'
   | 'loading'
-  | 'trip_other'
 
 export interface PayableDebt {
   id: number
