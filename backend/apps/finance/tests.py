@@ -3838,6 +3838,74 @@ def test_cancel_distribution_is_idempotent():
 
 
 @pytest.mark.django_db
+def test_validate_distribution_rejects_cancelled_distribution():
+    """2026-09-08 review, point 3: CANCELLED is terminal - a cancelled
+    distribution can never be resurrected into VALIDATED."""
+    _make_shareholders([Decimal("100")])
+    actor = _make_admin_user("REVIVE")
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=actor,
+    )
+    ShareholderDistributionService.cancel_distribution(distribution.id, actor)
+
+    with pytest.raises(ShareholderDistributionError):
+        ShareholderDistributionService.validate_distribution(distribution.id, actor)
+
+    distribution.refresh_from_db()
+    assert distribution.status == ShareholderProfitDistribution.Status.CANCELLED
+    assert distribution.validated_by is None
+    assert distribution.validated_at is None
+
+
+@pytest.mark.django_db
+def test_validate_distribution_is_idempotent_and_keeps_original_stamp():
+    """2026-09-08 review, point 3: re-validating an already-VALIDATED
+    distribution repeats the same action without touching the original
+    validated_by / validated_at."""
+    _make_shareholders([Decimal("100")])
+    first_actor = _make_admin_user("VAL1")
+    second_actor = _make_admin_user("VAL2")
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=first_actor,
+    )
+    ShareholderDistributionService.validate_distribution(distribution.id, first_actor)
+    distribution.refresh_from_db()
+    original_by, original_at = distribution.validated_by_id, distribution.validated_at
+
+    ShareholderDistributionService.validate_distribution(distribution.id, second_actor)
+
+    distribution.refresh_from_db()
+    assert distribution.validated_by_id == original_by == first_actor.id
+    assert distribution.validated_at == original_at
+
+
+@pytest.mark.django_db
+def test_cancel_distribution_rejects_draft_after_cancel_is_terminal():
+    """2026-09-08 review, point 3: the only transitions out of a
+    distribution are DRAFT->VALIDATED, DRAFT->CANCELLED,
+    VALIDATED->CANCELLED. Nothing leaves CANCELLED."""
+    _make_shareholders([Decimal("100")])
+    actor = _make_admin_user("TERMINAL")
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=actor,
+    )
+    ShareholderDistributionService.validate_distribution(distribution.id, actor)
+    ShareholderDistributionService.cancel_distribution(distribution.id, actor)
+
+    with pytest.raises(ShareholderDistributionError):
+        ShareholderDistributionService.validate_distribution(distribution.id, actor)
+
+
+@pytest.mark.django_db
 def test_shareholder_withdrawal_creates_treasury_transaction_and_reduces_remaining_due():
     shareholder = _make_shareholders([Decimal("100")])[0]
     actor = _make_admin_user("4")

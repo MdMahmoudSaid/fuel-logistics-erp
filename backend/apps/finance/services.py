@@ -1690,7 +1690,17 @@ class ShareholderDistributionService:
             pk=distribution_id
         )
         if distribution.status == ShareholderProfitDistribution.Status.VALIDATED:
+            # Idempotent: repeating the action keeps the original
+            # validated_by / validated_at untouched (2026-09-08 review).
             return distribution
+
+        # 2026-09-08 review, point 3: CANCELLED is terminal. A cancelled
+        # distribution can never be resurrected - the only transitions are
+        # DRAFT -> VALIDATED, DRAFT -> CANCELLED, VALIDATED -> CANCELLED.
+        if distribution.status == ShareholderProfitDistribution.Status.CANCELLED:
+            raise ShareholderDistributionError(
+                "Cette repartition est annulee : elle ne peut plus etre validee."
+            )
 
         if not distribution.shares.exists():
             raise ShareholderDistributionError(
