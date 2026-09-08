@@ -3976,6 +3976,72 @@ def test_shareholder_withdrawal_rejects_amount_exceeding_bank_balance():
 
 
 @pytest.mark.django_db
+def test_get_shareholder_summary_excludes_cancelled_distribution_shares():
+    shareholder = _make_shareholders([Decimal("100")])[0]
+    actor = _make_admin_user("SUMMARYCANCEL")
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=actor,
+    )
+    ShareholderDistributionService.cancel_distribution(distribution.id, actor)
+
+    summary = ShareholderLedgerService.get_shareholder_summary(shareholder.id)
+
+    assert summary["shares"] == []
+    assert summary["total_amount_due"] == Decimal("0.00")
+    assert summary["total_withdrawn"] == Decimal("0.00")
+    assert summary["remaining_due"] == Decimal("0.00")
+
+
+@pytest.mark.django_db
+def test_shareholder_withdrawal_rejects_profit_share_from_cancelled_distribution():
+    """The shareholder has enough OTHER, legitimate balance (from a second,
+    non-overlapping, still-VALIDATED distribution) to pass the aggregate
+    available_balance check - the withdrawal must still be refused because
+    it explicitly names a profit_share_id belonging to a CANCELLED
+    distribution, not because of the aggregate."""
+    shareholder = _make_shareholders([Decimal("100")])[0]
+    actor = _make_admin_user("WDRAWCANCEL")
+    cancelled_distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=actor,
+    )
+    ShareholderDistributionService.validate_distribution(cancelled_distribution.id, actor)
+    ShareholderDistributionService.cancel_distribution(cancelled_distribution.id, actor)
+    cancelled_share = cancelled_distribution.shares.get(shareholder=shareholder)
+
+    other_distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-08-01",
+        period_end="2026-08-31",
+        total_profit=Decimal("50000.00"),
+        actor=actor,
+    )
+    ShareholderDistributionService.validate_distribution(other_distribution.id, actor)
+
+    cash_account = CashAccount.objects.create(
+        name="Gap Cash", opening_balance=Decimal("100000.00")
+    )
+
+    with pytest.raises(ShareholderWithdrawalError):
+        ShareholderWithdrawalService.record_withdrawal(
+            shareholder_id=shareholder.id,
+            profit_share_id=cancelled_share.id,
+            amount=Decimal("30000.00"),
+            date="2026-09-01",
+            cash_account_id=cash_account.id,
+            actor=actor,
+        )
+
+    cancelled_share.refresh_from_db()
+    assert cancelled_share.amount_withdrawn == Decimal("0.00")
+    assert not ShareholderWithdrawal.objects.filter(profit_share=cancelled_share).exists()
+
+
+@pytest.mark.django_db
 def test_shareholder_withdrawal_requires_exactly_one_account():
     shareholder = _make_shareholders([Decimal("100")])[0]
     actor = _make_admin_user("7")

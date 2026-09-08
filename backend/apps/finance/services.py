@@ -1805,6 +1805,10 @@ class ShareholderWithdrawalService:
                 raise ShareholderWithdrawalError(
                     "Cette part de benefice n'appartient pas a cet actionnaire."
                 )
+            if profit_share.distribution.status == ShareholderProfitDistribution.Status.CANCELLED:
+                raise ShareholderWithdrawalError(
+                    "Cette part de benefice appartient a une repartition annulee."
+                )
             remaining_due = profit_share.remaining_due
             if amount_decimal > remaining_due:
                 raise ShareholderWithdrawalError(
@@ -2145,7 +2149,9 @@ class ShareholderLedgerService:
         shareholder = Shareholder.objects.get(pk=shareholder_id)
 
         shares = list(
-            shareholder.profit_shares.select_related("distribution").order_by("-distribution_id")
+            shareholder.profit_shares.select_related("distribution")
+            .exclude(distribution__status=ShareholderProfitDistribution.Status.CANCELLED)
+            .order_by("-distribution_id")
         )
         total_amount_due = sum((s.amount_due for s in shares), ZERO)
         total_withdrawn = sum((s.amount_withdrawn for s in shares), ZERO)
