@@ -21,6 +21,21 @@ Migrations run automatically when the `backend` container starts. To create an a
 docker compose exec backend python manage.py createsuperuser
 ```
 
+## Production deployment (Docker)
+
+```bash
+cp .env.prod.example .env   # fill in real secrets — see comments in the file
+docker compose -f docker-compose.prod.yml up --build -d
+```
+
+This runs Postgres (data persisted in the `postgres_data` volume, not exposed on the host), the Django API under Gunicorn (`config.settings.prod`), and the built Vue app served by Nginx. Migrations and `collectstatic` run automatically on `backend` startup. Create an admin user the same way as in dev:
+
+```bash
+docker compose -f docker-compose.prod.yml exec backend python manage.py createsuperuser
+```
+
+`docker-compose.prod.yml` covers the app + database only — a reverse proxy/TLS termination in front of it (e.g. Caddy or Nginx on the host) and scheduled backups are tracked separately in [`roadmap/phase_7_hardening_deployment.md`](roadmap/phase_7_hardening_deployment.md) and not set up here.
+
 ## Quickstart (without Docker)
 
 **Backend**
