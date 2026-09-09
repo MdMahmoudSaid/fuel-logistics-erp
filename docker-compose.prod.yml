@@ -1,3 +1,5 @@
+name: fuel-erp-prod
+
 services:
   db:
     image: postgres:16
