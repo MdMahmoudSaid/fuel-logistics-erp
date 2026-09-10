@@ -111,6 +111,12 @@ LEDGER_PDF_LABELS = {
         "trucks_section": "Camions rattaches",
         "settlements_section": "Reglements par trajet",
         "advances_section": "Avances",
+        # Per-invoice PDF (feedback 2026-09-10)
+        "invoice_title": "Facture",
+        "invoice_number": "Numero de facture",
+        "issued_date": "Date d'emission",
+        "unit_price": "Prix de vente unitaire",
+        "total_amount": "Montant total",
     },
     "en": {
         "title": "Ledger",
@@ -163,6 +169,11 @@ LEDGER_PDF_LABELS = {
         "trucks_section": "Attached trucks",
         "settlements_section": "Trip settlements",
         "advances_section": "Advances",
+        "invoice_title": "Invoice",
+        "invoice_number": "Invoice number",
+        "issued_date": "Issued date",
+        "unit_price": "Unit selling price",
+        "total_amount": "Total amount",
     },
     # AR: labels intentionally kept in French pending an embedded
     # Arabic-capable font + reshaping/bidi support - see module docstring.
@@ -217,6 +228,11 @@ LEDGER_PDF_LABELS = {
         "trucks_section": "Camions rattaches",
         "settlements_section": "Reglements par trajet",
         "advances_section": "Avances",
+        "invoice_title": "Facture",
+        "invoice_number": "Numero de facture",
+        "issued_date": "Date d'emission",
+        "unit_price": "Prix de vente unitaire",
+        "total_amount": "Montant total",
     },
 }
 
@@ -836,6 +852,41 @@ def render_trip_settlement_pdf(payment, lang: str = "fr") -> bytes:
     ]
     return _label_value_pdf(
         title=f"{labels['settlement_title']} - {trip.reference}", field_rows=field_rows, lang=lang
+    )
+
+
+def render_invoice_pdf(invoice, lang: str = "fr") -> bytes:
+    """Single-record PDF for one Invoice (feedback 2026-09-10: the client
+    ledger's Factures table needed the same per-row PDF export the
+    Paiements table already had). Same label/value grid layout as
+    render_trip_settlement_pdf/render_customer_payment_pdf, printing the
+    same fields already shown on InvoiceDetail.vue plus the truck plates
+    (Sale.trip.truck) - same "the client wants to see which truck loaded
+    this invoice" ask that also added Sale.truck_plates to the API."""
+    labels = _labels(lang)
+    sale = invoice.sale
+    trip = sale.trip
+    truck = trip.truck
+
+    field_rows = [
+        (labels["invoice_number"], invoice.invoice_number),
+        (labels["client"], sale.customer.name),
+        (labels["product"], sale.product.name),
+        (labels["trip_reference"], trip.reference),
+        (labels["truck"], truck.internal_id),
+        (labels["plate"], f"{truck.tractor_registration} / {truck.tanker_registration}"),
+        (labels["quantity"], _format_quantity(trip.quantity_loaded)),
+        (labels["quantity_delivered"], _format_quantity(sale.delivered_quantity)),
+        (labels["unit_price"], _format_unit_money(sale.unit_selling_price)),
+        (labels["total_amount"], _format_money(invoice.total_amount)),
+        (labels["invoice_status"], invoice.status),
+        (labels["issued_date"], invoice.issued_date),
+        (labels["export_date"], datetime.date.today()),
+    ]
+    return _label_value_pdf(
+        title=f"{labels['invoice_title']} - {invoice.invoice_number}",
+        field_rows=field_rows,
+        lang=lang,
     )
 
 

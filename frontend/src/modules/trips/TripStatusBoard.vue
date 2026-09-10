@@ -13,6 +13,7 @@ import MonoValue from '@/components/ui/MonoValue.vue'
 import Button from '@/components/ui/Button.vue'
 import TripCard from './TripCard.vue'
 import { useTripStatusLabel } from './tripStatusLabels'
+import { formatTruckPlates } from './formatTruckPlates'
 import { formatQuantity } from '@/utils/currency'
 
 const router = useRouter()
@@ -201,7 +202,7 @@ function nextAction(trip: Trip) {
               @click="goToDetail(trip)"
             >
               <td class="px-3 py-2.5"><MonoValue :value="trip.reference" align="left" /></td>
-              <td class="px-3 py-2.5">{{ trip.truck_detail?.internal_id ?? '—' }}</td>
+              <td class="px-3 py-2.5">{{ formatTruckPlates(trip.truck_detail) }}</td>
               <td class="px-3 py-2.5">{{ trip.transporter_detail?.name ?? '—' }}</td>
               <td class="px-3 py-2.5">{{ trip.supplier_detail?.name ?? '—' }}</td>
               <td class="px-3 py-2.5">

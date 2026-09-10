@@ -400,17 +400,20 @@
       "realTotalCost": "Real total cost",
       "unitProfit": "Unit profit",
       "netMargin": "Net margin",
-      "clientVerificationAction": "Client verification / Report a loss",
+      "clientVerificationAction": "Record the quantity received by the customer",
       "clientVerificationRecorded": "Client verification recorded"
     },
     "assignCustomer": {
+      "action": "Assign a customer",
       "title": "Assign customer",
       "trip": "Trip",
       "customer": "Customer",
       "selectCustomer": "Select a customer",
       "saving": "Saving…",
       "save": "Assign",
-      "saveError": "Could not assign this customer — check the fields and your permissions."
+      "saveError": "Could not assign this customer — check the fields and your permissions.",
+      "pickTripHint": "Pick a company-stock trip to assign to a customer. It will then continue its normal cycle (delivery, quality control, invoicing).",
+      "noEligibleTrips": "No company-stock trip without a customer right now."
     },
     "newForm": {
       "title": "New Trip (Loading)",
@@ -478,13 +481,28 @@
     "clientVerification": {
       "title": "Client verification",
       "loadedQuantity": "Loaded quantity",
-      "receivedQuantity": "Received quantity (L)",
+      "receivedQuantity": "Total quantity received by the customer (L)",
+      "receivedQuantityHint": "Enter the total delivered quantity, not the loss — the loss is calculated automatically below.",
       "verifiedAt": "Verification date",
       "companyAbsorbed": "Loss absorbed by the company (est.)",
       "transporterChargeable": "Loss chargeable to the transporter (est.)",
       "recording": "Recording…",
       "submit": "Record verification",
       "recordError": "Could not record the client verification."
+    },
+    "clientVerificationCorrection": {
+      "action": "Correct the client verification",
+      "title": "Correct the client verification",
+      "hint": "Use this if the recorded received quantity was wrong (for example a loss typed in by mistake instead of the received quantity). This correction is audited.",
+      "currentReceivedQuantity": "Currently recorded quantity",
+      "newReceivedQuantity": "New received quantity (L)",
+      "reason": "Reason for the correction",
+      "recording": "Recording…",
+      "submit": "Record correction",
+      "recordError": "Could not record the correction.",
+      "history": "Correction history",
+      "noHistory": "No correction.",
+      "correctedFrom": "Received quantity corrected from {previous} L to {next} L"
     }
   },
   "invoiceStatus": {
@@ -743,6 +761,7 @@
         "issued": "Issued",
         "loadedQuantity": "Loaded qty",
         "receivedQuantity": "Received qty",
+        "truckPlates": "Truck plates",
         "total": "Total",
         "outstanding": "Outstanding",
         "status": "Status"
@@ -1331,7 +1350,13 @@
         "delivered_quantity": "Delivered quantity"
       },
       "trip": "Trip",
+      "truckPlates": "Truck (plates)",
       "totalAmount": "Total amount",
+      "totalPreview": "Recalculated total (preview)",
+      "savePrice": "Save price",
+      "savePriceError": "Could not save this price — check the field and your permissions.",
+      "exportPdf": "Export PDF",
+      "exporting": "Exporting…",
       "issuedDate": "Issued date",
       "saving": "Saving…",
       "save": "Save",

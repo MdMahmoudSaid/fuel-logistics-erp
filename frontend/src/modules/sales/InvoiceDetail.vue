@@ -9,7 +9,13 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { formatMoney, formatQuantity } from '@/utils/currency'
-import { invoiceResource, validateInvoice, correctInvoice } from './api'
+import {
+  invoiceResource,
+  validateInvoice,
+  correctInvoice,
+  updateInvoicePrice,
+  exportInvoicePdf,
+} from './api'
 import { translateApiError } from '@/i18n/apiErrors'
 import { CORRECTABLE_INVOICE_FIELDS } from './types'
 import type { Invoice } from './types'
@@ -22,7 +28,7 @@ import MonoValue from '@/components/ui/MonoValue.vue'
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 const invoiceId = computed(() => Number(route.params.id))
 
@@ -30,7 +36,11 @@ const invoice = ref<Invoice | null>(null)
 const loading = ref(true)
 const error = ref('')
 
-const editForm = ref({ total_amount: '', issued_date: '' })
+const editForm = ref({ issued_date: '' })
+// Feedback (2026-09-10): a DRAFT invoice's price is edited as a unit price
+// (with the total recomputed automatically), not as a raw total_amount
+// anymore - see onSavePrice()/priceTotalPreview below.
+const priceForm = ref('')
 const previewUrl = ref<string | null>(null)
 const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp']
 
@@ -44,10 +54,8 @@ async function load() {
   error.value = ''
   try {
     invoice.value = await invoiceResource.get!(invoiceId.value)
-    editForm.value = {
-      total_amount: invoice.value.total_amount,
-      issued_date: invoice.value.issued_date,
-    }
+    editForm.value = { issued_date: invoice.value.issued_date }
+    priceForm.value = invoice.value.sale_detail?.unit_selling_price ?? ''
   } catch {
     error.value = t('sales.invoiceDetail.loadError')
   } finally {
@@ -62,6 +70,30 @@ const isValidated = computed(() => invoice.value?.status === 'VALIDATED')
 const canValidate = computed(() => auth.can('sales', 'validate'))
 const canEdit = computed(() => auth.can('sales', 'edit'))
 
+const priceTotalPreview = computed(() => {
+  const deliveredQuantity = Number(invoice.value?.sale_detail?.delivered_quantity ?? 0)
+  const price = Number(priceForm.value)
+  if (!priceForm.value || Number.isNaN(price)) return null
+  return formatMoney(deliveredQuantity * price)
+})
+
+const savingPrice = ref(false)
+const savePriceError = ref('')
+
+async function onSavePrice() {
+  if (!priceForm.value) return
+  savingPrice.value = true
+  savePriceError.value = ''
+  try {
+    invoice.value = await updateInvoicePrice(invoiceId.value, priceForm.value)
+  } catch (e) {
+    const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+    savePriceError.value = translateApiError(detail) || t('sales.invoiceDetail.savePriceError')
+  } finally {
+    savingPrice.value = false
+  }
+}
+
 const saving = ref(false)
 const saveError = ref('')
 
@@ -71,13 +103,25 @@ async function onSaveDraft() {
   saveError.value = ''
   try {
     invoice.value = await invoiceResource.update(invoiceId.value, {
-      total_amount: editForm.value.total_amount,
       issued_date: editForm.value.issued_date,
     })
   } catch {
     saveError.value = t('sales.invoiceDetail.saveError')
   } finally {
     saving.value = false
+  }
+}
+
+const exportingPdf = ref(false)
+
+async function onExportPdf() {
+  exportingPdf.value = true
+  try {
+    await exportInvoicePdf(invoiceId.value, locale.value)
+  } catch {
+    error.value = t('reports.exportError')
+  } finally {
+    exportingPdf.value = false
   }
 }
 
@@ -150,9 +194,20 @@ function formatDateTime(value: string) {
       <h1 class="font-display text-2xl leading-none font-semibold uppercase">
         {{ t('sales.invoiceDetail.title', { number: invoice?.invoice_number ?? '' }) }}
       </h1>
-      <Button variant="ghost" @click="router.push({ name: 'invoices' })">
-        {{ t('sales.invoiceDetail.backToInvoices') }}
-      </Button>
+      <div class="flex gap-2">
+        <Button
+          v-if="invoice"
+          variant="ghost"
+          data-test="export-invoice-pdf"
+          :disabled="exportingPdf"
+          @click="onExportPdf"
+        >
+          {{ exportingPdf ? t('sales.invoiceDetail.exporting') : t('sales.invoiceDetail.exportPdf') }}
+        </Button>
+        <Button variant="ghost" @click="router.push({ name: 'invoices' })">
+          {{ t('sales.invoiceDetail.backToInvoices') }}
+        </Button>
+      </div>
     </div>
 
     <p v-if="error" class="text-critique text-sm">{{ error }}</p>
@@ -249,23 +304,53 @@ function formatDateTime(value: string) {
               {{ invoice.sale_detail?.trip_reference }}
             </RouterLink>
           </div>
+          <div>
+            <span class="text-texte-2">{{ t('sales.invoiceDetail.truckPlates') }}</span>
+            <p class="text-texte font-medium">
+              {{ invoice.sale_detail?.truck_plates }}
+            </p>
+          </div>
         </div>
 
         <template v-if="isDraft && canEdit">
+          <div class="border-ligne space-y-3 rounded-lg border bg-sable p-3">
+            <p v-if="savePriceError" class="text-critique text-sm">{{ savePriceError }}</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div class="space-y-1">
+                <label class="text-texte-2 text-sm font-medium" for="unit_selling_price_edit">{{
+                  t('sales.invoiceDetail.unitSellingPrice')
+                }}</label>
+                <input
+                  id="unit_selling_price_edit"
+                  v-model="priceForm"
+                  type="number"
+                  step="0.0001"
+                  min="0"
+                  class="border-ligne-forte h-11 w-full rounded-lg border bg-white px-3 text-sm"
+                />
+              </div>
+              <div class="space-y-1">
+                <span class="text-texte-2 text-sm font-medium">{{
+                  t('sales.invoiceDetail.totalPreview')
+                }}</span>
+                <p class="text-texte flex h-11 items-center text-sm font-medium">
+                  {{ priceTotalPreview ?? '—' }}
+                </p>
+              </div>
+            </div>
+            <div class="flex justify-end">
+              <Button id="save-price" :disabled="savingPrice || !priceForm" @click="onSavePrice">
+                {{
+                  savingPrice
+                    ? t('sales.invoiceDetail.saving')
+                    : t('sales.invoiceDetail.savePrice')
+                }}
+              </Button>
+            </div>
+          </div>
+
           <p v-if="saveError" class="text-critique text-sm">{{ saveError }}</p>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="space-y-1">
-              <label class="text-texte-2 text-sm font-medium" for="total_amount">{{
-                t('sales.invoiceDetail.totalAmount')
-              }}</label>
-              <input
-                id="total_amount"
-                v-model="editForm.total_amount"
-                type="number"
-                step="0.01"
-                class="border-ligne-forte h-11 w-full rounded-lg border bg-white px-3 text-sm"
-              />
-            </div>
             <div class="space-y-1">
               <label class="text-texte-2 text-sm font-medium" for="issued_date">{{
                 t('sales.invoiceDetail.issuedDate')
@@ -277,6 +362,9 @@ function formatDateTime(value: string) {
                 class="border-ligne-forte h-11 w-full rounded-lg border bg-white px-3 text-sm"
               />
             </div>
+          </div>
+          <div class="text-texte text-base font-semibold">
+            {{ t('sales.invoiceDetail.total') }} {{ formatMoney(invoice.total_amount) }}
           </div>
           <div class="flex justify-end">
             <Button :disabled="saving" @click="onSaveDraft">

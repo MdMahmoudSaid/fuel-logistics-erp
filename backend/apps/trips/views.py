@@ -13,6 +13,7 @@ from apps.reports.services.profit import TripProfitService
 from .models import Trip
 from .serializers import (
     AssignCustomerRequestSerializer,
+    ClientVerificationCorrectionRequestSerializer,
     ClientVerificationRequestSerializer,
     DeliveryControlRequestSerializer,
     DeliveryControlSerializer,
@@ -348,6 +349,31 @@ class TripViewSet(viewsets.ModelViewSet):
                 verified_at=data["verified_at"],
                 actor=request.user,
                 notes=data.get("notes", ""),
+            )
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=http_status.HTTP_400_BAD_REQUEST)
+        return Response(DeliveryControlSerializer(control, context={"request": request}).data)
+
+    @action(
+        detail=True, methods=["post"], url_path="correct-client-verification"
+    )
+    def correct_client_verification(self, request, pk=None):
+        """Audited correction of an already-recorded client verification
+        (feedback 2026-09-10) - see
+        DeliveryService.correct_client_verification().
+
+        POST /api/trips/{id}/correct-client-verification/
+        """
+        trip = self.get_object()
+        input_serializer = ClientVerificationCorrectionRequestSerializer(data=request.data)
+        input_serializer.is_valid(raise_exception=True)
+        data = input_serializer.validated_data
+        try:
+            control = DeliveryService.correct_client_verification(
+                trip_id=trip.id,
+                received_qty=data["received_quantity"],
+                reason=data["reason"],
+                actor=request.user,
             )
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=http_status.HTTP_400_BAD_REQUEST)

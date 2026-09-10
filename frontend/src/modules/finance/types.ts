@@ -344,6 +344,9 @@ export interface CustomerLedgerInvoice {
   sale_detail?: {
     quantity_loaded: string
     delivered_quantity: string
+    // Feedback (2026-09-10): "tractor / tanker" plates of the truck that
+    // loaded this invoice's trip.
+    truck_plates: string
   }
 }
 

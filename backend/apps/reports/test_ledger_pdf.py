@@ -15,6 +15,7 @@ from apps.reports.services.ledger_pdf import (
     _stringify,
     _translate_key,
     render_customer_payment_pdf,
+    render_invoice_pdf,
     render_ledger_pdf,
     render_supplier_payment_pdf,
     render_trip_settlement_pdf,
@@ -127,6 +128,32 @@ def _make_customer_payment(suffix, admin_user, *, allocate=True):
     return payment
 
 
+def _make_invoice(suffix, admin_user=None):
+    """Bypasses DeliveryService on purpose (same convention as
+    _make_customer_payment above) - only needs a valid Sale/Invoice pair to
+    exercise render_invoice_pdf's printing."""
+    if admin_user is None:
+        admin_role = Role.objects.get(name=Role.NAME_ADMIN)
+        admin_user = User.objects.create_user(
+            phone=(f"+224{suffix}")[:20], pin="1234", role=admin_role
+        )
+    trip, _transporter, _supplier = _make_trip(suffix, admin_user=admin_user)
+    customer = Customer.objects.create(name=f"Client {suffix}", address="Nouakchott")
+    sale = Sale.objects.create(
+        trip=trip,
+        customer=customer,
+        product=trip.product,
+        delivered_quantity=Decimal("44900.00"),
+        unit_selling_price=Decimal("850.0000"),
+    )
+    return Invoice.objects.create(
+        invoice_number=f"INV-PDF-{suffix}",
+        sale=sale,
+        total_amount=sale.subtotal,
+        issued_date="2026-08-19",
+    )
+
+
 def _make_supplier_payment(suffix, admin_user, *, with_order=True):
     from apps.finance.models import CashAccount
 
@@ -220,6 +247,21 @@ def test_render_trip_settlement_pdf_arabic_lang_does_not_crash():
     payment = _make_transport_payment("SETTLE2")
     pdf_bytes = render_trip_settlement_pdf(payment, lang="ar")
     assert pdf_bytes.startswith(b"%PDF")
+
+
+@pytest.mark.django_db
+def test_render_invoice_pdf():
+    invoice = _make_invoice("INVPDF1")
+    pdf_bytes = render_invoice_pdf(invoice, lang="fr")
+    assert pdf_bytes.startswith(b"%PDF")
+
+
+@pytest.mark.django_db
+def test_render_invoice_pdf_all_langs_do_not_crash():
+    for lang in ("fr", "en", "ar"):
+        invoice = _make_invoice(f"INVPDFLANG{lang.upper()}")
+        pdf_bytes = render_invoice_pdf(invoice, lang=lang)
+        assert pdf_bytes.startswith(b"%PDF")
 
 
 # ---------------------------------------------------------------------------
@@ -331,6 +373,21 @@ def test_customer_payment_pdf_export_with_no_allocations_does_not_crash():
     response = client.get(f"/api/customer-payments/{payment.id}/pdf/?lang=fr")
     assert response.status_code == 200
     assert response.content.startswith(b"%PDF")
+
+
+@pytest.mark.django_db
+def test_invoice_pdf_export():
+    # Feedback (2026-09-10): the client ledger's Factures table needed the
+    # same per-row PDF export the Paiements table already had.
+    client, admin_user = _admin_client("+2230000203")
+    invoice = _make_invoice("INVPDFAPI1", admin_user)
+
+    response = client.get(f"/api/invoices/{invoice.id}/pdf/?lang=fr")
+
+    assert response.status_code == 200
+    assert response["Content-Type"] == "application/pdf"
+    assert response.content.startswith(b"%PDF")
+    assert response["Content-Disposition"] == f'attachment; filename="facture-{invoice.invoice_number}.pdf"'
 
 
 @pytest.mark.django_db

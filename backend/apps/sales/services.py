@@ -167,6 +167,34 @@ class InvoiceService:
 
     @staticmethod
     @transaction.atomic
+    def update_draft_pricing(invoice_id, unit_selling_price) -> Invoice:
+        """Change a DRAFT invoice's initial selling price and recompute its
+        total (feedback 2026-09-10: the initial price set on the trip's
+        delivery control is sometimes wrong and needs fixing before the
+        invoice is ever validated). Same "DRAFT -> Sale + Invoice edited
+        directly, no audit row" convention as adjust_delivered_quantity()
+        above and the InvoiceSerializer.validate() docstring - a DRAFT
+        invoice's data was never frozen, so this is a plain edit, not an
+        audited correction (that's correct_invoice(field="unit_selling_
+        price"), VALIDATED-only)."""
+        invoice = Invoice.objects.select_for_update().get(pk=invoice_id)
+
+        if invoice.status != Invoice.Status.DRAFT:
+            raise ValueError(
+                f"Invoice {invoice.invoice_number} is {invoice.status} ; "
+                "only a DRAFT invoice's price can be edited directly - use "
+                "the audited correction instead."
+            )
+
+        sale = invoice.sale
+        sale.unit_selling_price = Decimal(str(unit_selling_price))
+        sale.save()  # recomputes subtotal via Sale.save()
+        invoice.total_amount = sale.subtotal
+        invoice.save(update_fields=["total_amount", "updated_at"])
+        return invoice
+
+    @staticmethod
+    @transaction.atomic
     def correct_invoice(invoice_id, field, new_value, reason, actor) -> Invoice:
         """Adjust a validated invoice's financial data under audit
         (docs/PHASE_4_PLAN.md Section 1.E). Only usable once VALIDATED - a

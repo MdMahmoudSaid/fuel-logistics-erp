@@ -299,3 +299,40 @@ class DeliveryControl(AuditableModel, TimeStampedModel):
         """Portion de la perte non facturable au transporteur (<= tolerance),
         supportee par l'entreprise (client modifications 2026-09-04)."""
         return max(self.loss_quantity, Decimal("0.00")) - self.chargeable_loss_quantity
+
+
+class ClientVerificationCorrection(models.Model):
+    """Append-only audit trail entry for a correction to an already-recorded
+    client verification (feedback 2026-09-10: the "Declarer une perte"
+    button primed operators to type the loss instead of the received
+    quantity, and DeliveryService.record_client_verification() deliberately
+    refuses a second call rather than silently overwrite the first
+    declaration - see its docstring). Mirrors
+    apps.sales.models.InvoiceCorrection's "previous/new value + reason +
+    actor" shape.
+
+    Written exclusively by DeliveryService.correct_client_verification()
+    under the same Trip row lock as the original verification.
+    """
+
+    trip = models.ForeignKey(
+        Trip, on_delete=models.CASCADE, related_name="verification_corrections"
+    )
+    previous_received_quantity = models.DecimalField(max_digits=14, decimal_places=2)
+    new_received_quantity = models.DecimalField(max_digits=14, decimal_places=2)
+    corrected_by = models.ForeignKey(
+        "accounts.User",
+        on_delete=models.PROTECT,
+        related_name="client_verification_corrections",
+    )
+    corrected_at = models.DateTimeField(auto_now_add=True)
+    reason = models.TextField()
+
+    class Meta:
+        ordering = ["-corrected_at", "-id"]
+
+    def __str__(self) -> str:
+        return (
+            f"{self.trip.reference}: {self.previous_received_quantity} -> "
+            f"{self.new_received_quantity}"
+        )
