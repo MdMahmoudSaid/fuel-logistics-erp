@@ -1196,10 +1196,22 @@ class ControlledDebtPaymentService:
         )
         if for_update:
             queryset = queryset.select_for_update()
+        # Bug fix (client feedback 2026-09-10): `remaining_amount` is
+        # negative whenever a TransportDeduction exceeds base_amount - the
+        # transporter owes the company, not the other way round (e.g. a
+        # client-verification mistake produced a huge shortage deduction).
+        # The old `> ZERO` filter silently dropped those lines from
+        # describe_transporter/describe_transporter_balance entirely, so
+        # total_due/net_balance looked as if the amount owed BACK by the
+        # transporter simply didn't exist. `!= ZERO` keeps excluding a
+        # truly settled (zero-balance) line while still counting a negative
+        # one - _record_transport_payments' `line_amount <= ZERO: continue`
+        # guard already skips negative lines safely when allocating an
+        # outgoing payment, so including them here is safe for that path.
         return [
             payment
             for payment in queryset
-            if cls.describe_transport_payment(payment)["remaining_amount"] > ZERO
+            if cls.describe_transport_payment(payment)["remaining_amount"] != ZERO
         ]
 
     @classmethod
