@@ -538,6 +538,30 @@ describe('TripDetail expenses section', () => {
     expect(wrapper.text()).toContain('2 925 000 XOF')
   })
 
+  it('hides "Add transport fee" once a payment already exists for the trip', async () => {
+    // Bug fix (found by chance, client feedback 2026-09-10): this button
+    // had no guard at all, letting an operator create a second
+    // TransportPayment for the same trip.
+    setUser({ operations: ['view'], finance: ['view', 'create'] })
+    transportPaymentsToReturn = [makeTransportPayment()]
+
+    const wrapper = await mountAt()
+
+    expect(
+      wrapper.findAll('button').find((b) => b.text() === '+ Ajouter des frais de transport (au litre)'),
+    ).toBeUndefined()
+  })
+
+  it('still shows "Add transport fee" when the trip has no transport payment yet', async () => {
+    setUser({ operations: ['view'], finance: ['view', 'create'] })
+
+    const wrapper = await mountAt()
+
+    expect(
+      wrapper.findAll('button').find((b) => b.text() === '+ Ajouter des frais de transport (au litre)'),
+    ).toBeTruthy()
+  })
+
   it('shows an empty state when the trip has no expenses', async () => {
     setUser({ operations: ['view'], finance: ['view'] })
 
@@ -1137,6 +1161,29 @@ describe('TripDetail expenses section', () => {
     expect(postTripStatus).toHaveBeenCalledWith(9, 'SENT_FOR_LOADING', '')
     expect(wrapper.find('#unit_price_per_litre').exists()).toBe(true)
     expect(wrapper.text()).toContain('Commission du transporteur')
+  })
+
+  it('does not reopen the transporter commission popup when a payment already exists for the trip', async () => {
+    // Bug fix (found by chance, client feedback 2026-09-10): nothing
+    // stopped a second TransportPayment from being created for a trip
+    // that already has one - this popup was one of the two ways it
+    // happened (the always-visible "Ajouter des frais de transport"
+    // button was the other, covered below).
+    setUser({ operations: ['view', 'edit'], finance: ['view', 'create'] })
+    tripResourceGet.mockResolvedValue(makeTrip({ status: 'ASSIGNED' }))
+    allowedStatusesToReturn = ['SENT_FOR_LOADING']
+    transportPaymentsToReturn = [makeTransportPayment()]
+
+    const wrapper = await mountAt()
+    await wrapper.find('#next_status').setValue('SENT_FOR_LOADING')
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Appliquer')!
+      .trigger('click')
+    await flushPromises()
+
+    expect(postTripStatus).toHaveBeenCalledWith(9, 'SENT_FOR_LOADING', '')
+    expect(wrapper.find('#unit_price_per_litre').exists()).toBe(false)
   })
 
   it('opens a prefilled per-litre loading expense popup after SENT_FOR_LOADING -> LOADING', async () => {

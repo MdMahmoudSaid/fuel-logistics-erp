@@ -1285,6 +1285,40 @@ def test_transport_payment_per_litre_requires_unit_price(finance_client):
 
 
 @pytest.mark.django_db
+def test_transport_payment_rejects_a_second_one_for_the_same_trip(finance_client):
+    # Bug found by chance (2026-09-10 client feedback): nothing prevented
+    # creating a second TransportPayment for a trip that already has one -
+    # the "Ajouter des frais de transport" button on TripDetail.vue has no
+    # guard, so two settlements piled up for the same trip. A trip has one
+    # settlement, period - same invariant as a Sale (OneToOneField on Trip).
+    trip, transporter = _make_trip_for_deduction("DUP-TRIP")
+    first = finance_client.post(
+        "/api/transport-payments/",
+        {
+            "trip": trip.id,
+            "transporter": transporter.id,
+            "calculation_method": TransportPayment.CalculationMethod.FIXED,
+            "base_amount": "500000.00",
+        },
+    )
+    assert first.status_code == 201
+
+    second = finance_client.post(
+        "/api/transport-payments/",
+        {
+            "trip": trip.id,
+            "transporter": transporter.id,
+            "calculation_method": TransportPayment.CalculationMethod.FIXED,
+            "base_amount": "500000.00",
+        },
+    )
+
+    assert second.status_code == 400
+    assert trip.reference in second.data["non_field_errors"][0]
+    assert TransportPayment.objects.filter(trip=trip).count() == 1
+
+
+@pytest.mark.django_db
 def test_transport_payment_per_litre_appears_in_transporter_outstanding_when_not_paid(
     finance_client,
 ):

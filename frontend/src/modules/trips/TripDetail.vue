@@ -367,6 +367,11 @@ function openAutomaticFeePopup(targetStatus: TripStatus) {
     // detects "flotte propre" - no commission is ever due for it either
     // way, so the popup must still be skipped.
     if (!trip.value.transporter || trip.value.transporter_detail?.is_internal) return
+    // Bug fix (found by chance, client feedback 2026-09-10): nothing
+    // stopped this popup - or the always-visible "Ajouter des frais de
+    // transport" button below - from creating a second TransportPayment
+    // for a trip that already has one. A trip has exactly one settlement.
+    if (transportPayments.value.length) return
     automaticTransportTitle.value = t('trips.detail.autoExpense.transporterCommission')
     showTransportPaymentForm.value = true
     return
@@ -863,7 +868,12 @@ const cessionProofUrl = computed(
               {{ t('trips.detail.addExpense') }}
             </Button>
             <Button
-              v-if="canManageExpenses && trip.transporter && !trip.transporter_detail?.is_internal"
+              v-if="
+                canManageExpenses &&
+                trip.transporter &&
+                !trip.transporter_detail?.is_internal &&
+                !transportPayments.length
+              "
               variant="ghost"
               @click=";((automaticTransportTitle = null), (showTransportPaymentForm = true))"
             >
