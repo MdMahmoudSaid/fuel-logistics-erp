@@ -153,6 +153,10 @@ export interface Trip {
   supplier_order: number
   cession_letter: number
   cession_letter_detail?: CessionLetter | null
+  // How many times this trip's truck has been loaded under this exact
+  // cession letter (counts this trip itself, so a first load reads 1) -
+  // backend/apps/trips/serializers.py get_cession_letter_truck_load_count.
+  cession_letter_truck_load_count: number
   product: number
   product_detail: ProductBrief | null
   quantity_loaded: string

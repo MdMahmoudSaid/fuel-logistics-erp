@@ -298,6 +298,8 @@
       "reference": "المرجع",
       "truck": "الشاحنة",
       "transporter": "الناقل",
+      "cessionLetter": "رسالة التنازل",
+      "cessionLetterLoadCount": "{count} تحميل (تحميلات) لهذه الشاحنة",
       "client": "العميل",
       "quantity": "الكمية",
       "status": "الحالة"

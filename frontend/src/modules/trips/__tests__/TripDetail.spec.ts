@@ -47,6 +47,7 @@ function makeTrip(overrides: Partial<Trip> = {}): Trip {
       created_at: '',
       updated_at: '',
     },
+    cession_letter_truck_load_count: 1,
     product: 6,
     product_detail: { id: 6, name: 'Gasoil', code: 'gasoil' },
     quantity_loaded: '45000.00',

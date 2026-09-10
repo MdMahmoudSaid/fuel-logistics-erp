@@ -298,6 +298,8 @@
       "reference": "Reference",
       "truck": "Truck",
       "transporter": "Transporter",
+      "cessionLetter": "Cession letter",
+      "cessionLetterLoadCount": "{count} load(s) by this truck",
       "client": "Client",
       "quantity": "Quantity",
       "status": "Status"
