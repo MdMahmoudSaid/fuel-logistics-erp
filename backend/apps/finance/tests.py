@@ -1285,6 +1285,40 @@ def test_transport_payment_per_litre_requires_unit_price(finance_client):
 
 
 @pytest.mark.django_db
+def test_transport_payment_rejects_a_second_one_for_the_same_trip(finance_client):
+    # Bug found by chance (2026-09-10 client feedback): nothing prevented
+    # creating a second TransportPayment for a trip that already has one -
+    # the "Ajouter des frais de transport" button on TripDetail.vue has no
+    # guard, so two settlements piled up for the same trip. A trip has one
+    # settlement, period - same invariant as a Sale (OneToOneField on Trip).
+    trip, transporter = _make_trip_for_deduction("DUP-TRIP")
+    first = finance_client.post(
+        "/api/transport-payments/",
+        {
+            "trip": trip.id,
+            "transporter": transporter.id,
+            "calculation_method": TransportPayment.CalculationMethod.FIXED,
+            "base_amount": "500000.00",
+        },
+    )
+    assert first.status_code == 201
+
+    second = finance_client.post(
+        "/api/transport-payments/",
+        {
+            "trip": trip.id,
+            "transporter": transporter.id,
+            "calculation_method": TransportPayment.CalculationMethod.FIXED,
+            "base_amount": "500000.00",
+        },
+    )
+
+    assert second.status_code == 400
+    assert trip.reference in second.data["non_field_errors"][0]
+    assert TransportPayment.objects.filter(trip=trip).count() == 1
+
+
+@pytest.mark.django_db
 def test_transport_payment_per_litre_appears_in_transporter_outstanding_when_not_paid(
     finance_client,
 ):
@@ -1829,6 +1863,93 @@ def test_controlled_transport_payment_allocates_by_transporter_fifo(treasury_use
         Decimal("700000.00"),
         Decimal("200000.00"),
     ]
+
+
+# ---------------------------------------------------------------------------
+# Bug found by chance (2026-09-10 client feedback): a client-verification
+# mistake created a huge TransportDeduction, pushing a TransportPayment's
+# net_amount negative (the transporter now owes the company, not the other
+# way round) - _open_transport_payments()'s `remaining_amount > ZERO` filter
+# silently dropped that line from describe_transporter/describe_transporter_
+# balance entirely, so the amount owed BY the transporter never showed up
+# anywhere (total_due / net_balance looked as if it didn't exist).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_transporter_balance_reflects_a_payment_the_transporter_owes_back():
+    trip, transporter = _make_trip_for_deduction("OWES-BACK")
+    TransportPayment.objects.create(
+        trip=trip,
+        transporter=transporter,
+        calculation_method=TransportPayment.CalculationMethod.FIXED,
+        base_amount=Decimal("2925000.00"),
+        deduction_amount=Decimal("44800000.00"),
+        status=TransportPayment.Status.PLANNED,
+    )
+
+    balance = ControlledDebtPaymentService.describe_transporter_balance(transporter)
+
+    # net_amount = 2 925 000 - 44 800 000 = -41 875 000 - the transporter
+    # owes the company that much, so total_due (what we owe them) must go
+    # negative, not silently read as if this payment did not exist.
+    assert balance["total_due"] == Decimal("-41875000.00")
+    assert balance["net_balance"] == Decimal("41875000.00")
+
+
+@pytest.mark.django_db
+def test_transporter_balance_sums_multiple_payments_some_owed_back(treasury_user):
+    # Mirrors the exact screenshot from the bug report: one trip where the
+    # company still owes the transporter, others where the transporter now
+    # owes the company - the net balance must be the sum of all of them,
+    # not just the positive ones.
+    trip_a, transporter = _make_trip_for_deduction("MIX-A")
+    trip_b, _same = _make_trip_for_deduction("MIX-B")
+    trip_b.transporter = transporter
+    trip_b.save(update_fields=["transporter", "updated_at"])
+
+    TransportPayment.objects.create(
+        trip=trip_a,
+        transporter=transporter,
+        calculation_method=TransportPayment.CalculationMethod.FIXED,
+        base_amount=Decimal("2925000.00"),
+        status=TransportPayment.Status.PLANNED,
+    )
+    TransportPayment.objects.create(
+        trip=trip_b,
+        transporter=transporter,
+        calculation_method=TransportPayment.CalculationMethod.FIXED,
+        base_amount=Decimal("2925000.00"),
+        deduction_amount=Decimal("40320000.00"),
+        status=TransportPayment.Status.PLANNED,
+    )
+
+    balance = ControlledDebtPaymentService.describe_transporter_balance(transporter)
+
+    # 2 925 000 (owed to them) + (2 925 000 - 40 320 000) (owed back) = -34 470 000
+    assert balance["total_due"] == Decimal("-34470000.00")
+    assert balance["net_balance"] == Decimal("34470000.00")
+
+
+@pytest.mark.django_db
+def test_open_transport_payments_still_excludes_a_fully_settled_zero_balance_line():
+    # A payment whose remaining_amount is exactly zero (fully paid, or a
+    # net_amount of 0.00) must stay excluded - only the sign flip (negative
+    # remaining) was the bug, not the zero-balance exclusion itself.
+    trip, transporter = _make_trip_for_deduction("ZERO-BAL")
+    TransportPayment.objects.create(
+        trip=trip,
+        transporter=transporter,
+        calculation_method=TransportPayment.CalculationMethod.FIXED,
+        base_amount=Decimal("500000.00"),
+        deduction_amount=Decimal("500000.00"),
+        status=TransportPayment.Status.PLANNED,
+    )
+
+    balance = ControlledDebtPaymentService.describe_transporter_balance(transporter)
+
+    assert balance["total_due"] == Decimal("0.00")
+    assert balance["net_balance"] == Decimal("0.00")
 
 
 @pytest.mark.django_db
