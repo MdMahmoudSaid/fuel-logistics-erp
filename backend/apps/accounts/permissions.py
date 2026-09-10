@@ -75,6 +75,10 @@ ACTION_MAP = {
     # A correction only ever applies to an already-VALIDATED invoice, so it
     # requires the same "validate" tier rather than plain "edit".
     "correct": "validate",
+    # Editing a DRAFT invoice's price (feedback 2026-09-10) is a plain,
+    # unaudited edit - same "edit" tier as `update`/`partial_update` on a
+    # DRAFT invoice, not the "validate" tier `correct` above requires.
+    "update_price": "edit",
     # Both create new financial records via a dedicated service rather than
     # a plain model create, but are still "create" tier from a permissions
     # standpoint (docs/PHASE_5_PLAN.md Etape 6/8).
