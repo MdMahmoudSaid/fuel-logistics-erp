@@ -401,7 +401,7 @@
       "realTotalCost": "Coût total réel",
       "unitProfit": "Bénéfice unitaire",
       "netMargin": "Marge nette",
-      "clientVerificationAction": "Vérification client / Déclarer une perte",
+      "clientVerificationAction": "Enregistrer la quantité reçue par le client",
       "clientVerificationRecorded": "Vérification client enregistrée"
     },
     "assignCustomer": {
@@ -480,13 +480,28 @@
     "clientVerification": {
       "title": "Vérification client",
       "loadedQuantity": "Quantité chargée",
-      "receivedQuantity": "Quantité reçue (L)",
+      "receivedQuantity": "Quantité totale reçue par le client (L)",
+      "receivedQuantityHint": "Saisissez la quantité livrée au total, pas la perte — la perte est calculée automatiquement ci-dessous.",
       "verifiedAt": "Date de vérification",
       "companyAbsorbed": "Perte absorbée par l'entreprise (est.)",
       "transporterChargeable": "Perte facturable au transporteur (est.)",
       "recording": "Enregistrement…",
       "submit": "Enregistrer la vérification",
       "recordError": "Impossible d'enregistrer la vérification client."
+    },
+    "clientVerificationCorrection": {
+      "action": "Corriger la vérification client",
+      "title": "Corriger la vérification client",
+      "hint": "À utiliser si la quantité reçue enregistrée était incorrecte (par exemple une perte saisie par erreur à la place de la quantité reçue). Cette correction est tracée.",
+      "currentReceivedQuantity": "Quantité actuellement enregistrée",
+      "newReceivedQuantity": "Nouvelle quantité reçue (L)",
+      "reason": "Raison de la correction",
+      "recording": "Enregistrement…",
+      "submit": "Enregistrer la correction",
+      "recordError": "Impossible d'enregistrer la correction.",
+      "history": "Historique des corrections",
+      "noHistory": "Aucune correction.",
+      "correctedFrom": "Quantité reçue corrigée de {previous} L à {next} L"
     }
   },
   "invoiceStatus": {

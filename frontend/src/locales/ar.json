@@ -400,7 +400,7 @@
       "realTotalCost": "التكلفة الفعلية الإجمالية",
       "unitProfit": "ربح الوحدة",
       "netMargin": "الهامش الصافي",
-      "clientVerificationAction": "التحقق مع العميل / الإبلاغ عن فاقد",
+      "clientVerificationAction": "تسجيل الكمية التي استلمها العميل",
       "clientVerificationRecorded": "تم تسجيل التحقق مع العميل"
     },
     "assignCustomer": {
@@ -478,13 +478,28 @@
     "clientVerification": {
       "title": "التحقق مع العميل",
       "loadedQuantity": "الكمية المحمَّلة",
-      "receivedQuantity": "الكمية المستلمة (لتر)",
+      "receivedQuantity": "إجمالي الكمية التي استلمها العميل (لتر)",
+      "receivedQuantityHint": "أدخل الكمية المسلَّمة بالكامل، وليس الفاقد — يُحسب الفاقد تلقائيًا أدناه.",
       "verifiedAt": "تاريخ التحقق",
       "companyAbsorbed": "الفاقد الذي تتحمّله الشركة (تقديري)",
       "transporterChargeable": "الفاقد القابل للخصم من الناقل (تقديري)",
       "recording": "جارٍ الحفظ…",
       "submit": "تسجيل التحقق",
       "recordError": "تعذر تسجيل التحقق مع العميل."
+    },
+    "clientVerificationCorrection": {
+      "action": "تصحيح التحقق مع العميل",
+      "title": "تصحيح التحقق مع العميل",
+      "hint": "استخدم هذا إذا كانت الكمية المستلمة المسجّلة خاطئة (مثلاً إدخال الفاقد بالخطأ بدل الكمية المستلمة). يُسجَّل هذا التصحيح في سجل التدقيق.",
+      "currentReceivedQuantity": "الكمية المسجَّلة حاليًا",
+      "newReceivedQuantity": "الكمية المستلمة الجديدة (لتر)",
+      "reason": "سبب التصحيح",
+      "recording": "جارٍ الحفظ…",
+      "submit": "تسجيل التصحيح",
+      "recordError": "تعذر تسجيل التصحيح.",
+      "history": "سجل التصحيحات",
+      "noHistory": "لا يوجد تصحيح.",
+      "correctedFrom": "تم تصحيح الكمية المستلمة من {previous} لتر إلى {next} لتر"
     }
   },
   "invoiceStatus": {

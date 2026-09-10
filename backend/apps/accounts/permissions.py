@@ -58,6 +58,11 @@ ACTION_MAP = {
     # 2026-09-04) corrects an existing DeliveryControl - same routine
     # operations tier as the delivery confirmation it follows.
     "client_verification": "edit",
+    # A correction only ever applies to an already-verified DeliveryControl
+    # and is audited (ClientVerificationCorrection) - same "validate" tier
+    # as an invoice correction ("correct" above), not the routine "edit"
+    # tier used by the first verification.
+    "correct_client_verification": "validate",
     # Trip cost basis (Task 1, client modifications plan) is a read-only
     # decomposition, same "view" tier as margin/suggested_selling_price.
     "cost_basis": "view",

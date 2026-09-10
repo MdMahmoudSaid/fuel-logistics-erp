@@ -9,6 +9,7 @@ import MonoValue from '@/components/ui/MonoValue.vue'
 import { TRIP_PIPELINE_STATUSES } from './types'
 import type { Trip } from './types'
 import { useTripStatusLabel } from './tripStatusLabels'
+import { formatTruckPlates } from './formatTruckPlates'
 import { formatQuantity } from '@/utils/currency'
 
 const props = defineProps<{ trip: Trip }>()
@@ -44,7 +45,7 @@ const badgeVariant = computed(() => {
       <div>
         <p class="font-mono text-sm font-medium">{{ trip.reference }}</p>
         <p class="text-texte-2 text-xs">
-          {{ trip.truck_detail?.internal_id }} ·
+          {{ formatTruckPlates(trip.truck_detail) }} ·
           {{
             trip.destination_type === 'COMPANY_STOCK'
               ? t('trips.detail.companyStock')
