@@ -66,14 +66,15 @@ class SupplierStockService:
         optional_costs (loaded_quantity / quantity_litres of the order's
         total optional_costs).
 
-        Bug fix (client business rule, confirmed 2026-09-06): this is the
-        amount that becomes a real payable debt to the supplier - see
-        ControlledDebtPaymentService.describe_supplier_order in
-        apps.finance.services, which must never book the full confirmed
-        order total before the fuel has actually been loaded. Example
-        confirmed with the client: purchase 200,000 L at 500 XOF/L, only
-        100,000 L loaded so far -> debt = 100,000 x 500 = 50,000,000 XOF,
-        not the full order's 100,000,000 XOF.
+        Business rule reversal (client request, 2026-09-10, reverting the
+        2026-09-06 rule): this is no longer what becomes the payable debt to
+        the supplier - see ControlledDebtPaymentService.describe_supplier_order
+        in apps.finance.services, which now books the full confirmed order
+        total as debt immediately on confirmation, regardless of how much
+        has been loaded. This method stays useful on its own (the
+        counterpart get_purchase_reliquat_amount() below is defined in terms
+        of it) as "how much of the paid-for fuel has physically left the
+        supplier so far".
         """
         if purchase.quantity_litres <= Decimal("0.00"):
             return Decimal("0.00")
@@ -86,6 +87,22 @@ class SupplierStockService:
             else Decimal("0.00")
         )
         return (fuel_amount + prorated_costs).quantize(Decimal("0.01"))
+
+    @staticmethod
+    def get_purchase_reliquat_amount(purchase: SupplierOrder) -> Decimal:
+        """Monetary value of the unloaded reliquat: fuel already paid for in
+        full (the whole order is booked as debt on confirmation, see
+        get_purchase_loaded_amount() above) but still sitting at the
+        supplier, not yet loaded onto a trip.
+
+        Added 2026-09-10 (client request): this is the figure that now
+        counts as an asset in WorkingCapitalService's "Fond de roulement
+        client" - stock the company already paid for. Computed as
+        total_amount - loaded_amount (not reliquat_quantity x unit_price
+        recomputed independently) so the two halves always sum exactly back
+        to total_amount, immune to prorated-optional-costs rounding drift.
+        """
+        return purchase.total_amount - SupplierStockService.get_purchase_loaded_amount(purchase)
 
     @staticmethod
     def get_cession_remaining(cession: CessionLetter) -> Decimal:

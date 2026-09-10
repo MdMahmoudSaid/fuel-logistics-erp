@@ -96,16 +96,11 @@ class SupplierViewSet(viewsets.ModelViewSet):
             (p.amount for p in payments if not p.is_reversed), Decimal("0.00")
         )
         total_purchased = sum((o.total_amount for o in confirmed_orders), Decimal("0.00"))
-        # Bug fix (client business rule, confirmed 2026-09-06): the debt owed
-        # to this supplier ("outstanding_balance") is priced on quantity
-        # actually loaded, not on the full confirmed order total -
-        # total_purchased above stays the full commitment figure (a
-        # legitimate, separate "how much have we bought historically"
-        # number), it just must not double as the debt anymore.
-        total_loaded_value = sum(
-            (SupplierStockService.get_purchase_loaded_amount(o) for o in confirmed_orders),
-            Decimal("0.00"),
-        )
+        # Business rule reversal (client request, 2026-09-10): the debt owed
+        # to this supplier ("outstanding_balance") is the full confirmed
+        # order total, due immediately on confirmation - see
+        # ControlledDebtPaymentService.describe_supplier_order
+        # (apps.finance.services), which this must stay consistent with.
 
         return Response(
             {
@@ -120,7 +115,7 @@ class SupplierViewSet(viewsets.ModelViewSet):
                 ).data,
                 "total_purchased": f"{total_purchased:.2f}",
                 "total_paid": f"{total_paid:.2f}",
-                "outstanding_balance": f"{max(total_loaded_value - total_paid, Decimal('0.00')):.2f}",
+                "outstanding_balance": f"{max(total_purchased - total_paid, Decimal('0.00')):.2f}",
                 "summary": decimals_to_str(ledger_data["summary"]),
                 "entries": decimals_to_str(ledger_data["entries"]),
             }

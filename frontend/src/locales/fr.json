@@ -131,6 +131,7 @@
       "supplierDebtTotal": "Dettes fournisseurs",
       "transporterDebtTotal": "Dettes transporteurs",
       "otherDebts": "Dettes douane / transit / frais",
+      "supplierReliquatValue": "Stock fournisseur (reliquat non chargé)",
       "companyAbsorbedLoss": "Perte supportée par l'entreprise",
       "partyBalances": "Soldes par partie",
       "customers": "Clients",

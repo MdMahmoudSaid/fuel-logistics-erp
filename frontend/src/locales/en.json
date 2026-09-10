@@ -131,6 +131,7 @@
       "supplierDebtTotal": "Supplier debts",
       "transporterDebtTotal": "Transporter debts",
       "otherDebts": "Customs / transit / fee debts",
+      "supplierReliquatValue": "Supplier stock (unloaded reliquat)",
       "companyAbsorbedLoss": "Loss absorbed by the company",
       "partyBalances": "Balances by party",
       "customers": "Customers",

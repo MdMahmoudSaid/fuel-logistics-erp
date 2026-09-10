@@ -199,11 +199,11 @@ def test_supplier_outstanding_report_matches_purchases_minus_payments():
 
     rows = SupplierOutstandingReportQuery.run()
     row = next(r for r in rows if r["supplier"] == fx["supplier"].name)
-    # Bug fix (client business rule, confirmed 2026-09-06): debt is now
-    # priced on the 45,000 L actually loaded onto fx["trip"], not the
-    # order's full 500,000 L purchased quantity - 45,000 x 600 = 27,000,000.
+    # Business rule reversal (client request, 2026-09-10): debt is the full
+    # confirmed order (500,000 L x 600 = 300,000,000), due immediately on
+    # confirmation - independent of how much of it fx["trip"] has loaded.
     assert fx["trip"].quantity_loaded == Decimal("45000.00")
-    assert row["outstanding"] == Decimal("27000000.00") - Decimal("2000000.00")
+    assert row["outstanding"] == Decimal("300000000.00") - Decimal("2000000.00")
 
 
 @pytest.mark.django_db

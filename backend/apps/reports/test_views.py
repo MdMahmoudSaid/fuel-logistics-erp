@@ -359,7 +359,7 @@ def test_dashboard_summary_shareholders_section_includes_distributable_result():
     expected = (
         Decimal(wc["total"]) - Decimal(wc["supplier_debt_total"])
         - Decimal(wc["transporter_debt_total"]) - Decimal(wc["other_debts"])
-        - Decimal(wc["capital"])
+        - Decimal(wc["supplier_reliquat_value"]) - Decimal(wc["capital"])
     )
     assert Decimal(summary["distributable_result"]) == expected
     # Fixture sanity: there really is a sold trip driving current_profit.
@@ -1206,7 +1206,8 @@ def test_dashboard_summary_includes_working_capital_section():
     assert response.status_code == 200, response.data
     assert set(response.data["working_capital"]) >= {
         "capital", "treasury_available", "customer_receivables",
-        "supplier_debt_total", "transporter_debt_total", "other_debts", "gross", "total",
+        "supplier_debt_total", "transporter_debt_total", "other_debts",
+        "supplier_reliquat_value", "gross", "total",
     }
 
 

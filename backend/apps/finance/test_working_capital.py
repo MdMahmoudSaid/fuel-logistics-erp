@@ -312,3 +312,82 @@ def test_working_capital_matches_client_recette_example():
     assert result["transporter_debt_total"] == Decimal("2925000.00")
     assert result["other_debts"] == Decimal("10255000.00")
     assert result["total"] == Decimal("358180000.00")
+
+
+def _load_partial(order, quantity, *, suffix):
+    """Load only `quantity` (< order.quantity_litres) via a real Trip, to
+    exercise the unloaded reliquat - counterpart to _fully_load() above."""
+    admin_user = order.created_by
+    short_suffix = suffix[-16:]
+    cession = CessionLetter.objects.create(
+        reference=f"CL-{suffix}", supplier_order=order,
+        authorized_quantity=order.quantity_litres, issue_date="2026-08-18",
+        created_by=admin_user,
+    )
+    truck = Truck.objects.create(
+        internal_id=f"TRK-{short_suffix}", tractor_registration=f"{short_suffix}-TRAC",
+        tanker_registration=f"{short_suffix}-TANK", capacity_litres=Decimal("45000.00"),
+    )
+    transporter = Transporter.objects.create(name=f"Transporteur {suffix}")
+    return Trip.objects.create(
+        reference=f"TRIP-{suffix}", truck=truck, transporter=transporter,
+        supplier=order.supplier, supplier_order=order, cession_letter=cession,
+        product=order.product, quantity_loaded=quantity, loading_date="2026-08-18",
+        bl_reference=f"BL-{suffix}", created_by=admin_user,
+    )
+
+
+@pytest.mark.django_db
+def test_working_capital_includes_unloaded_supplier_reliquat_as_an_asset():
+    """Business rule reversal (client request, 2026-09-10), client's own
+    example: purchase 200,000 L at 1,000 XOF/L (debt = 200,000,000,
+    immediately), load only 45,000 L (45,000,000) so far -> the unloaded
+    155,000 L (155,000,000 XOF) is company-owned stock still sitting at the
+    supplier, and must show up as its own asset line in the Fond de
+    roulement client card, added into `total` the same way open debts are,
+    then cancelled back out of distributable_result (see
+    ShareholderProfitPreviewService)."""
+    admin_user, supplier, order = _make_supplier_order_with_status(
+        "WCRELIQUAT-SUP", SupplierOrder.Status.CONFIRMED,
+        quantity=Decimal("200000.00"), unit_price=Decimal("1000.0000"),
+    )
+    _load_partial(order, Decimal("45000.00"), suffix="WCRELIQUAT-SUP")
+
+    result = WorkingCapitalService.get_working_capital()
+
+    assert result["supplier_debt_total"] == Decimal("200000000.00")
+    assert result["supplier_reliquat_value"] == Decimal("155000000.00")
+    assert result["total"] == (
+        result["gross"] + result["supplier_debt_total"] + result["transporter_debt_total"]
+        + result["other_debts"] + result["supplier_reliquat_value"]
+    )
+
+
+@pytest.mark.django_db
+def test_working_capital_supplier_reliquat_is_zero_once_fully_loaded():
+    _, _, order = _make_supplier_order_with_status(
+        "WCRELIQUATFULL-SUP", SupplierOrder.Status.CONFIRMED,
+        quantity=Decimal("200000.00"), unit_price=Decimal("1000.0000"),
+    )
+    _fully_load(order, suffix="WCRELIQUATFULL-SUP")
+
+    result = WorkingCapitalService.get_working_capital()
+
+    assert result["supplier_debt_total"] == Decimal("200000000.00")
+    assert result["supplier_reliquat_value"] == Decimal("0.00")
+
+
+@pytest.mark.django_db
+def test_working_capital_supplier_reliquat_ignores_draft_and_cancelled_orders():
+    _make_supplier_order_with_status(
+        "WCRELIQUATDRAFT-SUP", SupplierOrder.Status.DRAFT,
+        quantity=Decimal("200000.00"), unit_price=Decimal("1000.0000"),
+    )
+    _make_supplier_order_with_status(
+        "WCRELIQUATCANC-SUP", SupplierOrder.Status.CANCELLED,
+        quantity=Decimal("200000.00"), unit_price=Decimal("1000.0000"),
+    )
+
+    result = WorkingCapitalService.get_working_capital()
+
+    assert result["supplier_reliquat_value"] == Decimal("0.00")
