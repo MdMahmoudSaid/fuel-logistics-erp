@@ -52,6 +52,7 @@ PROFIT_PDF_LABELS = {
         "roadTransitDebt": "Transit routiere",
         "otherDebt": "Autres frais (frontiere / chargement)",
         "totalDebts": "= Total des dettes ouvertes",
+        "supplierReliquat": "Stock fournisseur (reliquat non charge)",
         "totalWorkingCapital": "= Fond de roulement total",
         "capital": "Capital apporte",
         "alreadyDistributed": "Deja reparti (non retire)",
@@ -94,6 +95,7 @@ PROFIT_PDF_LABELS = {
         "roadTransitDebt": "Road transit",
         "otherDebt": "Other fees (border / loading / misc.)",
         "totalDebts": "= Total open debts",
+        "supplierReliquat": "Supplier stock (unloaded reliquat)",
         "totalWorkingCapital": "= Total working capital",
         "capital": "Capital contributed",
         "alreadyDistributed": "Already distributed (not withdrawn)",
@@ -327,6 +329,7 @@ def render_profit_report_pdf(
                 wc["supplier_debt_total"] + wc["transporter_debt_total"] + wc["other_debts"]
             ),
         ),
+        (labels["supplierReliquat"], _format_money(wc["supplier_reliquat_value"])),
         (labels["totalWorkingCapital"], _format_money(wc["total"])),
         (labels["capital"], _format_money(wc["capital"])),
         (labels["alreadyDistributed"], _format_money(preview["already_distributed"])),
@@ -334,7 +337,7 @@ def render_profit_report_pdf(
     ]
     wc_table = Table(wc_rows, colWidths=[110 * mm, 60 * mm])
     wc_table.setStyle(_SUMMARY_TABLE_STYLE)
-    wc_table.setStyle(TableStyle([_bold_row(idx) for idx in (2, 9, 10, 13)]))
+    wc_table.setStyle(TableStyle([_bold_row(idx) for idx in (2, 9, 11, 14)]))
     elements.append(wc_table)
     elements.append(Spacer(1, 8 * mm))
 

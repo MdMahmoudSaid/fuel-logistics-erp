@@ -1244,22 +1244,21 @@ class ControlledDebtPaymentService:
     @classmethod
     def describe_supplier_order(cls, order, *, paid_amount=None) -> dict:
         paid = cls._supplier_order_paid(order, override=paid_amount)
-        # Bug fix (client business rule, confirmed 2026-09-06): the payable
-        # debt to a supplier must only reflect quantity actually loaded onto
-        # a trip, never the full confirmed order - a cession letter and a
-        # confirmed purchase are commitments, not a debt, until fuel is
-        # physically taken. Example confirmed with the client: purchase
-        # 200,000 L at 500 XOF/L, only 100,000 L loaded -> debt = 50,000,000
-        # XOF, not the order's full 100,000,000 XOF. This total is the
-        # single source of truth reused by the supplier ledger, the
-        # Dashboard's debts card, Nouveau paiement's payable-debts list and
+        # Business rule reversal (client request, 2026-09-10): the payable
+        # debt to a supplier is the full confirmed order total, due
+        # immediately on confirmation - not scaled by how much has been
+        # physically loaded yet (that was the 2026-09-06 rule; the client
+        # now wants the debt to reflect what was actually bought, with the
+        # unloaded reliquat's value surfaced separately as an asset in
+        # WorkingCapitalService instead - see
+        # SupplierStockService.get_purchase_reliquat_amount). Example: buy
+        # 200,000 L at 500 XOF/L -> debt = 100,000,000 XOF immediately, even
+        # before a single truck has loaded. This total is the single source
+        # of truth reused by the supplier ledger, the Dashboard's debts
+        # card, Nouveau paiement's payable-debts list and
         # WorkingCapitalService (fond de roulement) - fixing it here fixes
         # all of them at once.
-        total = (
-            SupplierStockService.get_purchase_loaded_amount(order)
-            if order.status == SupplierOrder.Status.CONFIRMED
-            else ZERO
-        )
+        total = order.total_amount if order.status == SupplierOrder.Status.CONFIRMED else ZERO
         return {
             "id": order.id,
             "debt_type": cls.SUPPLIER,
@@ -2040,11 +2039,16 @@ class WorkingCapitalService:
     source of payment - payments always draw from real BankAccount/
     CashAccount.
 
-    Stock fournisseur / commandes en cours and "prets entrants" are in the
-    client's spreadsheet but are intentionally NOT included here: no
-    reliable aggregate financial figure exists yet for either (see the
-    module's git history / spec Section 3 for the reasoning) - add them
-    later behind their own tested aggregate rather than approximating now.
+    Stock fournisseur (the unloaded reliquat's monetary value) was added
+    2026-09-10, alongside the debt-total business rule reversal (see
+    ControlledDebtPaymentService.describe_supplier_order): now that the full
+    purchase becomes a debt immediately on confirmation, the value still
+    sitting unloaded at the supplier is company-owned stock, not yet in
+    treasury - it is added to `total` the same way open debts are, as
+    "money engaged in operations". "prets entrants" is still NOT included
+    here: no reliable aggregate financial figure exists yet for it (see the
+    module's git history / spec Section 3 for the reasoning) - add it later
+    behind its own tested aggregate rather than approximating now.
     """
 
     @staticmethod
@@ -2118,8 +2122,21 @@ class WorkingCapitalService:
         other_debts_breakdown = WorkingCapitalService.get_other_debts_breakdown()
         other_debts = sum(other_debts_breakdown.values(), ZERO)
         capital = ShareholderContributionService.get_total_capital()
+        supplier_reliquat_value = sum(
+            (
+                SupplierStockService.get_purchase_reliquat_amount(order)
+                for order in SupplierOrder.objects.filter(status=SupplierOrder.Status.CONFIRMED)
+            ),
+            ZERO,
+        )
         gross = treasury_available + customer_receivables
-        total = gross + supplier_debt_total + transporter_debt_total + other_debts
+        total = (
+            gross
+            + supplier_debt_total
+            + transporter_debt_total
+            + other_debts
+            + supplier_reliquat_value
+        )
         return {
             "capital": capital,
             "treasury_available": treasury_available,
@@ -2127,6 +2144,7 @@ class WorkingCapitalService:
             "supplier_debt_total": supplier_debt_total,
             "transporter_debt_total": transporter_debt_total,
             "other_debts": other_debts,
+            "supplier_reliquat_value": supplier_reliquat_value,
             "gross": gross,
             "total": total,
         }
@@ -2457,6 +2475,7 @@ class ShareholderProfitPreviewService:
             - working_capital["supplier_debt_total"]
             - working_capital["transporter_debt_total"]
             - working_capital["other_debts"]
+            - working_capital["supplier_reliquat_value"]
             - working_capital["capital"]
             - already_distributed
         )
@@ -2529,11 +2548,11 @@ class SupplierLedgerService:
             entries.append({
                 "type": "debt_created",
                 "date": order.purchase_date,
-                # Bug fix (client business rule, 2026-09-06): must match
-                # describe_supplier_order's debt (loaded quantity only), not
-                # the full order - otherwise this timeline entry would show
-                # a bigger figure than the ledger's own summary total_due.
-                "amount": SupplierStockService.get_purchase_loaded_amount(order),
+                # Business rule reversal (2026-09-10): must match
+                # describe_supplier_order's debt (the full confirmed order,
+                # due immediately) - otherwise this timeline entry would
+                # disagree with the ledger's own summary total_due.
+                "amount": order.total_amount,
                 "reference": order.reference,
                 "note": "",
                 "proof_url": None,

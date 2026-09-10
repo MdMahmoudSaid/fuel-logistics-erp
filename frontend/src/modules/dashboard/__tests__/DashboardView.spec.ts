@@ -101,8 +101,9 @@ const summary: DashboardSummary = {
     supplier_debt_total: '2000000.00',
     transporter_debt_total: '500000.00',
     other_debts: '300000.00',
+    supplier_reliquat_value: '0.00',
     // gross = 17000000 + 1000000 = 18000000
-    // total = 18000000 + 2000000 + 500000 + 300000 (debts ADDED) = 20800000
+    // total = 18000000 + 2000000 + 500000 + 300000 + 0 (debts/reliquat ADDED) = 20800000
     gross: '18000000.00',
     total: '20800000.00',
   },
@@ -671,6 +672,7 @@ describe('DashboardView', () => {
         supplier_debt_total: '45000000.00',
         transporter_debt_total: '2925000.00',
         other_debts: '10255000.00',
+        supplier_reliquat_value: '0.00',
         gross: '300000000.00',
         total: '358180000.00',
       },
@@ -679,6 +681,30 @@ describe('DashboardView', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('358 180 000 XOF')
+  })
+
+  it('shows the supplier reliquat value as its own line in the working capital card', async () => {
+    // Business rule reversal (2026-09-10): the unloaded reliquat's value is
+    // a new asset line in "Fond de roulement client", separate from the
+    // (now full-amount) supplier debt line.
+    fetchDashboardSummary.mockResolvedValueOnce({
+      ...summary,
+      working_capital: {
+        capital: '0.00',
+        treasury_available: '300000000.00',
+        customer_receivables: '0.00',
+        supplier_debt_total: '100000000.00',
+        transporter_debt_total: '0.00',
+        other_debts: '0.00',
+        supplier_reliquat_value: '77500000.00',
+        gross: '300000000.00',
+        total: '477500000.00',
+      },
+    })
+    const wrapper = mount(DashboardView, { global: { plugins: [makeRouter()] } })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('77 500 000 XOF')
   })
 
   it('shows the distributable result after debts and capital in the shareholders section', async () => {

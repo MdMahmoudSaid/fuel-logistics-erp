@@ -60,6 +60,7 @@ from apps.finance.services import (
 def _proof_file(name="proof.jpg"):
     return SimpleUploadedFile(name, b"fake-proof-bytes", content_type="image/jpeg")
 from apps.purchasing.models import CessionLetter, SupplierOrder
+from apps.purchasing.services import SupplierStockService
 from apps.sales.models import Invoice, Sale
 from apps.suppliers.models import Supplier
 from apps.transport.models import Transporter, Truck
@@ -566,11 +567,12 @@ def test_payment_allocation_invoice_null_means_unallocated_credit():
 
 
 def _load_trip_for_supplier_order(*, supplier, supplier_order, quantity, suffix, admin_user):
-    """Load `quantity` litres against `supplier_order` via a real Trip -
-    the only thing that now creates supplier debt (bug fix, client
-    business rule confirmed 2026-09-06: ControlledDebtPaymentService.
-    describe_supplier_order prices debt on quantity actually loaded, not
-    on the full confirmed order)."""
+    """Load `quantity` litres against `supplier_order` via a real Trip.
+    Since the 2026-09-10 business rule reversal, loading no longer affects
+    the supplier debt itself (ControlledDebtPaymentService.
+    describe_supplier_order now books the full confirmed order immediately)
+    - this helper still matters for get_purchase_loaded_amount/
+    get_purchase_reliquat_amount, which do depend on it."""
     if quantity <= Decimal("0.00"):
         return None
     # Truncated defensively: Truck's internal_id/tractor_registration/
@@ -607,16 +609,13 @@ def _load_trip_for_supplier_order(*, supplier, supplier_order, quantity, suffix,
 
 
 def _make_supplier_order(suffix, *, loaded_quantity=None):
-    """`loaded_quantity` (bug fix, client business rule confirmed
-    2026-09-06): ControlledDebtPaymentService.describe_supplier_order now
-    prices the supplier debt on quantity actually loaded onto a trip, not
-    on the full confirmed order - so every one of this helper's many
-    existing callers needs a real Trip behind the order for the debt to be
-    non-zero. Defaulting to a trip that loads the FULL purchased quantity
-    keeps every pre-existing assertion of the form
-    `... == supplier_order.total_amount` correct unchanged (fully loaded
-    means loaded_amount == total_amount). Pass an explicit smaller
-    Decimal to test partial loading instead."""
+    """`loaded_quantity`: since the 2026-09-10 business rule reversal the
+    supplier debt itself no longer depends on loading (it's the full
+    confirmed order, immediately) - this only still matters for tests that
+    exercise get_purchase_loaded_amount/get_purchase_reliquat_amount.
+    Defaulting to a trip that loads the FULL purchased quantity keeps this
+    helper backward compatible with every existing caller. Pass an explicit
+    smaller Decimal to test partial loading instead."""
     admin_role = Role.objects.get(name=Role.NAME_ADMIN)
     admin_user = User.objects.create_user(
         phone=(f"+222{suffix}")[:20],
@@ -648,12 +647,12 @@ def _make_supplier_order(suffix, *, loaded_quantity=None):
 
 
 @pytest.mark.django_db
-def test_supplier_debt_is_priced_on_loaded_quantity_not_full_order():
-    """Exact client-confirmed example (2026-09-06): purchase 200,000 L at
-    500 XOF/L, only 100,000 L actually loaded onto a trip so far ->
-    supplier debt = 100,000 x 500 = 50,000,000 XOF, not the full order's
-    100,000,000 XOF. Loading the remaining 100,000 L later brings the debt
-    up to the full order amount."""
+def test_supplier_debt_is_priced_on_full_order_immediately_not_loaded_quantity():
+    """Business rule reversal (client request, 2026-09-10): purchase
+    200,000 L at 500 XOF/L -> supplier debt = 200,000 x 500 = 100,000,000
+    XOF immediately on confirmation, before any truck has loaded anything.
+    Loading fuel afterwards (partially or fully) does not change the debt -
+    only a payment does."""
     admin_role = Role.objects.get(name=Role.NAME_ADMIN)
     admin_user = User.objects.create_user(
         phone="+222DEBTCLIENTEX", pin="1234", role=admin_role
@@ -671,21 +670,26 @@ def test_supplier_debt_is_priced_on_loaded_quantity_not_full_order():
         created_by=admin_user,
     )
 
-    # Nothing loaded yet: no debt at all.
+    # Nothing loaded yet: the debt is already the full order.
     debt = ControlledDebtPaymentService.describe_supplier_order(order)
-    assert debt["total_amount"] == Decimal("0.00")
-    assert debt["remaining_amount"] == Decimal("0.00")
+    assert debt["total_amount"] == Decimal("100000000.00")
+    assert debt["remaining_amount"] == Decimal("100000000.00")
 
     _load_trip_for_supplier_order(
         supplier=supplier, supplier_order=order, quantity=Decimal("100000.00"),
         suffix="DEBT-CLIENT-EX-1", admin_user=admin_user,
     )
 
+    # Partial loading does not move the debt - it was already booked in full.
     debt = ControlledDebtPaymentService.describe_supplier_order(order)
-    assert debt["total_amount"] == Decimal("50000000.00")
-    assert debt["remaining_amount"] == Decimal("50000000.00")
+    assert debt["total_amount"] == Decimal("100000000.00")
+    assert debt["remaining_amount"] == Decimal("100000000.00")
 
-    # Load the remaining 100,000 L later: debt grows to the full order.
+    # The unloaded half now shows up as the reliquat's monetary value.
+    reliquat_amount = SupplierStockService.get_purchase_reliquat_amount(order)
+    assert reliquat_amount == Decimal("50000000.00")
+
+    # Loading the rest still doesn't move the debt, only the reliquat.
     _load_trip_for_supplier_order(
         supplier=supplier, supplier_order=order, quantity=Decimal("100000.00"),
         suffix="DEBT-CLIENT-EX-2", admin_user=admin_user,
@@ -695,6 +699,7 @@ def test_supplier_debt_is_priced_on_loaded_quantity_not_full_order():
     assert debt["total_amount"] == Decimal("100000000.00")
     assert debt["remaining_amount"] == Decimal("100000000.00")
     assert debt["total_amount"] == order.total_amount
+    assert SupplierStockService.get_purchase_reliquat_amount(order) == Decimal("0.00")
 
 
 @pytest.mark.django_db
