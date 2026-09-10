@@ -24,6 +24,7 @@ import Button from '@/components/ui/Button.vue'
 import Card from '@/components/ui/Card.vue'
 import Modal from '@/components/ui/Modal.vue'
 import { useTripStatusLabel } from './tripStatusLabels'
+import { formatTruckPlates } from './formatTruckPlates'
 import { cancelExpense, expenseResource } from '@/modules/finance/api'
 import { transportPaymentResource } from '@/modules/finance/api'
 import ExpenseForm from '@/modules/finance/ExpenseForm.vue'
@@ -463,7 +464,7 @@ const cessionProofUrl = computed(
         </div>
         <div>
           <span class="text-texte-2">{{ t('trips.detail.truck') }}</span>
-          <p class="text-texte font-medium">{{ trip.truck_detail?.internal_id }}</p>
+          <p class="text-texte font-medium">{{ formatTruckPlates(trip.truck_detail) }}</p>
         </div>
         <div>
           <span class="text-texte-2">{{ t('trips.detail.transporter') }}</span>

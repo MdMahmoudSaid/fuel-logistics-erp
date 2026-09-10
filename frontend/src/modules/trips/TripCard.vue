@@ -56,6 +56,23 @@ const badgeVariant = computed(() => {
       <UiBadge :variant="badgeVariant">{{ statusLabel(trip.status) }}</UiBadge>
     </div>
 
+    <div class="space-y-1">
+      <p class="text-texte-2 text-xs">{{ t('trips.table.cessionLetter') }}</p>
+      <template v-if="trip.cession_letter_detail">
+        <p dir="ltr" class="text-start font-mono text-sm break-all">
+          {{ trip.cession_letter_detail.reference }}
+        </p>
+        <p class="text-texte-3 text-xs">
+          {{
+            t('trips.table.cessionLetterLoadCount', {
+              count: trip.cession_letter_truck_load_count,
+            })
+          }}
+        </p>
+      </template>
+      <p v-else class="text-sm">—</p>
+    </div>
+
     <div class="flex items-end justify-between gap-2">
       <GaugeBar :value="progress" :tone="progressTone" class="max-w-[65%]" />
       <MonoValue :value="formatQuantity(trip.quantity_loaded)" />
