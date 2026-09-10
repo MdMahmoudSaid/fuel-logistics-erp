@@ -299,6 +299,8 @@
       "reference": "Référence",
       "truck": "Camion",
       "transporter": "Transporteur",
+      "cessionLetter": "Lettre de cession",
+      "cessionLetterLoadCount": "{count} chargement(s) de ce camion",
       "client": "Client",
       "quantity": "Quantité",
       "status": "Statut"

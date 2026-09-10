@@ -55,6 +55,7 @@ class TripSerializer(serializers.ModelSerializer):
     client_detail = CustomerSerializer(source="client", read_only=True)
     created_by_detail = UserSerializer(source="created_by", read_only=True)
     cession_letter_detail = CessionLetterSerializer(source="cession_letter", read_only=True)
+    cession_letter_truck_load_count = serializers.SerializerMethodField()
     # Not a model field: lets an Admin bypass the active-truck lock (plan
     # §1.D). Always popped out of validated_data in validate() below.
     force = serializers.BooleanField(write_only=True, required=False, default=False)
@@ -79,6 +80,7 @@ class TripSerializer(serializers.ModelSerializer):
             "supplier_order",
             "cession_letter",
             "cession_letter_detail",
+            "cession_letter_truck_load_count",
             "product",
             "product_detail",
             "quantity_loaded",
@@ -123,6 +125,21 @@ class TripSerializer(serializers.ModelSerializer):
         self._normalize_destination_type(data)
 
         return data
+
+    def get_cession_letter_truck_load_count(self, obj) -> int:
+        """How many times this trip's truck has been loaded under this
+        exact cession letter (added client request 2026-09-10: "Trajets &
+        chargements" needs to show, per trip, which cession letter it was
+        loaded from and how many times that truck has loaded against it).
+        Counts the trip itself, so a truck's first load under a cession
+        letter reads 1, not 0. Cancelled trips never really happened, so
+        they're excluded, same as every other loaded-quantity aggregate in
+        this codebase (SupplierStockService.get_purchase_loaded_quantity)."""
+        return (
+            Trip.objects.filter(truck_id=obj.truck_id, cession_letter_id=obj.cession_letter_id)
+            .exclude(status=Trip.Status.CANCELLED)
+            .count()
+        )
 
     def _resolve(self, data, field):
         """`data[field]` if the caller touched it this request, else the

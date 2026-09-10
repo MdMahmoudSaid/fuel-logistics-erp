@@ -189,6 +189,40 @@ def test_trip_serializer_includes_cession_letter_proof_documents():
     assert "cession-proof" in proof_file and proof_file.endswith(".jpg")
 
 
+@pytest.mark.django_db
+def test_trip_serializer_cession_letter_truck_load_count_counts_this_truck_under_this_cession():
+    """Added client request 2026-09-10: "Trajets & chargements" needs to
+    show, per trip, how many times its truck has been loaded under the
+    same cession letter - counts the trip itself (first load reads 1),
+    excludes cancelled trips, and is scoped to (truck, cession letter): a
+    different truck loaded under the same cession letter must not inflate
+    this truck's own count, and the same truck loaded under a different
+    cession letter must not either."""
+    fx = _setup_fixtures("LOADCOUNT")
+    truck_a = _make_truck("TRK-LOADCOUNT-A")
+    truck_b = _make_truck("TRK-LOADCOUNT-B")
+
+    trip1 = _make_trip(fx, truck_a, "TRIP-LOADCOUNT-1", quantity=Decimal("15000.00"))
+    assert TripSerializer(trip1).data["cession_letter_truck_load_count"] == 1
+
+    trip2 = _make_trip(fx, truck_a, "TRIP-LOADCOUNT-2", quantity=Decimal("15000.00"))
+    assert TripSerializer(trip1).data["cession_letter_truck_load_count"] == 2
+    assert TripSerializer(trip2).data["cession_letter_truck_load_count"] == 2
+
+    # A different truck loaded under the same cession letter has its own,
+    # separate count.
+    other_truck_trip = _make_trip(fx, truck_b, "TRIP-LOADCOUNT-OTHER-TRUCK", quantity=Decimal("15000.00"))
+    assert TripSerializer(other_truck_trip).data["cession_letter_truck_load_count"] == 1
+    assert TripSerializer(trip1).data["cession_letter_truck_load_count"] == 2
+
+    # A cancelled trip never really happened - excluded from the count.
+    trip3 = _make_trip(fx, truck_a, "TRIP-LOADCOUNT-3", quantity=Decimal("15000.00"))
+    trip3.status = Trip.Status.CANCELLED
+    trip3.save(update_fields=["status", "updated_at"])
+    assert TripSerializer(trip1).data["cession_letter_truck_load_count"] == 2
+    assert TripSerializer(trip3).data["cession_letter_truck_load_count"] == 2
+
+
 def _advance_to_completed(trip, actor):
     for target in FULL_SEQUENCE_AFTER_ASSIGNED:
         if (
