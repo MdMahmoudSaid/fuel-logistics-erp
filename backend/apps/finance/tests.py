@@ -3352,6 +3352,11 @@ def test_active_shareholder_percentages_check_excludes_self_on_update():
 
 @pytest.mark.django_db
 def test_shareholder_crud_via_admin_api(admin_client):
+    """`contribution` is read-only via this API (bug fix, 2026-09-10 - see
+    ShareholderSerializer.Meta): a value submitted here must be ignored,
+    not persisted. Real capital always goes through
+    ShareholderContributionService.record_contribution() instead, which
+    requires a bank/cash account."""
     created = admin_client.post(
         "/api/shareholders/",
         {
@@ -3362,7 +3367,7 @@ def test_shareholder_crud_via_admin_api(admin_client):
         },
     )
     assert created.status_code == 201, created.data
-    assert created.data["contribution"] == "1000000.00"
+    assert created.data["contribution"] == "0.00"
 
     updated = admin_client.patch(
         f"/api/shareholders/{created.data['id']}/",
@@ -3370,7 +3375,7 @@ def test_shareholder_crud_via_admin_api(admin_client):
     )
     assert updated.status_code == 200, updated.data
     assert updated.data["participation_percent"] == "55.00"
-    assert updated.data["contribution"] == "1250000.00"
+    assert updated.data["contribution"] == "0.00"
 
 
 @pytest.mark.django_db

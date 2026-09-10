@@ -994,6 +994,17 @@ class ShareholderSerializer(serializers.ModelSerializer):
             "id", "name", "participation_percent", "contribution", "total_contributed",
             "phone", "notes", "is_active", "created_at", "updated_at",
         ]
+        # `contribution` is read-only through this API (bug fix, 2026-09-10:
+        # the Associes "Ajouter/Modifier" form exposed it as an ordinary
+        # writable field with no linked bank/cash account, so a user could
+        # enter any amount there and it would silently reduce
+        # distributable_result via ShareholderContributionService
+        # .get_total_capital() with no corresponding money ever entering
+        # treasury. It's now a historical/bootstrap-only figure set through
+        # the backend (seed data, admin, or a data migration) - normal
+        # capital contributions must go through ShareholderContribution /
+        # "Nouvel apport en capital", which requires a real account.
+        read_only_fields = ["id", "contribution", "created_at", "updated_at"]
 
     def get_total_contributed(self, obj) -> str:
         annotated = getattr(obj, "total_contributed", None)
@@ -1007,7 +1018,6 @@ class ShareholderSerializer(serializers.ModelSerializer):
         # coercion for free, and this value feeds straight into a money
         # display on the frontend.
         return str(value.quantize(Decimal("0.01")))
-        read_only_fields = ["id", "created_at", "updated_at"]
 
     def validate(self, data):
         """Active shareholder percentages cannot exceed 100 total (Task 7

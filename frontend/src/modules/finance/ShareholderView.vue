@@ -135,12 +135,6 @@ const shareholderFields = computed<FieldSchema[]>(() => [
     type: 'number',
     required: true,
   },
-  {
-    key: 'contribution',
-    label: t('masterData.fields.contribution'),
-    type: 'number',
-    required: true,
-  },
   { key: 'phone', label: t('masterData.fields.phone'), type: 'phone' },
   { key: 'notes', label: t('masterData.fields.notes'), type: 'textarea' },
   { key: 'is_active', label: t('masterData.fields.active'), type: 'checkbox' },
@@ -148,7 +142,7 @@ const shareholderFields = computed<FieldSchema[]>(() => [
 
 function openCreateShareholder() {
   editingShareholderId.value = null
-  shareholderFormValue.value = { is_active: true, contribution: '0.00' }
+  shareholderFormValue.value = { is_active: true }
   shareholderError.value = ''
   showShareholderForm.value = true
 }
