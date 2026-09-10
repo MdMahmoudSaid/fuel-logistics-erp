@@ -763,6 +763,7 @@
         "issued": "Émise",
         "loadedQuantity": "Qté chargée",
         "receivedQuantity": "Qté reçue",
+        "truckPlates": "Immatriculations",
         "total": "Total",
         "outstanding": "Impayé",
         "status": "Statut"
@@ -1353,7 +1354,13 @@
         "delivered_quantity": "Quantité livrée"
       },
       "trip": "Trajet",
+      "truckPlates": "Camion (immatriculations)",
       "totalAmount": "Montant total",
+      "totalPreview": "Total recalculé (aperçu)",
+      "savePrice": "Enregistrer le prix",
+      "savePriceError": "Impossible d'enregistrer ce prix — vérifiez le champ et vos droits.",
+      "exportPdf": "Exporter PDF",
+      "exporting": "Export…",
       "issuedDate": "Date d'émission",
       "saving": "Enregistrement…",
       "save": "Enregistrer",

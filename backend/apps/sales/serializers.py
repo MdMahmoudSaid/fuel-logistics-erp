@@ -98,6 +98,12 @@ class SaleSerializer(serializers.ModelSerializer):
     quantity_loaded = serializers.DecimalField(
         source="trip.quantity_loaded", max_digits=14, decimal_places=2, read_only=True
     )
+    # Feedback (2026-09-10): the client ledger's invoice table and the
+    # invoice detail page both need the plates of the truck that loaded this
+    # sale's trip. A plain formatted string (not a nested TruckSerializer)
+    # for the same "apps.sales sits below apps.trips" reason as
+    # trip_reference above - dotted `source` traversal needs no import.
+    truck_plates = serializers.SerializerMethodField()
 
     class Meta:
         model = Sale
@@ -114,10 +120,15 @@ class SaleSerializer(serializers.ModelSerializer):
             "unit_selling_price",
             "currency",
             "subtotal",
+            "truck_plates",
             "created_at",
             "updated_at",
         ]
         read_only_fields = fields
+
+    def get_truck_plates(self, obj) -> str:
+        truck = obj.trip.truck
+        return f"{truck.tractor_registration} / {truck.tanker_registration}"
 
 
 class InvoiceCorrectionSerializer(serializers.ModelSerializer):

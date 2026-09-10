@@ -6,6 +6,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { fetchCustomerLedger, exportLedgerPdf, exportCustomerPaymentPdf } from './api'
+import { exportInvoicePdf } from '@/modules/sales/api'
 import Modal from '@/components/ui/Modal.vue'
 import PaymentAllocationForm from './PaymentAllocationForm.vue'
 import type { CustomerLedger } from './types'
@@ -25,6 +26,7 @@ const loading = ref(true)
 const error = ref('')
 const exporting = ref(false)
 const exportingPaymentId = ref<number | null>(null)
+const exportingInvoiceId = ref<number | null>(null)
 
 const customerId = computed(() => Number(route.params.id))
 const showPaymentModal = ref(false)
@@ -65,6 +67,17 @@ async function exportPdf() {
     error.value = t('reports.exportError')
   } finally {
     exporting.value = false
+  }
+}
+
+async function exportInvoicePdfRow(invoiceId: number) {
+  exportingInvoiceId.value = invoiceId
+  try {
+    await exportInvoicePdf(invoiceId, locale.value)
+  } catch {
+    error.value = t('reports.exportError')
+  } finally {
+    exportingInvoiceId.value = null
   }
 }
 
@@ -197,6 +210,9 @@ function badgeVariant(status: string) {
                 <th class="px-2 py-1.5 font-medium text-right">
                   {{ t('finance.customerLedger.table.receivedQuantity') }}
                 </th>
+                <th class="px-2 py-1.5 font-medium">
+                  {{ t('finance.customerLedger.table.truckPlates') }}
+                </th>
                 <th class="px-2 py-1.5 font-medium text-right">
                   {{ t('finance.customerLedger.table.total') }}
                 </th>
@@ -206,6 +222,7 @@ function badgeVariant(status: string) {
                 <th class="px-2 py-1.5 font-medium">
                   {{ t('finance.customerLedger.table.status') }}
                 </th>
+                <th class="px-2 py-1.5 font-medium"></th>
               </tr>
             </thead>
             <tbody>
@@ -235,6 +252,7 @@ function badgeVariant(status: string) {
                     "
                   />
                 </td>
+                <td class="px-2 py-1.5">{{ invoice.sale_detail?.truck_plates ?? '—' }}</td>
                 <td class="px-2 py-1.5 text-right">
                   {{ formatMoney(invoice.total_amount) }}
                 </td>
@@ -246,9 +264,20 @@ function badgeVariant(status: string) {
                     {{ t(`invoiceStatus.${invoice.status}`) }}
                   </Badge>
                 </td>
+                <td class="px-2 py-1.5 text-right">
+                  <button
+                    type="button"
+                    data-test="customer-invoice-pdf"
+                    class="text-bitume underline disabled:opacity-50"
+                    :disabled="exportingInvoiceId === invoice.id"
+                    @click.stop="exportInvoicePdfRow(invoice.id)"
+                  >
+                    {{ t('finance.partyLedger.pdf') }}
+                  </button>
+                </td>
               </tr>
               <tr v-if="ledger.invoices.length === 0">
-                <td colspan="7" class="text-texte-3 px-2 py-4 text-center">
+                <td colspan="9" class="text-texte-3 px-2 py-4 text-center">
                   {{ t('finance.customerLedger.noInvoices') }}
                 </td>
               </tr>

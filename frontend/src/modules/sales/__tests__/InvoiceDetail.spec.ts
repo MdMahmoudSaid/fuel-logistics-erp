@@ -24,6 +24,7 @@ function makeInvoice(overrides: Partial<Invoice> = {}): Invoice {
       unit_selling_price: '650.0000',
       currency: 'XOF',
       subtotal: '29152500.00',
+      truck_plates: 'AA-111 / BB-222',
       created_at: '',
       updated_at: '',
     },
@@ -69,6 +70,15 @@ const correctInvoice = vi.fn(
     }) as Invoice,
 )
 
+const updateInvoicePrice = vi.fn(async (_id: number, unitSellingPrice: string) => ({
+  ...invoiceToReturn,
+  total_amount: String(Number(invoiceToReturn.sale_detail?.delivered_quantity) * Number(unitSellingPrice)),
+  sale_detail: invoiceToReturn.sale_detail
+    ? { ...invoiceToReturn.sale_detail, unit_selling_price: unitSellingPrice }
+    : null,
+}))
+const exportInvoicePdf = vi.fn(async (_id: number, _lang: string) => undefined)
+
 vi.mock('../api', () => ({
   invoiceResource: {
     get: vi.fn(async () => invoiceToReturn),
@@ -77,6 +87,9 @@ vi.mock('../api', () => ({
   validateInvoice: (id: number) => validateInvoice(id),
   correctInvoice: (id: number, field: string, newValue: string, reason: string) =>
     correctInvoice(id, field, newValue, reason),
+  updateInvoicePrice: (id: number, unitSellingPrice: string) =>
+    updateInvoicePrice(id, unitSellingPrice),
+  exportInvoicePdf: (id: number, lang: string) => exportInvoicePdf(id, lang),
 }))
 
 function setAdminUser() {
@@ -111,7 +124,7 @@ describe('InvoiceDetail', () => {
     setActivePinia(createPinia())
   })
 
-  it('shows the sale-derived quantity and total for a DRAFT invoice, editable fields, and a validate button', async () => {
+  it('shows the sale-derived quantity, total, truck plates for a DRAFT invoice, an editable price, and a validate button', async () => {
     setAdminUser()
     invoiceToReturn = makeInvoice()
     const router = makeRouter()
@@ -121,10 +134,52 @@ describe('InvoiceDetail', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('44 850 L')
-    expect(wrapper.find('#total_amount').exists()).toBe(true)
-    expect((wrapper.find('#total_amount').element as HTMLInputElement).value).toBe('29152500.00')
+    expect(wrapper.text()).toContain('AA-111 / BB-222')
+    expect(wrapper.find('#unit_selling_price_edit').exists()).toBe(true)
+    expect((wrapper.find('#unit_selling_price_edit').element as HTMLInputElement).value).toBe(
+      '650.0000',
+    )
+    expect(wrapper.text().replace(/[⁦⁩]/g, '')).toContain('29 152 500')
     expect(wrapper.find('button#validate-invoice').exists()).toBe(true)
     expect(wrapper.find('button#correct-invoice').exists()).toBe(false)
+  })
+
+  it('edits the DRAFT price and shows the recalculated total after saving', async () => {
+    setAdminUser()
+    invoiceToReturn = makeInvoice()
+    const router = makeRouter()
+    router.push({ name: 'invoice-detail', params: { id: '3' } })
+    await router.isReady()
+    const wrapper = mount(InvoiceDetail, { global: { plugins: [router] } })
+    await flushPromises()
+
+    await wrapper.find('#unit_selling_price_edit').setValue('800')
+    await flushPromises()
+    let text = wrapper.text().replace(/[⁦⁩]/g, '')
+    expect(text).toContain('35 880 000') // 44850 * 800 preview
+
+    await wrapper.find('#save-price').trigger('click')
+    await flushPromises()
+
+    expect(updateInvoicePrice).toHaveBeenCalledWith(3, expect.anything())
+    expect(Number(updateInvoicePrice.mock.calls[0]![1])).toBe(800)
+    text = wrapper.text().replace(/[⁦⁩]/g, '')
+    expect(text).toContain('35 880 000') // formatted total from the mocked response
+  })
+
+  it('exports the invoice PDF', async () => {
+    setAdminUser()
+    invoiceToReturn = makeInvoice()
+    const router = makeRouter()
+    router.push({ name: 'invoice-detail', params: { id: '3' } })
+    await router.isReady()
+    const wrapper = mount(InvoiceDetail, { global: { plugins: [router] } })
+    await flushPromises()
+
+    await wrapper.find('[data-test="export-invoice-pdf"]').trigger('click')
+    await flushPromises()
+
+    expect(exportInvoicePdf).toHaveBeenCalledWith(3, expect.any(String))
   })
 
   it('shows the loaded quantity next to the received quantity', async () => {
@@ -174,7 +229,7 @@ describe('InvoiceDetail', () => {
 
     expect(validateInvoice).toHaveBeenCalledWith(3)
     expect(wrapper.text()).toContain('Validée')
-    expect(wrapper.find('#total_amount').exists()).toBe(false)
+    expect(wrapper.find('#unit_selling_price_edit').exists()).toBe(false)
     expect(wrapper.find('button#correct-invoice').exists()).toBe(true)
   })
 

@@ -74,6 +74,10 @@ export interface Sale {
   unit_selling_price: string
   currency: string
   subtotal: string
+  // Feedback (2026-09-10): "tractor / tanker" plates of the truck that
+  // loaded this sale's trip - backend/apps/sales/serializers.py
+  // SaleSerializer.get_truck_plates.
+  truck_plates: string
   created_at: string
   updated_at: string
 }

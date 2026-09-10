@@ -16,7 +16,7 @@ from apps.sales.models import (
     ProductSellingPriceHistory,
     Sale,
 )
-from apps.sales.serializers import CustomerOrderSerializer
+from apps.sales.serializers import CustomerOrderSerializer, SaleSerializer
 from apps.sales.services import (
     CustomerOrderService,
     InvoiceNotValidated,
@@ -249,6 +249,19 @@ def test_sale_subtotal_is_computed_on_save():
 
 
 @pytest.mark.django_db
+def test_sale_serializer_exposes_truck_plates():
+    # Feedback (2026-09-10): the client ledger's invoice table and the
+    # invoice detail page need to show which truck loaded the trip billed
+    # by this sale/invoice.
+    fx = _setup_fixtures("SALE-PLATES")
+    sale = _make_sale(fx, "TRIP-PLATES-001")
+
+    data = SaleSerializer(sale).data
+
+    assert data["truck_plates"] == "TRIP-PLATES-001-TRACTOR / TRIP-PLATES-001-TANKER"
+
+
+@pytest.mark.django_db
 def test_sale_requires_positive_delivered_quantity():
     fx = _setup_fixtures("SALE-QTY")
     trip = _make_trip(fx, None, "TRIP-SALE-QTY-001", Decimal("45000.00"), Trip.Status.DELIVERED)
@@ -346,6 +359,85 @@ def test_validate_invoice_rejects_already_validated_invoice():
 
     with pytest.raises(InvoiceValidationError):
         InvoiceService.validate_invoice(invoice.id, fx["admin_user"])
+
+
+@pytest.mark.django_db
+def test_update_draft_pricing_recomputes_total_with_no_audit_row():
+    # Feedback (2026-09-10): a DRAFT invoice's initial price is sometimes
+    # wrong and needs fixing before validation - a plain edit, same
+    # convention as adjust_delivered_quantity's DRAFT branch, no
+    # InvoiceCorrection row (that's the VALIDATED-only correct_invoice()).
+    fx = _setup_fixtures("DRAFT-PRICE")
+    sale, invoice = _make_invoice(fx, "TRIP-DRAFT-PRICE-001")
+    assert sale.unit_selling_price == Decimal("650.0000")
+
+    invoice = InvoiceService.update_draft_pricing(invoice.id, Decimal("800.0000"))
+
+    sale.refresh_from_db()
+    assert sale.unit_selling_price == Decimal("800.0000")
+    assert invoice.total_amount == sale.subtotal
+    assert invoice.total_amount == (sale.delivered_quantity * Decimal("800.0000")).quantize(
+        Decimal("0.01")
+    )
+    assert InvoiceCorrection.objects.filter(invoice=invoice).count() == 0
+
+
+@pytest.mark.django_db
+def test_update_draft_pricing_rejected_once_validated():
+    fx = _setup_fixtures("VALPRICE")
+    _, invoice = _make_invoice(fx, "TRIP-VALPRICE-001")
+    InvoiceService.validate_invoice(invoice.id, fx["admin_user"])
+
+    with pytest.raises(ValueError):
+        InvoiceService.update_draft_pricing(invoice.id, Decimal("800.0000"))
+
+
+@pytest.mark.django_db
+def test_api_update_price_recomputes_total():
+    fx = _setup_fixtures("APIDFTPX")
+    _, invoice = _make_invoice(fx, "TRIP-APIDFTPX-001")
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+
+    response = client.post(
+        f"/api/invoices/{invoice.id}/update-price/",
+        {"unit_selling_price": "800.0000"},
+        format="json",
+    )
+
+    assert response.status_code == 200, response.data
+    assert response.data["sale_detail"]["unit_selling_price"] == "800.0000"
+    invoice.refresh_from_db()
+    assert invoice.total_amount == invoice.sale.subtotal
+
+
+@pytest.mark.django_db
+def test_api_update_price_rejected_once_validated():
+    fx = _setup_fixtures("APIVALPX")
+    _, invoice = _make_invoice(fx, "TRIP-APIVALPX-001")
+    InvoiceService.validate_invoice(invoice.id, fx["admin_user"])
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+
+    response = client.post(
+        f"/api/invoices/{invoice.id}/update-price/",
+        {"unit_selling_price": "800.0000"},
+        format="json",
+    )
+
+    assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_api_update_price_requires_unit_selling_price():
+    fx = _setup_fixtures("API-NOPRICE")
+    _, invoice = _make_invoice(fx, "TRIP-API-NOPRICE-001")
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+
+    response = client.post(f"/api/invoices/{invoice.id}/update-price/", {}, format="json")
+
+    assert response.status_code == 400
 
 
 @pytest.mark.django_db

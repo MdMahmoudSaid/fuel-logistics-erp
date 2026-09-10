@@ -761,6 +761,7 @@
         "issued": "Issued",
         "loadedQuantity": "Loaded qty",
         "receivedQuantity": "Received qty",
+        "truckPlates": "Truck plates",
         "total": "Total",
         "outstanding": "Outstanding",
         "status": "Status"
@@ -1349,7 +1350,13 @@
         "delivered_quantity": "Delivered quantity"
       },
       "trip": "Trip",
+      "truckPlates": "Truck (plates)",
       "totalAmount": "Total amount",
+      "totalPreview": "Recalculated total (preview)",
+      "savePrice": "Save price",
+      "savePriceError": "Could not save this price — check the field and your permissions.",
+      "exportPdf": "Export PDF",
+      "exporting": "Exporting…",
       "issuedDate": "Issued date",
       "saving": "Saving…",
       "save": "Save",

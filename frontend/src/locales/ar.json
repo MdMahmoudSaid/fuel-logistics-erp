@@ -761,6 +761,7 @@
         "issued": "تاريخ الإصدار",
         "loadedQuantity": "الكمية المحمّلة",
         "receivedQuantity": "الكمية المستلمة",
+        "truckPlates": "لوحات الشاحنة",
         "total": "الإجمالي",
         "outstanding": "المستحق",
         "status": "الحالة"
@@ -1349,7 +1350,13 @@
         "delivered_quantity": "الكمية المسلَّمة"
       },
       "trip": "الرحلة",
+      "truckPlates": "الشاحنة (اللوحات)",
       "totalAmount": "المبلغ الإجمالي",
+      "totalPreview": "الإجمالي المعاد حسابه (معاينة)",
+      "savePrice": "حفظ السعر",
+      "savePriceError": "تعذر حفظ هذا السعر — تحقق من الحقل وصلاحياتك.",
+      "exportPdf": "تصدير PDF",
+      "exporting": "جارٍ التصدير…",
       "issuedDate": "تاريخ الإصدار",
       "saving": "جارٍ الحفظ…",
       "save": "حفظ",
