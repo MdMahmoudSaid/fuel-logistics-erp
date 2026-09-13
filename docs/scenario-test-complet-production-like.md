@@ -27,6 +27,17 @@ Le but est de vérifier les calculs avec des chiffres simples, traçables et com
 
 ---
 
+## Mise à jour (2026-09-13, audit indépendant)
+
+Ce scénario a été rejoué intégralement contre une copie isolée de production (100 000 L achetés, 45 000 L chargés/44 900 L reçus, mêmes montants qu'ici). Deux écarts ont été constatés entre les chiffres attendus ci-dessous et le comportement réel de l'application — les deux sont volontaires côté application, pas des bugs :
+
+1. **Tolérance de perte (Étape 6).** La perte de cet exemple (100 L) tombe exactement sur la tolérance par défaut (100 L, voir `docs/ERP_Specification.md` §15). `chargeable = max(perte - tolérance, 0)` donne donc `0 XOF` de déduction transporteur ici, pas 90 000 XOF — un test dédié (`test_sync_transport_shortage_deduction_no_charge_at_exact_tolerance_boundary`) verrouille ce comportement à la frontière. Pour observer une vraie déduction non nulle, reprendre ce scénario avec une perte supérieure à la tolérance configurée (ex. 150 L), ou abaisser la tolérance si l'entreprise veut facturer dès le premier litre manquant.
+2. **Base de coût du bénéfice de trajet (Étape 16).** Le bénéfice réel calculé par l'application charge le carburant/transport/douane sur la quantité **chargée** (45 000 L — ce qui a réellement été payé au fournisseur et au transporteur), pas sur la quantité reçue/facturée (44 900 L) comme le fait ce document. Résultat : 4 410 000 XOF de marge nette, pas 4 490 000 XOF — l'écart de 80 000 XOF est exactement `100 L × 800 XOF/L de coût de revient`, c'est-à-dire la perte déjà absorbée par l'entreprise mais comptée ici en plus, au niveau du coût plutôt que du chiffre d'affaires. Ce choix est cohérent avec le reste du moteur financier (`distributable_result` raisonne sur la trésorerie réellement sortie, pas sur une marge comptable) et est le comportement recommandé à conserver.
+
+Le reste du scénario (achat, cession, workflow des statuts, facturation sur quantité reçue, paiements, rejets obligatoires, trésorerie, répartition/retraits/avances actionnaires) a été rejoué à l'identique des montants ci-dessous.
+
+---
+
 ## Instructions pour Codex
 
 Lire ce fichier entièrement avant de toucher la base de données.
