@@ -9,6 +9,7 @@ import MonoValue from '@/components/ui/MonoValue.vue'
 import { TRIP_PIPELINE_STATUSES } from './types'
 import type { Trip } from './types'
 import { useTripStatusLabel } from './tripStatusLabels'
+import { formatTruckPlates } from './formatTruckPlates'
 import { formatQuantity } from '@/utils/currency'
 
 const props = defineProps<{ trip: Trip }>()
@@ -44,7 +45,7 @@ const badgeVariant = computed(() => {
       <div>
         <p class="font-mono text-sm font-medium">{{ trip.reference }}</p>
         <p class="text-texte-2 text-xs">
-          {{ trip.truck_detail?.internal_id }} ·
+          {{ formatTruckPlates(trip.truck_detail) }} ·
           {{
             trip.destination_type === 'COMPANY_STOCK'
               ? t('trips.detail.companyStock')
@@ -53,6 +54,23 @@ const badgeVariant = computed(() => {
         </p>
       </div>
       <UiBadge :variant="badgeVariant">{{ statusLabel(trip.status) }}</UiBadge>
+    </div>
+
+    <div class="space-y-1">
+      <p class="text-texte-2 text-xs">{{ t('trips.table.cessionLetter') }}</p>
+      <template v-if="trip.cession_letter_detail">
+        <p dir="ltr" class="text-start font-mono text-sm break-all">
+          {{ trip.cession_letter_detail.reference }}
+        </p>
+        <p class="text-texte-3 text-xs">
+          {{
+            t('trips.table.cessionLetterLoadCount', {
+              count: trip.cession_letter_truck_load_count,
+            })
+          }}
+        </p>
+      </template>
+      <p v-else class="text-sm">—</p>
     </div>
 
     <div class="flex items-end justify-between gap-2">

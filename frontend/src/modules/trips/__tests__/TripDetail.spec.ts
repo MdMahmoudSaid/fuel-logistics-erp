@@ -47,6 +47,8 @@ function makeTrip(overrides: Partial<Trip> = {}): Trip {
       created_at: '',
       updated_at: '',
     },
+    cession_letter_truck_load_count: 1,
+    delivery_control_detail: null,
     product: 6,
     product_detail: { id: 6, name: 'Gasoil', code: 'gasoil' },
     quantity_loaded: '45000.00',
@@ -112,9 +114,44 @@ const postClientVerification = vi.fn(async (_tripId: number, payload: Record<str
   anomaly_confirmed_by_detail: null,
   anomaly_confirmed_at: null,
   verified_at: payload.verified_at,
+  verification_corrections: [],
   created_at: '',
   updated_at: '',
 }))
+const postClientVerificationCorrection = vi.fn(
+  async (_tripId: number, payload: Record<string, unknown>) => ({
+    id: 1,
+    trip: 9,
+    loaded_quantity: '45000.00',
+    received_quantity: payload.received_quantity,
+    loss_quantity: '100.00',
+    chargeable_loss_quantity: '0.00',
+    tolerance_quantity: '100.00',
+    control_date: '2026-08-18',
+    controller: 1,
+    controller_detail: null,
+    method: 'MANUAL_GAUGE',
+    document: null,
+    notes: '',
+    anomaly_confirmed_by: null,
+    anomaly_confirmed_by_detail: null,
+    anomaly_confirmed_at: null,
+    verified_at: '2026-08-19',
+    verification_corrections: [
+      {
+        id: 1,
+        previous_received_quantity: '100.00',
+        new_received_quantity: payload.received_quantity,
+        corrected_by: 1,
+        corrected_by_detail: { id: 1, full_name: 'Admin', email: 'admin@example.com' },
+        corrected_at: '2026-08-20T10:00:00Z',
+        reason: payload.reason,
+      },
+    ],
+    created_at: '',
+    updated_at: '',
+  }),
+)
 const fetchSuggestedSellingPrice = vi.fn(async () => '850.0000')
 const fetchReport = vi.fn(async (_type: string, _params: Record<string, unknown>) => ({
   rows: [] as unknown[],
@@ -148,6 +185,8 @@ vi.mock('../api', () => ({
     postDeliveryControl(tripId, payload),
   postClientVerification: (tripId: number, payload: Record<string, unknown>) =>
     postClientVerification(tripId, payload),
+  postClientVerificationCorrection: (tripId: number, payload: Record<string, unknown>) =>
+    postClientVerificationCorrection(tripId, payload),
   fetchSuggestedSellingPrice: () => fetchSuggestedSellingPrice(),
   fetchTripCostBasis: () => fetchTripCostBasis(),
   assignTripCustomer: vi.fn(),
@@ -499,6 +538,30 @@ describe('TripDetail expenses section', () => {
     expect(wrapper.text()).toContain('2 925 000 XOF')
   })
 
+  it('hides "Add transport fee" once a payment already exists for the trip', async () => {
+    // Bug fix (found by chance, client feedback 2026-09-10): this button
+    // had no guard at all, letting an operator create a second
+    // TransportPayment for the same trip.
+    setUser({ operations: ['view'], finance: ['view', 'create'] })
+    transportPaymentsToReturn = [makeTransportPayment()]
+
+    const wrapper = await mountAt()
+
+    expect(
+      wrapper.findAll('button').find((b) => b.text() === '+ Ajouter des frais de transport (au litre)'),
+    ).toBeUndefined()
+  })
+
+  it('still shows "Add transport fee" when the trip has no transport payment yet', async () => {
+    setUser({ operations: ['view'], finance: ['view', 'create'] })
+
+    const wrapper = await mountAt()
+
+    expect(
+      wrapper.findAll('button').find((b) => b.text() === '+ Ajouter des frais de transport (au litre)'),
+    ).toBeTruthy()
+  })
+
   it('shows an empty state when the trip has no expenses', async () => {
     setUser({ operations: ['view'], finance: ['view'] })
 
@@ -811,7 +874,7 @@ describe('TripDetail expenses section', () => {
     expect(
       wrapper
         .findAll('button')
-        .find((b) => b.text() === 'Vérification client / Déclarer une perte'),
+        .find((b) => b.text() === 'Enregistrer la quantité reçue par le client'),
     ).toBeUndefined()
   })
 
@@ -826,7 +889,7 @@ describe('TripDetail expenses section', () => {
     expect(wrapper.find('#control_date').exists()).toBe(false)
     const button = wrapper
       .findAll('button')
-      .find((b) => b.text() === 'Vérification client / Déclarer une perte')
+      .find((b) => b.text() === 'Enregistrer la quantité reçue par le client')
     expect(button).toBeTruthy()
 
     await button!.trigger('click')
@@ -858,7 +921,7 @@ describe('TripDetail expenses section', () => {
     const wrapper = await mountAt()
     const button = wrapper
       .findAll('button')
-      .find((b) => b.text() === 'Vérification client / Déclarer une perte')
+      .find((b) => b.text() === 'Enregistrer la quantité reçue par le client')
     await button!.trigger('click')
     await wrapper.find('[data-test="received-quantity"]').setValue('44850')
     await wrapper.find('form').trigger('submit.prevent')
@@ -895,13 +958,132 @@ describe('TripDetail expenses section', () => {
     expect(
       wrapper
         .findAll('button')
-        .find((b) => b.text() === 'Vérification client / Déclarer une perte'),
+        .find((b) => b.text() === 'Enregistrer la quantité reçue par le client'),
     ).toBeUndefined()
     const readOnlyBlock = wrapper.find('[data-test="client-verification-recorded"]')
     expect(readOnlyBlock.exists()).toBe(true)
     expect(readOnlyBlock.text()).toContain('Vérification client enregistrée')
     expect(readOnlyBlock.text()).toContain('2026-08-19')
     expect(readOnlyBlock.text()).toContain('Ecart signale par le client')
+  })
+
+  it('only shows the verification-correction action with the "validate" permission tier', async () => {
+    // Feedback (2026-09-10): the correction is audited and gated behind
+    // "validate" (backend/apps/accounts/permissions.py ACTION_MAP
+    // "correct_client_verification"), a stricter tier than the routine
+    // "edit" used by the first verification.
+    setUser({ operations: ['view', 'edit'], finance: ['view'] })
+    tripResourceGet.mockResolvedValueOnce(makeTrip({ status: 'DELIVERED', client: 10 }))
+    allowedStatusesToReturn = ['COMPLETED']
+    fetchReport.mockResolvedValueOnce({
+      rows: [
+        {
+          trip_reference: 'TRIP-009',
+          control_date: '2026-08-18',
+          loaded_quantity: '45000.00',
+          received_quantity: '100.00',
+          loss_quantity: '44900.00',
+          tolerance_quantity: '100.00',
+          chargeable_loss_quantity: '44800.00',
+          verified_at: '2026-08-19',
+          notes: '',
+        },
+      ],
+    })
+
+    const wrapper = await mountAt()
+
+    expect(
+      wrapper.findAll('button').find((b) => b.text() === 'Corriger la vérification client'),
+    ).toBeUndefined()
+  })
+
+  it('submits a client-verification correction and shows the correction history', async () => {
+    // Feedback (2026-09-10): the operator typed the loss (100 L) instead of
+    // the received quantity - DeliveryService.correct_client_verification()
+    // is the audited fix, surfaced here via ClientVerificationCorrectionForm.
+    setUser({ operations: ['view', 'edit', 'validate'], finance: ['view'] })
+    tripResourceGet
+      .mockResolvedValueOnce(makeTrip({ status: 'COMPLETED', client: 10 }))
+      .mockResolvedValueOnce(
+        makeTrip({
+          status: 'COMPLETED',
+          client: 10,
+          delivery_control_detail: {
+            id: 1,
+            trip: 9,
+            loaded_quantity: '45000.00',
+            received_quantity: '44900.00',
+            loss_quantity: '100.00',
+            chargeable_loss_quantity: '0.00',
+            tolerance_quantity: '100.00',
+            control_date: '2026-08-18',
+            controller: 1,
+            controller_detail: null,
+            method: 'MANUAL_GAUGE',
+            document: null,
+            notes: '',
+            anomaly_confirmed_by: null,
+            anomaly_confirmed_by_detail: null,
+            anomaly_confirmed_at: null,
+            verified_at: '2026-08-19',
+            verification_corrections: [
+              {
+                id: 1,
+                previous_received_quantity: '100.00',
+                new_received_quantity: '44900.00',
+                corrected_by: 1,
+                corrected_by_detail: { id: 1, full_name: 'Admin', email: 'admin@example.com' },
+                corrected_at: '2026-08-20T10:00:00Z',
+                reason: "L'operateur a saisi la perte au lieu de la quantite recue",
+              },
+            ],
+            created_at: '',
+            updated_at: '',
+          },
+        }),
+      )
+    allowedStatusesToReturn = []
+    const lossReportRow = {
+      trip_reference: 'TRIP-009',
+      control_date: '2026-08-18',
+      loaded_quantity: '45000.00',
+      received_quantity: '100.00',
+      loss_quantity: '44900.00',
+      tolerance_quantity: '100.00',
+      chargeable_loss_quantity: '44800.00',
+      verified_at: '2026-08-19',
+      notes: '',
+    }
+    fetchReport
+      .mockResolvedValueOnce({ rows: [lossReportRow] })
+      .mockResolvedValueOnce({ rows: [lossReportRow] })
+
+    const wrapper = await mountAt()
+
+    const openButton = wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Corriger la vérification client')
+    expect(openButton).toBeTruthy()
+    await openButton!.trigger('click')
+
+    await wrapper.find('[data-test="correction-received-quantity"]').setValue('44900')
+    await wrapper
+      .find('[data-test="correction-reason"]')
+      .setValue("L'operateur a saisi la perte au lieu de la quantite recue")
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(postClientVerificationCorrection).toHaveBeenCalledWith(
+      9,
+      expect.objectContaining({
+        reason: "L'operateur a saisi la perte au lieu de la quantite recue",
+      }),
+    )
+    const history = wrapper.find('[data-test="verification-correction-history"]')
+    expect(history.exists()).toBe(true)
+    expect(history.text()).toContain('100')
+    expect(history.text()).toContain('44 900')
   })
 
   it('also shows the client-verification action once the trip is COMPLETED, but never for CANCELLED', async () => {
@@ -913,7 +1095,7 @@ describe('TripDetail expenses section', () => {
     expect(
       wrapper
         .findAll('button')
-        .find((b) => b.text() === 'Vérification client / Déclarer une perte'),
+        .find((b) => b.text() === 'Enregistrer la quantité reçue par le client'),
     ).toBeTruthy()
   })
 
@@ -926,7 +1108,7 @@ describe('TripDetail expenses section', () => {
     expect(
       wrapper
         .findAll('button')
-        .find((b) => b.text() === 'Vérification client / Déclarer une perte'),
+        .find((b) => b.text() === 'Enregistrer la quantité reçue par le client'),
     ).toBeUndefined()
   })
 
@@ -979,6 +1161,29 @@ describe('TripDetail expenses section', () => {
     expect(postTripStatus).toHaveBeenCalledWith(9, 'SENT_FOR_LOADING', '')
     expect(wrapper.find('#unit_price_per_litre').exists()).toBe(true)
     expect(wrapper.text()).toContain('Commission du transporteur')
+  })
+
+  it('does not reopen the transporter commission popup when a payment already exists for the trip', async () => {
+    // Bug fix (found by chance, client feedback 2026-09-10): nothing
+    // stopped a second TransportPayment from being created for a trip
+    // that already has one - this popup was one of the two ways it
+    // happened (the always-visible "Ajouter des frais de transport"
+    // button was the other, covered below).
+    setUser({ operations: ['view', 'edit'], finance: ['view', 'create'] })
+    tripResourceGet.mockResolvedValue(makeTrip({ status: 'ASSIGNED' }))
+    allowedStatusesToReturn = ['SENT_FOR_LOADING']
+    transportPaymentsToReturn = [makeTransportPayment()]
+
+    const wrapper = await mountAt()
+    await wrapper.find('#next_status').setValue('SENT_FOR_LOADING')
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Appliquer')!
+      .trigger('click')
+    await flushPromises()
+
+    expect(postTripStatus).toHaveBeenCalledWith(9, 'SENT_FOR_LOADING', '')
+    expect(wrapper.find('#unit_price_per_litre').exists()).toBe(false)
   })
 
   it('opens a prefilled per-litre loading expense popup after SENT_FOR_LOADING -> LOADING', async () => {

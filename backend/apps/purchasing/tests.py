@@ -227,9 +227,10 @@ def test_reliquat_and_debt_track_loaded_quantity_not_cession_or_full_order():
     )
 
     # No loading yet: reliquat is still the full purchased quantity, and
-    # there is no supplier debt yet either.
+    # its monetary value is the full order (nothing loaded yet).
     assert SupplierStockService.get_purchase_reliquat(order) == Decimal("200000.00")
     assert SupplierStockService.get_purchase_loaded_amount(order) == Decimal("0.00")
+    assert SupplierStockService.get_purchase_reliquat_amount(order) == Decimal("100000000.00")
 
     _load_trip(
         supplier_order=order, cession=cession, quantity=Decimal("100000.00"),
@@ -238,6 +239,7 @@ def test_reliquat_and_debt_track_loaded_quantity_not_cession_or_full_order():
 
     assert SupplierStockService.get_purchase_reliquat(order) == Decimal("100000.00")
     assert SupplierStockService.get_purchase_loaded_amount(order) == Decimal("50000000.00")
+    assert SupplierStockService.get_purchase_reliquat_amount(order) == Decimal("50000000.00")
 
     # Loading the remaining 100,000 L later updates both figures.
     _load_trip(
@@ -247,6 +249,7 @@ def test_reliquat_and_debt_track_loaded_quantity_not_cession_or_full_order():
 
     assert SupplierStockService.get_purchase_reliquat(order) == Decimal("0.00")
     assert SupplierStockService.get_purchase_loaded_amount(order) == Decimal("100000000.00")
+    assert SupplierStockService.get_purchase_reliquat_amount(order) == Decimal("0.00")
 
 
 @pytest.mark.django_db

@@ -58,6 +58,11 @@ ACTION_MAP = {
     # 2026-09-04) corrects an existing DeliveryControl - same routine
     # operations tier as the delivery confirmation it follows.
     "client_verification": "edit",
+    # A correction only ever applies to an already-verified DeliveryControl
+    # and is audited (ClientVerificationCorrection) - same "validate" tier
+    # as an invoice correction ("correct" above), not the routine "edit"
+    # tier used by the first verification.
+    "correct_client_verification": "validate",
     # Trip cost basis (Task 1, client modifications plan) is a read-only
     # decomposition, same "view" tier as margin/suggested_selling_price.
     "cost_basis": "view",
@@ -70,6 +75,10 @@ ACTION_MAP = {
     # A correction only ever applies to an already-VALIDATED invoice, so it
     # requires the same "validate" tier rather than plain "edit".
     "correct": "validate",
+    # Editing a DRAFT invoice's price (feedback 2026-09-10) is a plain,
+    # unaudited edit - same "edit" tier as `update`/`partial_update` on a
+    # DRAFT invoice, not the "validate" tier `correct` above requires.
+    "update_price": "edit",
     # Both create new financial records via a dedicated service rather than
     # a plain model create, but are still "create" tier from a permissions
     # standpoint (docs/PHASE_5_PLAN.md Etape 6/8).

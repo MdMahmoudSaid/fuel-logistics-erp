@@ -13,7 +13,12 @@ from apps.purchasing.serializers import CessionLetterSerializer
 from apps.purchasing.services import SupplierStockService
 from apps.suppliers.serializers import SupplierSerializer
 from apps.transport.serializers import DriverSerializer, TransporterSerializer, TruckSerializer
-from apps.trips.models import DeliveryControl, Trip, TripStatusHistory
+from apps.trips.models import (
+    ClientVerificationCorrection,
+    DeliveryControl,
+    Trip,
+    TripStatusHistory,
+)
 from apps.trips.services import TruckAvailabilityService
 
 # Dedicated logger for the force-override audit trail (docs/PHASE_3_PLAN.md
@@ -55,6 +60,16 @@ class TripSerializer(serializers.ModelSerializer):
     client_detail = CustomerSerializer(source="client", read_only=True)
     created_by_detail = UserSerializer(source="created_by", read_only=True)
     cession_letter_detail = CessionLetterSerializer(source="cession_letter", read_only=True)
+    cession_letter_truck_load_count = serializers.SerializerMethodField()
+    # Feedback (2026-09-10): the client-verification correction workflow
+    # needs the DeliveryControl's authoritative current received_quantity
+    # and its audit trail (verification_corrections) - the frontend's
+    # loss-report reuse (see its own comment in TripDetail.vue) is a report
+    # snapshot that never refreshes after a correction and carries no
+    # correction history, so it can't drive that workflow. Unlike the
+    # report-reuse decision, this is a real, ongoing need, not "just one
+    # display" - hence the nested field this time.
+    delivery_control_detail = serializers.SerializerMethodField()
     # Not a model field: lets an Admin bypass the active-truck lock (plan
     # §1.D). Always popped out of validated_data in validate() below.
     force = serializers.BooleanField(write_only=True, required=False, default=False)
@@ -79,6 +94,8 @@ class TripSerializer(serializers.ModelSerializer):
             "supplier_order",
             "cession_letter",
             "cession_letter_detail",
+            "cession_letter_truck_load_count",
+            "delivery_control_detail",
             "product",
             "product_detail",
             "quantity_loaded",
@@ -123,6 +140,28 @@ class TripSerializer(serializers.ModelSerializer):
         self._normalize_destination_type(data)
 
         return data
+
+    def get_cession_letter_truck_load_count(self, obj) -> int:
+        """How many times this trip's truck has been loaded under this
+        exact cession letter (added client request 2026-09-10: "Trajets &
+        chargements" needs to show, per trip, which cession letter it was
+        loaded from and how many times that truck has loaded against it).
+        Counts the trip itself, so a truck's first load under a cession
+        letter reads 1, not 0. Cancelled trips never really happened, so
+        they're excluded, same as every other loaded-quantity aggregate in
+        this codebase (SupplierStockService.get_purchase_loaded_quantity)."""
+        return (
+            Trip.objects.filter(truck_id=obj.truck_id, cession_letter_id=obj.cession_letter_id)
+            .exclude(status=Trip.Status.CANCELLED)
+            .count()
+        )
+
+    def get_delivery_control_detail(self, obj) -> dict | None:
+        try:
+            control = obj.delivery_control
+        except DeliveryControl.DoesNotExist:
+            return None
+        return DeliveryControlSerializer(control, context=self.context).data
 
     def _resolve(self, data, field):
         """`data[field]` if the caller touched it this request, else the
@@ -270,6 +309,27 @@ class TripSerializer(serializers.ModelSerializer):
         data["transporter"] = truck.owner_transporter
 
 
+class ClientVerificationCorrectionSerializer(serializers.ModelSerializer):
+    """Read-only audit trail entry - always written by
+    DeliveryService.correct_client_verification(), never directly through
+    the API. Mirrors apps.sales.serializers.InvoiceCorrectionSerializer."""
+
+    corrected_by_detail = UserSerializer(source="corrected_by", read_only=True)
+
+    class Meta:
+        model = ClientVerificationCorrection
+        fields = [
+            "id",
+            "previous_received_quantity",
+            "new_received_quantity",
+            "corrected_by",
+            "corrected_by_detail",
+            "corrected_at",
+            "reason",
+        ]
+        read_only_fields = fields
+
+
 class DeliveryControlSerializer(serializers.ModelSerializer):
     """Read-only representation of a confirmed DeliveryControl
     (docs/PHASE_4_PLAN.md Etape 6). Entirely produced by
@@ -280,6 +340,7 @@ class DeliveryControlSerializer(serializers.ModelSerializer):
     anomaly_confirmed_by_detail = UserSerializer(
         source="anomaly_confirmed_by", read_only=True
     )
+    verification_corrections = serializers.SerializerMethodField()
 
     class Meta:
         model = DeliveryControl
@@ -301,10 +362,16 @@ class DeliveryControlSerializer(serializers.ModelSerializer):
             "anomaly_confirmed_by",
             "anomaly_confirmed_by_detail",
             "anomaly_confirmed_at",
+            "verification_corrections",
             "created_at",
             "updated_at",
         ]
         read_only_fields = fields
+
+    def get_verification_corrections(self, obj) -> list[dict]:
+        return ClientVerificationCorrectionSerializer(
+            obj.trip.verification_corrections.all(), many=True
+        ).data
 
 
 class DeliveryControlRequestSerializer(serializers.Serializer):
@@ -368,6 +435,22 @@ class ClientVerificationRequestSerializer(serializers.Serializer):
     )
     verified_at = serializers.DateField()
     notes = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class ClientVerificationCorrectionRequestSerializer(serializers.Serializer):
+    """Input validation for POST /api/trips/{id}/correct-client-verification/.
+
+    Not a ModelSerializer, same convention as ClientVerificationRequestSerializer
+    above - the actual mutation is owned exclusively by
+    DeliveryService.correct_client_verification(). `reason` is required
+    (unlike the first verification): this is an audited correction, not a
+    routine data entry.
+    """
+
+    received_quantity = serializers.DecimalField(
+        max_digits=14, decimal_places=2, min_value=Decimal("0")
+    )
+    reason = serializers.CharField()
 
 
 class AssignCustomerRequestSerializer(serializers.Serializer):

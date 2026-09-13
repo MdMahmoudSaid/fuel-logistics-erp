@@ -1,3 +1,4 @@
+from django.http import HttpResponse
 from rest_framework import status as http_status
 from rest_framework import viewsets
 from rest_framework.decorators import action
@@ -5,6 +6,7 @@ from rest_framework.exceptions import MethodNotAllowed
 from rest_framework.response import Response
 
 from apps.accounts.permissions import HasModulePermission
+from apps.reports.services.ledger_pdf import render_invoice_pdf
 
 from .models import CustomerOrder, Invoice, Sale
 from .serializers import CustomerOrderSerializer, InvoiceSerializer, SaleSerializer
@@ -113,6 +115,40 @@ class InvoiceViewSet(viewsets.ModelViewSet):
             "DELETE",
             detail="La suppression directe est desactivee pour preserver l'historique financier.",
         )
+
+    @action(detail=True, methods=["get"], url_path="pdf")
+    def pdf(self, request, pk=None):
+        """Per-invoice PDF (feedback 2026-09-10) - same per-row export the
+        Paiements table in the client ledger already had.
+
+        GET /api/invoices/{id}/pdf/?lang=fr|en|ar
+        """
+        invoice = self.get_object()
+        lang = request.query_params.get("lang", "fr")
+        pdf_bytes = render_invoice_pdf(invoice, lang=lang)
+        response = HttpResponse(pdf_bytes, content_type="application/pdf")
+        response["Content-Disposition"] = f'attachment; filename="facture-{invoice.invoice_number}.pdf"'
+        return response
+
+    @action(detail=True, methods=["post"], url_path="update-price")
+    def update_price(self, request, pk=None):
+        """Edit a DRAFT invoice's initial selling price - the total is
+        recomputed automatically (feedback 2026-09-10).
+
+        POST /api/invoices/{id}/update-price/  body: {unit_selling_price}
+        """
+        invoice = self.get_object()
+        unit_selling_price = request.data.get("unit_selling_price")
+        if unit_selling_price in (None, ""):
+            return Response(
+                {"detail": "unit_selling_price est requis."},
+                status=http_status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            invoice = InvoiceService.update_draft_pricing(invoice.id, unit_selling_price)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=http_status.HTTP_400_BAD_REQUEST)
+        return Response(InvoiceSerializer(invoice, context={"request": request}).data)
 
     @action(detail=True, methods=["post"])
     def validate(self, request, pk=None):

@@ -344,6 +344,9 @@ export interface CustomerLedgerInvoice {
   sale_detail?: {
     quantity_loaded: string
     delivered_quantity: string
+    // Feedback (2026-09-10): "tractor / tanker" plates of the truck that
+    // loaded this invoice's trip.
+    truck_plates: string
   }
 }
 
@@ -594,9 +597,9 @@ export interface ShareholderProfitPreviewShare {
 // accounting fonds de roulement. Confirmed via actual client recette
 // testing (third pass, 2026-09-04): open debts are ADDED, not subtracted -
 // gross = treasury_available + customer_receivables; total = gross +
-// supplier_debt_total + transporter_debt_total + other_debts. Capital is
-// informational only, not part of gross/total (only subtracted separately
-// to reach distributable_result).
+// supplier_debt_total + transporter_debt_total + other_debts +
+// supplier_reliquat_value. Capital is informational only, not part of
+// gross/total (only subtracted separately to reach distributable_result).
 export interface WorkingCapital {
   capital: string
   treasury_available: string
@@ -604,6 +607,7 @@ export interface WorkingCapital {
   supplier_debt_total: string
   transporter_debt_total: string
   other_debts: string
+  supplier_reliquat_value: string
   gross: string
   total: string
 }

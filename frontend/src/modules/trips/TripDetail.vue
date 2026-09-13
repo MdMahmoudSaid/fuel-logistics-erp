@@ -13,6 +13,7 @@ import {
 import { translateApiError } from '@/i18n/apiErrors'
 import DeliveryControlForm from './DeliveryControlForm.vue'
 import ClientVerificationForm from './ClientVerificationForm.vue'
+import ClientVerificationCorrectionForm from './ClientVerificationCorrectionForm.vue'
 import type { Trip, TripMargin, TripStatus, TripStatusHistoryEntry } from './types'
 import { fetchReport } from '@/modules/reports/api'
 import { lossSeverityTone, type LossReportRow } from '@/modules/dashboard/aggregate'
@@ -23,6 +24,7 @@ import Button from '@/components/ui/Button.vue'
 import Card from '@/components/ui/Card.vue'
 import Modal from '@/components/ui/Modal.vue'
 import { useTripStatusLabel } from './tripStatusLabels'
+import { formatTruckPlates } from './formatTruckPlates'
 import { cancelExpense, expenseResource } from '@/modules/finance/api'
 import { transportPaymentResource } from '@/modules/finance/api'
 import ExpenseForm from '@/modules/finance/ExpenseForm.vue'
@@ -142,6 +144,7 @@ async function onClientVerified() {
   showVerificationForm.value = false
   await Promise.all([load(), loadMargin()])
   await loadAllowedStatuses()
+  await loadDeliveryData(trip.value?.status)
 }
 
 // Bug fix (recette corrections 2026-09-05): the button stayed visible after
@@ -149,6 +152,21 @@ async function onClientVerified() {
 // second time on the same trip. deliveryData.verified_at (see its own
 // comment below) is the single source of truth for "already verified".
 const clientAlreadyVerified = computed(() => Boolean(deliveryData.value?.verified_at))
+
+// Feedback (2026-09-10): audited fix for a client verification recorded
+// with the wrong received quantity - "validate" tier, same bar as an
+// invoice correction (backend/apps/accounts/permissions.py ACTION_MAP
+// "correct_client_verification"), stricter than the routine "edit" tier
+// used by the first verification.
+const canCorrectVerification = computed(() => auth.can('operations', 'validate'))
+const showVerificationCorrectionForm = ref(false)
+
+async function onVerificationCorrected() {
+  showVerificationCorrectionForm.value = false
+  await Promise.all([load(), loadMargin()])
+  await loadAllowedStatuses()
+  await loadDeliveryData(trip.value?.status)
+}
 
 async function loadExpenses() {
   expensesError.value = ''
@@ -258,30 +276,32 @@ const companyAbsorbedLossUnitPrice = computed(() => {
 onMounted(loadMargin)
 
 // docs/UI_REDESIGN_PLAN.md Etape 6.2: bloc "Jauges" (chargé/livré/écart).
-// Pas de champ dédié sur Trip pour la quantité livrée - le DeliveryControl
-// associé n'est pas non plus imbriqué dans TripSerializer (backend/apps/
-// trips/serializers.py), et il n'existe aucun endpoint de lecture pour un
-// DeliveryControl isolé (seule sa création via POST /trips/{id}/delivery-
-// control/ est exposée). Le loss-report existant expose déjà ces champs par
-// trip_reference - on le réutilise plutôt que d'ajouter un endpoint backend
-// pour ce seul affichage.
+// Reste alimenté par le loss-report existant (report snapshot par
+// trip_reference) plutôt que par trip.delivery_control_detail ci-dessous,
+// pour ne pas toucher cet affichage existant. delivery_control_detail
+// (backend/apps/trips/serializers.py, ajouté avec la correction de
+// vérification client - feedback 2026-09-10) est la source utilisée par le
+// formulaire de correction : contrairement à ce report, il se rafraîchit
+// avec load() et porte l'historique des corrections.
 const deliveryData = ref<LossReportRow | null>(null)
+
+async function loadDeliveryData(status: TripStatus | undefined) {
+  if (status !== 'DELIVERED' && status !== 'COMPLETED') {
+    deliveryData.value = null
+    return
+  }
+  try {
+    const report = await fetchReport('loss-report', {})
+    const rows = report.rows as unknown as LossReportRow[]
+    deliveryData.value = rows.find((row) => row.trip_reference === trip.value?.reference) ?? null
+  } catch {
+    deliveryData.value = null
+  }
+}
 
 watch(
   () => trip.value?.status,
-  async (status) => {
-    if (status !== 'DELIVERED' && status !== 'COMPLETED') {
-      deliveryData.value = null
-      return
-    }
-    try {
-      const report = await fetchReport('loss-report', {})
-      const rows = report.rows as unknown as LossReportRow[]
-      deliveryData.value = rows.find((row) => row.trip_reference === trip.value?.reference) ?? null
-    } catch {
-      deliveryData.value = null
-    }
-  },
+  (status) => loadDeliveryData(status),
 )
 
 const deliveredPct = computed(() => {
@@ -348,6 +368,11 @@ function openAutomaticFeePopup(targetStatus: TripStatus) {
     // detects "flotte propre" - no commission is ever due for it either
     // way, so the popup must still be skipped.
     if (!trip.value.transporter || trip.value.transporter_detail?.is_internal) return
+    // Bug fix (found by chance, client feedback 2026-09-10): nothing
+    // stopped this popup - or the always-visible "Ajouter des frais de
+    // transport" button below - from creating a second TransportPayment
+    // for a trip that already has one. A trip has exactly one settlement.
+    if (transportPayments.value.length) return
     automaticTransportTitle.value = t('trips.detail.autoExpense.transporterCommission')
     showTransportPaymentForm.value = true
     return
@@ -439,7 +464,7 @@ const cessionProofUrl = computed(
         </div>
         <div>
           <span class="text-texte-2">{{ t('trips.detail.truck') }}</span>
-          <p class="text-texte font-medium">{{ trip.truck_detail?.internal_id }}</p>
+          <p class="text-texte font-medium">{{ formatTruckPlates(trip.truck_detail) }}</p>
         </div>
         <div>
           <span class="text-texte-2">{{ t('trips.detail.transporter') }}</span>
@@ -646,6 +671,55 @@ const cessionProofUrl = computed(
         <p v-if="deliveryData.notes" class="text-texte-2 text-sm">
           {{ deliveryData.notes }}
         </p>
+
+        <Button
+          v-if="canCorrectVerification && !showVerificationCorrectionForm"
+          variant="ghost"
+          data-test="open-verification-correction"
+          @click="showVerificationCorrectionForm = true"
+        >
+          {{ t('trips.clientVerificationCorrection.action') }}
+        </Button>
+      </section>
+
+      <ClientVerificationCorrectionForm
+        v-if="showVerificationCorrectionForm"
+        :trip-id="trip.id"
+        :current-received-quantity="deliveryData?.received_quantity ?? '0'"
+        @corrected="onVerificationCorrected"
+        @cancel="showVerificationCorrectionForm = false"
+      />
+
+      <section
+        v-if="trip.delivery_control_detail?.verification_corrections.length"
+        data-test="verification-correction-history"
+        class="border-ligne space-y-3 rounded-xl border bg-white p-4"
+      >
+        <h3 class="text-texte-2 text-sm font-semibold uppercase">
+          {{ t('trips.clientVerificationCorrection.history') }}
+        </h3>
+        <ol class="border-ligne space-y-3 border-l ps-4">
+          <li
+            v-for="entry in trip.delivery_control_detail.verification_corrections"
+            :key="entry.id"
+            class="relative text-sm"
+          >
+            <span class="bg-texte-3 absolute top-1 -start-[21px] h-2 w-2 rounded-full" />
+            <p class="text-texte font-medium">
+              {{
+                t('trips.clientVerificationCorrection.correctedFrom', {
+                  previous: formatQuantity(entry.previous_received_quantity),
+                  next: formatQuantity(entry.new_received_quantity),
+                })
+              }}
+            </p>
+            <p class="text-texte-2 text-xs">
+              {{ formatDateTime(entry.corrected_at) }} ·
+              {{ entry.corrected_by_detail?.full_name || entry.corrected_by_detail?.email }}
+            </p>
+            <p class="text-texte-2">{{ entry.reason }}</p>
+          </li>
+        </ol>
       </section>
 
       <section v-if="deliveryData" class="border-ligne space-y-4 rounded-xl border bg-white p-4">
@@ -795,7 +869,12 @@ const cessionProofUrl = computed(
               {{ t('trips.detail.addExpense') }}
             </Button>
             <Button
-              v-if="canManageExpenses && trip.transporter && !trip.transporter_detail?.is_internal"
+              v-if="
+                canManageExpenses &&
+                trip.transporter &&
+                !trip.transporter_detail?.is_internal &&
+                !transportPayments.length
+              "
               variant="ghost"
               @click=";((automaticTransportTitle = null), (showTransportPaymentForm = true))"
             >

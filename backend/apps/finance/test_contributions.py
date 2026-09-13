@@ -242,6 +242,44 @@ def test_shareholder_list_exposes_total_contributed():
 
 
 @pytest.mark.django_db
+def test_shareholder_create_ignores_submitted_contribution():
+    """Bug fix (2026-09-10, reported via the Associes "Ajouter" form): a
+    user could type any amount into the "Contribution" field with no
+    linked bank/cash account, and it silently reduced distributable_result
+    via ShareholderContributionService.get_total_capital() with no money
+    ever entering treasury. `contribution` is now read-only via the API -
+    a submitted value must be ignored, never persisted."""
+    admin_user = _make_admin("CONTRIB-RO-1")
+    client = _authed_client(admin_user)
+
+    response = client.post(
+        "/api/shareholders/",
+        {"name": "New Shareholder", "participation_percent": "10.00", "contribution": "1000000000.00"},
+    )
+    assert response.status_code == 201, response.data
+    assert response.data["contribution"] == "0.00"
+    shareholder = Shareholder.objects.get(id=response.data["id"])
+    assert shareholder.contribution == Decimal("0.00")
+
+
+@pytest.mark.django_db
+def test_shareholder_update_ignores_submitted_contribution():
+    """Same bug, via the "Modifier" form: `contribution` must stay frozen
+    across an update even when the request tries to change it."""
+    admin_user = _make_admin("CONTRIB-RO-2")
+    shareholder = _make_shareholder("CONTRIB-RO-2", contribution=Decimal("500.00"))
+    client = _authed_client(admin_user)
+
+    response = client.patch(
+        f"/api/shareholders/{shareholder.id}/", {"contribution": "999999999.00"},
+    )
+    assert response.status_code == 200, response.data
+    assert response.data["contribution"] == "500.00"
+    shareholder.refresh_from_db()
+    assert shareholder.contribution == Decimal("500.00")
+
+
+@pytest.mark.django_db
 def test_shareholder_ledger_exposes_total_contributed_without_mixing_into_available_balance():
     """total_contributed must show the real apport, but never move
     available_balance (capital is not distributable profit - design doc

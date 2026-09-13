@@ -131,6 +131,7 @@
       "supplierDebtTotal": "Dettes fournisseurs",
       "transporterDebtTotal": "Dettes transporteurs",
       "otherDebts": "Dettes douane / transit / frais",
+      "supplierReliquatValue": "Stock fournisseur (reliquat non chargé)",
       "companyAbsorbedLoss": "Perte supportée par l'entreprise",
       "partyBalances": "Soldes par partie",
       "customers": "Clients",
@@ -298,6 +299,8 @@
       "reference": "Référence",
       "truck": "Camion",
       "transporter": "Transporteur",
+      "cessionLetter": "Lettre de cession",
+      "cessionLetterLoadCount": "{count} chargement(s) de ce camion",
       "client": "Client",
       "quantity": "Quantité",
       "status": "Statut"
@@ -398,17 +401,20 @@
       "realTotalCost": "Coût total réel",
       "unitProfit": "Bénéfice unitaire",
       "netMargin": "Marge nette",
-      "clientVerificationAction": "Vérification client / Déclarer une perte",
+      "clientVerificationAction": "Enregistrer la quantité reçue par le client",
       "clientVerificationRecorded": "Vérification client enregistrée"
     },
     "assignCustomer": {
+      "action": "Attribuer un client",
       "title": "Attribuer un client",
       "trip": "Trajet",
       "customer": "Client",
       "selectCustomer": "Sélectionner un client",
       "saving": "Enregistrement…",
       "save": "Attribuer",
-      "saveError": "Impossible d'attribuer ce client — vérifiez les champs et vos droits."
+      "saveError": "Impossible d'attribuer ce client — vérifiez les champs et vos droits.",
+      "pickTripHint": "Choisissez un trajet en stock entreprise à attribuer à un client. Il continuera ensuite son cycle normal (livraison, contrôle qualité, facturation).",
+      "noEligibleTrips": "Aucun trajet en stock entreprise sans client pour le moment."
     },
     "newForm": {
       "title": "Nouveau trajet (chargement)",
@@ -477,13 +483,28 @@
     "clientVerification": {
       "title": "Vérification client",
       "loadedQuantity": "Quantité chargée",
-      "receivedQuantity": "Quantité reçue (L)",
+      "receivedQuantity": "Quantité totale reçue par le client (L)",
+      "receivedQuantityHint": "Saisissez la quantité livrée au total, pas la perte — la perte est calculée automatiquement ci-dessous.",
       "verifiedAt": "Date de vérification",
       "companyAbsorbed": "Perte absorbée par l'entreprise (est.)",
       "transporterChargeable": "Perte facturable au transporteur (est.)",
       "recording": "Enregistrement…",
       "submit": "Enregistrer la vérification",
       "recordError": "Impossible d'enregistrer la vérification client."
+    },
+    "clientVerificationCorrection": {
+      "action": "Corriger la vérification client",
+      "title": "Corriger la vérification client",
+      "hint": "À utiliser si la quantité reçue enregistrée était incorrecte (par exemple une perte saisie par erreur à la place de la quantité reçue). Cette correction est tracée.",
+      "currentReceivedQuantity": "Quantité actuellement enregistrée",
+      "newReceivedQuantity": "Nouvelle quantité reçue (L)",
+      "reason": "Raison de la correction",
+      "recording": "Enregistrement…",
+      "submit": "Enregistrer la correction",
+      "recordError": "Impossible d'enregistrer la correction.",
+      "history": "Historique des corrections",
+      "noHistory": "Aucune correction.",
+      "correctedFrom": "Quantité reçue corrigée de {previous} L à {next} L"
     }
   },
   "invoiceStatus": {
@@ -742,6 +763,7 @@
         "issued": "Émise",
         "loadedQuantity": "Qté chargée",
         "receivedQuantity": "Qté reçue",
+        "truckPlates": "Immatriculations",
         "total": "Total",
         "outstanding": "Impayé",
         "status": "Statut"
@@ -1332,7 +1354,13 @@
         "delivered_quantity": "Quantité livrée"
       },
       "trip": "Trajet",
+      "truckPlates": "Camion (immatriculations)",
       "totalAmount": "Montant total",
+      "totalPreview": "Total recalculé (aperçu)",
+      "savePrice": "Enregistrer le prix",
+      "savePriceError": "Impossible d'enregistrer ce prix — vérifiez le champ et vos droits.",
+      "exportPdf": "Exporter PDF",
+      "exporting": "Export…",
       "issuedDate": "Date d'émission",
       "saving": "Enregistrement…",
       "save": "Enregistrer",

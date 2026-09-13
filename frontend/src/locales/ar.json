@@ -131,6 +131,7 @@
       "supplierDebtTotal": "ديون الموردين",
       "transporterDebtTotal": "ديون الناقلين",
       "otherDebts": "ديون الجمارك / العبور / الرسوم",
+      "supplierReliquatValue": "مخزون الموردين (الرصيد غير المحمَّل)",
       "companyAbsorbedLoss": "الخسارة المتحملة من الشركة",
       "partyBalances": "الأرصدة حسب الطرف",
       "customers": "العملاء",
@@ -297,6 +298,8 @@
       "reference": "المرجع",
       "truck": "الشاحنة",
       "transporter": "الناقل",
+      "cessionLetter": "رسالة التنازل",
+      "cessionLetterLoadCount": "{count} تحميل (تحميلات) لهذه الشاحنة",
       "client": "العميل",
       "quantity": "الكمية",
       "status": "الحالة"
@@ -397,17 +400,20 @@
       "realTotalCost": "التكلفة الفعلية الإجمالية",
       "unitProfit": "ربح الوحدة",
       "netMargin": "الهامش الصافي",
-      "clientVerificationAction": "التحقق مع العميل / الإبلاغ عن فاقد",
+      "clientVerificationAction": "تسجيل الكمية التي استلمها العميل",
       "clientVerificationRecorded": "تم تسجيل التحقق مع العميل"
     },
     "assignCustomer": {
+      "action": "تعيين عميل",
       "title": "تعيين عميل",
       "trip": "الرحلة",
       "customer": "العميل",
       "selectCustomer": "اختر عميلاً",
       "saving": "جارٍ الحفظ…",
       "save": "تعيين",
-      "saveError": "تعذر تعيين هذا العميل — تحقق من الحقول وصلاحياتك."
+      "saveError": "تعذر تعيين هذا العميل — تحقق من الحقول وصلاحياتك.",
+      "pickTripHint": "اختر رحلة في مخزون الشركة لتعيينها لعميل. ستتابع بعدها دورتها العادية (التسليم، مراقبة الجودة، الفوترة).",
+      "noEligibleTrips": "لا توجد حاليًا رحلة في مخزون الشركة بدون عميل."
     },
     "newForm": {
       "title": "رحلة جديدة (تحميل)",
@@ -475,13 +481,28 @@
     "clientVerification": {
       "title": "التحقق مع العميل",
       "loadedQuantity": "الكمية المحمَّلة",
-      "receivedQuantity": "الكمية المستلمة (لتر)",
+      "receivedQuantity": "إجمالي الكمية التي استلمها العميل (لتر)",
+      "receivedQuantityHint": "أدخل الكمية المسلَّمة بالكامل، وليس الفاقد — يُحسب الفاقد تلقائيًا أدناه.",
       "verifiedAt": "تاريخ التحقق",
       "companyAbsorbed": "الفاقد الذي تتحمّله الشركة (تقديري)",
       "transporterChargeable": "الفاقد القابل للخصم من الناقل (تقديري)",
       "recording": "جارٍ الحفظ…",
       "submit": "تسجيل التحقق",
       "recordError": "تعذر تسجيل التحقق مع العميل."
+    },
+    "clientVerificationCorrection": {
+      "action": "تصحيح التحقق مع العميل",
+      "title": "تصحيح التحقق مع العميل",
+      "hint": "استخدم هذا إذا كانت الكمية المستلمة المسجّلة خاطئة (مثلاً إدخال الفاقد بالخطأ بدل الكمية المستلمة). يُسجَّل هذا التصحيح في سجل التدقيق.",
+      "currentReceivedQuantity": "الكمية المسجَّلة حاليًا",
+      "newReceivedQuantity": "الكمية المستلمة الجديدة (لتر)",
+      "reason": "سبب التصحيح",
+      "recording": "جارٍ الحفظ…",
+      "submit": "تسجيل التصحيح",
+      "recordError": "تعذر تسجيل التصحيح.",
+      "history": "سجل التصحيحات",
+      "noHistory": "لا يوجد تصحيح.",
+      "correctedFrom": "تم تصحيح الكمية المستلمة من {previous} لتر إلى {next} لتر"
     }
   },
   "invoiceStatus": {
@@ -740,6 +761,7 @@
         "issued": "تاريخ الإصدار",
         "loadedQuantity": "الكمية المحمّلة",
         "receivedQuantity": "الكمية المستلمة",
+        "truckPlates": "لوحات الشاحنة",
         "total": "الإجمالي",
         "outstanding": "المستحق",
         "status": "الحالة"
@@ -1328,7 +1350,13 @@
         "delivered_quantity": "الكمية المسلَّمة"
       },
       "trip": "الرحلة",
+      "truckPlates": "الشاحنة (اللوحات)",
       "totalAmount": "المبلغ الإجمالي",
+      "totalPreview": "الإجمالي المعاد حسابه (معاينة)",
+      "savePrice": "حفظ السعر",
+      "savePriceError": "تعذر حفظ هذا السعر — تحقق من الحقل وصلاحياتك.",
+      "exportPdf": "تصدير PDF",
+      "exporting": "جارٍ التصدير…",
       "issuedDate": "تاريخ الإصدار",
       "saving": "جارٍ الحفظ…",
       "save": "حفظ",

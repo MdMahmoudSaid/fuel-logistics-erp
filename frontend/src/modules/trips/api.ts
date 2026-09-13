@@ -117,6 +117,25 @@ export function postClientVerification(
     .then((r) => r.data)
 }
 
+export interface ClientVerificationCorrectionPayload {
+  received_quantity: string
+  reason: string
+}
+
+// DeliveryService.correct_client_verification() (backend/apps/trips/
+// services.py) via TripViewSet.correct_client_verification() - audited fix
+// for a client verification that was recorded with the wrong received
+// quantity (feedback 2026-09-10). Only valid once a first verification
+// already exists; a `reason` is required.
+export function postClientVerificationCorrection(
+  tripId: number,
+  payload: ClientVerificationCorrectionPayload,
+): Promise<DeliveryControl> {
+  return apiClient
+    .post<DeliveryControl>(`/trips/${tripId}/correct-client-verification/`, payload)
+    .then((r) => r.data)
+}
+
 // DeliveryService.get_latest_selling_price() (backend/apps/trips/services.py)
 // via TripViewSet.suggested_selling_price() - pre-fills the delivery form's
 // price field; `null` when nothing is on file yet for this product/customer.

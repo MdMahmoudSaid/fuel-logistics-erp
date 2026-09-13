@@ -1,0 +1,121 @@
+name: fuel-logistics-erp
+services:
+  db:
+    restart: unless-stopped
+    logging: &id001
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    image: postgres:16
+    env_file:
+    - /etc/bessma/fuel-db.env
+    volumes:
+    - fuel_data_v2:/var/lib/postgresql/data
+    networks:
+    - private
+    mem_limit: 512m
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - psql -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}" -tAc "SELECT 1" | grep -qx
+        1
+      interval: 15s
+      timeout: 5s
+      retries: 5
+  backend:
+    restart: unless-stopped
+    logging: *id001
+    build:
+      context: ./backend
+      args:
+        REQUIREMENTS_FILE: requirements/prod.txt
+    image: bessma/fuel-backend:697afc7
+    env_file:
+    - /etc/bessma/fuel-app.env
+    command:
+    - sh
+    - -c
+    - python manage.py collectstatic --noinput && exec gunicorn config.wsgi:application
+      --bind 0.0.0.0:8000 --workers 2 --threads 2 --timeout 60 --access-logfile -
+      --error-logfile -
+    volumes:
+    - ./backend/media:/app/media
+    networks:
+    - private
+    mem_limit: 768m
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+      - CMD
+      - python
+      - -c
+      - import urllib.request; urllib.request.urlopen("http://127.0.0.1:8000/api/healthz",timeout=4)
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  frontend:
+    restart: unless-stopped
+    logging: *id001
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.production
+    image: bessma/fuel-frontend:697afc7
+    ports:
+    - 127.0.0.1:5174:8080
+    volumes:
+    - ./backend/media:/media:ro
+    networks:
+    - private
+    - traefik-public
+    mem_limit: 256m
+    depends_on:
+      backend:
+        condition: service_healthy
+    labels:
+      traefik.enable: 'true'
+      traefik.docker.network: traefik-public
+      traefik.http.routers.hasel.rule: Host(`azurenergie.hasel.food`)
+      traefik.http.routers.hasel.entrypoints: websecure
+      traefik.http.routers.hasel.tls: 'true'
+      traefik.http.routers.hasel.tls.certresolver: letsencrypt
+      traefik.http.services.hasel.loadbalancer.server.port: '8080'
+  migrate:
+    restart: 'no'
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    build:
+      context: ./backend
+      args:
+        REQUIREMENTS_FILE: requirements/prod.txt
+    image: bessma/fuel-backend:697afc7
+    env_file:
+    - /etc/bessma/fuel-migrate.env
+    command:
+    - python
+    - manage.py
+    - migrate
+    - --noinput
+    volumes:
+    - ./backend/media:/app/media
+    networks:
+    - private
+    mem_limit: 768m
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles:
+    - tools
+volumes:
+  fuel_data_v2:
+    name: fuel-logistics-erp_production_data_v2
+networks:
+  private:
+    name: fuel-logistics-erp_private_v2
+  traefik-public:
+    external: true

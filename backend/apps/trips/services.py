@@ -22,7 +22,12 @@ from apps.finance.models import Expense, ExpenseAllocation, TransportDeduction, 
 from apps.sales.models import Invoice, ProductSellingPriceHistory, Sale
 from apps.sales.services import CustomerOrderService, InvoiceService
 from apps.transport.models import Transporter, Truck
-from apps.trips.models import DeliveryControl, Trip, TripStatusHistory
+from apps.trips.models import (
+    ClientVerificationCorrection,
+    DeliveryControl,
+    Trip,
+    TripStatusHistory,
+)
 
 
 _INVOICE_REFERENCE_PREFIX = "FAC"
@@ -755,6 +760,80 @@ class DeliveryService:
                 actor,
                 notes="Cloture automatique apres verification client",
             )
+
+        return control
+
+    @staticmethod
+    @transaction.atomic
+    def correct_client_verification(
+        trip_id, received_qty: Decimal, reason: str, actor
+    ) -> DeliveryControl:
+        """Audited correction of an already-recorded client verification
+        (feedback 2026-09-10: the "Declarer une perte" button's wording led
+        operators to type the loss instead of the received quantity, with
+        no way to fix the mistake afterwards - record_client_verification()
+        deliberately refuses a second call, see its docstring). Unlike that
+        first call, this one is explicitly a correction: it requires a
+        reason, logs a ClientVerificationCorrection row, and is gated behind
+        the "validate" permission tier (same bar as an invoice correction)
+        rather than the routine "edit" tier.
+
+        Re-propagates to the Sale + Invoice exactly like
+        record_client_verification() does (DRAFT -> direct edit, VALIDATED
+        -> audited InvoiceCorrection, (partially) paid/cancelled -> raises),
+        and re-syncs the TransportDeduction for the new quantity.
+        """
+        trip = Trip.objects.select_for_update().get(pk=trip_id)
+        try:
+            control = DeliveryControl.objects.select_for_update().get(trip=trip)
+        except DeliveryControl.DoesNotExist:
+            raise ValueError(
+                f"Le trajet {trip.reference} n'a pas de controle de livraison "
+                "a corriger."
+            )
+
+        if control.verified_at is None:
+            raise ValueError(
+                f"Le trajet {trip.reference} n'a pas encore de verification "
+                "client enregistree - utilisez d'abord la verification "
+                "client, pas sa correction."
+            )
+
+        previous_qty = control.received_quantity
+        if received_qty == previous_qty:
+            return control
+
+        control.received_quantity = received_qty
+        control.save(
+            update_fields=[
+                "received_quantity", "loss_quantity", "chargeable_loss_quantity",
+                "updated_at",
+            ]
+        )
+
+        sale = getattr(trip, "sale", None)
+        if sale is not None and getattr(sale, "invoice", None) is not None:
+            InvoiceService.adjust_delivered_quantity(
+                sale.invoice.id,
+                received_qty,
+                reason=reason,
+                actor=actor,
+            )
+            sale.refresh_from_db()
+
+        DeliveryService.sync_transport_shortage_deduction(
+            trip=trip,
+            received_qty=received_qty,
+            unit_selling_price=sale.unit_selling_price if sale else Decimal("0.0000"),
+        )
+
+        ClientVerificationCorrection.objects.create(
+            trip=trip,
+            previous_received_quantity=previous_qty,
+            new_received_quantity=received_qty,
+            corrected_by=actor,
+            reason=reason,
+        )
 
         return control
 

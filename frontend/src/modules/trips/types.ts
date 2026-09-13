@@ -153,6 +153,14 @@ export interface Trip {
   supplier_order: number
   cession_letter: number
   cession_letter_detail?: CessionLetter | null
+  // How many times this trip's truck has been loaded under this exact
+  // cession letter (counts this trip itself, so a first load reads 1) -
+  // backend/apps/trips/serializers.py get_cession_letter_truck_load_count.
+  cession_letter_truck_load_count: number
+  // Feedback (2026-09-10): authoritative current DeliveryControl (received
+  // quantity, losses, correction trail) - null before delivery -
+  // backend/apps/trips/serializers.py get_delivery_control_detail.
+  delivery_control_detail: DeliveryControl | null
   product: number
   product_detail: ProductBrief | null
   quantity_loaded: string
@@ -268,6 +276,20 @@ export interface DeliveryControl {
   // that was only ever confirmed at delivery time and never verified with
   // the client afterwards.
   verified_at?: string | null
+  // Feedback (2026-09-10): audited correction trail for a client
+  // verification that was recorded with the wrong received quantity - see
+  // POST /api/trips/{id}/correct-client-verification/.
+  verification_corrections: ClientVerificationCorrectionEntry[]
   created_at: string
   updated_at: string
+}
+
+export interface ClientVerificationCorrectionEntry {
+  id: number
+  previous_received_quantity: string
+  new_received_quantity: string
+  corrected_by: number
+  corrected_by_detail: UserBrief | null
+  corrected_at: string
+  reason: string
 }

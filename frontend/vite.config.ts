@@ -14,6 +14,7 @@ export default defineConfig({
     },
   },
   server: {
+    allowedHosts: ["azurenergie.hasel.food"],
     host: true,
     port: 5173,
     proxy: {

@@ -5,6 +5,7 @@ import CustomerLedgerView from '../CustomerLedgerView.vue'
 const fetchCustomerLedger = vi.fn()
 const exportLedgerPdf = vi.fn()
 const exportCustomerPaymentPdf = vi.fn()
+const exportInvoicePdf = vi.fn()
 const push = vi.fn()
 
 vi.mock('vue-router', () => ({
@@ -16,6 +17,10 @@ vi.mock('../api', () => ({
   fetchCustomerLedger: (...args: unknown[]) => fetchCustomerLedger(...args),
   exportLedgerPdf: (...args: unknown[]) => exportLedgerPdf(...args),
   exportCustomerPaymentPdf: (...args: unknown[]) => exportCustomerPaymentPdf(...args),
+}))
+
+vi.mock('@/modules/sales/api', () => ({
+  exportInvoicePdf: (...args: unknown[]) => exportInvoicePdf(...args),
 }))
 
 describe('CustomerLedgerView', () => {
@@ -108,7 +113,11 @@ describe('CustomerLedgerView', () => {
           total_amount: '900000.00',
           issued_date: '2026-08-10',
           outstanding: '0.00',
-          sale_detail: { quantity_loaded: '45000.00', delivered_quantity: '44800.00' },
+          sale_detail: {
+            quantity_loaded: '45000.00',
+            delivered_quantity: '44800.00',
+            truck_plates: 'AA-111 / BB-222',
+          },
         },
       ],
       payments: [],
@@ -122,5 +131,47 @@ describe('CustomerLedgerView', () => {
     expect(text).toContain('Qté reçue')
     expect(text).toContain('45 000 L')
     expect(text).toContain('44 800 L')
+  })
+
+  it('shows the truck plates column and a PDF action per invoice row', async () => {
+    // Feedback (2026-09-10): the Factures table now has the same per-row
+    // PDF action the Paiements table already had, plus the plates of the
+    // truck that loaded the invoice.
+    fetchCustomerLedger.mockResolvedValue({
+      customer: { id: 1, name: 'Client X', company_name: '' },
+      outstanding_balance: '0.00',
+      invoices: [
+        {
+          id: 3,
+          invoice_number: 'INV-003',
+          status: 'PAID',
+          total_amount: '900000.00',
+          issued_date: '2026-08-10',
+          outstanding: '0.00',
+          sale_detail: {
+            quantity_loaded: '45000.00',
+            delivered_quantity: '44800.00',
+            truck_plates: 'AA-111 / BB-222',
+          },
+        },
+      ],
+      payments: [],
+    })
+
+    const wrapper = mount(CustomerLedgerView)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('AA-111 / BB-222')
+
+    const pdfButton = wrapper.find('[data-test="customer-invoice-pdf"]')
+    expect(pdfButton.exists()).toBe(true)
+
+    await pdfButton.trigger('click')
+    await flushPromises()
+
+    expect(exportInvoicePdf).toHaveBeenCalledWith(3, 'fr')
+    // Clicking the PDF button must not also navigate to the invoice detail
+    // page (the whole row is otherwise clickable for that).
+    expect(push).not.toHaveBeenCalled()
   })
 })

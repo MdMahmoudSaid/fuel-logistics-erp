@@ -7,7 +7,10 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 from apps.accounts.auth import PhonePinTokenObtainPairView
 
+from config.health import readiness
+
 urlpatterns = [
+    path("api/healthz", readiness, name="readiness"),
     path("admin/", admin.site.urls),
     path("api/auth/login/", PhonePinTokenObtainPairView.as_view(), name="token_obtain_pair"),
     path("api/auth/refresh/", TokenRefreshView.as_view(), name="token_refresh"),

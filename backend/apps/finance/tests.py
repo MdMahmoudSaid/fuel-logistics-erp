@@ -60,6 +60,7 @@ from apps.finance.services import (
 def _proof_file(name="proof.jpg"):
     return SimpleUploadedFile(name, b"fake-proof-bytes", content_type="image/jpeg")
 from apps.purchasing.models import CessionLetter, SupplierOrder
+from apps.purchasing.services import SupplierStockService
 from apps.sales.models import Invoice, Sale
 from apps.suppliers.models import Supplier
 from apps.transport.models import Transporter, Truck
@@ -566,11 +567,12 @@ def test_payment_allocation_invoice_null_means_unallocated_credit():
 
 
 def _load_trip_for_supplier_order(*, supplier, supplier_order, quantity, suffix, admin_user):
-    """Load `quantity` litres against `supplier_order` via a real Trip -
-    the only thing that now creates supplier debt (bug fix, client
-    business rule confirmed 2026-09-06: ControlledDebtPaymentService.
-    describe_supplier_order prices debt on quantity actually loaded, not
-    on the full confirmed order)."""
+    """Load `quantity` litres against `supplier_order` via a real Trip.
+    Since the 2026-09-10 business rule reversal, loading no longer affects
+    the supplier debt itself (ControlledDebtPaymentService.
+    describe_supplier_order now books the full confirmed order immediately)
+    - this helper still matters for get_purchase_loaded_amount/
+    get_purchase_reliquat_amount, which do depend on it."""
     if quantity <= Decimal("0.00"):
         return None
     # Truncated defensively: Truck's internal_id/tractor_registration/
@@ -607,16 +609,13 @@ def _load_trip_for_supplier_order(*, supplier, supplier_order, quantity, suffix,
 
 
 def _make_supplier_order(suffix, *, loaded_quantity=None):
-    """`loaded_quantity` (bug fix, client business rule confirmed
-    2026-09-06): ControlledDebtPaymentService.describe_supplier_order now
-    prices the supplier debt on quantity actually loaded onto a trip, not
-    on the full confirmed order - so every one of this helper's many
-    existing callers needs a real Trip behind the order for the debt to be
-    non-zero. Defaulting to a trip that loads the FULL purchased quantity
-    keeps every pre-existing assertion of the form
-    `... == supplier_order.total_amount` correct unchanged (fully loaded
-    means loaded_amount == total_amount). Pass an explicit smaller
-    Decimal to test partial loading instead."""
+    """`loaded_quantity`: since the 2026-09-10 business rule reversal the
+    supplier debt itself no longer depends on loading (it's the full
+    confirmed order, immediately) - this only still matters for tests that
+    exercise get_purchase_loaded_amount/get_purchase_reliquat_amount.
+    Defaulting to a trip that loads the FULL purchased quantity keeps this
+    helper backward compatible with every existing caller. Pass an explicit
+    smaller Decimal to test partial loading instead."""
     admin_role = Role.objects.get(name=Role.NAME_ADMIN)
     admin_user = User.objects.create_user(
         phone=(f"+222{suffix}")[:20],
@@ -648,12 +647,12 @@ def _make_supplier_order(suffix, *, loaded_quantity=None):
 
 
 @pytest.mark.django_db
-def test_supplier_debt_is_priced_on_loaded_quantity_not_full_order():
-    """Exact client-confirmed example (2026-09-06): purchase 200,000 L at
-    500 XOF/L, only 100,000 L actually loaded onto a trip so far ->
-    supplier debt = 100,000 x 500 = 50,000,000 XOF, not the full order's
-    100,000,000 XOF. Loading the remaining 100,000 L later brings the debt
-    up to the full order amount."""
+def test_supplier_debt_is_priced_on_full_order_immediately_not_loaded_quantity():
+    """Business rule reversal (client request, 2026-09-10): purchase
+    200,000 L at 500 XOF/L -> supplier debt = 200,000 x 500 = 100,000,000
+    XOF immediately on confirmation, before any truck has loaded anything.
+    Loading fuel afterwards (partially or fully) does not change the debt -
+    only a payment does."""
     admin_role = Role.objects.get(name=Role.NAME_ADMIN)
     admin_user = User.objects.create_user(
         phone="+222DEBTCLIENTEX", pin="1234", role=admin_role
@@ -671,21 +670,26 @@ def test_supplier_debt_is_priced_on_loaded_quantity_not_full_order():
         created_by=admin_user,
     )
 
-    # Nothing loaded yet: no debt at all.
+    # Nothing loaded yet: the debt is already the full order.
     debt = ControlledDebtPaymentService.describe_supplier_order(order)
-    assert debt["total_amount"] == Decimal("0.00")
-    assert debt["remaining_amount"] == Decimal("0.00")
+    assert debt["total_amount"] == Decimal("100000000.00")
+    assert debt["remaining_amount"] == Decimal("100000000.00")
 
     _load_trip_for_supplier_order(
         supplier=supplier, supplier_order=order, quantity=Decimal("100000.00"),
         suffix="DEBT-CLIENT-EX-1", admin_user=admin_user,
     )
 
+    # Partial loading does not move the debt - it was already booked in full.
     debt = ControlledDebtPaymentService.describe_supplier_order(order)
-    assert debt["total_amount"] == Decimal("50000000.00")
-    assert debt["remaining_amount"] == Decimal("50000000.00")
+    assert debt["total_amount"] == Decimal("100000000.00")
+    assert debt["remaining_amount"] == Decimal("100000000.00")
 
-    # Load the remaining 100,000 L later: debt grows to the full order.
+    # The unloaded half now shows up as the reliquat's monetary value.
+    reliquat_amount = SupplierStockService.get_purchase_reliquat_amount(order)
+    assert reliquat_amount == Decimal("50000000.00")
+
+    # Loading the rest still doesn't move the debt, only the reliquat.
     _load_trip_for_supplier_order(
         supplier=supplier, supplier_order=order, quantity=Decimal("100000.00"),
         suffix="DEBT-CLIENT-EX-2", admin_user=admin_user,
@@ -695,6 +699,7 @@ def test_supplier_debt_is_priced_on_loaded_quantity_not_full_order():
     assert debt["total_amount"] == Decimal("100000000.00")
     assert debt["remaining_amount"] == Decimal("100000000.00")
     assert debt["total_amount"] == order.total_amount
+    assert SupplierStockService.get_purchase_reliquat_amount(order) == Decimal("0.00")
 
 
 @pytest.mark.django_db
@@ -1280,6 +1285,40 @@ def test_transport_payment_per_litre_requires_unit_price(finance_client):
 
 
 @pytest.mark.django_db
+def test_transport_payment_rejects_a_second_one_for_the_same_trip(finance_client):
+    # Bug found by chance (2026-09-10 client feedback): nothing prevented
+    # creating a second TransportPayment for a trip that already has one -
+    # the "Ajouter des frais de transport" button on TripDetail.vue has no
+    # guard, so two settlements piled up for the same trip. A trip has one
+    # settlement, period - same invariant as a Sale (OneToOneField on Trip).
+    trip, transporter = _make_trip_for_deduction("DUP-TRIP")
+    first = finance_client.post(
+        "/api/transport-payments/",
+        {
+            "trip": trip.id,
+            "transporter": transporter.id,
+            "calculation_method": TransportPayment.CalculationMethod.FIXED,
+            "base_amount": "500000.00",
+        },
+    )
+    assert first.status_code == 201
+
+    second = finance_client.post(
+        "/api/transport-payments/",
+        {
+            "trip": trip.id,
+            "transporter": transporter.id,
+            "calculation_method": TransportPayment.CalculationMethod.FIXED,
+            "base_amount": "500000.00",
+        },
+    )
+
+    assert second.status_code == 400
+    assert trip.reference in second.data["non_field_errors"][0]
+    assert TransportPayment.objects.filter(trip=trip).count() == 1
+
+
+@pytest.mark.django_db
 def test_transport_payment_per_litre_appears_in_transporter_outstanding_when_not_paid(
     finance_client,
 ):
@@ -1824,6 +1863,93 @@ def test_controlled_transport_payment_allocates_by_transporter_fifo(treasury_use
         Decimal("700000.00"),
         Decimal("200000.00"),
     ]
+
+
+# ---------------------------------------------------------------------------
+# Bug found by chance (2026-09-10 client feedback): a client-verification
+# mistake created a huge TransportDeduction, pushing a TransportPayment's
+# net_amount negative (the transporter now owes the company, not the other
+# way round) - _open_transport_payments()'s `remaining_amount > ZERO` filter
+# silently dropped that line from describe_transporter/describe_transporter_
+# balance entirely, so the amount owed BY the transporter never showed up
+# anywhere (total_due / net_balance looked as if it didn't exist).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_transporter_balance_reflects_a_payment_the_transporter_owes_back():
+    trip, transporter = _make_trip_for_deduction("OWES-BACK")
+    TransportPayment.objects.create(
+        trip=trip,
+        transporter=transporter,
+        calculation_method=TransportPayment.CalculationMethod.FIXED,
+        base_amount=Decimal("2925000.00"),
+        deduction_amount=Decimal("44800000.00"),
+        status=TransportPayment.Status.PLANNED,
+    )
+
+    balance = ControlledDebtPaymentService.describe_transporter_balance(transporter)
+
+    # net_amount = 2 925 000 - 44 800 000 = -41 875 000 - the transporter
+    # owes the company that much, so total_due (what we owe them) must go
+    # negative, not silently read as if this payment did not exist.
+    assert balance["total_due"] == Decimal("-41875000.00")
+    assert balance["net_balance"] == Decimal("41875000.00")
+
+
+@pytest.mark.django_db
+def test_transporter_balance_sums_multiple_payments_some_owed_back(treasury_user):
+    # Mirrors the exact screenshot from the bug report: one trip where the
+    # company still owes the transporter, others where the transporter now
+    # owes the company - the net balance must be the sum of all of them,
+    # not just the positive ones.
+    trip_a, transporter = _make_trip_for_deduction("MIX-A")
+    trip_b, _same = _make_trip_for_deduction("MIX-B")
+    trip_b.transporter = transporter
+    trip_b.save(update_fields=["transporter", "updated_at"])
+
+    TransportPayment.objects.create(
+        trip=trip_a,
+        transporter=transporter,
+        calculation_method=TransportPayment.CalculationMethod.FIXED,
+        base_amount=Decimal("2925000.00"),
+        status=TransportPayment.Status.PLANNED,
+    )
+    TransportPayment.objects.create(
+        trip=trip_b,
+        transporter=transporter,
+        calculation_method=TransportPayment.CalculationMethod.FIXED,
+        base_amount=Decimal("2925000.00"),
+        deduction_amount=Decimal("40320000.00"),
+        status=TransportPayment.Status.PLANNED,
+    )
+
+    balance = ControlledDebtPaymentService.describe_transporter_balance(transporter)
+
+    # 2 925 000 (owed to them) + (2 925 000 - 40 320 000) (owed back) = -34 470 000
+    assert balance["total_due"] == Decimal("-34470000.00")
+    assert balance["net_balance"] == Decimal("34470000.00")
+
+
+@pytest.mark.django_db
+def test_open_transport_payments_still_excludes_a_fully_settled_zero_balance_line():
+    # A payment whose remaining_amount is exactly zero (fully paid, or a
+    # net_amount of 0.00) must stay excluded - only the sign flip (negative
+    # remaining) was the bug, not the zero-balance exclusion itself.
+    trip, transporter = _make_trip_for_deduction("ZERO-BAL")
+    TransportPayment.objects.create(
+        trip=trip,
+        transporter=transporter,
+        calculation_method=TransportPayment.CalculationMethod.FIXED,
+        base_amount=Decimal("500000.00"),
+        deduction_amount=Decimal("500000.00"),
+        status=TransportPayment.Status.PLANNED,
+    )
+
+    balance = ControlledDebtPaymentService.describe_transporter_balance(transporter)
+
+    assert balance["total_due"] == Decimal("0.00")
+    assert balance["net_balance"] == Decimal("0.00")
 
 
 @pytest.mark.django_db
@@ -3352,6 +3478,11 @@ def test_active_shareholder_percentages_check_excludes_self_on_update():
 
 @pytest.mark.django_db
 def test_shareholder_crud_via_admin_api(admin_client):
+    """`contribution` is read-only via this API (bug fix, 2026-09-10 - see
+    ShareholderSerializer.Meta): a value submitted here must be ignored,
+    not persisted. Real capital always goes through
+    ShareholderContributionService.record_contribution() instead, which
+    requires a bank/cash account."""
     created = admin_client.post(
         "/api/shareholders/",
         {
@@ -3362,7 +3493,7 @@ def test_shareholder_crud_via_admin_api(admin_client):
         },
     )
     assert created.status_code == 201, created.data
-    assert created.data["contribution"] == "1000000.00"
+    assert created.data["contribution"] == "0.00"
 
     updated = admin_client.patch(
         f"/api/shareholders/{created.data['id']}/",
@@ -3370,7 +3501,7 @@ def test_shareholder_crud_via_admin_api(admin_client):
     )
     assert updated.status_code == 200, updated.data
     assert updated.data["participation_percent"] == "55.00"
-    assert updated.data["contribution"] == "1250000.00"
+    assert updated.data["contribution"] == "0.00"
 
 
 @pytest.mark.django_db

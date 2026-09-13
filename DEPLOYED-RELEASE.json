@@ -1,0 +1,6 @@
+{
+  "commit": "697afc7320907529dcabe7e222543012dea98b15",
+  "deployed_at": "20260911T002412Z",
+  "method": "GitHub verified source archive with production overlay",
+  "rollback": "/var/backups/bessma/fuel-release-20260911T002412Z"
+}

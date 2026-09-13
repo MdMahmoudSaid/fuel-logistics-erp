@@ -246,6 +246,7 @@ const workingCapitalCard = computed(() => {
     supplierParts: formatMoneyParts(wc.supplier_debt_total),
     transporterParts: formatMoneyParts(wc.transporter_debt_total),
     otherDebtsParts: formatMoneyParts(wc.other_debts),
+    supplierReliquatParts: formatMoneyParts(wc.supplier_reliquat_value),
   }
 })
 
@@ -618,6 +619,12 @@ const compactEnRouteTrips = computed(() => enRouteTrips.value.slice(0, 5))
                 <dt class="text-texte-2">{{ t('dashboard.final.otherDebts') }}</dt>
                 <dd class="text-texte font-medium">
                   <MonoValue v-bind="workingCapitalCard.otherDebtsParts" />
+                </dd>
+              </div>
+              <div class="bg-sable flex items-center justify-between gap-3 rounded-lg px-3 py-2">
+                <dt class="text-texte-2">{{ t('dashboard.final.supplierReliquatValue') }}</dt>
+                <dd class="text-texte font-medium">
+                  <MonoValue v-bind="workingCapitalCard.supplierReliquatParts" />
                 </dd>
               </div>
             </dl>

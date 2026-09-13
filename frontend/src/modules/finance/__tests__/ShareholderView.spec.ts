@@ -104,6 +104,7 @@ describe('ShareholderView', () => {
         supplier_debt_total: '0.00',
         transporter_debt_total: '0.00',
         other_debts: '0.00',
+        supplier_reliquat_value: '0.00',
         gross: '750000.00',
         total: '750000.00',
       },
@@ -195,6 +196,7 @@ describe('ShareholderView', () => {
         supplier_debt_total: '0.00',
         transporter_debt_total: '0.00',
         other_debts: '0.00',
+        supplier_reliquat_value: '0.00',
         gross: '750000.00',
         total: '750000.00',
       },
@@ -399,7 +401,13 @@ describe('ShareholderView', () => {
     expect(wrapper.text()).toContain('615 000 XOF')
   })
 
-  it('shows shareholder contribution in the associates table and form', async () => {
+  it('shows shareholder contribution in the associates table but not in the add/edit form', async () => {
+    // Bug fix (2026-09-10): "Contribution" is a read-only historical
+    // figure (see ShareholderSerializer.Meta.read_only_fields) - it must
+    // stay visible in the list, but the Ajouter/Modifier form must no
+    // longer let a user type an arbitrary amount there with no linked
+    // bank/cash account. Real capital goes through "Nouvel apport en
+    // capital" (ContributionForm.vue) instead.
     const wrapper = mount(ShareholderView)
     await flushPromises()
 
@@ -412,7 +420,7 @@ describe('ShareholderView', () => {
     await wrapper.findAll('button').find((b) => b.text() === 'Ajouter')!.trigger('click')
     await flushPromises()
 
-    expect(wrapper.find('#contribution').exists()).toBe(true)
+    expect(wrapper.find('#contribution').exists()).toBe(false)
   })
 
   it('localizes the shareholder tabs and suggested distributable result label in English and Arabic', async () => {

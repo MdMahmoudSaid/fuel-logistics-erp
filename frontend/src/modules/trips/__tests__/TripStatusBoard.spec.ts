@@ -21,6 +21,24 @@ const trips: Trip[] = [
     supplier_detail: { id: 1, name: 'Supplier 1' },
     supplier_order: 1,
     cession_letter: 1,
+    cession_letter_detail: {
+      id: 1,
+      reference: 'CES-001',
+      supplier_order: 1,
+      authorized_quantity: '45000.00',
+      issue_date: todayIso,
+      status: 'ACTIVE',
+      notes: '',
+      created_by: null,
+      created_by_detail: null,
+      loaded_quantity: '30000.00',
+      remaining_quantity: '15000.00',
+      documents: [],
+      created_at: todayIso,
+      updated_at: todayIso,
+    },
+    cession_letter_truck_load_count: 3,
+    delivery_control_detail: null,
     product: 1,
     product_detail: { id: 1, name: 'Gasoil', code: 'GO' },
     quantity_loaded: '10000.00',
@@ -50,6 +68,8 @@ const trips: Trip[] = [
     supplier_detail: { id: 1, name: 'Supplier 1' },
     supplier_order: 1,
     cession_letter: 1,
+    cession_letter_truck_load_count: 1,
+    delivery_control_detail: null,
     product: 1,
     product_detail: { id: 1, name: 'Gasoil', code: 'GO' },
     quantity_loaded: '5000.00',
@@ -79,6 +99,8 @@ const trips: Trip[] = [
     supplier_detail: { id: 1, name: 'Supplier 1' },
     supplier_order: 1,
     cession_letter: 1,
+    cession_letter_truck_load_count: 1,
+    delivery_control_detail: null,
     product: 1,
     product_detail: { id: 1, name: 'Gasoil', code: 'GO' },
     quantity_loaded: '8000.00',
@@ -210,5 +232,12 @@ describe('TripStatusBoard', () => {
     expect(stockChip?.classes()).not.toContain('bg-orange-tint')
     expect(wrapper.text()).toContain('TRIP-STOCK')
     expect(wrapper.text()).toContain('TRIP-TRANSIT')
+  })
+
+  it('shows the cession letter reference and this truck\'s load count under it', async () => {
+    const { wrapper } = await mountAt('/trips')
+
+    expect(wrapper.text()).toContain('CES-001')
+    expect(wrapper.text()).toContain('3 chargement(s) de ce camion')
   })
 })

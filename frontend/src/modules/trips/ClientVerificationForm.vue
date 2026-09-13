@@ -115,6 +115,7 @@ async function onSubmit() {
           required
           class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
         />
+        <p class="text-texte-3 text-xs">{{ t('trips.clientVerification.receivedQuantityHint') }}</p>
       </div>
 
       <div class="space-y-1.5">

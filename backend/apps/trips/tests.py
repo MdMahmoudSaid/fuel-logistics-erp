@@ -36,7 +36,12 @@ from apps.sales.services import (
 )
 from apps.suppliers.models import Supplier
 from apps.transport.models import Transporter, Truck
-from apps.trips.models import DeliveryControl, Trip, TripStatusHistory
+from apps.trips.models import (
+    ClientVerificationCorrection,
+    DeliveryControl,
+    Trip,
+    TripStatusHistory,
+)
 from apps.trips.serializers import TripSerializer, TripStatusHistorySerializer
 from apps.trips.services import (
     CustomerAlreadySoldError,
@@ -187,6 +192,40 @@ def test_trip_serializer_includes_cession_letter_proof_documents():
     # test run is still on disk (media/ isn't wiped between runs) - assert on
     # the stem rather than an exact filename match.
     assert "cession-proof" in proof_file and proof_file.endswith(".jpg")
+
+
+@pytest.mark.django_db
+def test_trip_serializer_cession_letter_truck_load_count_counts_this_truck_under_this_cession():
+    """Added client request 2026-09-10: "Trajets & chargements" needs to
+    show, per trip, how many times its truck has been loaded under the
+    same cession letter - counts the trip itself (first load reads 1),
+    excludes cancelled trips, and is scoped to (truck, cession letter): a
+    different truck loaded under the same cession letter must not inflate
+    this truck's own count, and the same truck loaded under a different
+    cession letter must not either."""
+    fx = _setup_fixtures("LOADCOUNT")
+    truck_a = _make_truck("TRK-LOADCOUNT-A")
+    truck_b = _make_truck("TRK-LOADCOUNT-B")
+
+    trip1 = _make_trip(fx, truck_a, "TRIP-LOADCOUNT-1", quantity=Decimal("15000.00"))
+    assert TripSerializer(trip1).data["cession_letter_truck_load_count"] == 1
+
+    trip2 = _make_trip(fx, truck_a, "TRIP-LOADCOUNT-2", quantity=Decimal("15000.00"))
+    assert TripSerializer(trip1).data["cession_letter_truck_load_count"] == 2
+    assert TripSerializer(trip2).data["cession_letter_truck_load_count"] == 2
+
+    # A different truck loaded under the same cession letter has its own,
+    # separate count.
+    other_truck_trip = _make_trip(fx, truck_b, "TRIP-LOADCOUNT-OTHER-TRUCK", quantity=Decimal("15000.00"))
+    assert TripSerializer(other_truck_trip).data["cession_letter_truck_load_count"] == 1
+    assert TripSerializer(trip1).data["cession_letter_truck_load_count"] == 2
+
+    # A cancelled trip never really happened - excluded from the count.
+    trip3 = _make_trip(fx, truck_a, "TRIP-LOADCOUNT-3", quantity=Decimal("15000.00"))
+    trip3.status = Trip.Status.CANCELLED
+    trip3.save(update_fields=["status", "updated_at"])
+    assert TripSerializer(trip1).data["cession_letter_truck_load_count"] == 2
+    assert TripSerializer(trip3).data["cession_letter_truck_load_count"] == 2
 
 
 def _advance_to_completed(trip, actor):
@@ -3349,3 +3388,270 @@ def test_transport_payment_rejected_for_internal_transporter_trip():
 
     assert response.status_code == 400
     assert "transporteur externe" in str(response.data)
+
+
+# ---------------------------------------------------------------------------
+# Feedback (2026-09-10): the "Declarer une perte" button's wording led an
+# operator to type the loss (100 L) into the received-quantity field instead
+# of the actual received quantity (44900 L), with no way to fix it -
+# DeliveryService.correct_client_verification() is the audited fix path.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_correct_client_verification_updates_the_delivery_control():
+    fx = _fixtures_with_customer("CCV-HAPPY")
+    trip = _deliverable_trip(fx, "TRIP-CCV-HAPPY-001")
+    DeliveryService.record_delivery(
+        trip_id=trip.id, control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE,
+        controller=fx["admin_user"], unit_selling_price=Decimal("850.0000"),
+    )
+    DeliveryService.record_client_verification(
+        trip_id=trip.id, received_qty=Decimal("100.00"),
+        verified_at=date.today(), actor=fx["admin_user"],
+    )
+
+    control = DeliveryService.correct_client_verification(
+        trip_id=trip.id, received_qty=Decimal("44900.00"),
+        reason="L'operateur a saisi la perte au lieu de la quantite recue",
+        actor=fx["admin_user"],
+    )
+
+    assert control.received_quantity == Decimal("44900.00")
+    assert control.loss_quantity == Decimal("100.00")
+    correction = ClientVerificationCorrection.objects.get(trip=trip)
+    assert correction.previous_received_quantity == Decimal("100.00")
+    assert correction.new_received_quantity == Decimal("44900.00")
+    assert correction.corrected_by == fx["admin_user"]
+
+
+@pytest.mark.django_db
+def test_correct_client_verification_rejected_before_any_verification():
+    fx = _fixtures_with_customer("CCV-NONE")
+    trip = _deliverable_trip(fx, "TRIP-CCV-NONE-001")
+    DeliveryService.record_delivery(
+        trip_id=trip.id, control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE,
+        controller=fx["admin_user"], unit_selling_price=Decimal("850.0000"),
+    )
+
+    with pytest.raises(ValueError):
+        DeliveryService.correct_client_verification(
+            trip_id=trip.id, received_qty=Decimal("44900.00"),
+            reason="Correction sans verification prealable",
+            actor=fx["admin_user"],
+        )
+
+
+@pytest.mark.django_db
+def test_correct_client_verification_updates_a_draft_invoice_total():
+    fx = _fixtures_with_customer("CCV-DRAFT-INV")
+    trip = _deliverable_trip(fx, "TRIP-CCV-DRAFT-INV-001")
+    ProductSellingPriceHistory.objects.create(
+        product=fx["product"], customer=fx["customer"],
+        price=Decimal("900.0000"), changed_by=fx["admin_user"],
+    )
+    DeliveryService.record_delivery(
+        trip_id=trip.id, control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE, controller=fx["admin_user"],
+    )
+    trip.refresh_from_db()
+    DeliveryService.record_client_verification(
+        trip_id=trip.id, received_qty=Decimal("100.00"),
+        verified_at=date.today(), actor=fx["admin_user"],
+    )
+    invoice = trip.sale.invoice
+
+    DeliveryService.correct_client_verification(
+        trip_id=trip.id, received_qty=Decimal("44900.00"),
+        reason="Correction de la quantite recue", actor=fx["admin_user"],
+    )
+
+    invoice.refresh_from_db()
+    assert invoice.total_amount == Decimal("40410000.00")  # 44900 * 900
+    assert InvoiceCorrection.objects.filter(invoice=invoice).count() == 0  # still DRAFT
+
+
+@pytest.mark.django_db
+def test_correct_client_verification_on_a_validated_invoice_writes_a_correction_row():
+    fx = _fixtures_with_customer("CCV-VALID-INV")
+    trip = _deliverable_trip(fx, "TRIP-CCV-VALID-INV-001")
+    ProductSellingPriceHistory.objects.create(
+        product=fx["product"], customer=fx["customer"],
+        price=Decimal("900.0000"), changed_by=fx["admin_user"],
+    )
+    DeliveryService.record_delivery(
+        trip_id=trip.id, control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE, controller=fx["admin_user"],
+    )
+    trip.refresh_from_db()
+    DeliveryService.record_client_verification(
+        trip_id=trip.id, received_qty=Decimal("100.00"),
+        verified_at=date.today(), actor=fx["admin_user"],
+    )
+    invoice = trip.sale.invoice
+    InvoiceService.validate_invoice(invoice.id, fx["admin_user"])
+
+    DeliveryService.correct_client_verification(
+        trip_id=trip.id, received_qty=Decimal("44900.00"),
+        reason="Correction de la quantite recue", actor=fx["admin_user"],
+    )
+
+    invoice.refresh_from_db()
+    assert invoice.total_amount == Decimal("40410000.00")
+    correction = InvoiceCorrection.objects.get(invoice=invoice)
+    assert correction.field_name == "delivered_quantity"
+
+
+@pytest.mark.django_db
+def test_correct_client_verification_blocked_when_invoice_paid_rolls_back():
+    fx = _fixtures_with_customer("CCV-PAID-INV")
+    trip = _deliverable_trip(fx, "TRIP-CCV-PAID-INV-001")
+    ProductSellingPriceHistory.objects.create(
+        product=fx["product"], customer=fx["customer"],
+        price=Decimal("900.0000"), changed_by=fx["admin_user"],
+    )
+    DeliveryService.record_delivery(
+        trip_id=trip.id, control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE, controller=fx["admin_user"],
+    )
+    trip.refresh_from_db()
+    DeliveryService.record_client_verification(
+        trip_id=trip.id, received_qty=Decimal("100.00"),
+        verified_at=date.today(), actor=fx["admin_user"],
+    )
+    invoice = trip.sale.invoice
+    InvoiceService.validate_invoice(invoice.id, fx["admin_user"])
+    Invoice.objects.filter(pk=invoice.id).update(status=Invoice.Status.PAID)
+
+    with pytest.raises(InvoicePaidCorrectionUnsupported):
+        DeliveryService.correct_client_verification(
+            trip_id=trip.id, received_qty=Decimal("44900.00"),
+            reason="Correction refusee", actor=fx["admin_user"],
+        )
+
+    control = DeliveryControl.objects.get(trip=trip)
+    assert control.received_quantity == Decimal("100.00")  # rolled back
+    assert ClientVerificationCorrection.objects.filter(trip=trip).count() == 0
+
+
+@pytest.mark.django_db
+def test_api_correct_client_verification_happy_path():
+    fx = _fixtures_with_customer("API-CCV-HAPPY")
+    trip = _deliverable_trip(fx, "TRIP-API-CCV-HAPPY-001")
+    DeliveryService.record_delivery(
+        trip_id=trip.id, control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE,
+        controller=fx["admin_user"], unit_selling_price=Decimal("850.0000"),
+    )
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+    client.post(
+        f"/api/trips/{trip.id}/client-verification/",
+        {"received_quantity": "100.00", "verified_at": str(date.today())},
+        format="json",
+    )
+
+    response = client.post(
+        f"/api/trips/{trip.id}/correct-client-verification/",
+        {
+            "received_quantity": "44900.00",
+            "reason": "L'operateur a saisi la perte au lieu de la quantite recue",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200, response.data
+    assert response.data["received_quantity"] == "44900.00"
+    assert len(response.data["verification_corrections"]) == 1
+
+
+@pytest.mark.django_db
+def test_api_correct_client_verification_rejected_before_any_verification():
+    fx = _fixtures_with_customer("API-CCV-NONE")
+    trip = _deliverable_trip(fx, "TRIP-API-CCV-NONE-001")
+    DeliveryService.record_delivery(
+        trip_id=trip.id, control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE,
+        controller=fx["admin_user"], unit_selling_price=Decimal("850.0000"),
+    )
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+
+    response = client.post(
+        f"/api/trips/{trip.id}/correct-client-verification/",
+        {"received_quantity": "44900.00", "reason": "Trop tot"},
+        format="json",
+    )
+
+    assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_api_correct_client_verification_requires_reason():
+    fx = _fixtures_with_customer("API-CCV-NOREASON")
+    trip = _deliverable_trip(fx, "TRIP-API-CCV-NOREASON-001")
+    DeliveryService.record_delivery(
+        trip_id=trip.id, control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE,
+        controller=fx["admin_user"], unit_selling_price=Decimal("850.0000"),
+    )
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+    client.post(
+        f"/api/trips/{trip.id}/client-verification/",
+        {"received_quantity": "100.00", "verified_at": str(date.today())},
+        format="json",
+    )
+
+    response = client.post(
+        f"/api/trips/{trip.id}/correct-client-verification/",
+        {"received_quantity": "44900.00"},
+        format="json",
+    )
+
+    assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_trip_serializer_exposes_delivery_control_detail_with_corrections():
+    fx = _fixtures_with_customer("TRIP-DCD")
+    trip = _deliverable_trip(fx, "TRIP-TRIP-DCD-001")
+    DeliveryService.record_delivery(
+        trip_id=trip.id, control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE,
+        controller=fx["admin_user"], unit_selling_price=Decimal("850.0000"),
+    )
+    DeliveryService.record_client_verification(
+        trip_id=trip.id, received_qty=Decimal("100.00"),
+        verified_at=date.today(), actor=fx["admin_user"],
+    )
+    DeliveryService.correct_client_verification(
+        trip_id=trip.id, received_qty=Decimal("44900.00"),
+        reason="Correction de la quantite recue", actor=fx["admin_user"],
+    )
+
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+    response = client.get(f"/api/trips/{trip.id}/")
+
+    assert response.status_code == 200
+    detail = response.data["delivery_control_detail"]
+    assert detail["received_quantity"] == "44900.00"
+    assert len(detail["verification_corrections"]) == 1
+    assert detail["verification_corrections"][0]["previous_received_quantity"] == "100.00"
+
+
+@pytest.mark.django_db
+def test_trip_serializer_delivery_control_detail_is_none_before_delivery():
+    fx = _setup_fixtures("TRIP-DCD-NONE")
+    truck = _make_truck("TRK-TRIP-DCD-NONE")
+    trip = _make_trip(fx, truck, "TRIP-TRIP-DCD-NONE-001")
+
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+    response = client.get(f"/api/trips/{trip.id}/")
+
+    assert response.status_code == 200
+    assert response.data["delivery_control_detail"] is None

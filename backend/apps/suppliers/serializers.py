@@ -46,23 +46,14 @@ class SupplierSerializer(serializers.ModelSerializer):
         return f"{total:.2f}"
 
     def get_outstanding_balance(self, obj) -> str:
-        # Bug fix (client business rule, confirmed 2026-09-06): the debt
-        # owed to a supplier is priced on quantity actually loaded, never on
-        # the full confirmed order - see SupplierStockService.
-        # get_purchase_loaded_amount and ControlledDebtPaymentService.
-        # describe_supplier_order (apps.finance.services), which this must
-        # stay consistent with instead of duplicating "total_purchased -
-        # total_paid" as its own, independent (and previously incorrect)
-        # formula.
-        loaded_value = sum(
-            (
-                SupplierStockService.get_purchase_loaded_amount(order)
-                for order in obj.orders.filter(status=SupplierOrder.Status.CONFIRMED)
-            ),
-            Decimal("0.00"),
-        )
+        # Business rule reversal (client request, 2026-09-10): the debt
+        # owed to a supplier is the full confirmed order total, due
+        # immediately on confirmation - see
+        # ControlledDebtPaymentService.describe_supplier_order
+        # (apps.finance.services), which this must stay consistent with.
+        total_purchased = Decimal(self.get_total_purchased(obj))
         paid = Decimal(self.get_total_paid(obj))
-        return f"{max(loaded_value - paid, Decimal('0.00')):.2f}"
+        return f"{max(total_purchased - paid, Decimal('0.00')):.2f}"
 
     def get_total_reliquat(self, obj) -> str:
         total = sum(

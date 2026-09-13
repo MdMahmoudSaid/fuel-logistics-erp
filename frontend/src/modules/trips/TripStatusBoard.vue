@@ -13,6 +13,7 @@ import MonoValue from '@/components/ui/MonoValue.vue'
 import Button from '@/components/ui/Button.vue'
 import TripCard from './TripCard.vue'
 import { useTripStatusLabel } from './tripStatusLabels'
+import { formatTruckPlates } from './formatTruckPlates'
 import { formatQuantity } from '@/utils/currency'
 
 const router = useRouter()
@@ -185,6 +186,7 @@ function nextAction(trip: Trip) {
               <th class="px-3 py-2.5 font-medium">{{ t('trips.table.truck') }}</th>
               <th class="px-3 py-2.5 font-medium">{{ t('trips.table.transporter') }}</th>
               <th class="px-3 py-2.5 font-medium">Fournisseur</th>
+              <th class="px-3 py-2.5 font-medium">{{ t('trips.table.cessionLetter') }}</th>
               <th class="px-3 py-2.5 font-medium">{{ t('trips.table.client') }}</th>
               <th class="px-3 py-2.5 font-medium">Produit</th>
               <th class="px-3 py-2.5 text-right font-medium">{{ t('trips.table.quantity') }}</th>
@@ -200,9 +202,22 @@ function nextAction(trip: Trip) {
               @click="goToDetail(trip)"
             >
               <td class="px-3 py-2.5"><MonoValue :value="trip.reference" align="left" /></td>
-              <td class="px-3 py-2.5">{{ trip.truck_detail?.internal_id ?? '—' }}</td>
+              <td class="px-3 py-2.5">{{ formatTruckPlates(trip.truck_detail) }}</td>
               <td class="px-3 py-2.5">{{ trip.transporter_detail?.name ?? '—' }}</td>
               <td class="px-3 py-2.5">{{ trip.supplier_detail?.name ?? '—' }}</td>
+              <td class="px-3 py-2.5">
+                <div v-if="trip.cession_letter_detail">
+                  <MonoValue :value="trip.cession_letter_detail.reference" align="left" />
+                  <p class="text-texte-3 text-xs">
+                    {{
+                      t('trips.table.cessionLetterLoadCount', {
+                        count: trip.cession_letter_truck_load_count,
+                      })
+                    }}
+                  </p>
+                </div>
+                <span v-else>—</span>
+              </td>
               <td class="px-3 py-2.5">
                 {{
                   trip.destination_type === 'COMPANY_STOCK'
@@ -220,7 +235,7 @@ function nextAction(trip: Trip) {
               <td class="px-3 py-2.5">{{ nextAction(trip) }}</td>
             </tr>
             <tr v-if="!filteredTrips.length">
-              <td colspan="9" class="text-texte-3 px-3 py-8 text-center">
+              <td colspan="10" class="text-texte-3 px-3 py-8 text-center">
                 {{ t('trips.noTripsForFilter') }}
               </td>
             </tr>
