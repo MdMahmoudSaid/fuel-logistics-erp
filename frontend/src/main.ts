@@ -6,6 +6,7 @@ import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
 import { i18n } from './i18n'
+import { initAppUpdate } from './composables/useAppUpdate'
 
 const app = createApp(App)
 
@@ -15,9 +16,7 @@ app.use(i18n)
 
 app.mount('#app')
 
-if ('serviceWorker' in navigator && import.meta.env.PROD) {
-  navigator.serviceWorker.register('/sw.js')
-}
+initAppUpdate()
 
 // Bug fix (client feedback 2026-09-06): scrolling the mouse wheel over a
 // focused <input type="number"> makes the browser itself step the value

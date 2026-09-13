@@ -1,6 +1,8 @@
 {
   "common": {
     "offline": "Hors ligne — les modifications seront synchronisées au retour du réseau.",
+    "updateAvailable": "Une nouvelle version de l'application est disponible.",
+    "updateReload": "Actualiser",
     "more": "Plus",
     "loading": "Chargement…",
     "save": "Enregistrer",

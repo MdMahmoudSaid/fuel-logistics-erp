@@ -446,6 +446,18 @@ async function onViewLedger() {
   if (!ledgerShareholderId.value) return
   await loadLedger(Number(ledgerShareholderId.value))
 }
+
+// Bug fix (2026-09-13 audit): availableSharesForWithdrawal only reads
+// `ledger`, which used to be populated exclusively by the Grand livre
+// tab's own lookup - picking a shareholder directly in the Retraits form
+// left the profit-share picker silently empty even when real money was
+// available. Loading that shareholder's ledger here too closes the gap
+// without duplicating the filtering logic.
+async function onWithdrawalShareholderChange() {
+  withdrawalForm.value.profit_share = ''
+  const shareholderId = Number(withdrawalForm.value.shareholder)
+  if (shareholderId) await loadLedger(shareholderId)
+}
 </script>
 
 <template>
@@ -974,7 +986,7 @@ async function onViewLedger() {
             v-model="withdrawalForm.shareholder"
             required
             class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-            @change="withdrawalForm.profit_share = ''"
+            @change="onWithdrawalShareholderChange"
           >
             <option value="" disabled>{{ t('finance.shareholder.selectShareholder') }}</option>
             <option v-for="s in activeShareholders" :key="s.id" :value="s.id">{{ s.name }}</option>

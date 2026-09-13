@@ -423,6 +423,51 @@ describe('ShareholderView', () => {
     expect(wrapper.find('#contribution').exists()).toBe(false)
   })
 
+  it('offers a shareholder\'s withdrawable profit share as soon as they are picked in Retraits, without visiting Grand livre first', async () => {
+    // Bug fix (2026-09-13 audit): availableSharesForWithdrawal only ever
+    // read the `ledger` ref, which used to be populated exclusively by
+    // Grand livre's own lookup - going straight to Retraits and picking a
+    // shareholder left the profit-share dropdown silently empty even when
+    // real money was available to withdraw.
+    fetchShareholderLedger.mockResolvedValue({
+      shareholder: { id: 1, name: 'Ahmed', participation_percent: '100.00', is_active: true },
+      total_amount_due: '3528000.00',
+      total_withdrawn: '0.00',
+      remaining_due: '3528000.00',
+      available_balance: '3528000.00',
+      total_contributed: '0.00',
+      shares: [
+        {
+          id: 2,
+          distribution_id: 1,
+          period_start: '2026-09-13',
+          period_end: '2026-09-13',
+          percent_snapshot: '80.00',
+          amount_due: '3528000.00',
+          amount_withdrawn: '0.00',
+          remaining_due: '3528000.00',
+        },
+      ],
+      loans_borrowed: [],
+      loans_lent: [],
+      net_loan_balance: '0.00',
+      withdrawals: [],
+    })
+
+    const wrapper = mount(ShareholderView)
+    await flushPromises()
+
+    await wrapper.findAll('button').find((b) => b.text() === 'Retraits')!.trigger('click')
+    await flushPromises()
+
+    await wrapper.find('#wd_shareholder').setValue('1')
+    await flushPromises()
+
+    expect(fetchShareholderLedger).toHaveBeenCalledWith(1)
+    const shareOptions = wrapper.find('#wd_share').findAll('option')
+    expect(shareOptions.some((o) => o.text().includes('3528000.00'))).toBe(true)
+  })
+
   it('localizes the shareholder tabs and suggested distributable result label in English and Arabic', async () => {
     i18n.global.locale.value = 'en'
     const english = mount(ShareholderView)

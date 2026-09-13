@@ -1,6 +1,8 @@
 {
   "common": {
     "offline": "Offline — changes will sync once the network is back.",
+    "updateAvailable": "A new version of the app is available.",
+    "updateReload": "Refresh",
     "more": "More",
     "loading": "Loading…",
     "save": "Save",
