@@ -1,6 +1,6 @@
 {
-  "commit": "697afc7320907529dcabe7e222543012dea98b15",
-  "deployed_at": "20260911T002412Z",
-  "method": "GitHub verified source archive with production overlay",
-  "rollback": "/var/backups/bessma/fuel-release-20260911T002412Z"
+  "commit": "d6b4899726559259c5f775a87e519e659e6d0f98",
+  "deployed_at": "20260913T073803Z",
+  "method": "Manual redeploy via docker compose (audit follow-up: server/GitHub git sync, withdrawal picker fix, PWA update fix)",
+  "rollback": "/home/bouye/releases/fuel-697afc7"
 }
