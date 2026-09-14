@@ -42,6 +42,8 @@ describe('ProfitView', () => {
         transporter_debt_total: '100000.00',
         other_debts: '50000.00',
         supplier_reliquat_value: '0.00',
+        supplier_in_transit_value: '0.00',
+        supplier_company_stock_value: '0.00',
         // gross = 400000 + 350000 = 750000
         // total = gross + 200000 + 100000 + 50000 (debts ADDED) = 1100000
         gross: '750000.00',
@@ -176,6 +178,8 @@ describe('ProfitView', () => {
         transporter_debt_total: '100000.00',
         other_debts: '50000.00',
         supplier_reliquat_value: '0.00',
+        supplier_in_transit_value: '0.00',
+        supplier_company_stock_value: '0.00',
         gross: '750000.00',
         total: '1100000.00',
       },

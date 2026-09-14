@@ -53,6 +53,8 @@ PROFIT_PDF_LABELS = {
         "otherDebt": "Autres frais (frontiere / chargement)",
         "totalDebts": "= Total des dettes ouvertes",
         "supplierReliquat": "Stock fournisseur (reliquat non charge)",
+        "supplierInTransit": "Stock en cours (charge, en route)",
+        "supplierCompanyStock": "Stock entreprise (arrive au depot)",
         "totalWorkingCapital": "= Fond de roulement total",
         "capital": "Capital apporte",
         "alreadyDistributed": "Deja reparti (non retire)",
@@ -96,6 +98,8 @@ PROFIT_PDF_LABELS = {
         "otherDebt": "Other fees (border / loading / misc.)",
         "totalDebts": "= Total open debts",
         "supplierReliquat": "Supplier stock (unloaded reliquat)",
+        "supplierInTransit": "In-transit stock (loaded, en route)",
+        "supplierCompanyStock": "Company stock (arrived at depot)",
         "totalWorkingCapital": "= Total working capital",
         "capital": "Capital contributed",
         "alreadyDistributed": "Already distributed (not withdrawn)",
@@ -330,6 +334,8 @@ def render_profit_report_pdf(
             ),
         ),
         (labels["supplierReliquat"], _format_money(wc["supplier_reliquat_value"])),
+        (labels["supplierInTransit"], _format_money(wc["supplier_in_transit_value"])),
+        (labels["supplierCompanyStock"], _format_money(wc["supplier_company_stock_value"])),
         (labels["totalWorkingCapital"], _format_money(wc["total"])),
         (labels["capital"], _format_money(wc["capital"])),
         (labels["alreadyDistributed"], _format_money(preview["already_distributed"])),
@@ -337,7 +343,7 @@ def render_profit_report_pdf(
     ]
     wc_table = Table(wc_rows, colWidths=[110 * mm, 60 * mm])
     wc_table.setStyle(_SUMMARY_TABLE_STYLE)
-    wc_table.setStyle(TableStyle([_bold_row(idx) for idx in (2, 9, 11, 14)]))
+    wc_table.setStyle(TableStyle([_bold_row(idx) for idx in (2, 9, 13, 16)]))
     elements.append(wc_table)
     elements.append(Spacer(1, 8 * mm))
 

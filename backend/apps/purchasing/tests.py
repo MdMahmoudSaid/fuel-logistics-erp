@@ -252,6 +252,84 @@ def test_reliquat_and_debt_track_loaded_quantity_not_cession_or_full_order():
     assert SupplierStockService.get_purchase_reliquat_amount(order) == Decimal("0.00")
 
 
+def _make_order(suffix, admin_user, *, quantity, unit_price):
+    product = Product.objects.get(code="gasoil")
+    supplier = Supplier.objects.create(name=f"Pipeline Supplier {suffix}", country="Senegal")
+    return SupplierOrder.objects.create(
+        reference=f"SO-{suffix}", supplier=supplier, product=product,
+        purchase_date="2026-08-18", quantity_litres=quantity, unit_price=unit_price,
+        status=SupplierOrder.Status.CONFIRMED, created_by=admin_user,
+    )
+
+
+@pytest.mark.django_db
+def test_get_purchase_in_transit_amount_counts_loaded_not_yet_arrived_trips():
+    """Client's pipeline definition (2026-09-06, mirrored 2026-09-14 into
+    SupplierStockService for the Fond de roulement fix): a loaded trip
+    still on the road (default ASSIGNED status here) counts as "en cours",
+    valued at the order's own unit_price."""
+    admin_role = Role.objects.get(name=Role.NAME_ADMIN)
+    admin_user = User.objects.create_user(phone="+2220000101", pin="1234", role=admin_role)
+    order = _make_order("INTRANSIT1", admin_user, quantity=Decimal("200000.00"), unit_price=Decimal("1000.0000"))
+    cession = CessionLetter.objects.create(
+        reference="CL-INTRANSIT1", supplier_order=order,
+        authorized_quantity=Decimal("200000.00"), issue_date="2026-08-18", created_by=admin_user,
+    )
+    _load_trip(supplier_order=order, cession=cession, quantity=Decimal("45000.00"), suffix="INTRANSIT1", admin_user=admin_user)
+
+    assert SupplierStockService.get_purchase_in_transit_amount(order) == Decimal("45000000.00")
+    assert SupplierStockService.get_purchase_company_stock_amount(order) == Decimal("0.00")
+
+
+@pytest.mark.django_db
+def test_get_purchase_company_stock_amount_counts_only_stocked_trips():
+    """Once a trip reaches ARRIVED_AT_COMPANY_STOCK/STOCKED it drops out of
+    "en cours" and becomes "stock entreprise" - valued at the same pure
+    unit_price basis (never the fuller cost-basis the Dashboard card uses,
+    to avoid double-counting transport/customs debts, see
+    WorkingCapitalService's 2026-09-14 docstring entry)."""
+    admin_role = Role.objects.get(name=Role.NAME_ADMIN)
+    admin_user = User.objects.create_user(phone="+2220000102", pin="1234", role=admin_role)
+    order = _make_order("STOCKED1", admin_user, quantity=Decimal("200000.00"), unit_price=Decimal("1000.0000"))
+    cession = CessionLetter.objects.create(
+        reference="CL-STOCKED1", supplier_order=order,
+        authorized_quantity=Decimal("200000.00"), issue_date="2026-08-18", created_by=admin_user,
+    )
+    trip = _load_trip(supplier_order=order, cession=cession, quantity=Decimal("45000.00"), suffix="STOCKED1", admin_user=admin_user)
+    trip.status = Trip.Status.STOCKED
+    trip.save(update_fields=["status"])
+
+    assert SupplierStockService.get_purchase_company_stock_amount(order) == Decimal("45000000.00")
+    assert SupplierStockService.get_purchase_in_transit_amount(order) == Decimal("0.00")
+
+
+@pytest.mark.django_db
+def test_get_purchase_in_transit_and_company_stock_amount_exclude_sold_trips():
+    """A trip that already produced a Sale is a customer receivable, not
+    company-held fuel - it must drop out of both buckets the instant it's
+    sold, mirroring TheoreticalStockService's own exclusion."""
+    from apps.customers.models import Customer
+    from apps.sales.models import Sale
+
+    admin_role = Role.objects.get(name=Role.NAME_ADMIN)
+    admin_user = User.objects.create_user(phone="+2220000103", pin="1234", role=admin_role)
+    order = _make_order("SOLD1", admin_user, quantity=Decimal("200000.00"), unit_price=Decimal("1000.0000"))
+    cession = CessionLetter.objects.create(
+        reference="CL-SOLD1", supplier_order=order,
+        authorized_quantity=Decimal("200000.00"), issue_date="2026-08-18", created_by=admin_user,
+    )
+    trip = _load_trip(supplier_order=order, cession=cession, quantity=Decimal("45000.00"), suffix="SOLD1", admin_user=admin_user)
+    trip.status = Trip.Status.STOCKED
+    trip.save(update_fields=["status"])
+    Sale.objects.create(
+        trip=trip, customer=Customer.objects.create(name="Sold Client"), product=order.product,
+        delivered_quantity=Decimal("45000.00"), unit_selling_price=Decimal("1200.0000"),
+    )
+
+    assert SupplierStockService.get_purchase_company_stock_amount(order) == Decimal("0.00")
+    assert SupplierStockService.get_purchase_in_transit_amount(order) == Decimal("0.00")
+
+
 @pytest.mark.django_db
 def test_supplier_permissions():
     ops_role = Role.objects.get(name=Role.NAME_OPERATIONS)

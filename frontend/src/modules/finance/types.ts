@@ -608,6 +608,8 @@ export interface WorkingCapital {
   transporter_debt_total: string
   other_debts: string
   supplier_reliquat_value: string
+  supplier_in_transit_value: string
+  supplier_company_stock_value: string
   gross: string
   total: string
 }

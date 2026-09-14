@@ -90,19 +90,83 @@ class SupplierStockService:
 
     @staticmethod
     def get_purchase_reliquat_amount(purchase: SupplierOrder) -> Decimal:
-        """Monetary value of the unloaded reliquat: fuel already paid for in
-        full (the whole order is booked as debt on confirmation, see
-        get_purchase_loaded_amount() above) but still sitting at the
-        supplier, not yet loaded onto a trip.
+        """Monetary value of the unloaded reliquat: fuel still sitting at
+        the supplier, not yet loaded onto a trip.
 
-        Added 2026-09-10 (client request): this is the figure that now
-        counts as an asset in WorkingCapitalService's "Fond de roulement
-        client" - stock the company already paid for. Computed as
+        Added 2026-09-10 (client request), corrected 2026-09-14: the whole
+        order is booked as an open DEBT on confirmation (see
+        get_purchase_loaded_amount() above) - that is not the same as being
+        PAID for. This raw value is only a candidate for WorkingCapital-
+        Service's "Fond de roulement client" asset line, capped there by
+        how much has actually been paid to the supplier so far (see
+        WorkingCapitalService.get_supplier_pipeline_breakdown) - an unpaid
+        order's reliquat must NOT also count as an asset on top of the open
+        debt, or the same unpaid litres get counted twice. Computed as
         total_amount - loaded_amount (not reliquat_quantity x unit_price
         recomputed independently) so the two halves always sum exactly back
         to total_amount, immune to prorated-optional-costs rounding drift.
         """
         return purchase.total_amount - SupplierStockService.get_purchase_loaded_amount(purchase)
+
+    @staticmethod
+    def get_purchase_in_transit_amount(purchase: SupplierOrder) -> Decimal:
+        """Monetary value, at the order's own unit_price, of `purchase`'s
+        loaded litres currently "en cours" - on a truck, not yet arrived at
+        either final destination (company stock or client) and not yet
+        sold. Mirrors apps.reports.services.stock.TheoreticalStockService.
+        _in_transit_trips()'s definition exactly, scoped to one order, so
+        the two never drift apart.
+
+        Like get_purchase_reliquat_amount() above, this is a raw candidate
+        value only - WorkingCapitalService.get_supplier_pipeline_breakdown
+        caps it by what has actually been paid to the supplier, to avoid
+        double-counting against the still-open debt.
+        """
+        from apps.trips.models import Trip
+
+        quantity = (
+            Trip.objects.filter(supplier_order=purchase, sale__isnull=True)
+            .exclude(
+                status__in={
+                    Trip.Status.ARRIVED_AT_COMPANY_STOCK,
+                    Trip.Status.STOCKED,
+                    *Trip.NON_OCCUPYING_STATUSES,
+                }
+            )
+            .aggregate(total=Sum("quantity_loaded"))["total"]
+            or Decimal("0.00")
+        )
+        return (quantity * purchase.unit_price).quantize(Decimal("0.01"))
+
+    @staticmethod
+    def get_purchase_company_stock_amount(purchase: SupplierOrder) -> Decimal:
+        """Monetary value, at the order's own unit_price, of `purchase`'s
+        loaded litres that have arrived and are sitting in the company's
+        own stock (not yet sold). Mirrors apps.reports.services.stock.
+        TheoreticalStockService._company_stock_trips()'s definition exactly
+        (destination COMPANY_STOCK, status ARRIVED_AT_COMPANY_STOCK/
+        STOCKED), scoped to one order, valued at the pure purchase price
+        only - unlike the Dashboard's "Stock entreprise" card, this
+        deliberately excludes transport/customs costs (client decision,
+        2026-09-14): those are separate open debts already added in full to
+        WorkingCapitalService's total, so folding them into this value too
+        would double-count them a second time.
+
+        Raw candidate value only - see get_purchase_in_transit_amount()
+        above for the same caveat re: capping by amount paid.
+        """
+        from apps.trips.models import Trip
+
+        quantity = (
+            Trip.objects.filter(
+                supplier_order=purchase,
+                sale__isnull=True,
+                destination_type=Trip.DestinationType.COMPANY_STOCK,
+                status__in=[Trip.Status.ARRIVED_AT_COMPANY_STOCK, Trip.Status.STOCKED],
+            ).aggregate(total=Sum("quantity_loaded"))["total"]
+            or Decimal("0.00")
+        )
+        return (quantity * purchase.unit_price).quantize(Decimal("0.01"))
 
     @staticmethod
     def get_cession_remaining(cession: CessionLetter) -> Decimal:

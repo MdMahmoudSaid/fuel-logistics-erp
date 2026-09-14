@@ -25,6 +25,7 @@ from apps.finance.models import (
     CashAccount,
     Expense,
     SupplierAdvance,
+    SupplierPayment,
 )
 from apps.finance.services import WorkingCapitalService
 from apps.purchasing.models import CessionLetter, SupplierOrder
@@ -338,29 +339,117 @@ def _load_partial(order, quantity, *, suffix):
 
 
 @pytest.mark.django_db
-def test_working_capital_includes_unloaded_supplier_reliquat_as_an_asset():
-    """Business rule reversal (client request, 2026-09-10), client's own
-    example: purchase 200,000 L at 1,000 XOF/L (debt = 200,000,000,
-    immediately), load only 45,000 L (45,000,000) so far -> the unloaded
-    155,000 L (155,000,000 XOF) is company-owned stock still sitting at the
-    supplier, and must show up as its own asset line in the Fond de
-    roulement client card, added into `total` the same way open debts are,
-    then cancelled back out of distributable_result (see
-    ShareholderProfitPreviewService)."""
-    admin_user, supplier, order = _make_supplier_order_with_status(
-        "WCRELIQUAT-SUP", SupplierOrder.Status.CONFIRMED,
-        quantity=Decimal("200000.00"), unit_price=Decimal("1000.0000"),
+def test_working_capital_unpaid_reliquat_is_not_double_counted_with_the_debt():
+    """Bug fix (client-reported, confirmed during live recette testing,
+    2026-09-14): buy 720,000 L for 532,800,000 XOF, load nothing, pay
+    nothing - supplier_debt_total already books the full 532,800,000 as an
+    open debt immediately on confirmation, so the unloaded reliquat must
+    NOT also add its value on top (that was counting the exact same,
+    entirely unpaid litres twice: once as "owed", once as "stock held").
+    Until the company actually pays the supplier, the open debt alone
+    represents the full engaged value."""
+    _, _, order = _make_supplier_order_with_status(
+        "WCRELIQUATUNPAID-SUP", SupplierOrder.Status.CONFIRMED,
+        quantity=Decimal("720000.00"), unit_price=Decimal("740.0000"),
     )
-    _load_partial(order, Decimal("45000.00"), suffix="WCRELIQUAT-SUP")
 
     result = WorkingCapitalService.get_working_capital()
 
-    assert result["supplier_debt_total"] == Decimal("200000000.00")
+    assert result["supplier_debt_total"] == Decimal("532800000.00")
+    assert result["supplier_reliquat_value"] == Decimal("0.00")
+    assert result["supplier_in_transit_value"] == Decimal("0.00")
+    assert result["supplier_company_stock_value"] == Decimal("0.00")
+    assert result["total"] == result["gross"] + Decimal("532800000.00")
+
+
+@pytest.mark.django_db
+def test_working_capital_includes_paid_reliquat_as_an_asset():
+    """Business rule reversal (client request, 2026-09-10), refined
+    2026-09-14 to cap the reliquat by what was actually paid (see the
+    class docstring): purchase 200,000 L at 1,000 XOF/L (debt = 200,000,000
+    immediately), load only 45,000 L, and pay the supplier 155,000,000 (the
+    exact unloaded value) - that payment converts open debt into
+    company-owned stock still sitting at the supplier, so it must show up
+    as its own asset line in the Fond de roulement client card, added into
+    `total` the same way open debts are, then cancelled back out of
+    distributable_result (see ShareholderProfitPreviewService). debt
+    (45,000,000 remaining) + reliquat (155,000,000 paid) still sums back to
+    the order's full 200,000,000 - never more."""
+    admin_user, supplier, order = _make_supplier_order_with_status(
+        "WCRELIQUATPAID-SUP", SupplierOrder.Status.CONFIRMED,
+        quantity=Decimal("200000.00"), unit_price=Decimal("1000.0000"),
+    )
+    _load_partial(order, Decimal("45000.00"), suffix="WCRELIQUATPAID-SUP")
+
+    cash = CashAccount.objects.create(
+        name="WC Reliquat Paid Cash", opening_balance=Decimal("500000000.00")
+    )
+    SupplierPayment.objects.create(
+        supplier=supplier, supplier_order=order, amount=Decimal("155000000.00"),
+        payment_date="2026-08-19", method=SupplierPayment.Method.CASH,
+        cash_account=cash, recorded_by=admin_user,
+    )
+
+    result = WorkingCapitalService.get_working_capital()
+
+    assert result["supplier_debt_total"] == Decimal("45000000.00")
     assert result["supplier_reliquat_value"] == Decimal("155000000.00")
+    # The 45,000 L loaded via _load_partial sits at the default ASSIGNED
+    # status (still "en cours"), but the full 155,000,000 payment is
+    # consumed by the reliquat bucket first (pipeline order: reliquat -> en
+    # cours -> stock), leaving nothing for en cours/stock here.
+    assert result["supplier_in_transit_value"] == Decimal("0.00")
+    assert result["supplier_company_stock_value"] == Decimal("0.00")
+    assert result["supplier_debt_total"] + result["supplier_reliquat_value"] == Decimal(
+        "200000000.00"
+    )
     assert result["total"] == (
         result["gross"] + result["supplier_debt_total"] + result["transporter_debt_total"]
         + result["other_debts"] + result["supplier_reliquat_value"]
+        + result["supplier_in_transit_value"] + result["supplier_company_stock_value"]
     )
+
+
+@pytest.mark.django_db
+def test_working_capital_splits_fully_paid_stock_across_the_three_pipeline_stages():
+    """Same-day follow-up (client request, 2026-09-14): "en cours" (loaded,
+    on the road) and "stock entreprise" (arrived at the depot) are the
+    later stages of the same pipeline the reliquat covers for the unloaded
+    stage. Client example: purchase 300,000 L at 1,000 XOF/L (300,000,000),
+    50,000 L loaded and still on the road (en cours), 50,000 L loaded and
+    arrived at the depot (stock entreprise), the remaining 200,000 L still
+    at the supplier (reliquat) - order paid in full. debt drops to 0 and
+    the three stages split the entire 300,000,000 between them, each
+    counted exactly once."""
+    admin_user, supplier, order = _make_supplier_order_with_status(
+        "WCPIPELINE-SUP", SupplierOrder.Status.CONFIRMED,
+        quantity=Decimal("300000.00"), unit_price=Decimal("1000.0000"),
+    )
+    _load_partial(order, Decimal("50000.00"), suffix="WCPIPELINE-TRANSIT")
+    stocked_trip = _load_partial(order, Decimal("50000.00"), suffix="WCPIPELINE-STOCK")
+    stocked_trip.status = Trip.Status.STOCKED
+    stocked_trip.save(update_fields=["status"])
+
+    cash = CashAccount.objects.create(
+        name="WC Pipeline Cash", opening_balance=Decimal("500000000.00")
+    )
+    SupplierPayment.objects.create(
+        supplier=supplier, supplier_order=order, amount=Decimal("300000000.00"),
+        payment_date="2026-08-19", method=SupplierPayment.Method.CASH,
+        cash_account=cash, recorded_by=admin_user,
+    )
+
+    result = WorkingCapitalService.get_working_capital()
+
+    assert result["supplier_debt_total"] == Decimal("0.00")
+    assert result["supplier_reliquat_value"] == Decimal("200000000.00")
+    assert result["supplier_in_transit_value"] == Decimal("50000000.00")
+    assert result["supplier_company_stock_value"] == Decimal("50000000.00")
+    assert (
+        result["supplier_reliquat_value"]
+        + result["supplier_in_transit_value"]
+        + result["supplier_company_stock_value"]
+    ) == Decimal("300000000.00")
 
 
 @pytest.mark.django_db
@@ -375,6 +464,8 @@ def test_working_capital_supplier_reliquat_is_zero_once_fully_loaded():
 
     assert result["supplier_debt_total"] == Decimal("200000000.00")
     assert result["supplier_reliquat_value"] == Decimal("0.00")
+    assert result["supplier_in_transit_value"] == Decimal("0.00")
+    assert result["supplier_company_stock_value"] == Decimal("0.00")
 
 
 @pytest.mark.django_db
@@ -391,3 +482,5 @@ def test_working_capital_supplier_reliquat_ignores_draft_and_cancelled_orders():
     result = WorkingCapitalService.get_working_capital()
 
     assert result["supplier_reliquat_value"] == Decimal("0.00")
+    assert result["supplier_in_transit_value"] == Decimal("0.00")
+    assert result["supplier_company_stock_value"] == Decimal("0.00")

@@ -134,6 +134,8 @@
       "transporterDebtTotal": "ديون الناقلين",
       "otherDebts": "ديون الجمارك / العبور / الرسوم",
       "supplierReliquatValue": "مخزون الموردين (الرصيد غير المحمَّل)",
+      "supplierInTransitValue": "المخزون قيد النقل (محمَّل، في الطريق)",
+      "supplierCompanyStockValue": "مخزون الشركة (وصل إلى المستودع)",
       "companyAbsorbedLoss": "الخسارة المتحملة من الشركة",
       "partyBalances": "الأرصدة حسب الطرف",
       "customers": "العملاء",

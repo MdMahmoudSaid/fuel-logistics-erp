@@ -102,6 +102,8 @@ const summary: DashboardSummary = {
     transporter_debt_total: '500000.00',
     other_debts: '300000.00',
     supplier_reliquat_value: '0.00',
+    supplier_in_transit_value: '0.00',
+    supplier_company_stock_value: '0.00',
     // gross = 17000000 + 1000000 = 18000000
     // total = 18000000 + 2000000 + 500000 + 300000 + 0 (debts/reliquat ADDED) = 20800000
     gross: '18000000.00',
@@ -677,6 +679,8 @@ describe('DashboardView', () => {
         transporter_debt_total: '2925000.00',
         other_debts: '10255000.00',
         supplier_reliquat_value: '0.00',
+        supplier_in_transit_value: '0.00',
+        supplier_company_stock_value: '0.00',
         gross: '300000000.00',
         total: '358180000.00',
       },
@@ -701,6 +705,8 @@ describe('DashboardView', () => {
         transporter_debt_total: '0.00',
         other_debts: '0.00',
         supplier_reliquat_value: '77500000.00',
+        supplier_in_transit_value: '0.00',
+        supplier_company_stock_value: '0.00',
         gross: '300000000.00',
         total: '477500000.00',
       },
@@ -709,6 +715,34 @@ describe('DashboardView', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('77 500 000 XOF')
+  })
+
+  it('shows the en-cours and company-stock pipeline values as their own lines', async () => {
+    // Same-day follow-up (2026-09-14): "en cours" (loaded, en route) and
+    // "stock entreprise" (arrived at the depot) are the two later stages
+    // of the same pipeline the reliquat line already covers - each gets
+    // its own line in "Fond de roulement client".
+    fetchDashboardSummary.mockResolvedValueOnce({
+      ...summary,
+      working_capital: {
+        capital: '0.00',
+        treasury_available: '300000000.00',
+        customer_receivables: '0.00',
+        supplier_debt_total: '0.00',
+        transporter_debt_total: '0.00',
+        other_debts: '0.00',
+        supplier_reliquat_value: '20000000.00',
+        supplier_in_transit_value: '5000000.00',
+        supplier_company_stock_value: '3000000.00',
+        gross: '300000000.00',
+        total: '328000000.00',
+      },
+    })
+    const wrapper = mount(DashboardView, { global: { plugins: [makeRouter()] } })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('5 000 000 XOF')
+    expect(wrapper.text()).toContain('3 000 000 XOF')
   })
 
   it('shows the distributable result after debts and capital in the shareholders section', async () => {

@@ -2061,6 +2061,48 @@ class WorkingCapitalService:
     here: no reliable aggregate financial figure exists yet for it (see the
     module's git history / spec Section 3 for the reasoning) - add it later
     behind its own tested aggregate rather than approximating now.
+
+    Bug fix (client-reported, confirmed during live recette testing,
+    2026-09-14): the first cut of the reliquat asset above counted
+    get_purchase_reliquat_amount() (total_amount - loaded_amount) in full,
+    regardless of how much of the order had actually been paid. Since
+    supplier_debt_total already books the FULL order total as an open debt
+    immediately on confirmation (see describe_supplier_order), an unpaid
+    order's reliquat value was the exact same money being added twice -
+    once as "owed to the supplier", once as "stock we hold" - for fuel that
+    hasn't cost the company a single franc yet. Example that surfaced this:
+    buy 720,000 L for 532,800,000 XOF, load nothing, pay nothing ->
+    supplier_debt_total=532,800,000 + supplier_reliquat_value=532,800,000
+    = 1,065,600,000 added to `total` for a single, entirely unpaid
+    purchase. The reliquat can only be a genuine ADDITIONAL asset once cash
+    has actually left treasury for it - so it is now capped, per order, at
+    min(amount actually paid to the supplier, unloaded reliquat value):
+    unpaid stock stays fully represented by the open debt alone (reliquat
+    contributes 0), and paid-for stock still sitting at the supplier
+    contributes exactly its paid value, never more. debt + capped-reliquat
+    always sums back to the order's total_amount - the same litres are
+    never counted under two different labels.
+
+    Same-day follow-up (client request, 2026-09-14): the client pointed out
+    "en cours" (fuel loaded on a truck, en route) and "stock entreprise"
+    (fuel that has physically arrived at the company's own depot) are the
+    two later stages of the exact same pipeline the reliquat above already
+    covers for the unloaded stage - purchased -> reliquat -> en cours ->
+    stock entreprise -> sold (a customer receivable, tracked separately in
+    customer_receivables). Leaving them out was an inconsistency, not a
+    deliberate choice: paid-for fuel sitting on a truck or in the depot is
+    just as real an asset as paid-for fuel still sitting at the supplier.
+    See get_supplier_pipeline_breakdown() below for how the three stages
+    share a single per-order "paid" budget so they can never jointly
+    exceed it (the same invariant as the reliquat fix above, extended to
+    three buckets instead of one). Both new stages are valued at the pure
+    fuel purchase price only (order.unit_price x quantity), never the
+    Dashboard's fuller "prix de revient" (+transport +customs): those extra
+    costs are separate open debts already added in full via
+    transporter_debt_total/other_debts, so pricing "stock entreprise" at
+    cost basis here would double-count them too (client decision,
+    2026-09-14, choosing the simpler basis specifically to avoid reopening
+    the same class of bug on a second axis).
     """
 
     @staticmethod
@@ -2100,6 +2142,50 @@ class WorkingCapitalService:
         }
 
     @staticmethod
+    def get_supplier_pipeline_breakdown() -> dict:
+        """Per confirmed SupplierOrder, splits how much of its still-
+        unsold fuel value (reliquat at the supplier -> en cours on a truck
+        -> stocked at the depot) counts as a company-held asset in the Fond
+        de roulement, capped IN TOTAL by what has actually been paid to
+        that supplier so far - see the class docstring's 2026-09-14 entries
+        for why. Consumed in that pipeline order (reliquat first, then en
+        cours, then company stock) purely to produce a single stable 3-way
+        split when a partial payment doesn't cover all three raw values;
+        the total counted (and so `total`'s own value) does not depend on
+        this ordering choice - only which bucket a partial payment lands in
+        does. get_working_capital() calls this too, so the two can never
+        drift apart."""
+        reliquat_total = ZERO
+        in_transit_total = ZERO
+        company_stock_total = ZERO
+        for order in SupplierOrder.objects.filter(status=SupplierOrder.Status.CONFIRMED):
+            paid_remaining = ControlledDebtPaymentService.describe_supplier_order(order)[
+                "paid_amount"
+            ]
+
+            reliquat_counted = min(paid_remaining, SupplierStockService.get_purchase_reliquat_amount(order))
+            paid_remaining -= reliquat_counted
+
+            in_transit_counted = min(
+                paid_remaining, SupplierStockService.get_purchase_in_transit_amount(order)
+            )
+            paid_remaining -= in_transit_counted
+
+            company_stock_counted = min(
+                paid_remaining, SupplierStockService.get_purchase_company_stock_amount(order)
+            )
+
+            reliquat_total += reliquat_counted
+            in_transit_total += in_transit_counted
+            company_stock_total += company_stock_counted
+
+        return {
+            "supplier_reliquat_value": reliquat_total,
+            "supplier_in_transit_value": in_transit_total,
+            "supplier_company_stock_value": company_stock_total,
+        }
+
+    @staticmethod
     def get_working_capital() -> dict:
         # Local import: apps.reports.queries.customer_outstanding_report
         # imports PaymentAllocationService from this very module - a
@@ -2134,13 +2220,10 @@ class WorkingCapitalService:
         other_debts_breakdown = WorkingCapitalService.get_other_debts_breakdown()
         other_debts = sum(other_debts_breakdown.values(), ZERO)
         capital = ShareholderContributionService.get_total_capital()
-        supplier_reliquat_value = sum(
-            (
-                SupplierStockService.get_purchase_reliquat_amount(order)
-                for order in SupplierOrder.objects.filter(status=SupplierOrder.Status.CONFIRMED)
-            ),
-            ZERO,
-        )
+        supplier_pipeline = WorkingCapitalService.get_supplier_pipeline_breakdown()
+        supplier_reliquat_value = supplier_pipeline["supplier_reliquat_value"]
+        supplier_in_transit_value = supplier_pipeline["supplier_in_transit_value"]
+        supplier_company_stock_value = supplier_pipeline["supplier_company_stock_value"]
         gross = treasury_available + customer_receivables
         total = (
             gross
@@ -2148,6 +2231,8 @@ class WorkingCapitalService:
             + transporter_debt_total
             + other_debts
             + supplier_reliquat_value
+            + supplier_in_transit_value
+            + supplier_company_stock_value
         )
         return {
             "capital": capital,
@@ -2157,6 +2242,8 @@ class WorkingCapitalService:
             "transporter_debt_total": transporter_debt_total,
             "other_debts": other_debts,
             "supplier_reliquat_value": supplier_reliquat_value,
+            "supplier_in_transit_value": supplier_in_transit_value,
+            "supplier_company_stock_value": supplier_company_stock_value,
             "gross": gross,
             "total": total,
         }
@@ -2488,6 +2575,8 @@ class ShareholderProfitPreviewService:
             - working_capital["transporter_debt_total"]
             - working_capital["other_debts"]
             - working_capital["supplier_reliquat_value"]
+            - working_capital["supplier_in_transit_value"]
+            - working_capital["supplier_company_stock_value"]
             - working_capital["capital"]
             - already_distributed
         )

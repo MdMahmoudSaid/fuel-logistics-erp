@@ -127,8 +127,12 @@ export interface DashboardSummary {
   // fonds de roulement. Confirmed via actual client recette testing (third
   // pass, 2026-09-04): open debts are ADDED, not subtracted - gross =
   // treasury_available + customer_receivables; total = gross + the 3 debt
-  // buckets + supplier_reliquat_value. Capital is informational only (not
-  // part of gross/total). Point-in-time, like debts/party_balances above.
+  // buckets + supplier_reliquat_value + supplier_in_transit_value +
+  // supplier_company_stock_value (2026-09-14: the 3 stages of the same
+  // purchased-fuel pipeline, each capped so paid-for stock is never
+  // counted twice against the still-open supplier debt - see the backend
+  // service's own docstring). Capital is informational only (not part of
+  // gross/total). Point-in-time, like debts/party_balances above.
   working_capital: {
     capital: string
     treasury_available: string
@@ -137,6 +141,8 @@ export interface DashboardSummary {
     transporter_debt_total: string
     other_debts: string
     supplier_reliquat_value: string
+    supplier_in_transit_value: string
+    supplier_company_stock_value: string
     gross: string
     total: string
   }
