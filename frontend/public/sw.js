@@ -15,7 +15,18 @@
 // Hashed static assets (/assets/*.js, /assets/*.css - Vite content-hashes
 // every filename) are still safe to cache-first forever: a changed file is a
 // changed URL, never a stale one under an old name.
-const CACHE_VERSION = 'v2'
+//
+// Bug fix (2026-09-14, recette): the fetch handler's fallback branch below
+// applied cache-first to EVERY same-origin GET, not just static assets -
+// including /api/* calls like GET /api/suppliers/. The first load cached
+// that exact response, and every later GET to the same URL (e.g. the list
+// reload right after creating a supplier) replayed that same stale response
+// forever instead of hitting the network - a create would succeed on the
+// server (confirmed: duplicate Supplier rows from repeated retries) while
+// the screen kept showing the old, unchanged list. /api/ requests must
+// never be cached - always network, matching how dynamic data already
+// worked before this service worker existed at all.
+const CACHE_VERSION = 'v3'
 const CACHE_NAME = `fuel-erp-shell-${CACHE_VERSION}`
 const SHELL_ASSETS = ['/', '/index.html']
 
@@ -55,6 +66,10 @@ self.addEventListener('fetch', (event) => {
         })
         .catch(() => caches.match('/index.html')),
     )
+    return
+  }
+
+  if (new URL(event.request.url).pathname.startsWith('/api/')) {
     return
   }
 
