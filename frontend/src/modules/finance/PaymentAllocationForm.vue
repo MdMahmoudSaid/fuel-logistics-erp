@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppAlert from '@/components/ui/AppAlert.vue'
 // docs/PHASE_5_PLAN.md Etape 10: customer selection, dynamic display of
 // their unpaid invoices, and per-line allocation amounts - posted in one
 // request to POST /api/customer-payments/ (backend/apps/finance/serializers.py
@@ -241,7 +242,7 @@ async function onSubmit() {
 
 <template>
   <div class="space-y-4">
-    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
+    <AppAlert v-if="error" :message="error" />
 
     <form
       class="border-ligne space-y-4 rounded-xl border bg-surface p-6"
@@ -405,7 +406,7 @@ async function onSubmit() {
           class="sr-only"
           @change="onProofFileChange"
         />
-        <p v-if="proofError" class="text-critique text-xs">{{ proofError }}</p>
+        <AppAlert v-if="proofError" :message="proofError" />
       </div>
 
       <div v-if="outstandingBalance !== null" class="border-ligne border-t pt-4">

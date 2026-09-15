@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppAlert from '@/components/ui/AppAlert.vue'
 // docs/PHASE_5_PLAN.md Etape 10: internal transfer between two treasury
 // accounts. Posts to TreasuryService.record_transfer() via
 // POST /api/treasury-transactions/transfer/, which creates the matched
@@ -78,10 +79,12 @@ async function onSubmit() {
 
 <template>
   <div class="space-y-4">
-    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
-    <p v-if="sameAccount" class="text-critique text-sm">
-      {{ t('finance.transfer.sameAccountError') }}
-    </p>
+    <AppAlert v-if="error" :message="error" />
+    <AppAlert
+      v-if="sameAccount"
+      variant="warning"
+      :message="t('finance.transfer.sameAccountError')"
+    />
 
     <form
       class="border-ligne space-y-4 rounded-xl border bg-surface p-6"

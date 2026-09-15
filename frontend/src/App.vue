@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import AlertNotifications from '@/components/ui/AlertNotifications.vue'
 
 const auth = useAuthStore()
 
@@ -21,4 +22,5 @@ onMounted(() => {
 
 <template>
   <router-view />
+  <AlertNotifications />
 </template>

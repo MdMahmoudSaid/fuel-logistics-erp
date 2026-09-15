@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppAlert from '@/components/ui/AppAlert.vue'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { FieldSchema } from './types'
@@ -181,9 +182,7 @@ async function submitQuickCreate(field: FieldSchema) {
               {{ t('common.cancel') }}
             </Button>
           </div>
-          <p v-if="quickCreateError[field.key]" class="text-critique text-xs">
-            {{ quickCreateError[field.key] }}
-          </p>
+          <AppAlert v-if="quickCreateError[field.key]" :message="quickCreateError[field.key]!" />
         </div>
       </div>
 

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppAlert from '@/components/ui/AppAlert.vue'
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { createResourceApi } from '@/api/resource'
@@ -157,7 +158,7 @@ onMounted(load)
 
 <template>
   <form class="space-y-5" @submit.prevent="submit">
-    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
+    <AppAlert v-if="error" :message="error" />
     <p v-if="loading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
     <template v-else>
@@ -237,7 +238,7 @@ onMounted(load)
           @change="onAttachmentChange"
         />
         <span v-if="attachment" class="text-texte-2 block text-xs">{{ attachment.name }}</span>
-        <span v-if="attachmentError" class="text-critique block text-xs">{{ attachmentError }}</span>
+        <AppAlert v-if="attachmentError" :message="attachmentError" />
       </label>
 
       <div class="flex justify-end gap-2">

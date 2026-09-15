@@ -106,6 +106,20 @@ describe('AdvanceForm', () => {
   // Task 14 (client modifications, 2026-09-04): proof upload is no longer
   // required client-side - the backend already accepts this flow without an
   // attachment.
+  it('shows a prominent accessible alert when the amount exceeds the balance', async () => {
+    const wrapper = mount(AdvanceForm)
+    await flushPromises()
+    await wrapper.find('input#amount').setValue('600000')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    const alert = wrapper.find('[role="alert"]')
+    expect(alert.exists()).toBe(true)
+    expect(alert.text()).toContain('Solde insuffisant')
+    expect(wrapper.emitted('success')).toBeUndefined()
+    wrapper.unmount()
+  })
+
   it('allows submitting without an attachment', async () => {
     const wrapper = mount(AdvanceForm)
     await flushPromises()

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppAlert from '@/components/ui/AppAlert.vue'
 // docs/PHASE_4_PLAN.md Etape 9: delivery confirmation form, embedded in
 // TripDetail.vue from ARRIVED_AT_CLIENT (and, for backward-compat, legacy
 // trips still sitting at QUANTITY_CONTROL).
@@ -145,7 +146,7 @@ async function onSubmit() {
     <h2 class="font-display text-lg leading-none font-semibold uppercase">
       {{ t('trips.delivery.title') }}
     </h2>
-    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
+    <AppAlert v-if="error" :message="error" />
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div class="space-y-1.5">

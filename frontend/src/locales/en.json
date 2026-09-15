@@ -1,4 +1,10 @@
 {
+  "alerts": {
+    "errorTitle": "Something went wrong",
+    "warningTitle": "Attention",
+    "successTitle": "Operation successful",
+    "ok": "OK"
+  },
   "common": {
     "offline": "Offline — changes will sync once the network is back.",
     "updateAvailable": "A new version of the app is available.",

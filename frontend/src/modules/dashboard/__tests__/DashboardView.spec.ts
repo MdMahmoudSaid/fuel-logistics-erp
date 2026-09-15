@@ -359,30 +359,13 @@ describe('DashboardView', () => {
     }))
   })
 
-  it('loads the default range on mount and renders all 6 legacy KPI sections', async () => {
+  it('loads the default range without the removed period detail', async () => {
     const wrapper = mount(DashboardView, { global: { plugins: [makeRouter()] } })
     await flushPromises()
 
     expect(fetchDashboardSummary).toHaveBeenCalledWith({ preset: 'month', range: 'month' })
-    expect(wrapper.text()).toContain('Opérations')
-    expect(wrapper.text()).toContain('Carburant')
-    expect(wrapper.text()).toContain('Ventes')
-    expect(wrapper.text()).toContain('Transport')
-    expect(wrapper.text()).toContain('Finance')
-    expect(wrapper.text()).toContain('Profit')
-    expect(wrapper.text()).toContain('225 000 L')
-    expect(wrapper.text()).toContain('1 957 500 XOF')
-
-    // debts / customer_amounts / bank_amounts sections (point-in-time
-    // snapshots, always present alongside the period-filtered sections).
-    expect(wrapper.text()).toContain('Total des dettes')
-    expect(wrapper.text()).toContain('4 040 000 XOF')
-    expect(wrapper.text()).toContain('Montant total des clients')
-    expect(wrapper.text()).toContain('Client 1')
-    expect(wrapper.text()).toContain('Montant total des banques')
-    expect(wrapper.text()).toContain('Bank 1')
-    expect(wrapper.text()).toContain('Montant total des caisses')
-    expect(wrapper.text()).toContain('Caisse 1')
+    expect(wrapper.find('[data-test="period-detail"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Détail de la période')
   })
 
   it('refetches dashboard period figures with ISO start_date and end_date when custom dates change', async () => {
@@ -578,12 +561,11 @@ describe('DashboardView', () => {
     expect(wrapper.text()).toContain('2 trajet(s) actuellement en stock')
 
     const partyLinks = wrapper.findAll('[data-test="party-balance-card"]')
-    expect(partyLinks).toHaveLength(5)
+    expect(partyLinks).toHaveLength(4)
     expect(partyLinks.map((link) => link.text())).toEqual([
       expect.stringContaining('Clients'),
       expect.stringContaining('Fournisseurs'),
       expect.stringContaining('Transporteurs'),
-      expect.stringContaining('Actionnaires / Associés'),
       expect.stringContaining('Douane / Transit / Autres frais'),
     ])
     const partyRouterLinks = wrapper
@@ -593,7 +575,6 @@ describe('DashboardView', () => {
       { name: 'customers' },
       { name: 'suppliers' },
       { name: 'transporters' },
-      { name: 'shareholders' },
       { name: 'treasury-transactions' },
     ])
 
@@ -745,15 +726,7 @@ describe('DashboardView', () => {
     expect(wrapper.text()).toContain('3 000 000 XOF')
   })
 
-  it('shows the distributable result after debts and capital in the shareholders section', async () => {
-    const wrapper = mount(DashboardView, { global: { plugins: [makeRouter()] } })
-    await flushPromises()
-
-    expect(wrapper.text()).toContain('Résultat distribuable après dettes et capital')
-    expect(wrapper.text()).toContain('500 000 XOF')
-  })
-
-  it('keeps action work prominent, live trips compact, and period detail collapsed', async () => {
+  it('keeps action work prominent, live trips compact, without period detail', async () => {
     const wrapper = mount(DashboardView, { global: { plugins: [makeRouter()] } })
     await flushPromises()
 
@@ -795,8 +768,8 @@ describe('DashboardView', () => {
     ).toBe(true)
 
     const periodDetail = wrapper.find('[data-test="period-detail"]')
-    expect(periodDetail.element.tagName).toBe('DETAILS')
-    expect((periodDetail.element as HTMLDetailsElement).open).toBe(false)
+    expect(periodDetail.exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Actionnaires / Associés')
   })
 
   it('uses Arabic translations for the final dashboard cards', async () => {

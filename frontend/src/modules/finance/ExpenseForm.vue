@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppAlert from '@/components/ui/AppAlert.vue'
 // docs/PHASE_5_PLAN.md Etape 10: category, calculation method, allocation
 // lines, and an "Paid directly by customer" switch that routes the
 // submission through IndirectSettlementService instead of a plain Expense
@@ -350,7 +351,7 @@ async function onSubmit() {
 
 <template>
   <div class="space-y-4">
-    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
+    <AppAlert v-if="error" :message="error" />
 
     <form
       class="border-ligne space-y-4 rounded-xl border bg-surface p-6"
@@ -409,7 +410,7 @@ async function onSubmit() {
                   {{ t('finance.expenseCategoryForm.cancelButton') }}
                 </Button>
               </div>
-              <p v-if="categoryError" class="text-critique mt-2 text-xs">{{ categoryError }}</p>
+              <AppAlert v-if="categoryError" :message="categoryError" />
             </div>
           </div>
         </div>

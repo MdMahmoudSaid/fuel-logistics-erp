@@ -11,6 +11,45 @@
 
 @import './styles/tokens.css';
 
+.error-popup {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  width: min(26rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  border: 1px solid var(--ligne);
+  border-radius: 1rem;
+  padding: 2rem;
+  background: var(--surface);
+  color: var(--texte);
+  text-align: center;
+  box-shadow: 0 20px 60px #12171c33;
+}
+.error-popup::backdrop {
+  background: #12171c66;
+}
+.error-popup__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  background: var(--critique-tint);
+  color: var(--critique-texte);
+  font-size: 1.75rem;
+  font-weight: 600;
+}
+.error-popup__icon--warning {
+  color: var(--ecart-texte);
+  background: var(--ecart-tint);
+}
+.error-popup__icon--success {
+  color: var(--livre-texte);
+  background: var(--livre-tint);
+}
+
 @layer base {
   body {
     @apply bg-sable text-texte font-sans antialiased;

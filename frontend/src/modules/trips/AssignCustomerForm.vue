@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppAlert from '@/components/ui/AppAlert.vue'
 // Client modifications plan Task 9 (gap-closure): lets an operator earmark
 // a COMPANY_STOCK trip for a customer once cost/logistics work is done -
 // the core client workflow (spec section 3 / section 11 "Workflow global")
@@ -58,7 +59,7 @@ async function onSubmit() {
 
 <template>
   <div class="space-y-4">
-    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
+    <AppAlert v-if="error" :message="error" />
 
     <form
       class="border-ligne space-y-4 rounded-xl border bg-surface p-6"

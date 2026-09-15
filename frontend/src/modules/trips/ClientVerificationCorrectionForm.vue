@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppAlert from '@/components/ui/AppAlert.vue'
 // Feedback (2026-09-10): the "Declarer une perte" button's wording led
 // operators to type the loss instead of the received quantity, with no way
 // to fix the mistake - DeliveryService.correct_client_verification() is the
@@ -62,7 +63,7 @@ async function onSubmit() {
     <p class="text-texte-2 text-sm">
       {{ t('trips.clientVerificationCorrection.hint') }}
     </p>
-    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
+    <AppAlert v-if="error" :message="error" />
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div class="space-y-1.5">

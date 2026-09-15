@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppAlert from '@/components/ui/AppAlert.vue'
 // Client modifications (2026-09-04 recette corrections): post-delivery
 // client verification. Once a trip is DELIVERED/COMPLETED, the client may
 // report that the quantity actually received differs from what was
@@ -89,7 +90,7 @@ async function onSubmit() {
     <h2 class="font-display text-lg leading-none font-semibold uppercase">
       {{ t('trips.clientVerification.title') }}
     </h2>
-    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
+    <AppAlert v-if="error" :message="error" />
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div class="space-y-1.5">

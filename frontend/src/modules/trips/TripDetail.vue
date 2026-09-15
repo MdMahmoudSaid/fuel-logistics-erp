@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppAlert from '@/components/ui/AppAlert.vue'
 import { ref, computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
@@ -474,7 +475,7 @@ const cessionProofUrl = computed(
       </Button>
     </div>
 
-    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
+    <AppAlert v-if="error" :message="error" />
     <p v-else-if="loading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
     <template v-else-if="trip">
@@ -585,7 +586,7 @@ const cessionProofUrl = computed(
 
       <Card v-if="canChangeStatus" :title="t('trips.detail.changeStatus')">
         <div class="space-y-3">
-          <p v-if="statusError" class="text-critique text-sm">{{ statusError }}</p>
+          <AppAlert v-if="statusError" :message="statusError" />
 
           <div class="flex flex-wrap items-end gap-2">
             <div class="space-y-1">
@@ -804,7 +805,7 @@ const cessionProofUrl = computed(
 
       <Card :title="t('trips.detail.expenses')">
         <div class="space-y-3">
-          <p v-if="expensesError" class="text-critique text-sm">{{ expensesError }}</p>
+          <AppAlert v-if="expensesError" :message="expensesError" />
 
           <ul class="divide-ligne divide-y">
             <li
@@ -937,7 +938,7 @@ const cessionProofUrl = computed(
       </Card>
 
       <Card :title="t('trips.detail.margin')">
-        <p v-if="marginError" class="text-critique text-sm">{{ marginError }}</p>
+        <AppAlert v-if="marginError" :message="marginError" />
         <p v-else-if="!margin?.available" class="text-texte-3 text-sm">
           {{ t('trips.detail.marginUnavailable') }}
         </p>

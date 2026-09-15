@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppAlert from '@/components/ui/AppAlert.vue'
 import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import DataTable from './DataTable.vue'
@@ -177,7 +178,7 @@ onMounted(load)
           {{ editingId === null ? t('masterData.new') : t('masterData.edit') }}
           {{ itemLabel ?? title }}
         </h2>
-        <p v-if="error" class="text-critique mb-2 text-sm">{{ error }}</p>
+        <AppAlert v-if="error" :message="error" />
         <EntityForm
           v-model="formValue"
           :fields="resolvedFormFields"

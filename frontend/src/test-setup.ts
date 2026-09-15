@@ -21,3 +21,12 @@ const { config } = await import('@vue/test-utils')
 const { i18n } = await import('@/i18n')
 
 config.global.plugins.push(i18n)
+
+// jsdom does not implement the native dialog lifecycle. Browser checks cover
+// top-layer rendering and modal keyboard behaviour.
+HTMLDialogElement.prototype.showModal = function () {
+  this.setAttribute('open', '')
+}
+HTMLDialogElement.prototype.close = function () {
+  this.removeAttribute('open')
+}

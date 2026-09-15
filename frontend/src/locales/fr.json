@@ -1,4 +1,10 @@
 {
+  "alerts": {
+    "errorTitle": "Une erreur est survenue",
+    "warningTitle": "Attention",
+    "successTitle": "Opération réussie",
+    "ok": "OK"
+  },
   "common": {
     "offline": "Hors ligne — les modifications seront synchronisées au retour du réseau.",
     "updateAvailable": "Une nouvelle version de l'application est disponible.",

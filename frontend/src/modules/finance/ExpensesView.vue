@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppAlert from '@/components/ui/AppAlert.vue'
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from '@/components/ui/Button.vue'
@@ -191,9 +192,9 @@ onMounted(load)
       </div>
     </div>
 
-    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
+    <AppAlert v-if="error" :message="error" />
     <p v-else-if="loading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
-    <p v-if="actionError" class="text-critique text-sm">{{ actionError }}</p>
+    <AppAlert v-if="actionError" :message="actionError" />
 
     <section v-else class="border-ligne overflow-x-auto rounded-xl border bg-white p-4">
       <table class="w-full text-sm">

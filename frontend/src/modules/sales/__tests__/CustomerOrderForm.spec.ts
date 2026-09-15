@@ -150,6 +150,8 @@ describe('CustomerOrderForm field errors', () => {
 
     const quantityContainer = wrapper.find('#quantity_ordered').element.closest('div')
     expect(quantityContainer?.textContent).toContain('Doit être positif.')
+    expect(wrapper.find('[role="alert"]').exists()).toBe(true)
+    expect(wrapper.find('[role="alert"]').text()).toContain('Doit être positif.')
   })
 
   it('surfaces a status field error instead of silently swallowing it', async () => {

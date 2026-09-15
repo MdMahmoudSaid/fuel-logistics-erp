@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppAlert from '@/components/ui/AppAlert.vue'
 // Client modification Task 2: transporter fees per litre create payable
 // debt. Opened from a trip's detail page (TripDetail.vue) to record a
 // TransportPayment for calculation_method=PER_LITRE. The transporter is
@@ -81,7 +82,7 @@ async function onSubmit() {
 
 <template>
   <div class="space-y-4">
-    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
+    <AppAlert v-if="error" :message="error" />
 
     <form
       class="border-ligne space-y-4 rounded-xl border bg-surface p-6"

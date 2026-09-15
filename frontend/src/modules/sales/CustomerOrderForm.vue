@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppAlert from '@/components/ui/AppAlert.vue'
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
@@ -103,7 +104,7 @@ async function onSubmit() {
     const genericMessage = Array.isArray(generic) ? generic[0] : generic
     error.value =
       translateApiError(typeof genericMessage === 'string' ? genericMessage : undefined) ??
-      (Object.keys(fieldErrors.value).length ? '' : t('sales.orderForm.saveError'))
+      (Object.values(fieldErrors.value).join('\n') || t('sales.orderForm.saveError'))
   } finally {
     saving.value = false
   }
@@ -140,7 +141,7 @@ function badgeVariant(status: TripStatus) {
       }}
     </h1>
 
-    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
+    <AppAlert v-if="error" :message="error" />
 
     <div v-if="order" class="border-ligne space-y-2 rounded-xl border bg-surface p-4">
       <h2 class="font-display text-sm font-semibold uppercase">{{ t('sales.orderForm.progress') }}</h2>

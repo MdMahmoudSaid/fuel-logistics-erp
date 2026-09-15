@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppAlert from '@/components/ui/AppAlert.vue'
 // docs/PHASE_4_PLAN.md Etape 9. Once VALIDATED, the standard editable
 // fields are hidden entirely and replaced by the audited correction form -
 // InvoiceSerializer.validate() (backend/apps/sales/serializers.py) rejects
@@ -210,7 +211,7 @@ function formatDateTime(value: string) {
       </div>
     </div>
 
-    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
+    <AppAlert v-if="error" :message="error" />
     <p v-else-if="loading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
     <template v-else-if="invoice">
@@ -240,7 +241,7 @@ function formatDateTime(value: string) {
             {{ t('sales.invoiceDetail.correctInvoice') }}
           </Button>
         </div>
-        <p v-if="validateError" class="text-critique text-sm">{{ validateError }}</p>
+        <AppAlert v-if="validateError" :message="validateError" />
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
@@ -314,7 +315,7 @@ function formatDateTime(value: string) {
 
         <template v-if="isDraft && canEdit">
           <div class="border-ligne space-y-3 rounded-lg border bg-sable p-3">
-            <p v-if="savePriceError" class="text-critique text-sm">{{ savePriceError }}</p>
+            <AppAlert v-if="savePriceError" :message="savePriceError" />
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div class="space-y-1">
                 <label class="text-texte-2 text-sm font-medium" for="unit_selling_price_edit">{{
@@ -349,7 +350,7 @@ function formatDateTime(value: string) {
             </div>
           </div>
 
-          <p v-if="saveError" class="text-critique text-sm">{{ saveError }}</p>
+          <AppAlert v-if="saveError" :message="saveError" />
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="space-y-1">
               <label class="text-texte-2 text-sm font-medium" for="issued_date">{{
@@ -385,7 +386,7 @@ function formatDateTime(value: string) {
           <p class="text-texte-2 text-sm">
             {{ t('sales.invoiceDetail.correctionHint') }}
           </p>
-          <p v-if="correctionError" class="text-critique text-sm">{{ correctionError }}</p>
+          <AppAlert v-if="correctionError" :message="correctionError" />
 
           <form id="correction-form" class="space-y-3" @submit.prevent="onSubmitCorrection">
             <div class="space-y-1">

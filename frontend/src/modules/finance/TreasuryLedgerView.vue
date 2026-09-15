@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppAlert from '@/components/ui/AppAlert.vue'
 // docs/PHASE_5_PLAN.md Etape 10: global treasury journal
 // (GET /api/treasury-transactions/), with a shortcut into the internal
 // transfer form.
@@ -199,7 +200,7 @@ const filteredTransactions = computed(() =>
       </select>
     </div>
 
-    <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
+    <AppAlert v-if="error" :message="error" />
     <p v-else-if="loading" class="text-sm text-slate-400">{{ t('common.loading') }}</p>
 
     <section v-else class="border-ligne overflow-x-auto rounded-xl border bg-white p-4">

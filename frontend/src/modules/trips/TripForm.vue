@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppAlert from '@/components/ui/AppAlert.vue'
 import { ref, computed, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
@@ -217,7 +218,7 @@ async function onSubmit() {
     const genericMessage = Array.isArray(generic) ? generic[0] : generic
     error.value =
       translateApiError(typeof genericMessage === 'string' ? genericMessage : undefined) ??
-      (Object.keys(fieldErrors.value).length ? '' : t('trips.newForm.saveError'))
+      (Object.values(fieldErrors.value).join('\n') || t('trips.newForm.saveError'))
   } finally {
     saving.value = false
   }
@@ -230,7 +231,7 @@ async function onSubmit() {
       {{ t('trips.newForm.title') }}
     </h1>
 
-    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
+    <AppAlert v-if="error" :message="error" />
 
     <form
       class="border-ligne space-y-4 rounded-xl border bg-surface p-6"

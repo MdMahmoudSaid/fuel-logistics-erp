@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppAlert from '@/components/ui/AppAlert.vue'
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
@@ -132,7 +133,7 @@ async function onSubmit() {
     const genericMessage = Array.isArray(generic) ? generic[0] : generic
     error.value =
       translateApiError(typeof genericMessage === 'string' ? genericMessage : undefined) ??
-      (Object.keys(fieldErrors.value).length ? '' : t('purchasing.cessionForm.saveError'))
+      (Object.values(fieldErrors.value).join('\n') || t('purchasing.cessionForm.saveError'))
   } finally {
     saving.value = false
   }
@@ -192,7 +193,7 @@ async function onUploadDocument() {
       }}
     </h1>
 
-    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
+    <AppAlert v-if="error" :message="error" />
 
     <form class="border-ligne space-y-4 rounded-xl border bg-surface p-6" @submit.prevent="onSubmit">
       <div class="space-y-1.5">
@@ -366,7 +367,7 @@ async function onUploadDocument() {
       <h2 class="font-display text-lg leading-none font-semibold uppercase">
         {{ t('purchasing.cessionForm.document') }}
       </h2>
-      <p v-if="uploadError" class="text-critique text-sm">{{ uploadError }}</p>
+      <AppAlert v-if="uploadError" :message="uploadError" />
 
       <ul class="space-y-1">
         <li v-for="doc in cession?.documents ?? []" :key="doc.id" class="text-sm">

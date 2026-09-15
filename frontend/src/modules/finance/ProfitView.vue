@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppAlert from '@/components/ui/AppAlert.vue'
 // "Benefices" page (design doc 2026-08-26-benefices-associes-refinement-
 // design.md; docs/finances_edit.md) - lives in Tresorerie & Finance, but
 // reuses the existing profit engine end to end: GET /api/reports/
@@ -177,8 +178,8 @@ async function onExportPdf() {
       <DateRangeFilter @change="onDateRangeChange" />
     </div>
 
-    <p v-if="exportError" class="text-critique text-sm">{{ exportError }}</p>
-    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
+    <AppAlert v-if="exportError" :message="exportError" />
+    <AppAlert v-if="error" :message="error" />
     <p v-else-if="loading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
     <template v-else>

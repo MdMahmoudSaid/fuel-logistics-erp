@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppAlert from '@/components/ui/AppAlert.vue'
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter, useRoute } from 'vue-router'
@@ -146,7 +147,7 @@ async function onSubmit() {
             </div>
           </div>
 
-          <p v-if="error" class="text-critique text-sm" role="alert">{{ error }}</p>
+          <AppAlert v-if="error" :message="error" />
 
           <Button type="submit" variant="primary" size="md" :disabled="loading" class="w-full">
             {{ loading ? t('auth.signingIn') : t('auth.signIn') }}

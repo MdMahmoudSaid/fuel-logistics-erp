@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppAlert from '@/components/ui/AppAlert.vue'
 // Task 7 (client modifications plan): Shareholders / Associates domain.
 // A single top-level page (not an overlay) covering every action the
 // brief lists: shareholder CRUD with participation percent, profit
@@ -636,7 +637,7 @@ async function onWithdrawalShareholderChange() {
       v-if="activeTab === 'distributions'"
       :title="t('finance.shareholder.distribution.title')"
     >
-      <p v-if="distributionError" class="text-critique mb-3 text-sm">{{ distributionError }}</p>
+      <AppAlert v-if="distributionError" :message="distributionError" />
       <div
         v-if="distributionSuccess"
         data-test="distribution-success"
@@ -851,7 +852,7 @@ async function onWithdrawalShareholderChange() {
 
     <!-- Section 3: Loans between associates -->
     <Card v-if="activeTab === 'loans'" :title="t('finance.shareholder.loan.title')">
-      <p v-if="loanError" class="text-critique mb-3 text-sm">{{ loanError }}</p>
+      <AppAlert v-if="loanError" :message="loanError" />
 
       <form class="mb-5 grid grid-cols-1 md:grid-cols-4 gap-3" @submit.prevent="onCreateLoan">
         <div class="space-y-1.5">
@@ -989,7 +990,7 @@ async function onWithdrawalShareholderChange() {
       v-if="activeTab === 'withdrawals'"
       :title="t('finance.shareholder.withdrawal.title')"
     >
-      <p v-if="withdrawalError" class="text-critique mb-3 text-sm">{{ withdrawalError }}</p>
+      <AppAlert v-if="withdrawalError" :message="withdrawalError" />
 
       <form class="mb-5 grid grid-cols-1 md:grid-cols-4 gap-3" @submit.prevent="onCreateWithdrawal">
         <div class="space-y-1.5">
@@ -1143,7 +1144,7 @@ async function onWithdrawalShareholderChange() {
         }}</Button>
       </div>
 
-      <p v-if="ledgerError" class="text-critique text-sm">{{ ledgerError }}</p>
+      <AppAlert v-if="ledgerError" :message="ledgerError" />
       <p v-else-if="ledgerLoading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
       <template v-else-if="ledger">
@@ -1341,7 +1342,7 @@ async function onWithdrawalShareholderChange() {
           {{ editingShareholderId === null ? t('masterData.new') : t('masterData.edit') }}
           {{ t('finance.shareholder.listTitle') }}
         </h2>
-        <p v-if="shareholderError" class="text-critique mb-2 text-sm">{{ shareholderError }}</p>
+        <AppAlert v-if="shareholderError" :message="shareholderError" />
         <EntityForm
           v-model="shareholderFormValue"
           :fields="shareholderFields"

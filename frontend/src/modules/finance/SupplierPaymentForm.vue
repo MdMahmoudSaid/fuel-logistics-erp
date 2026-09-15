@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppAlert from '@/components/ui/AppAlert.vue'
 // Client modification Task 5: supplier debt repayment must move through a
 // bank account by bank transfer - no cash settlement for that flow
 // (backend/apps/finance/serializers.py SupplierPaymentSerializer.validate()
@@ -66,7 +67,7 @@ async function onSubmit() {
 
 <template>
   <div class="space-y-4">
-    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
+    <AppAlert v-if="error" :message="error" />
 
     <form
       class="border-ligne space-y-4 rounded-xl border bg-surface p-6"

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppAlert from '@/components/ui/AppAlert.vue'
 // docs/PHASE_4_PLAN.md Etape 9: admin-only default loss tolerance setting
 // (backend/apps/core/models.py LossToleranceConfig - a singleton, frozen
 // onto each DeliveryControl at confirmation time so later changes here
@@ -59,7 +60,7 @@ function formatDateTime(value: string) {
       {{ t('settings.lossTolerance.description') }}
     </p>
 
-    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
+    <AppAlert v-if="error" :message="error" />
     <p v-else-if="loading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
     <form

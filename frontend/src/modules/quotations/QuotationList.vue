@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppAlert from '@/components/ui/AppAlert.vue'
 // AZUR ÉNERGIE product decision 2026-09-05: "Offres commerciales" under
 // Ventes. Standalone document list - no accounting/stock link, mirrors
 // InvoiceList.vue's list-page pattern.
@@ -99,7 +100,7 @@ function badgeVariant(status: QuotationStatus) {
       </select>
     </div>
 
-    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
+    <AppAlert v-if="error" :message="error" />
     <p v-else-if="loading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
     <div class="border-ligne overflow-x-auto rounded-xl border bg-white">

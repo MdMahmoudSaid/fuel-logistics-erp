@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppAlert from '@/components/ui/AppAlert.vue'
 // docs/PHASE_6_PLAN.md Etape 8: report selector + interactive table +
 // PDF export/print, driving GET /api/reports/{report_type}/.
 //
@@ -368,7 +369,7 @@ function plainCellValue(row: Record<string, unknown>, field: string): string {
       </template>
     </div>
 
-    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
+    <AppAlert v-if="error" :message="error" />
     <p v-else-if="loading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
     <section v-else-if="report" class="border-ligne overflow-auto rounded-xl border bg-white">

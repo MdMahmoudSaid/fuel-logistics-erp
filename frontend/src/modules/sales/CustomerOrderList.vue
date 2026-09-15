@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppAlert from '@/components/ui/AppAlert.vue'
 // Vue hybride (docs/UI_REDESIGN_PLAN.md Etape 6.2) : tableau desktop
 // (>=768px, chiffres Mono alignés à droite) / cartes empilées mobile
 // (<768px), avec puces de filtre statut à défilement horizontal.
@@ -141,7 +142,7 @@ function goToDetail(order: CustomerOrder) {
       </Chip>
     </div>
 
-    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
+    <AppAlert v-if="error" :message="error" />
 
     <!-- Desktop : tableau complet, chiffres Mono alignés à droite -->
     <div class="border-ligne hidden overflow-x-auto rounded-xl border bg-white md:block">

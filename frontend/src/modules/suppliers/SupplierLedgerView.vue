@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppAlert from '@/components/ui/AppAlert.vue'
 import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
@@ -167,7 +168,7 @@ function proofUrl(order: SupplierLedger['orders'][number]) {
       </div>
     </div>
 
-    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
+    <AppAlert v-if="error" :message="error" />
     <p v-else-if="loading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
     <template v-else-if="ledger">
@@ -327,7 +328,7 @@ function proofUrl(order: SupplierLedger['orders'][number]) {
       </Card>
 
       <Card :title="t('purchasing.supplierLedger.paymentsAndAdvances')">
-        <p v-if="cancelError" class="text-critique mb-2 text-sm">{{ cancelError }}</p>
+        <AppAlert v-if="cancelError" :message="cancelError" />
         <div class="overflow-x-auto">
           <table class="w-full text-start text-sm">
             <thead>

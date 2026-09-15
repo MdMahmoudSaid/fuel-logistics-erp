@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppAlert from '@/components/ui/AppAlert.vue'
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
@@ -130,7 +131,7 @@ async function onSubmit() {
       const genericMessage = Array.isArray(generic) ? generic[0] : generic
       error.value =
         translateApiError(typeof genericMessage === 'string' ? genericMessage : undefined) ??
-        (Object.keys(fieldErrors.value).length ? '' : t('purchasing.orderForm.saveError'))
+        (Object.values(fieldErrors.value).join('\n') || t('purchasing.orderForm.saveError'))
     } else {
       error.value = t('purchasing.orderForm.saveError')
     }
@@ -209,7 +210,7 @@ function goToNewCession() {
       }}
     </h1>
 
-    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
+    <AppAlert v-if="error" :message="error" />
 
     <form
       class="border-ligne grid grid-cols-1 md:grid-cols-2 gap-4 rounded-xl border bg-surface p-6"
@@ -413,7 +414,7 @@ function goToNewCession() {
       <h2 class="font-display text-lg leading-none font-semibold uppercase">
         {{ t('purchasing.orderForm.documents') }}
       </h2>
-      <p v-if="uploadError" class="text-critique text-sm">{{ uploadError }}</p>
+      <AppAlert v-if="uploadError" :message="uploadError" />
 
       <ul class="space-y-1">
         <li v-for="doc in order?.documents ?? []" :key="doc.id" class="text-sm">

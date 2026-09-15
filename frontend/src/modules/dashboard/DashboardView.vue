@@ -1,16 +1,6 @@
 <script setup lang="ts">
-// docs/PHASE_6_PLAN.md Etape 7: 6 KPI panels (Operations, Fuel, Sales,
-// Transport, Finance, Profit) backed by one aggregated backend endpoint -
-// no frontend loops recomputing totals over raw records (guide Section 9.6).
-//
-// docs/UI_REDESIGN_PLAN.md Etape 6: layered on top, a "live ops" pulse (4
-// strategic KPIs, "En route maintenant") scoped to *today* rather than the
-// DateRangeFilter below - the filter still drives
-// the legacy period breakdown, but a live dashboard's headline numbers
-// shouldn't silently change meaning when someone picks "This year".
-// No backend endpoint was added for this: everything is derived from the
-// existing dashboard summary, loss-report, trips list and customer-payments
-// endpoints (see aggregate.ts for the derivations and their caveats).
+import AppAlert from '@/components/ui/AppAlert.vue'
+// Financial figures follow the selected period; live operations remain scoped to today.
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import DateRangeFilter from '@/components/DateRangeFilter.vue'
@@ -294,17 +284,6 @@ const partyCards = computed(() => {
       negative: false,
     },
     {
-      label: t('dashboard.final.shareholders'),
-      to: { name: 'shareholders' },
-      balance: p.shareholders.balance,
-      detail: t('dashboard.final.withdrawn', {
-        amount: formatMoney(p.shareholders.total_withdrawn),
-      }),
-      sub: t('dashboard.final.openLoans', { amount: formatMoney(p.shareholders.open_loans_total) }),
-      icon: 'pie-chart' as IconName,
-      negative: false,
-    },
-    {
       label: t('dashboard.final.customsAndOther'),
       to: { name: 'treasury-transactions' },
       balance: p.customs_and_other.balance,
@@ -429,6 +408,9 @@ const compactEnRouteTrips = computed(() => enRouteTrips.value.slice(0, 5))
     <div class="flex justify-end">
       <DateRangeFilter @change="load" />
     </div>
+
+    <AppAlert v-if="error" :message="error" />
+    <p v-else-if="loading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
     <template v-if="summary">
       <section class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -650,7 +632,7 @@ const compactEnRouteTrips = computed(() => enRouteTrips.value.slice(0, 5))
         <h2 class="text-texte-2 text-sm font-semibold uppercase">
           {{ t('dashboard.final.partyBalances') }}
         </h2>
-        <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <RouterLink
             v-for="card in partyCards"
             :key="card.label"
@@ -723,7 +705,7 @@ const compactEnRouteTrips = computed(() => enRouteTrips.value.slice(0, 5))
       </section>
     </template>
 
-    <p v-if="liveError" class="text-critique text-sm">{{ liveError }}</p>
+    <AppAlert v-if="liveError" :message="liveError" />
     <p v-else-if="liveLoading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
     <template v-else>
@@ -826,326 +808,6 @@ const compactEnRouteTrips = computed(() => enRouteTrips.value.slice(0, 5))
         </div>
       </section>
     </template>
-
-    <details data-test="period-detail" class="border-ligne rounded-lg border bg-white p-4">
-      <summary class="text-texte-2 cursor-pointer text-sm font-semibold uppercase">
-        {{ t('dashboard.periodDetail') }}
-      </summary>
-
-      <p v-if="error" class="text-critique mt-4 text-sm">{{ error }}</p>
-      <p v-else-if="loading" class="text-texte-3 mt-4 text-sm">{{ t('common.loading') }}</p>
-
-      <div v-else-if="summary" class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <section class="border-ligne rounded-xl border bg-white p-4">
-          <h3 class="text-texte-2 mb-3 text-sm font-semibold uppercase">
-            {{ t('dashboard.sections.operations') }}
-          </h3>
-          <dl class="space-y-1 text-sm">
-            <div class="flex justify-between">
-              <dt class="text-texte-2">{{ t('dashboard.fields.trips') }}</dt>
-              <dd class="text-texte font-mono font-medium tabular-nums">
-                {{ summary.operations.trips_count }}
-              </dd>
-            </div>
-            <div class="flex justify-between">
-              <dt class="text-texte-2">{{ t('dashboard.fields.active') }}</dt>
-              <dd class="text-texte font-mono font-medium tabular-nums">
-                {{ summary.operations.active_trips_count }}
-              </dd>
-            </div>
-            <div class="flex justify-between">
-              <dt class="text-texte-2">{{ t('dashboard.fields.delivered') }}</dt>
-              <dd class="text-texte font-mono font-medium tabular-nums">
-                {{ summary.operations.delivered_trips_count }}
-              </dd>
-            </div>
-          </dl>
-        </section>
-
-        <section class="border-ligne rounded-xl border bg-white p-4">
-          <h3 class="text-texte-2 mb-3 text-sm font-semibold uppercase">
-            {{ t('dashboard.sections.fuel') }}
-          </h3>
-          <dl class="space-y-1 text-sm">
-            <div class="flex justify-between">
-              <dt class="text-texte-2">{{ t('dashboard.fields.quantityLoaded') }}</dt>
-              <dd class="text-texte font-medium">
-                <MonoValue v-bind="formatQuantityParts(summary.fuel.quantity_loaded)" />
-              </dd>
-            </div>
-            <div class="flex justify-between">
-              <dt class="text-texte-2">{{ t('dashboard.fields.theoreticalStock') }}</dt>
-              <dd class="text-texte font-medium">
-                <MonoValue v-bind="formatQuantityParts(summary.fuel.theoretical_stock)" />
-              </dd>
-            </div>
-          </dl>
-        </section>
-
-        <section class="border-ligne rounded-xl border bg-white p-4">
-          <h3 class="text-texte-2 mb-3 text-sm font-semibold uppercase">
-            {{ t('dashboard.sections.sales') }}
-          </h3>
-          <dl class="space-y-1 text-sm">
-            <div class="flex justify-between">
-              <dt class="text-texte-2">{{ t('dashboard.fields.salesCount') }}</dt>
-              <dd class="text-texte font-mono font-medium tabular-nums">
-                {{ summary.sales.sales_count }}
-              </dd>
-            </div>
-            <div class="flex justify-between">
-              <dt class="text-texte-2">{{ t('dashboard.fields.revenue') }}</dt>
-              <dd class="text-texte font-medium">
-                <MonoValue v-bind="formatMoneyParts(summary.sales.revenue)" />
-              </dd>
-            </div>
-          </dl>
-        </section>
-
-        <section class="border-ligne rounded-xl border bg-white p-4">
-          <h3 class="text-texte-2 mb-3 text-sm font-semibold uppercase">
-            {{ t('dashboard.sections.transport') }}
-          </h3>
-          <dl class="space-y-1 text-sm">
-            <div class="flex justify-between">
-              <dt class="text-texte-2">{{ t('dashboard.fields.settlements') }}</dt>
-              <dd class="text-texte font-mono font-medium tabular-nums">
-                {{ summary.transport.settlements_count }}
-              </dd>
-            </div>
-            <div class="flex justify-between">
-              <dt class="text-texte-2">{{ t('dashboard.fields.transportCost') }}</dt>
-              <dd class="text-texte font-medium">
-                <MonoValue v-bind="formatMoneyParts(summary.transport.transport_cost)" />
-              </dd>
-            </div>
-          </dl>
-        </section>
-
-        <section class="border-ligne rounded-xl border bg-white p-4">
-          <h3 class="text-texte-2 mb-3 text-sm font-semibold uppercase">
-            {{ t('dashboard.sections.finance') }}
-          </h3>
-          <dl class="space-y-1 text-sm">
-            <div class="flex justify-between">
-              <dt class="text-texte-2">{{ t('dashboard.fields.expenses') }}</dt>
-              <dd class="text-texte font-medium">
-                <MonoValue v-bind="formatMoneyParts(summary.finance.expenses_total)" />
-              </dd>
-            </div>
-            <div class="flex justify-between">
-              <dt class="text-texte-2">{{ t('dashboard.fields.treasuryBalance') }}</dt>
-              <dd
-                class="font-medium"
-                :class="
-                  Number(summary.finance.treasury_balance) < 0 ? 'text-critique' : 'text-texte'
-                "
-              >
-                <MonoValue v-bind="formatMoneyParts(summary.finance.treasury_balance)" />
-              </dd>
-            </div>
-          </dl>
-        </section>
-
-        <section class="border-ligne rounded-xl border bg-white p-4">
-          <h3 class="text-texte-2 mb-3 text-sm font-semibold uppercase">
-            {{ t('dashboard.sections.profit') }}
-          </h3>
-          <dl class="space-y-1 text-sm">
-            <div class="flex justify-between">
-              <dt class="text-texte-2">{{ t('dashboard.fields.totalMargin') }}</dt>
-              <dd
-                class="font-medium"
-                :class="Number(summary.profit.total_margin) < 0 ? 'text-critique' : 'text-texte'"
-              >
-                <MonoValue v-bind="formatMoneyParts(summary.profit.total_margin)" />
-              </dd>
-            </div>
-          </dl>
-        </section>
-
-        <!-- Point-in-time "currently outstanding" snapshots - not affected
-           by the DateRangeFilter above (see types.ts). -->
-        <section class="border-ligne rounded-xl border bg-white p-4">
-          <h3 class="text-texte-2 mb-1 text-sm font-semibold uppercase">
-            {{ t('dashboard.sections.debts') }}
-          </h3>
-          <p class="text-texte text-lg font-semibold">
-            <MonoValue v-bind="formatMoneyParts(summary.debts.total)" />
-          </p>
-          <dl class="mt-2 space-y-1 text-sm">
-            <div class="flex justify-between">
-              <dt class="text-texte-2">{{ t('dashboard.fields.debtSuppliers') }}</dt>
-              <dd class="text-texte font-medium">
-                <MonoValue v-bind="formatMoneyParts(summary.debts.suppliers.total)" />
-              </dd>
-            </div>
-            <div class="flex justify-between">
-              <dt class="text-texte-2">{{ t('dashboard.fields.debtTransporters') }}</dt>
-              <dd class="text-texte font-medium">
-                <MonoValue v-bind="formatMoneyParts(summary.debts.transporters.total)" />
-              </dd>
-            </div>
-            <div class="flex justify-between">
-              <dt class="text-texte-2">{{ t('dashboard.fields.debtCustoms') }}</dt>
-              <dd class="text-texte font-medium">
-                <MonoValue v-bind="formatMoneyParts(summary.debts.customs)" />
-              </dd>
-            </div>
-            <div class="flex justify-between">
-              <dt class="text-texte-2">{{ t('dashboard.fields.debtTransit') }}</dt>
-              <dd class="text-texte font-medium">
-                <MonoValue v-bind="formatMoneyParts(summary.debts.transit)" />
-              </dd>
-            </div>
-            <div class="flex justify-between">
-              <dt class="text-texte-2">{{ t('dashboard.fields.debtRoadTransit') }}</dt>
-              <dd class="text-texte font-medium">
-                <MonoValue v-bind="formatMoneyParts(summary.debts.road_transit)" />
-              </dd>
-            </div>
-            <div class="flex justify-between">
-              <dt class="text-texte-2">{{ t('dashboard.fields.debtOther') }}</dt>
-              <dd class="text-texte font-medium">
-                <MonoValue v-bind="formatMoneyParts(summary.debts.other)" />
-              </dd>
-            </div>
-          </dl>
-        </section>
-
-        <section class="border-ligne rounded-xl border bg-white p-4">
-          <h3 class="text-texte-2 mb-1 text-sm font-semibold uppercase">
-            {{ t('dashboard.sections.customerAmounts') }}
-          </h3>
-          <p class="text-texte text-lg font-semibold">
-            <MonoValue v-bind="formatMoneyParts(summary.customer_amounts.total)" />
-          </p>
-          <ul
-            v-if="summary.customer_amounts.rows.length"
-            class="mt-2 max-h-40 space-y-1 overflow-y-auto text-sm"
-          >
-            <li
-              v-for="row in summary.customer_amounts.rows"
-              :key="row.customer"
-              class="flex justify-between"
-            >
-              <span class="text-texte-2">{{ row.customer }}</span>
-              <span class="text-texte font-medium">
-                <MonoValue v-bind="formatMoneyParts(row.outstanding)" />
-              </span>
-            </li>
-          </ul>
-          <p v-else class="text-texte-3 mt-2 text-sm">{{ t('dashboard.noAmounts') }}</p>
-        </section>
-
-        <section class="border-ligne rounded-xl border bg-white p-4">
-          <h3 class="text-texte-2 mb-1 text-sm font-semibold uppercase">
-            {{ t('dashboard.sections.bankAmounts') }}
-          </h3>
-          <p class="text-texte text-lg font-semibold">
-            <MonoValue v-bind="formatMoneyParts(summary.bank_amounts.total)" />
-          </p>
-          <ul
-            v-if="summary.bank_amounts.rows.length"
-            class="mt-2 max-h-40 space-y-1 overflow-y-auto text-sm"
-          >
-            <li
-              v-for="row in summary.bank_amounts.rows"
-              :key="row.bank"
-              class="flex justify-between"
-            >
-              <span class="text-texte-2">{{ row.bank }}</span>
-              <span class="text-texte font-medium">
-                <MonoValue v-bind="formatMoneyParts(row.balance)" />
-              </span>
-            </li>
-          </ul>
-          <p v-else class="text-texte-3 mt-2 text-sm">{{ t('dashboard.noAmounts') }}</p>
-        </section>
-
-        <section class="border-ligne rounded-xl border bg-white p-4">
-          <h3 class="text-texte-2 mb-1 text-sm font-semibold uppercase">
-            {{ t('dashboard.sections.cashAmounts') }}
-          </h3>
-          <p class="text-texte text-lg font-semibold">
-            <MonoValue v-bind="formatMoneyParts(summary.cash_amounts.total)" />
-          </p>
-          <ul
-            v-if="summary.cash_amounts.rows.length"
-            class="mt-2 max-h-40 space-y-1 overflow-y-auto text-sm"
-          >
-            <li
-              v-for="row in summary.cash_amounts.rows"
-              :key="row.cash_account"
-              class="flex justify-between"
-            >
-              <span class="text-texte-2">{{ row.cash_account }}</span>
-              <span class="text-texte font-medium">
-                <MonoValue v-bind="formatMoneyParts(row.balance)" />
-              </span>
-            </li>
-          </ul>
-          <p v-else class="text-texte-3 mt-2 text-sm">{{ t('dashboard.noAmounts') }}</p>
-        </section>
-
-        <!-- Summary only (design doc 2026-08-26-benefices-associes-
-           refinement-design.md) - the Benefices page (/profit) stays the
-           single detailed source, this never breaks it down per trip or
-           per shareholder. Point-in-time, not scoped by the date range. -->
-        <section class="border-ligne rounded-xl border bg-white p-4">
-          <div class="mb-1 flex items-center justify-between">
-            <h3 class="text-texte-2 text-sm font-semibold uppercase">
-              {{ t('dashboard.sections.shareholders') }}
-            </h3>
-            <RouterLink
-              :to="{ name: 'profit' }"
-              class="border-ligne-forte text-texte hover:bg-sable inline-flex h-7 shrink-0 items-center rounded-lg border px-2.5 text-xs font-medium transition"
-            >
-              {{ t('dashboard.viewDetails') }}
-            </RouterLink>
-          </div>
-          <p class="text-texte text-lg font-semibold">
-            <MonoValue v-bind="formatMoneyParts(summary.shareholders_summary.current_profit)" />
-          </p>
-          <dl class="mt-2 space-y-1 text-sm">
-            <div class="flex justify-between">
-              <dt class="text-texte-2">{{ t('dashboard.fields.shareholdersWithdrawn') }}</dt>
-              <dd class="text-texte font-medium">
-                <MonoValue
-                  v-bind="formatMoneyParts(summary.shareholders_summary.total_withdrawn)"
-                />
-              </dd>
-            </div>
-            <div class="flex justify-between">
-              <dt class="text-texte-2">{{ t('dashboard.fields.shareholdersRemaining') }}</dt>
-              <dd class="text-texte font-medium">
-                <MonoValue
-                  v-bind="formatMoneyParts(summary.shareholders_summary.remaining_to_pay_shareholders)"
-                />
-              </dd>
-            </div>
-            <div class="flex justify-between">
-              <dt class="text-texte-2">{{ t('dashboard.fields.shareholdersOpenLoans') }}</dt>
-              <dd class="text-texte font-medium">
-                <MonoValue
-                  v-bind="formatMoneyParts(summary.shareholders_summary.open_loans_total)"
-                />
-              </dd>
-            </div>
-            <div class="border-ligne flex justify-between border-t pt-1">
-              <dt class="text-texte-2">
-                {{ t('dashboard.fields.shareholdersDistributableResult') }}
-              </dt>
-              <dd class="text-texte font-medium">
-                <MonoValue
-                  v-bind="formatMoneyParts(summary.shareholders_summary.distributable_result)"
-                />
-              </dd>
-            </div>
-          </dl>
-        </section>
-      </div>
-    </details>
   </div>
 </template>
 

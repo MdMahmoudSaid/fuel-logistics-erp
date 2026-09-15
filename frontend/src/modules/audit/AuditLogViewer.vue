@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppAlert from '@/components/ui/AppAlert.vue'
 // docs/PHASE_6_PLAN.md Etape 8: admin interface to inspect entity
 // modifications with a diff view highlighting changed values.
 import { ref, onMounted } from 'vue'
@@ -106,7 +107,7 @@ function badgeVariant(action: string) {
       {{ t('auditLog.title') }}
     </h1>
 
-    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
+    <AppAlert v-if="error" :message="error" />
     <p v-else-if="loading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
     <section v-else class="border-ligne overflow-auto rounded-xl border bg-white">

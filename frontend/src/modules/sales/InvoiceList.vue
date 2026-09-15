@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppAlert from '@/components/ui/AppAlert.vue'
 // docs/PHASE_4_PLAN.md Etape 9: invoice list with status filters. No "New"
 // button - invoices are generated automatically by DeliveryService, never
 // created directly (backend/apps/sales/views.py InvoiceViewSet.create()).
@@ -133,7 +134,7 @@ function badgeVariant(status: string) {
       </div>
     </div>
 
-    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
+    <AppAlert v-if="error" :message="error" />
 
     <div class="border-ligne overflow-x-auto rounded-xl border bg-white">
       <table class="w-full text-left text-sm">

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppAlert from '@/components/ui/AppAlert.vue'
 // Companion page to backend GET /api/customers/{id}/ledger/
 // (docs/PHASE_5_PLAN.md Etape 8/10), mirroring the existing
 // SupplierLedgerView.vue pattern.
@@ -147,7 +148,7 @@ function badgeVariant(status: string) {
       </div>
     </div>
 
-    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
+    <AppAlert v-if="error" :message="error" />
     <p v-else-if="loading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
     <template v-else-if="ledger">

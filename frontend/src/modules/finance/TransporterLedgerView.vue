@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppAlert from '@/components/ui/AppAlert.vue'
 // docs/PHASE_5_PLAN.md Etape 8/10: gross fees earned, loss deductions,
 // advances consumed and what's already settled for one transporter
 // (guide Section 1.5/8.6: "earned - deductions - advances - payments =
@@ -142,7 +143,7 @@ function badgeVariant(status: string) {
       </div>
     </div>
 
-    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
+    <AppAlert v-if="error" :message="error" />
     <p v-else-if="loading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
     <template v-else-if="ledger">

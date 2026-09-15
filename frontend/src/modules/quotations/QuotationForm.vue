@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppAlert from '@/components/ui/AppAlert.vue'
 // AZUR ÉNERGIE product decision 2026-09-05: quotation ("Offre commerciale")
 // create/edit form - existing customer optional, free temporary customer
 // name allowed, repeatable product/description/quantity/unit/unit price
@@ -150,7 +151,7 @@ async function onSubmit() {
     const genericMessage = Array.isArray(generic) ? generic[0] : generic
     error.value =
       translateApiError(typeof genericMessage === 'string' ? genericMessage : undefined) ??
-      (Object.keys(fieldErrors.value).length ? '' : t('quotations.form.saveError'))
+      (Object.values(fieldErrors.value).join('\n') || t('quotations.form.saveError'))
   } finally {
     saving.value = false
   }
@@ -219,7 +220,7 @@ function printQuotation() {
       </div>
     </div>
 
-    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
+    <AppAlert v-if="error" :message="error" />
 
     <form
       class="border-ligne grid grid-cols-1 gap-4 rounded-xl border bg-surface p-6 md:grid-cols-2"

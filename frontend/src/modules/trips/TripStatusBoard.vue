@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppAlert from '@/components/ui/AppAlert.vue'
 // Vue hybride (docs/UI_REDESIGN_PLAN.md Etape 6.2) : tableau desktop
 // (>=768px, chiffres Mono alignés à droite) / liste de TripCard mobile
 // (<768px), avec puces de filtre statut à défilement horizontal.
@@ -173,7 +174,7 @@ function nextAction(trip: Trip) {
       </Chip>
     </div>
 
-    <p v-if="error" class="text-critique text-sm">{{ error }}</p>
+    <AppAlert v-if="error" :message="error" />
     <p v-else-if="loading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
     <template v-else>
