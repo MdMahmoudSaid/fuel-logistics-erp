@@ -1025,11 +1025,15 @@ class ShareholderProfitShare(TimeStampedModel):
         return self.amount_due - self.amount_withdrawn
 
     def sync_amount_withdrawn(self) -> Decimal:
-        """Recompute amount_withdrawn from the actual ShareholderWithdrawal
-        rows against this share - the only way this field is ever written,
-        so it can never drift from withdrawal history (Task 7, client
-        modifications plan: "avoid a field that can silently drift")."""
-        total = self.withdrawals.aggregate(total=models.Sum("amount"))["total"] or Decimal("0.00")
+        """Recompute amount_withdrawn from the actual
+        ShareholderWithdrawalAllocation rows against this share - the only
+        way this field is ever written, so it can never drift from
+        withdrawal history (Task 7, client modifications plan: "avoid a
+        field that can silently drift")."""
+        total = (
+            self.withdrawal_allocations.aggregate(total=models.Sum("amount"))["total"]
+            or Decimal("0.00")
+        )
         self.amount_withdrawn = total
         self.save(update_fields=["amount_withdrawn", "updated_at"])
         return total

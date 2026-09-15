@@ -9,8 +9,17 @@ from apps.finance.models import (
     CashAccount,
     Shareholder,
     ShareholderContribution,
+    ShareholderProfitDistribution,
+    ShareholderProfitShare,
     ShareholderWithdrawal,
     ShareholderWithdrawalAllocation,
+)
+from apps.finance.services import (
+    ShareholderDistributionService,
+    ShareholderLedgerService,
+    ShareholderLoanService,
+    ShareholderWithdrawalError,
+    ShareholderWithdrawalService,
 )
 
 
@@ -170,3 +179,199 @@ def test_backfill_migration_creates_one_allocation_per_existing_withdrawal():
     executor = MigrationExecutor(connection)
     executor.loader.build_graph()
     executor.migrate(executor.loader.graph.leaf_nodes())
+
+
+@pytest.mark.django_db
+def test_get_available_balance_includes_capital_remaining():
+    """Direct regression test for the additive formula (design doc
+    2026-09-15-capital-associe-retrait-design.md): profit due and capital
+    remaining must both count, independently of any withdrawal."""
+    shareholder = _make_shareholder("BALANCE-FORMULA")
+    actor = _make_admin("BALANCE-FORMULA")
+    _seed_distributable()
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01", period_end="2026-07-31",
+        total_profit=Decimal("300000.00"), actor=actor,
+    )
+    ShareholderDistributionService.validate_distribution(distribution.id, actor)
+    bank = BankAccount.objects.create(name="Bank Balance Formula", opening_balance=Decimal("0.00"))
+    ShareholderContribution.objects.create(
+        shareholder=shareholder, amount=Decimal("500000.00"), date="2026-07-15",
+        bank_account=bank, recorded_by=actor,
+    )
+
+    assert ShareholderLedgerService.get_available_balance(shareholder.id) == Decimal("800000.00")
+
+
+@pytest.mark.django_db
+def test_withdrawal_within_profit_due_allocates_only_to_profit():
+    shareholder = _make_shareholder("ALLOC-PROFIT-ONLY")
+    actor = _make_admin("ALLOC-PROFIT-ONLY")
+    _seed_distributable()
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01", period_end="2026-07-31",
+        total_profit=Decimal("100000.00"), actor=actor,
+    )
+    ShareholderDistributionService.validate_distribution(distribution.id, actor)
+    cash = CashAccount.objects.create(name="Cash Profit Only", opening_balance=Decimal("100000.00"))
+
+    withdrawal = ShareholderWithdrawalService.record_withdrawal(
+        shareholder_id=shareholder.id, amount=Decimal("60000.00"), date="2026-08-01",
+        cash_account_id=cash.id, actor=actor,
+    )
+
+    allocations = list(withdrawal.allocations.all())
+    assert len(allocations) == 1
+    assert allocations[0].profit_share_id is not None
+    assert allocations[0].contribution_id is None
+    assert allocations[0].amount == Decimal("60000.00")
+
+
+@pytest.mark.django_db
+def test_withdrawal_exceeding_profit_due_overflows_into_capital():
+    """The client's own example: 100M profit due, a 700K withdrawal request
+    (well within total available_balance once capital counts) must draw
+    the profit pool dry then take the rest from capital."""
+    shareholder = _make_shareholder("ALLOC-OVERFLOW")
+    actor = _make_admin("ALLOC-OVERFLOW")
+    _seed_distributable()
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01", period_end="2026-07-31",
+        total_profit=Decimal("500000.00"), actor=actor,
+    )
+    ShareholderDistributionService.validate_distribution(distribution.id, actor)
+    bank = BankAccount.objects.create(name="Bank Overflow", opening_balance=Decimal("0.00"))
+    ShareholderContribution.objects.create(
+        shareholder=shareholder, amount=Decimal("1000000.00"), date="2026-07-15",
+        bank_account=bank, recorded_by=actor,
+    )
+    cash = CashAccount.objects.create(name="Cash Overflow", opening_balance=Decimal("1000000.00"))
+
+    withdrawal = ShareholderWithdrawalService.record_withdrawal(
+        shareholder_id=shareholder.id, amount=Decimal("700000.00"), date="2026-08-01",
+        cash_account_id=cash.id, actor=actor,
+    )
+
+    allocations = {a.profit_share_id is not None: a for a in withdrawal.allocations.all()}
+    assert len(withdrawal.allocations.all()) == 2
+    profit_allocation = next(a for a in withdrawal.allocations.all() if a.profit_share_id)
+    capital_allocation = next(a for a in withdrawal.allocations.all() if a.contribution_id)
+    assert profit_allocation.amount == Decimal("500000.00")
+    assert capital_allocation.amount == Decimal("200000.00")
+
+    share = ShareholderProfitShare.objects.get(distribution=distribution, shareholder=shareholder)
+    contribution = ShareholderContribution.objects.get(shareholder=shareholder)
+    assert share.remaining_due == Decimal("0.00")
+    assert contribution.remaining_capital == Decimal("800000.00")
+
+
+@pytest.mark.django_db
+def test_withdrawal_consumes_oldest_profit_share_first():
+    shareholder = _make_shareholder("ALLOC-FIFO-PROFIT")
+    actor = _make_admin("ALLOC-FIFO-PROFIT")
+    _seed_distributable()
+    older = ShareholderDistributionService.create_distribution(
+        period_start="2026-06-01", period_end="2026-06-30",
+        total_profit=Decimal("100000.00"), actor=actor,
+    )
+    ShareholderDistributionService.validate_distribution(older.id, actor)
+    newer = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01", period_end="2026-07-31",
+        total_profit=Decimal("100000.00"), actor=actor,
+    )
+    ShareholderDistributionService.validate_distribution(newer.id, actor)
+    cash = CashAccount.objects.create(name="Cash FIFO Profit", opening_balance=Decimal("1000000.00"))
+
+    ShareholderWithdrawalService.record_withdrawal(
+        shareholder_id=shareholder.id, amount=Decimal("120000.00"), date="2026-08-01",
+        cash_account_id=cash.id, actor=actor,
+    )
+
+    older_share = ShareholderProfitShare.objects.get(distribution=older, shareholder=shareholder)
+    newer_share = ShareholderProfitShare.objects.get(distribution=newer, shareholder=shareholder)
+    assert older_share.remaining_due == Decimal("0.00")
+    assert newer_share.remaining_due == Decimal("80000.00")
+
+
+@pytest.mark.django_db
+def test_withdrawal_consumes_oldest_contribution_first():
+    shareholder = _make_shareholder("ALLOC-FIFO-CAPITAL")
+    actor = _make_admin("ALLOC-FIFO-CAPITAL")
+    bank = BankAccount.objects.create(name="Bank FIFO Capital", opening_balance=Decimal("0.00"))
+    older_contribution = ShareholderContribution.objects.create(
+        shareholder=shareholder, amount=Decimal("100000.00"), date="2026-06-01",
+        bank_account=bank, recorded_by=actor,
+    )
+    newer_contribution = ShareholderContribution.objects.create(
+        shareholder=shareholder, amount=Decimal("100000.00"), date="2026-07-01",
+        bank_account=bank, recorded_by=actor,
+    )
+    cash = CashAccount.objects.create(name="Cash FIFO Capital", opening_balance=Decimal("1000000.00"))
+
+    ShareholderWithdrawalService.record_withdrawal(
+        shareholder_id=shareholder.id, amount=Decimal("120000.00"), date="2026-08-01",
+        cash_account_id=cash.id, actor=actor,
+    )
+
+    older_contribution.refresh_from_db()
+    newer_contribution.refresh_from_db()
+    assert older_contribution.remaining_capital == Decimal("0.00")
+    assert newer_contribution.remaining_capital == Decimal("80000.00")
+
+
+@pytest.mark.django_db
+def test_withdrawal_never_touches_another_shareholders_capital():
+    """The exact isolation rule the client insisted on: hamada's withdrawal
+    must never be able to reach abdoul's capital, even though the pooled
+    company capital would technically cover it."""
+    hamada = _make_shareholder("ISOLATION-A", percent=Decimal("50.00"))
+    abdoul = _make_shareholder("ISOLATION-B", percent=Decimal("50.00"))
+    actor = _make_admin("ISOLATION")
+    bank = BankAccount.objects.create(name="Bank Isolation", opening_balance=Decimal("0.00"))
+    ShareholderContribution.objects.create(
+        shareholder=hamada, amount=Decimal("100000.00"), date="2026-07-01",
+        bank_account=bank, recorded_by=actor,
+    )
+    ShareholderContribution.objects.create(
+        shareholder=abdoul, amount=Decimal("100000.00"), date="2026-07-01",
+        bank_account=bank, recorded_by=actor,
+    )
+    cash = CashAccount.objects.create(name="Cash Isolation", opening_balance=Decimal("1000000.00"))
+
+    with pytest.raises(ShareholderWithdrawalError):
+        ShareholderWithdrawalService.record_withdrawal(
+            shareholder_id=hamada.id, amount=Decimal("150000.00"), date="2026-08-01",
+            cash_account_id=cash.id, actor=actor,
+        )
+
+    abdoul_contribution = ShareholderContribution.objects.get(shareholder=abdoul)
+    assert abdoul_contribution.remaining_capital == Decimal("100000.00")
+    assert not ShareholderWithdrawal.objects.filter(shareholder=hamada).exists()
+
+
+@pytest.mark.django_db
+def test_withdrawal_rejects_amount_exceeding_profit_plus_capital_even_with_loan_credit():
+    """Second ceiling from the design doc: loans_given_remaining inflates
+    available_balance but is never an allocatable source, so a withdrawal
+    request that only fits because of loan credit must still be rejected."""
+    lender = _make_shareholder("CEILING-LENDER")
+    borrower = _make_shareholder("CEILING-BORROWER", percent=Decimal("0.00"))
+    actor = _make_admin("CEILING")
+    _seed_distributable()
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01", period_end="2026-07-31",
+        total_profit=Decimal("100000.00"), actor=actor,
+    )
+    ShareholderDistributionService.validate_distribution(distribution.id, actor)
+    ShareholderLoanService.create_loan(
+        lender_id=lender.id, borrower_id=borrower.id, amount=Decimal("50000.00"), date="2026-08-01",
+    )
+    cash = CashAccount.objects.create(name="Cash Ceiling", opening_balance=Decimal("1000000.00"))
+
+    assert ShareholderLedgerService.get_available_balance(lender.id) == Decimal("150000.00")
+
+    with pytest.raises(ShareholderWithdrawalError):
+        ShareholderWithdrawalService.record_withdrawal(
+            shareholder_id=lender.id, amount=Decimal("120000.00"), date="2026-08-02",
+            cash_account_id=cash.id, actor=actor,
+        )

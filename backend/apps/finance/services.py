@@ -29,6 +29,7 @@ from apps.finance.models import (
     ShareholderProfitDistribution,
     ShareholderProfitShare,
     ShareholderWithdrawal,
+    ShareholderWithdrawalAllocation,
     SupplierAdvance,
     SupplierPayment,
     TransporterAdvance,
@@ -1871,34 +1872,27 @@ class ShareholderWithdrawalService:
         amount,
         date,
         actor,
-        profit_share_id=None,
         bank_account_id=None,
         cash_account_id=None,
         notes="",
     ) -> ShareholderWithdrawal:
+        """Automatically allocates the requested amount across the
+        shareholder's own pools - all VALIDATED profit shares (oldest
+        first), then, only if still short, their own capital contributions
+        (oldest first) - never another shareholder's (design doc
+        2026-09-15-capital-associe-retrait-design.md). Loan terms are
+        never allocated against; see
+        ShareholderLedgerService.get_profit_and_capital_remaining.
+        """
         shareholder = Shareholder.objects.select_for_update().get(pk=shareholder_id)
         amount_decimal = Decimal(str(amount))
 
-        # 2026-09-08 review, point 5: every profit withdrawal must be tied
-        # to one traceable, VALIDATED ShareholderProfitShare. An unlinked
-        # withdrawal debited treasury while decrementing no share at all -
-        # the shareholder kept the same available balance, and a
-        # distribution could later be cancelled while some of its money had
-        # already quietly left the company with no link back to it.
-        if profit_share_id is None:
-            raise ShareholderWithdrawalError(
-                "Un retrait de benefice doit etre rattache a une part validee "
-                "(selectionnez la repartition concernee)."
-            )
-
-        # Unconditional balance checks (design doc
-        # 2026-08-26-benefices-associes-refinement-design.md, Fix 1): even a
-        # profit_share-tied withdrawal never checked the destination account
-        # before this - a shareholder could withdraw an arbitrary amount
-        # regardless of what they were actually owed or what the bank/cash
-        # account actually held.
         available_balance = ShareholderLedgerService.get_available_balance(shareholder_id)
         if amount_decimal > available_balance:
+            raise ShareholderWithdrawalError("Solde associe insuffisant.")
+
+        allocatable = ShareholderLedgerService.get_profit_and_capital_remaining(shareholder_id)
+        if amount_decimal > allocatable:
             raise ShareholderWithdrawalError("Solde associe insuffisant.")
 
         if bank_account_id is not None:
@@ -1908,38 +1902,8 @@ class ShareholderWithdrawalService:
         if amount_decimal > account.current_balance:
             raise ShareholderWithdrawalError("Solde bancaire insuffisant.")
 
-        profit_share = None
-        if profit_share_id is not None:
-            profit_share = ShareholderProfitShare.objects.select_for_update().get(
-                pk=profit_share_id
-            )
-            if profit_share.shareholder_id != shareholder.id:
-                raise ShareholderWithdrawalError(
-                    "Cette part de benefice n'appartient pas a cet actionnaire."
-                )
-            distribution = ShareholderProfitDistribution.objects.select_for_update().get(
-                pk=profit_share.distribution_id
-            )
-            # 2026-09-08 review: a withdrawal may only be booked against a
-            # share of a VALIDATED distribution. A DRAFT is a preparatory
-            # proposal (no engagement yet), a CANCELLED one no longer
-            # grants any right - either would let money leave treasury for
-            # a distribution that is not, or no longer, a real debt.
-            if distribution.status != ShareholderProfitDistribution.Status.VALIDATED:
-                raise ShareholderWithdrawalError(
-                    "Cette part de benefice appartient a une repartition non "
-                    "validee (brouillon ou annulee) : aucun retrait possible."
-                )
-            remaining_due = profit_share.remaining_due
-            if amount_decimal > remaining_due:
-                raise ShareholderWithdrawalError(
-                    f"Le montant du retrait ({amount_decimal}) depasse le reste "
-                    f"a percevoir sur cette part ({remaining_due})."
-                )
-
         withdrawal = ShareholderWithdrawal.objects.create(
             shareholder=shareholder,
-            profit_share=profit_share,
             amount=amount,
             date=date,
             bank_account_id=bank_account_id,
@@ -1948,8 +1912,56 @@ class ShareholderWithdrawalService:
             recorded_by=actor,
         )
 
-        if profit_share is not None:
-            profit_share.sync_amount_withdrawn()
+        amount_left = amount_decimal
+
+        shares = (
+            ShareholderProfitShare.objects.select_for_update()
+            .filter(
+                shareholder_id=shareholder_id,
+                distribution__status=ShareholderProfitDistribution.Status.VALIDATED,
+            )
+            .order_by("distribution__period_end", "distribution_id")
+        )
+        for share in shares:
+            if amount_left <= 0:
+                break
+            remaining = share.remaining_due
+            if remaining <= 0:
+                continue
+            consumed = min(remaining, amount_left)
+            ShareholderWithdrawalAllocation.objects.create(
+                withdrawal=withdrawal, profit_share=share, amount=consumed,
+            )
+            share.sync_amount_withdrawn()
+            amount_left -= consumed
+
+        if amount_left > 0:
+            contributions = (
+                ShareholderContribution.objects.select_for_update()
+                .filter(shareholder_id=shareholder_id)
+                .order_by("date", "id")
+            )
+            for contribution in contributions:
+                if amount_left <= 0:
+                    break
+                remaining = contribution.remaining_capital
+                if remaining <= 0:
+                    continue
+                consumed = min(remaining, amount_left)
+                ShareholderWithdrawalAllocation.objects.create(
+                    withdrawal=withdrawal, contribution=contribution, amount=consumed,
+                )
+                contribution.sync_amount_returned()
+                amount_left -= consumed
+
+        if amount_left > 0:
+            # The two ceiling checks above should make this unreachable -
+            # if it triggers, something upstream (e.g. a future third
+            # additive term on available_balance) broke the invariant that
+            # allocatable always covers a request that passed both checks.
+            raise ShareholderWithdrawalError(
+                "Erreur interne : montant du retrait non entierement alloue."
+            )
 
         FinancePostingService.record_shareholder_withdrawal_treasury(withdrawal)
 
@@ -2330,13 +2342,36 @@ class ShareholderLedgerService:
     PaymentAllocationService.get_customer_outstanding)."""
 
     @staticmethod
+    def get_profit_and_capital_remaining(shareholder_id) -> Decimal:
+        """The two pools a withdrawal can actually be allocated against -
+        deliberately excludes loan terms (design doc
+        2026-09-15-capital-associe-retrait-design.md): a loan between
+        shareholders is never a source ShareholderWithdrawalService draws
+        from, so this is a narrower, allocation-safe figure than
+        get_available_balance()."""
+        shares_remaining = (
+            ShareholderProfitShare.objects.filter(shareholder_id=shareholder_id)
+            .filter(distribution__status=ShareholderProfitDistribution.Status.VALIDATED)
+            .aggregate(total=Sum(F("amount_due") - F("amount_withdrawn")))["total"]
+            or ZERO
+        )
+        capital_remaining = (
+            ShareholderContribution.objects.filter(shareholder_id=shareholder_id)
+            .aggregate(total=Sum(F("amount") - F("amount_returned")))["total"]
+            or ZERO
+        )
+        return shares_remaining + capital_remaining
+
+    @staticmethod
     def get_available_balance(shareholder_id) -> Decimal:
         """Single source of truth for how much a shareholder can withdraw
-        or lend out right now (design doc
-        2026-08-26-benefices-associes-refinement-design.md):
+        or lend out right now (design docs
+        2026-08-26-benefices-associes-refinement-design.md and
+        2026-09-15-capital-associe-retrait-design.md):
 
             available_balance =
                 profit_share_remaining_due
+              + capital_remaining
               + loans_given_remaining
               - loans_received_remaining
 
@@ -2353,13 +2388,13 @@ class ShareholderLedgerService:
         proposal with no real debt to the shareholders, and a CANCELLED one
         no longer grants any right - neither may credit an available
         balance, everywhere that balance is used.
+
+        A shareholder's own remaining capital (design doc
+        2026-09-15) is included here, but a withdrawal never allocates
+        against loan terms - see get_profit_and_capital_remaining, used as
+        a narrower, allocation-safe ceiling by record_withdrawal.
         """
-        shares_remaining = (
-            ShareholderProfitShare.objects.filter(shareholder_id=shareholder_id)
-            .filter(distribution__status=ShareholderProfitDistribution.Status.VALIDATED)
-            .aggregate(total=Sum(F("amount_due") - F("amount_withdrawn")))["total"]
-            or ZERO
-        )
+        pools_remaining = ShareholderLedgerService.get_profit_and_capital_remaining(shareholder_id)
         loans_given_remaining = sum(
             (loan.remaining_amount for loan in ShareholderLoan.objects.filter(lender_id=shareholder_id)),
             ZERO,
@@ -2371,7 +2406,7 @@ class ShareholderLedgerService:
             ),
             ZERO,
         )
-        return shares_remaining + loans_given_remaining - loans_received_remaining
+        return pools_remaining + loans_given_remaining - loans_received_remaining
 
     @staticmethod
     def get_shareholder_summary(shareholder_id) -> dict:
