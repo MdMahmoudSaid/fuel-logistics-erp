@@ -1170,16 +1170,20 @@ class ShareholderContribution(AuditableModel, TimeStampedModel):
     """Real cash injected into the company by a shareholder/associate
     (Phase 1, docs/superpowers/specs/2026-09-02-business-corrections-6-phases-design.md).
 
-    Mirrors SupplierAdvance rather than ShareholderWithdrawal: the proof
-    document is mandatory here (a capital injection is a notable, real
-    money-in event), so creation goes through
+    Its still-unreturned amount (`remaining_capital`) DOES contribute to
+    `ShareholderLedgerService.get_available_balance()` (design doc
+    2026-09-15-capital-associe-retrait-design.md): once a shareholder's
+    profit share is exhausted, a withdrawal may draw down their own
+    capital, oldest contribution first, tracked one
+    ShareholderWithdrawalAllocation row at a time so it never drifts and
+    never touches another shareholder's capital.
+
+    The proof document is mandatory here (a capital injection is a
+    notable, real money-in event), so creation goes through
     ShareholderContributionService.record_contribution, copied from
     AdvanceService.create_supplier_advance rather than routed through
     FinancePostingService (which only fits flows where the document stays
-    optional). Never contributes to
-    ShareholderLedgerService.get_available_balance() or
-    ShareholderStatementQuery's running balance - it is capital, not
-    distributable profit.
+    optional).
     """
 
     shareholder = models.ForeignKey(
@@ -1204,6 +1208,9 @@ class ShareholderContribution(AuditableModel, TimeStampedModel):
     recorded_by = models.ForeignKey(
         "accounts.User", on_delete=models.PROTECT, related_name="shareholder_contributions_recorded"
     )
+    amount_returned = models.DecimalField(
+        max_digits=16, decimal_places=2, default=0, editable=False
+    )
 
     class Meta:
         ordering = ["-date", "-id"]
@@ -1220,6 +1227,14 @@ class ShareholderContribution(AuditableModel, TimeStampedModel):
                 condition=models.Q(bank_account__isnull=False) | models.Q(cash_account__isnull=False),
                 name="finance_shareholdercontribution_requires_account",
             ),
+            models.CheckConstraint(
+                condition=models.Q(amount_returned__gte=0),
+                name="finance_shareholdercontribution_amount_returned_non_negative",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(amount_returned__lte=models.F("amount")),
+                name="finance_shareholdercontribution_returned_not_exceeding_amount",
+            ),
         ]
         indexes = [
             models.Index(fields=["shareholder", "date"], name="finance_shrcontrib_date_idx"),
@@ -1227,3 +1242,20 @@ class ShareholderContribution(AuditableModel, TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.shareholder}: {self.amount} ({self.date})"
+
+    @property
+    def remaining_capital(self) -> Decimal:
+        return self.amount - self.amount_returned
+
+    def sync_amount_returned(self) -> Decimal:
+        """Recompute amount_returned from the actual
+        ShareholderWithdrawalAllocation rows against this contribution -
+        the only writer, so it can never silently drift (same pattern as
+        ShareholderProfitShare.sync_amount_withdrawn)."""
+        total = (
+            self.withdrawal_allocations.aggregate(total=models.Sum("amount"))["total"]
+            or Decimal("0.00")
+        )
+        self.amount_returned = total
+        self.save(update_fields=["amount_returned", "updated_at"])
+        return total
