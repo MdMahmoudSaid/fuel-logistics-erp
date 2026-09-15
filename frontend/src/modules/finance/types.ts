@@ -488,11 +488,17 @@ export interface ShareholderLoan {
   updated_at: string
 }
 
+export interface ShareholderWithdrawalAllocation {
+  profit_share: number | null
+  contribution: number | null
+  amount: string
+}
+
 export interface ShareholderWithdrawal {
   id: number
   shareholder: number
   shareholder_detail: ShareholderBrief | null
-  profit_share: number | null
+  allocations: ShareholderWithdrawalAllocation[]
   amount: string
   date: string
   bank_account: number | null
@@ -509,6 +515,8 @@ export interface ShareholderContribution {
   shareholder: number
   shareholder_detail: ShareholderBrief | null
   amount: string
+  amount_returned: string
+  remaining_capital: string
   date: string
   bank_account: number | null
   cash_account: number | null
@@ -550,7 +558,7 @@ export interface ShareholderLedgerWithdrawal {
   id: number
   amount: string
   date: string
-  profit_share_id: number | null
+  allocations: ShareholderWithdrawalAllocation[]
   bank_account_id: number | null
   cash_account_id: number | null
   notes: string
@@ -568,13 +576,19 @@ export interface ShareholderLedger {
   total_withdrawn: string
   remaining_due: string
   // ShareholderLedgerService.get_available_balance(): remaining_due +
-  // loans given (as lender, still receivable) - loans received (as
-  // borrower, a liability) - the single number that gates both a
-  // withdrawal and lending money to another associate.
+  // capital_remaining + loans given (as lender, still receivable) - loans
+  // received (as borrower, a liability) - the single number that gates
+  // both a withdrawal and lending money to another associate.
   available_balance: string
-  // Real cash injected via ShareholderContribution - never mixed into
-  // available_balance above (capital is not distributable profit).
+  // Real cash injected via ShareholderContribution, gross/historical -
+  // never decreases even once some of it is returned via a withdrawal.
   total_contributed: string
+  // Sum of ShareholderContribution.amount_returned across all of this
+  // shareholder's contributions.
+  capital_returned: string
+  // total_contributed - capital_returned - the part of available_balance
+  // that comes from capital rather than profit.
+  capital_remaining: string
   shares: ShareholderLedgerShare[]
   loans_borrowed: ShareholderLedgerLoan[]
   loans_lent: ShareholderLedgerLoan[]

@@ -1009,14 +1009,15 @@
       "withdrawal": {
         "title": "Shareholder withdrawal",
         "shareholder": "Shareholder",
-        "profitShare": "Profit share",
-        "selectProfitShare": "Choose the validated distribution…",
+        "availableBalanceHint": "Available balance for this withdrawal",
         "amount": "Amount",
         "date": "Date",
         "accountType": "Account type",
         "account": "Account",
         "record": "Record withdrawal",
-        "saveError": "Could not save this withdrawal — check the fields."
+        "saveError": "Could not save this withdrawal — check the fields.",
+        "sourceProfitShare": "profit",
+        "sourceCapital": "capital"
       },
       "ledger": {
         "title": "Shareholder ledger",
@@ -1034,6 +1035,7 @@
       "capital": {
         "title": "Capital",
         "totalContributed": "Capital contributed (total)",
+        "remaining": "Remaining capital",
         "help": "Cash actually injected by the shareholder — separate from distributable profit.",
         "date": "Date",
         "amount": "Amount",

@@ -1009,14 +1009,15 @@
       "withdrawal": {
         "title": "سحب أموال المساهم",
         "shareholder": "المساهم",
-        "profitShare": "حصة الربح",
-        "selectProfitShare": "اختر التوزيع المصادق عليه…",
+        "availableBalanceHint": "الرصيد المتاح لهذا السحب",
         "amount": "المبلغ",
         "date": "التاريخ",
         "accountType": "نوع الحساب",
         "account": "الحساب",
         "record": "تسجيل السحب",
-        "saveError": "تعذر حفظ هذا السحب — تحقق من الحقول."
+        "saveError": "تعذر حفظ هذا السحب — تحقق من الحقول.",
+        "sourceProfitShare": "الأرباح",
+        "sourceCapital": "رأس المال"
       },
       "ledger": {
         "title": "دفتر أستاذ المساهم",
@@ -1034,6 +1035,7 @@
       "capital": {
         "title": "رأس المال",
         "totalContributed": "إجمالي رأس المال المساهم به",
+        "remaining": "رأس المال المتبقي",
         "help": "أموال حقيقية أودعها المساهم — منفصلة عن الأرباح القابلة للتوزيع.",
         "date": "التاريخ",
         "amount": "المبلغ",

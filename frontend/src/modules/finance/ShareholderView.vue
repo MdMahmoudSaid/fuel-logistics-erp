@@ -30,6 +30,7 @@ import type {
   ShareholderProfitDistribution,
   ShareholderProfitPreview,
   ShareholderWithdrawal,
+  ShareholderWithdrawalAllocation,
 } from './types'
 import Badge from '@/components/ui/Badge.vue'
 import Button from '@/components/ui/Button.vue'
@@ -334,7 +335,6 @@ const showLedgerContributionForm = ref(false)
 const withdrawals = ref<ShareholderWithdrawal[]>([])
 const withdrawalForm = ref({
   shareholder: '',
-  profit_share: '',
   amount: '',
   date: today(),
   account_type: 'cash' as 'bank' | 'cash',
@@ -348,13 +348,34 @@ const withdrawalAccountOptions = computed(() =>
   withdrawalForm.value.account_type === 'bank' ? bankAccounts.value : cashAccounts.value,
 )
 
-// Shares with something left to withdraw, for the selected shareholder -
-// the picker only ever offers shares that still owe money.
-const availableSharesForWithdrawal = computed(() => {
+// Available balance for the selected shareholder, shown as a hint next to
+// the amount field now that allocation is fully automatic (profit first,
+// then capital) - no more manual share picker.
+const withdrawalAvailableBalance = computed(() => {
   const shareholderId = Number(withdrawalForm.value.shareholder)
-  if (!shareholderId || !ledger.value || ledger.value.shareholder.id !== shareholderId) return []
-  return ledger.value.shares.filter((s) => Number(s.remaining_due) > 0)
+  if (!shareholderId || !ledger.value || ledger.value.shareholder.id !== shareholderId) return null
+  return ledger.value.available_balance
 })
+
+// Only withdrawals that actually touched capital get a breakdown line -
+// a pure-profit withdrawal (the overwhelming majority) shows nothing
+// extra, matching the existing single-amount display.
+function withdrawalAllocationSummary(
+  w: { allocations: ShareholderWithdrawalAllocation[] },
+): string | null {
+  const capitalAllocations = w.allocations.filter((a) => a.contribution !== null)
+  if (capitalAllocations.length === 0) return null
+  const profitTotal = w.allocations
+    .filter((a) => a.profit_share !== null)
+    .reduce((sum, a) => sum + Number(a.amount), 0)
+  const capitalTotal = capitalAllocations.reduce((sum, a) => sum + Number(a.amount), 0)
+  const parts: string[] = []
+  if (profitTotal > 0) {
+    parts.push(`${formatMoney(String(profitTotal))} (${t('finance.shareholder.withdrawal.sourceProfitShare')})`)
+  }
+  parts.push(`${formatMoney(String(capitalTotal))} (${t('finance.shareholder.withdrawal.sourceCapital')})`)
+  return parts.join(' + ')
+}
 
 async function loadWithdrawals() {
   const data = await shareholderWithdrawalResource.list()
@@ -367,9 +388,6 @@ async function onCreateWithdrawal() {
   try {
     await shareholderWithdrawalResource.create({
       shareholder: Number(withdrawalForm.value.shareholder),
-      // 2026-09-08 review, point 5: a profit withdrawal is always tied to
-      // one validated share - the field is required, no "retrait general".
-      profit_share: Number(withdrawalForm.value.profit_share),
       amount: withdrawalForm.value.amount,
       date: withdrawalForm.value.date,
       bank_account:
@@ -384,7 +402,6 @@ async function onCreateWithdrawal() {
     })
     withdrawalForm.value = {
       shareholder: '',
-      profit_share: '',
       amount: '',
       date: today(),
       account_type: 'cash',
@@ -447,14 +464,12 @@ async function onViewLedger() {
   await loadLedger(Number(ledgerShareholderId.value))
 }
 
-// Bug fix (2026-09-13 audit): availableSharesForWithdrawal only reads
+// Bug fix (2026-09-13 audit): the available-balance hint only reads
 // `ledger`, which used to be populated exclusively by the Grand livre
 // tab's own lookup - picking a shareholder directly in the Retraits form
-// left the profit-share picker silently empty even when real money was
-// available. Loading that shareholder's ledger here too closes the gap
-// without duplicating the filtering logic.
+// left it silently empty even when real money was available. Loading
+// that shareholder's ledger here too closes the gap.
 async function onWithdrawalShareholderChange() {
-  withdrawalForm.value.profit_share = ''
   const shareholderId = Number(withdrawalForm.value.shareholder)
   if (shareholderId) await loadLedger(shareholderId)
 }
@@ -992,21 +1007,13 @@ async function onWithdrawalShareholderChange() {
             <option v-for="s in activeShareholders" :key="s.id" :value="s.id">{{ s.name }}</option>
           </select>
         </div>
-        <div class="space-y-1.5">
-          <label class="text-texte-2 text-sm font-medium" for="wd_share">
-            {{ t('finance.shareholder.withdrawal.profitShare') }}
-          </label>
-          <select
-            id="wd_share"
-            v-model="withdrawalForm.profit_share"
-            required
-            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-          >
-            <option value="" disabled>{{ t('finance.shareholder.withdrawal.selectProfitShare') }}</option>
-            <option v-for="share in availableSharesForWithdrawal" :key="share.id" :value="share.id">
-              {{ share.period_start }} — {{ share.period_end }} ({{ share.remaining_due }})
-            </option>
-          </select>
+        <div v-if="withdrawalAvailableBalance" class="space-y-1.5">
+          <p class="text-texte-2 text-sm font-medium">
+            {{ t('finance.shareholder.withdrawal.availableBalanceHint') }}
+          </p>
+          <p class="flex h-12 items-center">
+            <MonoValue :value="formatMoney(withdrawalAvailableBalance)" />
+          </p>
         </div>
         <div class="space-y-1.5">
           <label class="text-texte-2 text-sm font-medium" for="wd_amount">
@@ -1100,6 +1107,9 @@ async function onWithdrawalShareholderChange() {
               <td class="px-3 py-2.5">{{ w.date }}</td>
               <td class="px-3 py-2.5 text-end">
                 <MonoValue :value="formatMoney(w.amount)" />
+                <p v-if="withdrawalAllocationSummary(w)" class="text-texte-3 text-xs">
+                  {{ withdrawalAllocationSummary(w) }}
+                </p>
               </td>
             </tr>
             <tr v-if="withdrawals.length === 0">
@@ -1200,11 +1210,17 @@ async function onWithdrawalShareholderChange() {
         <section class="border-ligne mb-5 rounded-xl border p-4">
           <div class="mb-3 flex items-center justify-between">
             <h3 class="text-texte font-semibold">{{ t('finance.shareholder.capital.title') }}</h3>
-            <MonoValue
-              class="text-lg font-semibold"
-              align="left"
-              :value="formatMoney(ledger.total_contributed)"
-            />
+            <div class="text-end">
+              <MonoValue
+                class="text-lg font-semibold"
+                align="left"
+                :value="formatMoney(ledger.total_contributed)"
+              />
+              <p class="text-texte-3 text-xs">
+                {{ t('finance.shareholder.capital.remaining') }}:
+                <MonoValue :value="formatMoney(ledger.capital_remaining)" />
+              </p>
+            </div>
           </div>
           <p class="text-texte-3 mb-3 text-xs">{{ t('finance.shareholder.capital.help') }}</p>
           <div class="overflow-x-auto">

@@ -14,6 +14,7 @@ const fetchShareholderLedger = vi.fn()
 const fetchShareholderProfitPreview = vi.fn()
 const shareholderResourceList = vi.fn()
 const shareholderContributionResourceList = vi.fn()
+const shareholderWithdrawalResourceList = vi.fn()
 const shareholderDistributionResourceCreate = vi.fn(
   async (payload: Record<string, unknown>): Promise<Record<string, unknown>> => ({
     id: 1,
@@ -57,7 +58,9 @@ vi.mock('../api', () => ({
     update: vi.fn(),
   },
   shareholderLoanResource: { list: vi.fn(async () => emptyList()) },
-  shareholderWithdrawalResource: { list: vi.fn(async () => emptyList()) },
+  shareholderWithdrawalResource: {
+    list: (...args: unknown[]) => shareholderWithdrawalResourceList(...args),
+  },
   shareholderDistributionResource: {
     list: (...args: unknown[]) => shareholderDistributionResourceList(...args),
     create: (payload: Record<string, unknown>) => shareholderDistributionResourceCreate(payload),
@@ -83,6 +86,7 @@ describe('ShareholderView', () => {
     i18n.global.locale.value = 'fr'
     shareholderResourceList.mockResolvedValue(shareholderListPayload())
     shareholderContributionResourceList.mockResolvedValue(emptyList())
+    shareholderWithdrawalResourceList.mockResolvedValue(emptyList())
     shareholderDistributionResourceList.mockResolvedValue(emptyList())
     fetchShareholderProfitPreview.mockResolvedValue({
       period_start: '2026-08-01',
@@ -128,6 +132,8 @@ describe('ShareholderView', () => {
       remaining_due: '600000.00',
       available_balance: '615000.00',
       total_contributed: '10000000.00',
+      capital_returned: '0.00',
+      capital_remaining: '10000000.00',
       shares: [],
       loans_borrowed: [],
       loans_lent: [
@@ -427,12 +433,10 @@ describe('ShareholderView', () => {
     expect(wrapper.find('#contribution').exists()).toBe(false)
   })
 
-  it('offers a shareholder\'s withdrawable profit share as soon as they are picked in Retraits, without visiting Grand livre first', async () => {
-    // Bug fix (2026-09-13 audit): availableSharesForWithdrawal only ever
-    // read the `ledger` ref, which used to be populated exclusively by
-    // Grand livre's own lookup - going straight to Retraits and picking a
-    // shareholder left the profit-share dropdown silently empty even when
-    // real money was available to withdraw.
+  it('shows the shareholder\'s available balance as soon as they are picked in Retraits, without visiting Grand livre first', async () => {
+    // Bug fix (2026-09-13 audit) still applies to the hint: picking a
+    // shareholder directly in Retraits must load their ledger without
+    // needing a prior visit to Grand livre.
     fetchShareholderLedger.mockResolvedValue({
       shareholder: { id: 1, name: 'Ahmed', participation_percent: '100.00', is_active: true },
       total_amount_due: '3528000.00',
@@ -440,18 +444,9 @@ describe('ShareholderView', () => {
       remaining_due: '3528000.00',
       available_balance: '3528000.00',
       total_contributed: '0.00',
-      shares: [
-        {
-          id: 2,
-          distribution_id: 1,
-          period_start: '2026-09-13',
-          period_end: '2026-09-13',
-          percent_snapshot: '80.00',
-          amount_due: '3528000.00',
-          amount_withdrawn: '0.00',
-          remaining_due: '3528000.00',
-        },
-      ],
+      capital_returned: '0.00',
+      capital_remaining: '0.00',
+      shares: [],
       loans_borrowed: [],
       loans_lent: [],
       net_loan_balance: '0.00',
@@ -468,8 +463,63 @@ describe('ShareholderView', () => {
     await flushPromises()
 
     expect(fetchShareholderLedger).toHaveBeenCalledWith(1)
-    const shareOptions = wrapper.find('#wd_share').findAll('option')
-    expect(shareOptions.some((o) => o.text().includes('3528000.00'))).toBe(true)
+    expect(wrapper.find('#wd_share').exists()).toBe(false)
+    expect(wrapper.text()).toContain('3 528 000 XOF')
+  })
+
+  it('shows a profit/capital breakdown only for withdrawals that touched capital', async () => {
+    shareholderWithdrawalResourceList.mockResolvedValueOnce({
+      count: 2,
+      next: null,
+      previous: null,
+      results: [
+        {
+          id: 1,
+          shareholder: 1,
+          shareholder_detail: { id: 1, name: 'Ahmed', participation_percent: '100.00', contribution: '0.00' },
+          allocations: [
+            { profit_share: 10, contribution: null, amount: '500000.00' },
+            { profit_share: null, contribution: 20, amount: '200000.00' },
+          ],
+          amount: '700000.00',
+          date: '2026-08-01',
+          bank_account: null,
+          cash_account: 1,
+          notes: '',
+          recorded_by: null,
+          recorded_by_detail: null,
+          created_at: '',
+          updated_at: '',
+        },
+        {
+          id: 2,
+          shareholder: 1,
+          shareholder_detail: { id: 1, name: 'Ahmed', participation_percent: '100.00', contribution: '0.00' },
+          allocations: [{ profit_share: 11, contribution: null, amount: '60000.00' }],
+          amount: '60000.00',
+          date: '2026-08-02',
+          bank_account: null,
+          cash_account: 1,
+          notes: '',
+          recorded_by: null,
+          recorded_by_detail: null,
+          created_at: '',
+          updated_at: '',
+        },
+      ],
+    })
+
+    const wrapper = mount(ShareholderView)
+    await flushPromises()
+
+    await wrapper.findAll('button').find((b) => b.text() === 'Retraits')!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('700 000 XOF')
+    expect(wrapper.text()).toContain('capital')
+    const rows = wrapper.findAll('tbody tr')
+    const secondRow = rows.find((r) => r.text().includes('60 000'))
+    expect(secondRow?.text()).not.toContain('capital')
   })
 
   it('localizes the shareholder tabs and suggested distributable result label in English and Arabic', async () => {
@@ -561,9 +611,11 @@ describe('ShareholderView', () => {
     expect(shareholderContributionResourceList).toHaveBeenCalledWith({ shareholder: 1 })
     expect(wrapper.text()).toContain('Capital')
     expect(wrapper.text()).toContain('APPORT-1')
-    // total_contributed (10 000 000) rendered once for the summary card and
-    // once again as the single history row's amount.
-    expect(wrapper.text().match(/10 000 000 XOF/g)?.length).toBe(2)
+    // total_contributed (10 000 000) rendered once for the summary card,
+    // once for the "Capital restant" line (equal here since nothing has
+    // been returned yet), and once again as the single history row's
+    // amount.
+    expect(wrapper.text().match(/10 000 000 XOF/g)?.length).toBe(3)
   })
 
   it('opens the contribution form from the associates tab', async () => {
