@@ -42,8 +42,8 @@ const badgeVariant = computed(() => {
     class="border-ligne block space-y-3 rounded-xl border bg-white p-4 transition hover:border-orange"
   >
     <div class="flex items-start justify-between gap-2">
-      <div>
-        <p class="font-mono text-sm font-medium">{{ trip.reference }}</p>
+      <div class="min-w-0">
+        <p class="font-mono text-sm font-medium break-all">{{ trip.reference }}</p>
         <p class="text-texte-2 text-xs">
           {{ formatTruckPlates(trip.truck_detail) }} ·
           {{

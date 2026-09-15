@@ -532,6 +532,13 @@ class TransporterAdvanceSerializer(serializers.ModelSerializer):
 
 
 class TransportPaymentSerializer(serializers.ModelSerializer):
+    can_modify = serializers.SerializerMethodField()
+
+    def get_can_modify(self, obj):
+        from .commission import can_modify_commission
+
+        return can_modify_commission(obj)
+
     transporter_detail = TransporterSerializer(source="transporter", read_only=True)
     trip_reference = serializers.CharField(source="trip.reference", read_only=True)
     net_amount = serializers.DecimalField(max_digits=16, decimal_places=2, read_only=True)
@@ -542,7 +549,7 @@ class TransportPaymentSerializer(serializers.ModelSerializer):
         fields = [
             "id", "trip", "trip_reference", "transporter", "transporter_detail",
             "calculation_method", "base_amount", "unit_price_per_litre", "deduction_amount",
-            "deduction_label", "advance_applied", "net_amount", "status", "created_at", "updated_at",
+            "deduction_label", "advance_applied", "net_amount", "status", "created_at", "updated_at", "can_modify",
         ]
         read_only_fields = ["id", "net_amount", "advance_applied", "created_at", "updated_at"]
         extra_kwargs = {"base_amount": {"required": False}}
@@ -600,6 +607,10 @@ class TransportPaymentSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {"trip": "Le voyage est requis pour calculer le montant au litre."}
                 )
+            if unit_price_per_litre <= 0:
+                raise serializers.ValidationError(
+                    {"unit_price_per_litre": "Le prix par litre doit etre superieur a zero."}
+                )
             # base_amount is derived, never trusted from client input (guide:
             # transport cost per litre must create/update the transporter
             # payable line automatically).
@@ -610,6 +621,9 @@ class TransportPaymentSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {"base_amount": "Ce champ est obligatoire."}
             )
+
+        if data.get("base_amount", Decimal("0")) < 0:
+            raise serializers.ValidationError({"base_amount": "Le montant ne peut pas etre negatif."})
 
         return data
 

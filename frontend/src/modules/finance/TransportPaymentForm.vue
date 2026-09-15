@@ -11,6 +11,7 @@ import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { translateApiError } from '@/i18n/apiErrors'
 import { transportPaymentResource } from './api'
+import type { TransportPayment } from './types'
 import Button from '@/components/ui/Button.vue'
 import { formatMoney, formatQuantity, formatUnitMoney } from '@/utils/currency'
 
@@ -21,11 +22,16 @@ const props = defineProps<{
   transporterName: string
   quantityLoaded: string
   title?: string
+  payment?: TransportPayment | null
 }>()
 const emit = defineEmits<{ success: []; cancel: [] }>()
 const { t } = useI18n()
 
-const unitPricePerLitre = ref('')
+const isPerLitre = computed(
+  () => !props.payment || props.payment.calculation_method === 'PER_LITRE',
+)
+const unitPricePerLitre = ref(props.payment?.unit_price_per_litre ?? '')
+const baseAmount = ref(props.payment?.base_amount ?? '')
 
 const total = computed(() => {
   const quantity = Number(props.quantityLoaded)
@@ -41,18 +47,31 @@ async function onSubmit() {
   saving.value = true
   error.value = ''
   try {
-    await transportPaymentResource.create({
-      trip: props.tripId,
-      transporter: props.transporterId,
-      calculation_method: 'PER_LITRE',
-      // Vue 3.4+ auto-casts v-model on <input type="number"> to a JS
-      // number - cast back to a string so the payload matches the
-      // DecimalField-backed API contract exactly (never send a float).
-      unit_price_per_litre: String(unitPricePerLitre.value),
-    })
+    if (props.payment) {
+      await transportPaymentResource.update(
+        props.payment.id,
+        isPerLitre.value
+          ? {
+              calculation_method: 'PER_LITRE',
+              unit_price_per_litre: String(unitPricePerLitre.value),
+            }
+          : { base_amount: String(baseAmount.value) },
+      )
+    } else {
+      await transportPaymentResource.create({
+        trip: props.tripId,
+        transporter: props.transporterId,
+        calculation_method: 'PER_LITRE',
+        // Vue 3.4+ auto-casts v-model on <input type="number"> to a JS
+        // number - cast back to a string so the payload matches the
+        // DecimalField-backed API contract exactly (never send a float).
+        unit_price_per_litre: String(unitPricePerLitre.value),
+      })
+    }
     emit('success')
   } catch (e) {
-    const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+    const data = (e as { response?: { data?: Record<string, string | string[]> } })?.response?.data
+    const detail = data ? Object.values(data).flat().join(' ') : ''
     error.value = translateApiError(detail) || t('finance.transportPayment.saveError')
   } finally {
     saving.value = false
@@ -96,7 +115,7 @@ async function onSubmit() {
           </p>
         </div>
 
-        <div class="space-y-1.5">
+        <div v-if="isPerLitre" class="space-y-1.5">
           <label class="text-texte-2 text-sm font-medium" for="unit_price_per_litre">{{
             t('finance.transportPayment.unitPricePerLitre')
           }}</label>
@@ -110,9 +129,26 @@ async function onSubmit() {
             class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           />
         </div>
+        <div v-else class="space-y-1.5">
+          <label for="commission_amount" class="text-texte-2 text-sm font-medium">{{
+            t('finance.expensesView.table.amount')
+          }}</label>
+          <input
+            id="commission_amount"
+            v-model="baseAmount"
+            type="number"
+            min="0.01"
+            step="0.01"
+            required
+            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5"
+          />
+        </div>
       </div>
 
-      <div class="border-ligne flex items-center justify-between rounded-lg border bg-fond px-3.5 py-2.5 text-sm">
+      <div
+        v-if="isPerLitre"
+        class="border-ligne flex items-center justify-between rounded-lg border bg-fond px-3.5 py-2.5 text-sm"
+      >
         <span class="text-texte-2">
           {{ t('finance.transportPayment.calculation') }}
         </span>

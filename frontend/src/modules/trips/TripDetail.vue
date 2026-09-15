@@ -88,6 +88,30 @@ const cancellingExpenseId = ref<number | null>(null)
 // debt - same "finance" module create permission gates both forms.
 const showTransportPaymentForm = ref(false)
 const automaticTransportTitle = ref<string | null>(null)
+const editingTransportPayment = ref<TransportPayment | null>(null)
+const deletingTransportPaymentId = ref<number | null>(null)
+const canEditCommission = computed(() => auth.can('finance', 'edit'))
+
+function onEditTransportPayment(payment: TransportPayment) {
+  editingTransportPayment.value = payment
+  automaticTransportTitle.value = t('trips.detail.editCommission')
+  showTransportPaymentForm.value = true
+}
+
+async function onDeleteTransportPayment(payment: TransportPayment) {
+  if (!window.confirm(t('trips.detail.deleteCommissionConfirm'))) return
+  deletingTransportPaymentId.value = payment.id
+  expensesError.value = ''
+  try {
+    await transportPaymentResource.remove(payment.id)
+    await Promise.all([loadExpenses(), loadMargin()])
+  } catch (e) {
+    const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+    expensesError.value = translateApiError(detail) || t('trips.detail.commissionDeleteError')
+  } finally {
+    deletingTransportPaymentId.value = null
+  }
+}
 
 // Client modifications plan Task 9 (gap-closure): assign-customer is
 // "edit" tier on the "operations" module (backend/apps/accounts/
@@ -242,6 +266,7 @@ async function onDeleteExpense(expense: Expense) {
 }
 
 async function onTransportPaymentSaved() {
+  editingTransportPayment.value = null
   showTransportPaymentForm.value = false
   automaticTransportTitle.value = null
   await Promise.all([loadExpenses(), loadMargin()])
@@ -441,7 +466,7 @@ const cessionProofUrl = computed(
 <template>
   <div class="max-w-3xl space-y-6">
     <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <h1 class="font-display text-2xl leading-none font-semibold uppercase">
+      <h1 class="min-w-0 font-display text-2xl leading-none font-semibold break-all uppercase">
         {{ t('trips.detail.title', { reference: trip?.reference ?? '' }) }}
       </h1>
       <Button variant="ghost" @click="router.push({ name: 'trips' })">
@@ -661,10 +686,15 @@ const cessionProofUrl = computed(
             <p class="text-texte-3 text-xs uppercase">
               {{ t('trips.clientVerification.transporterChargeable') }}
             </p>
-            <MonoValue :value="formatQuantity(deliveryData.chargeable_loss_quantity)" align="left" />
+            <MonoValue
+              :value="formatQuantity(deliveryData.chargeable_loss_quantity)"
+              align="left"
+            />
           </div>
           <div>
-            <p class="text-texte-3 text-xs uppercase">{{ t('trips.clientVerification.verifiedAt') }}</p>
+            <p class="text-texte-3 text-xs uppercase">
+              {{ t('trips.clientVerification.verifiedAt') }}
+            </p>
             <p class="text-texte text-sm">{{ deliveryData.verified_at }}</p>
           </div>
         </div>
@@ -794,11 +824,33 @@ const cessionProofUrl = computed(
                   {{ t('trips.detail.transportPaymentCancelled') }}
                 </p>
               </div>
-              <MonoValue
-                :value="formatMoney(payment.base_amount)"
-                align="left"
-                :class="payment.status === 'CANCELLED' ? 'text-texte-3 line-through' : ''"
-              />
+              <div class="flex flex-col items-end gap-1">
+                <MonoValue
+                  :value="formatMoney(payment.base_amount)"
+                  align="left"
+                  :class="payment.status === 'CANCELLED' ? 'text-texte-3 line-through' : ''"
+                />
+                <div v-if="payment.can_modify" class="flex gap-2">
+                  <button
+                    v-if="canEditCommission"
+                    type="button"
+                    class="text-bitume text-xs hover:brightness-90 disabled:opacity-50"
+                    :disabled="deletingTransportPaymentId === payment.id"
+                    @click="onEditTransportPayment(payment)"
+                  >
+                    {{ t('trips.detail.editExpense') }}
+                  </button>
+                  <button
+                    v-if="canCancelExpenses"
+                    type="button"
+                    class="text-critique text-xs hover:brightness-90 disabled:opacity-50"
+                    :disabled="deletingTransportPaymentId === payment.id"
+                    @click="onDeleteTransportPayment(payment)"
+                  >
+                    {{ t('trips.detail.deleteExpense') }}
+                  </button>
+                </div>
+              </div>
             </li>
             <li
               v-for="expense in expenses"
@@ -1017,6 +1069,7 @@ const cessionProofUrl = computed(
       >
         <div class="max-h-[90vh] w-full max-w-lg overflow-y-auto">
           <TransportPaymentForm
+            :payment="editingTransportPayment"
             :title="automaticTransportTitle ?? undefined"
             :trip-id="trip.id"
             :trip-reference="trip.reference"
@@ -1024,7 +1077,11 @@ const cessionProofUrl = computed(
             :transporter-name="trip.transporter_detail?.name ?? ''"
             :quantity-loaded="trip.quantity_loaded"
             @success="onTransportPaymentSaved"
-            @cancel=";((showTransportPaymentForm = false), (automaticTransportTitle = null))"
+            @cancel="
+              ;((showTransportPaymentForm = false),
+                (automaticTransportTitle = null),
+                (editingTransportPayment = null))
+            "
           />
         </div>
       </div>

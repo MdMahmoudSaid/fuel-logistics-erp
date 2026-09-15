@@ -63,6 +63,59 @@ class _FakeRequest:
     def __init__(self, user):
         self.user = user
 
+
+@pytest.mark.django_db
+def test_new_trip_reference_contains_both_plates_and_preserves_existing_references():
+    fx = _setup_fixtures("REFPLATES")
+    truck = _make_truck("REFPLATES", owner_transporter=fx["transporter"])
+    truck.tractor_registration = "TR-001"
+    truck.tanker_registration = "CIT-001"
+    truck.save()
+    legacy = _make_trip(fx, truck, "TRIP-000001", status=Trip.Status.COMPLETED)
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+    response = client.post("/api/trips/", _api_trip_payload(fx, truck))
+    assert response.status_code == 201, response.data
+    assert response.data["reference"] == "TRIP-TR-001-CIT-001-000001"
+    legacy.refresh_from_db()
+    assert legacy.reference == "TRIP-000001"
+    new_trip = Trip.objects.get(pk=response.data["id"])
+    new_trip.status = Trip.Status.COMPLETED
+    new_trip.save()
+    second = client.post("/api/trips/", _api_trip_payload(fx, truck))
+    assert second.status_code == 201, second.data
+    assert second.data["reference"] == "TRIP-TR-001-CIT-001-000002"
+
+
+@pytest.mark.django_db
+def test_trip_reference_supports_full_length_plates():
+    fx = _setup_fixtures("REFLONG")
+    truck = _make_truck("REFLONG", owner_transporter=fx["transporter"])
+    truck.tractor_registration = "A" * 30
+    truck.tanker_registration = "B" * 30
+    truck.save()
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+    response = client.post("/api/trips/", _api_trip_payload(fx, truck))
+    assert response.status_code == 201, response.data
+    assert response.data["reference"] == f"TRIP-{'A' * 30}-{'B' * 30}-000001"
+
+
+@pytest.mark.django_db
+def test_trip_reference_sequence_ignores_other_trucks_and_handles_large_numbers():
+    from apps.trips.views import _generate_next_reference
+
+    fx = _setup_fixtures("REFSEQ")
+    truck = _make_truck("REFSEQ", owner_transporter=fx["transporter"])
+    truck.tractor_registration = "tr 001"
+    truck.tanker_registration = "cit/001"
+    truck.save()
+    _make_trip(fx, truck, "TRIP-TR-001-CIT-001-999999")
+    _make_trip(fx, truck, "TRIP-TR-001-CIT-001-1000000")
+    _make_trip(fx, truck, "TRIP-OTHER-CIT-001-9999999")
+    _make_trip(fx, truck, "TRIP-TR-001-CIT-001-MANUAL")
+    assert _generate_next_reference(truck) == "TRIP-TR-001-CIT-001-1000001"
+
 # Full happy-path sequence starting right after ASSIGNED (the default status
 # a newly created Trip already has).
 FULL_SEQUENCE_AFTER_ASSIGNED = [

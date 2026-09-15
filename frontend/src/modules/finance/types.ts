@@ -145,6 +145,7 @@ export type TransportPaymentStatus =
   | 'CANCELLED'
 
 export interface TransportPayment {
+  can_modify?: boolean
   id: number
   trip: number
   trip_reference: string

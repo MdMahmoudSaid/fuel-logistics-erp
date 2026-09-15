@@ -1,4 +1,8 @@
+import re
+
 from django.db import IntegrityError, transaction
+from django.db.models import BigIntegerField, Max
+from django.db.models.functions import Cast, Substr
 from rest_framework import status as http_status
 from rest_framework import viewsets
 from rest_framework.decorators import action
@@ -69,38 +73,29 @@ _FORM_ONLY_STATUS_DETAIL = {
 }
 
 
-def _generate_next_reference() -> str:
-    """Sequential, zero-padded reference (TRIP-000001, TRIP-000002, ...).
+def _generate_next_reference(truck) -> str:
+    """Plate pair plus a sequence, fixed at creation for historical stability.
 
-    There's no dedicated sequence table, so this reads the current highest
-    reference and increments it; perform_create() retries on IntegrityError
-    to cover the rare race between two concurrent creates picking the same
-    number (cheaper than locking a counter row for an internal, non-
-    negotiated identifier - unlike the truck/cession locks, which guard
-    real business quantities).
-
-    The regex restricts this to references matching our own generated
-    format (fixed-width digits). Some trips carry hand-picked references
-    (e.g. seeded fixtures) that also start with "TRIP-" but aren't
-    numeric - ordering by "-reference" across those would pick a
-    lexicographically-last string like "TRIP-TRANSPORT-R2", fail to parse
-    as a number, and silently restart the sequence at TRIP-000001,
-    colliding with an existing row on every retry.
+    Prefix matching uses escaped, normalized plates; numeric ordering keeps
+    the sequence correct beyond 999999. The unique reference constraint and
+    perform_create retries handle concurrent creates for the same plate pair.
     """
-    last = (
+    def plate(value, fallback):
+        return re.sub(r"[^\w-]+", "-", value.strip().upper()).strip("-") or fallback
+
+    tractor = plate(truck.tractor_registration, "SANS-TRACTEUR")
+    tanker = plate(truck.tanker_registration, "SANS-CITERNE")
+    prefix = f"{_REFERENCE_PREFIX}{tractor}-{tanker}-"
+    last_number = (
         Trip.objects.filter(
-            reference__regex=rf"^{_REFERENCE_PREFIX}\d{{{_REFERENCE_WIDTH}}}$"
+            reference__startswith=prefix,
+            reference__regex=rf"^{re.escape(prefix)}[0-9]{{{_REFERENCE_WIDTH},18}}$",
         )
-        .order_by("-reference")
-        .first()
+        .aggregate(number=Max(Cast(Substr("reference", len(prefix) + 1), BigIntegerField())))
+        ["number"]
+        or 0
     )
-    last_number = 0
-    if last:
-        try:
-            last_number = int(last.reference.removeprefix(_REFERENCE_PREFIX))
-        except ValueError:
-            last_number = 0
-    return f"{_REFERENCE_PREFIX}{last_number + 1:0{_REFERENCE_WIDTH}d}"
+    return f"{prefix}{last_number + 1:0{_REFERENCE_WIDTH}d}"
 
 
 class TripViewSet(viewsets.ModelViewSet):
@@ -130,7 +125,7 @@ class TripViewSet(viewsets.ModelViewSet):
         if not serializer.validated_data.get("bl_reference"):
             extra["bl_reference"] = generate_monthly_reference(Trip, "bl_reference", "BL")
         for _ in range(_MAX_REFERENCE_ATTEMPTS):
-            reference = _generate_next_reference()
+            reference = _generate_next_reference(serializer.validated_data["truck"])
             try:
                 with transaction.atomic():
                     serializer.save(

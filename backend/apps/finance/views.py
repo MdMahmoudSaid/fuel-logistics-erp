@@ -1,13 +1,14 @@
 from decimal import Decimal
 
 from django.contrib.contenttypes.models import ContentType
+from django.db import transaction
 from django.db.models import Sum
 from django.db.models.functions import Coalesce
 from django.http import HttpResponse
 from rest_framework import status as http_status
 from rest_framework import viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import MethodNotAllowed
+from rest_framework.exceptions import MethodNotAllowed, ValidationError
 from rest_framework.response import Response
 
 from apps.accounts.permissions import HasModulePermission
@@ -236,8 +237,37 @@ class TransportPaymentViewSet(viewsets.ModelViewSet):
     permission_classes = [HasModulePermission]
     module = "finance"
 
+    def _editable_payment(self):
+        from .commission import can_modify_commission
+
+        payment = self.get_object()
+        payment = TransportPayment.objects.select_for_update().get(pk=payment.pk)
+        if not can_modify_commission(payment):
+            raise ValidationError({
+                "detail": "Cette commission a deja ete reglee, annulee ou liee a une avance ; "
+                "elle ne peut plus etre modifiee ou supprimee."
+            })
+        return payment
+
+    @transaction.atomic
+    def update(self, request, *args, **kwargs):
+        payment = self._editable_payment()
+        editable_fields = {"calculation_method", "base_amount", "unit_price_per_litre"}
+        if any(key not in editable_fields for key in request.data):
+            raise ValidationError({
+                "detail": "Seuls le mode de calcul et le montant de la commission peuvent etre modifies."
+            })
+        serializer = self.get_serializer(
+            payment, data=request.data, partial=kwargs.pop("partial", False)
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    @transaction.atomic
     def destroy(self, request, *args, **kwargs):
-        raise MethodNotAllowed("DELETE", detail=_NO_HARD_DELETE_DETAIL)
+        self._editable_payment().delete()
+        return Response(status=http_status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["get"], url_path="pdf")
     def pdf(self, request, pk=None):

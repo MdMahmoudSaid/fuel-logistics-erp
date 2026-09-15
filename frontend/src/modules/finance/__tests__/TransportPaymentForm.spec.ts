@@ -1,14 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import TransportPaymentForm from '../TransportPaymentForm.vue'
+import type { TransportPayment } from '../types'
 
 const createTransportPayment = vi.fn(async (payload: Record<string, unknown>) => ({
   id: 1,
   ...payload,
 }))
+const updateTransportPayment = vi.fn(async (_id: number, _payload: Record<string, unknown>) => ({}))
 
 vi.mock('../api', () => ({
   transportPaymentResource: {
+    update: (id: number, payload: Record<string, unknown>) => updateTransportPayment(id, payload),
     create: (payload: Record<string, unknown>) => createTransportPayment(payload),
   },
 }))
@@ -22,6 +25,67 @@ const defaultProps = {
 }
 
 describe('TransportPaymentForm', () => {
+  it('edits a fixed commission without converting its calculation method', async () => {
+    const wrapper = mount(TransportPaymentForm, {
+      props: {
+        ...defaultProps,
+        payment: {
+          id: 8,
+          calculation_method: 'FIXED',
+          unit_price_per_litre: null,
+          base_amount: '1000',
+        } as TransportPayment,
+      },
+    })
+    await wrapper.find('#commission_amount').setValue('2000')
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+    expect(updateTransportPayment).toHaveBeenCalledWith(8, { base_amount: '2000' })
+  })
+
+  it('keeps the editor open and displays validation errors when saving fails', async () => {
+    updateTransportPayment.mockRejectedValueOnce({
+      response: { data: { unit_price_per_litre: ['Prix invalide'] } },
+    })
+    const wrapper = mount(TransportPaymentForm, {
+      props: {
+        ...defaultProps,
+        payment: {
+          id: 8,
+          calculation_method: 'PER_LITRE',
+          unit_price_per_litre: '65',
+          base_amount: '2925000',
+        } as TransportPayment,
+      },
+    })
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+    expect(wrapper.text()).toContain('Prix invalide')
+    expect(wrapper.emitted('success')).toBeUndefined()
+  })
+  it('prefills and updates the existing commission instead of creating a second payment', async () => {
+    const wrapper = mount(TransportPaymentForm, {
+      props: {
+        ...defaultProps,
+        payment: {
+          id: 8,
+          calculation_method: 'PER_LITRE',
+          unit_price_per_litre: '65.0000',
+          base_amount: '2925000',
+        } as TransportPayment,
+      },
+    })
+    expect((wrapper.find('input').element as HTMLInputElement).value).toBe('65.0000')
+    await wrapper.find('input').setValue('60')
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+    expect(updateTransportPayment).toHaveBeenCalledWith(8, {
+      calculation_method: 'PER_LITRE',
+      unit_price_per_litre: '60',
+    })
+    expect(createTransportPayment).not.toHaveBeenCalled()
+    expect(wrapper.emitted('success')).toEqual([[]])
+  })
   beforeEach(() => {
     vi.clearAllMocks()
   })

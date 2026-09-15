@@ -77,7 +77,7 @@ class Trip(TimeStampedModel):
         COMPANY_STOCK = "COMPANY_STOCK", "Stock de l'entreprise"
         CUSTOMER = "CUSTOMER", "Client"
 
-    reference = models.CharField(max_length=50, unique=True)
+    reference = models.CharField(max_length=100, unique=True)
     truck = models.ForeignKey(
         "transport.Truck", on_delete=models.PROTECT, related_name="trips"
     )

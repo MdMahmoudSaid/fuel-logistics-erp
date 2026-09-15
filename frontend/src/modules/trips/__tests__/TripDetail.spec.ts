@@ -230,6 +230,7 @@ const updateExpense = vi.fn(async (_id: number, _payload: Record<string, unknown
 const removeExpense = vi.fn(async (_id: number) => undefined)
 const cancelExpense = vi.fn(async (_id: number) => ({}))
 const createTransportPayment = vi.fn(async (_payload: Record<string, unknown>) => ({}))
+const removeTransportPayment = vi.fn(async (_id: number) => undefined)
 const expenseList = vi.fn(async (_params: Record<string, unknown>) => ({
   count: expensesToReturn.length,
   next: null,
@@ -253,6 +254,7 @@ vi.mock('@/modules/finance/api', () => ({
   },
   cancelExpense: (id: number) => cancelExpense(id),
   transportPaymentResource: {
+    remove: (id: number) => removeTransportPayment(id),
     list: (params: Record<string, unknown>) => transportPaymentList(params),
     create: (payload: Record<string, unknown>) => createTransportPayment(payload),
   },
@@ -354,6 +356,81 @@ function makeTransportPayment(overrides: Partial<TransportPayment> = {}): Transp
 }
 
 describe('TripDetail expenses section', () => {
+  it('does not delete a commission when confirmation is declined', async () => {
+    setUser({ operations: ['view'], finance: ['view', 'cancel'] })
+    transportPaymentsToReturn = [makeTransportPayment({ can_modify: true })]
+    const wrapper = await mountAt()
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Supprimer')!
+      .trigger('click')
+    expect(removeTransportPayment).not.toHaveBeenCalled()
+    confirm.mockRestore()
+  })
+
+  it('hides commission actions when the API marks it settled or the user has no write permissions', async () => {
+    setUser({ operations: ['view'], finance: ['view', 'edit', 'cancel'] })
+    transportPaymentsToReturn = [makeTransportPayment({ can_modify: false })]
+    const settled = await mountAt()
+    expect(
+      settled.findAll('button').some((b) => ['Modifier', 'Supprimer'].includes(b.text())),
+    ).toBe(false)
+    settled.unmount()
+    setUser({ operations: ['view'], finance: ['view'] })
+    transportPaymentsToReturn = [makeTransportPayment({ can_modify: true })]
+    const readonly = await mountAt()
+    expect(
+      readonly.findAll('button').some((b) => ['Modifier', 'Supprimer'].includes(b.text())),
+    ).toBe(false)
+  })
+
+  it('shows deletion errors and keeps the commission visible', async () => {
+    setUser({ operations: ['view'], finance: ['view', 'cancel'] })
+    transportPaymentsToReturn = [makeTransportPayment({ can_modify: true })]
+    removeTransportPayment.mockRejectedValueOnce({
+      response: { data: { detail: 'Commission déjà réglée' } },
+    })
+    const wrapper = await mountAt()
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Supprimer')!
+      .trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('Commission déjà réglée')
+    expect(wrapper.text()).toContain('Commission transporteur')
+    confirm.mockRestore()
+  })
+  it('deletes an unsettled commission after confirmation and refreshes the fees', async () => {
+    setUser({ operations: ['view'], finance: ['view', 'edit', 'cancel'] })
+    transportPaymentsToReturn = [makeTransportPayment({ can_modify: true })]
+    const wrapper = await mountAt()
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const before = transportPaymentList.mock.calls.length
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Supprimer')!
+      .trigger('click')
+    await flushPromises()
+    expect(removeTransportPayment).toHaveBeenCalledWith(8)
+    expect(transportPaymentList.mock.calls.length).toBeGreaterThan(before)
+    confirm.mockRestore()
+  })
+
+  it('opens the existing commission with its current rate for editing', async () => {
+    setUser({ operations: ['view'], finance: ['view', 'edit'] })
+    transportPaymentsToReturn = [makeTransportPayment({ can_modify: true })]
+    const wrapper = await mountAt()
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Modifier')!
+      .trigger('click')
+    expect((wrapper.find('#unit_price_per_litre').element as HTMLInputElement).value).toBe(
+      '65.0000',
+    )
+    expect(wrapper.text()).toContain('Modifier la commission transporteur')
+  })
   beforeEach(() => {
     vi.clearAllMocks()
     setActivePinia(createPinia())
@@ -548,7 +625,9 @@ describe('TripDetail expenses section', () => {
     const wrapper = await mountAt()
 
     expect(
-      wrapper.findAll('button').find((b) => b.text() === '+ Ajouter des frais de transport (au litre)'),
+      wrapper
+        .findAll('button')
+        .find((b) => b.text() === '+ Ajouter des frais de transport (au litre)'),
     ).toBeUndefined()
   })
 
@@ -558,7 +637,9 @@ describe('TripDetail expenses section', () => {
     const wrapper = await mountAt()
 
     expect(
-      wrapper.findAll('button').find((b) => b.text() === '+ Ajouter des frais de transport (au litre)'),
+      wrapper
+        .findAll('button')
+        .find((b) => b.text() === '+ Ajouter des frais de transport (au litre)'),
     ).toBeTruthy()
   })
 

@@ -68,6 +68,77 @@ from apps.trips.models import Trip
 
 
 @pytest.mark.django_db
+def test_commission_can_be_edited_and_deleted_before_payment(admin_client):
+    trip, transporter = _make_trip_for_deduction("COMMISSION-EDIT")
+    payment = TransportPayment.objects.create(
+        trip=trip, transporter=transporter, calculation_method="PER_LITRE",
+        unit_price_per_litre=Decimal("65"), base_amount=Decimal("2925000"),
+    )
+    url = f"/api/transport-payments/{payment.pk}/"
+    response = admin_client.patch(url, {"unit_price_per_litre": "60"}, format="json")
+    assert response.status_code == 200
+    assert response.data["can_modify"] is True
+    payment.refresh_from_db()
+    assert payment.base_amount == trip.quantity_loaded * Decimal("60")
+    assert payment.net_amount == payment.base_amount - payment.deduction_amount
+    assert admin_client.delete(url).status_code == 204
+    assert not TransportPayment.objects.filter(pk=payment.pk).exists()
+
+
+@pytest.mark.django_db
+def test_commission_rejects_invalid_rate_without_changing_amount(admin_client):
+    trip, transporter = _make_trip_for_deduction("COM-RATE")
+    payment = TransportPayment.objects.create(
+        trip=trip, transporter=transporter, calculation_method="PER_LITRE",
+        unit_price_per_litre=Decimal("65"), base_amount=Decimal("2925000"),
+    )
+    for rate in ["-1", "0"]:
+        assert admin_client.patch(f"/api/transport-payments/{payment.pk}/", {
+            "unit_price_per_litre": rate,
+        }, format="json").status_code == 400
+    payment.refresh_from_db()
+    assert payment.unit_price_per_litre == Decimal("65")
+
+
+@pytest.mark.django_db
+def test_commission_with_treasury_history_is_protected_even_if_status_is_planned(admin_client):
+    trip, transporter = _make_trip_for_deduction("COM-TREASURY")
+    payment = TransportPayment.objects.create(
+        trip=trip, transporter=transporter, calculation_method="FIXED", base_amount=Decimal("1000"),
+    )
+    TreasuryTransaction.objects.create(
+        cash_account=CashAccount.objects.create(name="Commission treasury"),
+        type="MONEY_OUT", amount=Decimal("100"), date="2026-09-14",
+        source_content_type=ContentType.objects.get_for_model(TransportPayment),
+        source_object_id=payment.pk, recorded_by=trip.created_by,
+    )
+    url = f"/api/transport-payments/{payment.pk}/"
+    assert admin_client.get(url).data["can_modify"] is False
+    assert admin_client.patch(url, {"base_amount": "2000"}, format="json").status_code == 400
+    assert admin_client.delete(url).status_code == 400
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("settled", ["PAID", "PARTIALLY_PAID", "CANCELLED", "ADVANCE"])
+def test_commission_cannot_be_changed_after_settlement(admin_client, settled):
+    trip, transporter = _make_trip_for_deduction(f"COM-{settled}")
+    if settled == "ADVANCE":
+        TransporterAdvance.objects.create(
+            transporter=transporter, amount=Decimal("100"), date="2026-09-14",
+            cash_account=CashAccount.objects.create(name="Commission cash"),
+        )
+    payment = TransportPayment.objects.create(
+        trip=trip, transporter=transporter, calculation_method="FIXED",
+        base_amount=Decimal("1000"), status="PLANNED" if settled == "ADVANCE" else settled,
+    )
+    url = f"/api/transport-payments/{payment.pk}/"
+    assert admin_client.patch(url, {"base_amount": "2000"}, format="json").status_code == 400
+    assert admin_client.delete(url).status_code == 400
+    payment.refresh_from_db()
+    assert payment.base_amount == Decimal("1000")
+
+
+@pytest.mark.django_db
 def test_bank_account_current_balance_defaults_to_opening_balance():
     account = BankAccount.objects.create(
         name="Main BOA Account", bank_name="Bank of Africa", opening_balance="1000000.00"
