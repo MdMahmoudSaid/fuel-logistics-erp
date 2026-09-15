@@ -3982,7 +3982,6 @@ def test_distribution_cancel_action_rejects_when_withdrawal_exists(admin_client)
     cash_account = CashAccount.objects.create(name="API Cash", opening_balance=Decimal("300000.00"))
     ShareholderWithdrawalService.record_withdrawal(
         shareholder_id=shareholder.id,
-        profit_share_id=share.id,
         amount=Decimal("1000.00"),
         date="2026-08-01",
         cash_account_id=cash_account.id,
@@ -4199,7 +4198,6 @@ def test_cancel_distribution_rejects_when_withdrawal_already_recorded():
     cash_account = CashAccount.objects.create(name="Cancel Cash", opening_balance=Decimal("100000.00"))
     ShareholderWithdrawalService.record_withdrawal(
         shareholder_id=shareholder.id,
-        profit_share_id=share.id,
         amount=Decimal("10000.00"),
         date="2026-08-01",
         cash_account_id=cash_account.id,

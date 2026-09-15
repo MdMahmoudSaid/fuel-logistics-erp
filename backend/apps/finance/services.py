@@ -1831,7 +1831,7 @@ class ShareholderDistributionService:
         if distribution.status == ShareholderProfitDistribution.Status.CANCELLED:
             return distribution
 
-        if ShareholderWithdrawal.objects.filter(
+        if ShareholderWithdrawalAllocation.objects.filter(
             profit_share__distribution_id=distribution.id
         ).exists():
             raise ShareholderDistributionError(
