@@ -28,6 +28,7 @@ from apps.finance.models import (
     ShareholderProfitDistribution,
     ShareholderProfitShare,
     ShareholderWithdrawal,
+    ShareholderWithdrawalAllocation,
     SupplierAdvance,
     SupplierPayment,
     TransportDeduction,
@@ -4393,7 +4394,6 @@ def test_shareholder_withdrawal_creates_treasury_transaction_and_reduces_remaini
 
     withdrawal = ShareholderWithdrawalService.record_withdrawal(
         shareholder_id=shareholder.id,
-        profit_share_id=share.id,
         amount=Decimal("400000.00"),
         date="2026-08-01",
         cash_account_id=cash_account.id,
@@ -4431,46 +4431,11 @@ def test_shareholder_withdrawal_rejects_amount_exceeding_remaining_due():
     with pytest.raises(ShareholderWithdrawalError):
         ShareholderWithdrawalService.record_withdrawal(
             shareholder_id=shareholder.id,
-            profit_share_id=share.id,
             amount=Decimal("150000.00"),
             date="2026-08-01",
             cash_account_id=cash_account.id,
             actor=actor,
         )
-
-
-@pytest.mark.django_db
-def test_shareholder_withdrawal_requires_a_profit_share():
-    """2026-09-08 review, point 5: a profit withdrawal must always be tied
-    to one traceable validated share - an unlinked "retrait general"
-    debited treasury while decrementing nothing, leaving the shareholder's
-    available balance unchanged."""
-    shareholder = _make_shareholders([Decimal("100")])[0]
-    actor = _make_admin_user("6")
-    _seed_distributable()
-    _distribution = ShareholderDistributionService.create_distribution(
-        period_start="2026-07-01",
-        period_end="2026-07-31",
-        total_profit=Decimal("100000.00"),
-        actor=actor,
-    )
-    ShareholderDistributionService.validate_distribution(_distribution.id, actor)
-    bank_account = BankAccount.objects.create(name="Main BOA", opening_balance=Decimal("100000.00"))
-
-    with pytest.raises(ShareholderWithdrawalError):
-        ShareholderWithdrawalService.record_withdrawal(
-            shareholder_id=shareholder.id,
-            profit_share_id=None,
-            amount=Decimal("50000.00"),
-            date="2026-08-01",
-            bank_account_id=bank_account.id,
-            actor=actor,
-        )
-
-    assert not ShareholderWithdrawal.objects.filter(shareholder=shareholder).exists()
-    assert not TreasuryTransaction.objects.filter(
-        source_content_type=ContentType.objects.get_for_model(ShareholderWithdrawal)
-    ).exists()
 
 
 @pytest.mark.django_db
@@ -4496,7 +4461,6 @@ def test_shareholder_withdrawal_reduces_available_balance_permanently():
 
     ShareholderWithdrawalService.record_withdrawal(
         shareholder_id=shareholder.id,
-        profit_share_id=share.id,
         amount=Decimal("40000.00"),
         date="2026-08-01",
         cash_account_id=cash_account.id,
@@ -4531,7 +4495,6 @@ def test_shareholder_withdrawal_rejects_amount_exceeding_bank_balance():
     with pytest.raises(ShareholderWithdrawalError):
         ShareholderWithdrawalService.record_withdrawal(
             shareholder_id=shareholder.id,
-            profit_share_id=share.id,
             amount=Decimal("50000.00"),
             date="2026-08-01",
             bank_account_id=bank_account.id,
@@ -4566,12 +4529,7 @@ def test_get_shareholder_summary_excludes_cancelled_distribution_shares():
 
 
 @pytest.mark.django_db
-def test_shareholder_withdrawal_rejects_profit_share_from_cancelled_distribution():
-    """The shareholder has enough OTHER, legitimate balance (from a second,
-    non-overlapping, still-VALIDATED distribution) to pass the aggregate
-    available_balance check - the withdrawal must still be refused because
-    it explicitly names a profit_share_id belonging to a CANCELLED
-    distribution, not because of the aggregate."""
+def test_withdrawal_never_allocates_against_a_cancelled_distributions_share():
     shareholder = _make_shareholders([Decimal("100")])[0]
     actor = _make_admin_user("WDRAWCANCEL")
     _seed_distributable()
@@ -4597,19 +4555,17 @@ def test_shareholder_withdrawal_rejects_profit_share_from_cancelled_distribution
         name="Gap Cash", opening_balance=Decimal("100000.00")
     )
 
-    with pytest.raises(ShareholderWithdrawalError):
-        ShareholderWithdrawalService.record_withdrawal(
-            shareholder_id=shareholder.id,
-            profit_share_id=cancelled_share.id,
-            amount=Decimal("30000.00"),
-            date="2026-09-01",
-            cash_account_id=cash_account.id,
-            actor=actor,
-        )
+    ShareholderWithdrawalService.record_withdrawal(
+        shareholder_id=shareholder.id,
+        amount=Decimal("30000.00"),
+        date="2026-09-01",
+        cash_account_id=cash_account.id,
+        actor=actor,
+    )
 
     cancelled_share.refresh_from_db()
     assert cancelled_share.amount_withdrawn == Decimal("0.00")
-    assert not ShareholderWithdrawal.objects.filter(profit_share=cancelled_share).exists()
+    assert not ShareholderWithdrawalAllocation.objects.filter(profit_share=cancelled_share).exists()
 
 
 @pytest.mark.django_db
@@ -4646,7 +4602,6 @@ def test_shareholder_withdrawal_via_api_posts_treasury(admin_client):
         "/api/shareholder-withdrawals/",
         {
             "shareholder": shareholder.id,
-            "profit_share": share.id,
             "amount": "25000.00",
             "date": "2026-08-01",
             "cash_account": cash_account.id,
@@ -4658,12 +4613,13 @@ def test_shareholder_withdrawal_via_api_posts_treasury(admin_client):
         source_content_type=ContentType.objects.get_for_model(ShareholderWithdrawal),
         source_object_id=response.data["id"],
     ).exists()
+    assert "profit_share" not in response.data
+    assert len(response.data["allocations"]) == 1
+    assert response.data["allocations"][0]["amount"] == "25000.00"
 
 
 @pytest.mark.django_db
-def test_shareholder_withdrawal_via_api_rejects_missing_profit_share(admin_client):
-    """2026-09-08 review, point 5: the API must refuse a withdrawal with no
-    profit_share, independently of the frontend form."""
+def test_shareholder_withdrawal_via_api_rejects_amount_exceeding_balance(admin_client):
     shareholder = _make_shareholders([Decimal("100")])[0]
     cash_account = CashAccount.objects.create(
         name="No Share Cash", opening_balance=Decimal("100000.00")
@@ -4944,7 +4900,6 @@ def test_draft_profit_share_blocks_withdrawal_and_loan():
     with pytest.raises(ShareholderWithdrawalError):
         ShareholderWithdrawalService.record_withdrawal(
             shareholder_id=shareholder.id,
-            profit_share_id=share.id,
             amount=Decimal("10000.00"),
             date="2026-08-01",
             cash_account_id=cash_account.id,
@@ -4959,7 +4914,7 @@ def test_draft_profit_share_blocks_withdrawal_and_loan():
             date="2026-08-01",
         )
 
-    assert not ShareholderWithdrawal.objects.filter(profit_share=share).exists()
+    assert not ShareholderWithdrawalAllocation.objects.filter(profit_share=share).exists()
 
 
 @pytest.mark.django_db
@@ -5037,7 +4992,6 @@ def test_get_preview_already_distributed_nets_out_partial_withdrawal():
     cash_account = CashAccount.objects.create(name="Partial Cash", opening_balance=Decimal("100000.00"))
     ShareholderWithdrawalService.record_withdrawal(
         shareholder_id=shareholder.id,
-        profit_share_id=share.id,
         amount=Decimal("40000.00"),
         date="2026-08-01",
         cash_account_id=cash_account.id,
@@ -5219,7 +5173,6 @@ def test_shareholder_ledger_service_get_shareholder_summary():
     cash_account = CashAccount.objects.create(name="Main Cash", opening_balance=Decimal("100000.00"))
     ShareholderWithdrawalService.record_withdrawal(
         shareholder_id=shareholder.id,
-        profit_share_id=share.id,
         amount=Decimal("30000.00"),
         date="2026-08-01",
         cash_account_id=cash_account.id,
@@ -5281,7 +5234,6 @@ def test_shareholder_ledger_endpoint_money_fields_are_strings_not_floats(admin_c
     )
     ShareholderWithdrawalService.record_withdrawal(
         shareholder_id=shareholder.id,
-        profit_share_id=share.id,
         amount=Decimal("30000.00"),
         date="2026-08-01",
         cash_account_id=cash_account.id,

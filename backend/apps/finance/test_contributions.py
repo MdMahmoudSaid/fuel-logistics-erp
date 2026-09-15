@@ -281,10 +281,12 @@ def test_shareholder_update_ignores_submitted_contribution():
 
 
 @pytest.mark.django_db
-def test_shareholder_ledger_exposes_total_contributed_without_mixing_into_available_balance():
-    """total_contributed must show the real apport, but never move
-    available_balance (capital is not distributable profit - design doc
-    2026-09-02-business-corrections-6-phases-design.md Phase 1)."""
+def test_shareholder_ledger_exposes_total_contributed_and_feeds_available_balance():
+    """total_contributed shows the real apport (gross, historical); its
+    still-unreturned remainder now DOES feed available_balance as a
+    withdrawal safety net once profit is exhausted (design doc
+    2026-09-15-capital-associe-retrait-design.md), reversing the older
+    Phase 1 rule that kept capital out of it entirely."""
     admin_user = _make_admin("CONTRIB-LEDGER-1")
     shareholder = _make_shareholder("CONTRIB-LEDGER-1")
     bank = BankAccount.objects.create(name="Bank J", opening_balance=Decimal("0.00"))
@@ -301,7 +303,8 @@ def test_shareholder_ledger_exposes_total_contributed_without_mixing_into_availa
 
     after = client.get(f"/api/shareholders/{shareholder.id}/ledger/")
     assert after.data["total_contributed"] == "10000000.00"
-    assert after.data["available_balance"] == "0.00"
+    assert after.data["capital_remaining"] == "10000000.00"
+    assert after.data["available_balance"] == "10000000.00"
 
 
 @pytest.mark.django_db

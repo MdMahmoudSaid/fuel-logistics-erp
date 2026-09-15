@@ -603,7 +603,6 @@ def test_scenario_complet_production_like(capsys):
 
     ShareholderWithdrawalService.record_withdrawal(
         shareholder_id=shareholders["Sidi Mohamed"].id,
-        profit_share_id=shares["Sidi Mohamed"].id,
         amount=money(1000000),
         date=TODAY,
         bank_account_id=bank.id,

@@ -2,11 +2,15 @@
 # Reports page must list a report for Actionnaires/Associés).
 #
 # Mirrors CustomerStatementQuery/SupplierStatementQuery's shape (one
-# chronological ledger with a running balance) but sourced from the four
-# event types that move a shareholder's equity (Task 7, client
-# modifications plan / apps.finance.services.ShareholderLedgerService):
+# chronological ledger with a running balance) but sourced from the five
+# event types that move a shareholder's equity (Task 7 / design doc
+# 2026-09-15-capital-associe-retrait-design.md, apps.finance.services
+# .ShareholderLedgerService):
 #   - a ShareholderProfitShare being attributed (credit: it's now theirs)
-#   - a ShareholderWithdrawal (debit: cash paid out against that share)
+#   - a ShareholderContribution (credit: capital they put in, still theirs)
+#   - a ShareholderWithdrawal (debit: cash paid out, whatever pool - profit
+#     or capital - it was allocated against; see
+#     ShareholderWithdrawalAllocation)
 #   - a ShareholderLoan where this shareholder is the lender (credit: an
 #     IOU from another shareholder, still their equity)
 #   - a ShareholderLoan where this shareholder is the borrower (debit: a
@@ -23,6 +27,7 @@
 from django.utils.dateparse import parse_date
 
 from apps.finance.models import (
+    ShareholderContribution,
     ShareholderLoan,
     ShareholderProfitDistribution,
     ShareholderProfitShare,
@@ -59,6 +64,7 @@ class ShareholderStatementQuery:
             .filter(distribution__status=ShareholderProfitDistribution.Status.VALIDATED)
             .select_related("distribution")
         )
+        contributions = ShareholderContribution.objects.filter(shareholder_id=shareholder_id)
         withdrawals = ShareholderWithdrawal.objects.filter(shareholder_id=shareholder_id)
         loans_lent = ShareholderLoan.objects.filter(lender_id=shareholder_id)
         loans_borrowed = ShareholderLoan.objects.filter(borrower_id=shareholder_id)
@@ -77,6 +83,17 @@ class ShareholderStatementQuery:
                     "sort_key": (share.distribution.period_end, 0, share.id),
                 }
                 for share in shares
+            ]
+            + [
+                {
+                    "date": contribution.date,
+                    "type": "CONTRIBUTION",
+                    "reference": f"APPORT-{contribution.id}",
+                    "debit": None,
+                    "credit": contribution.amount,
+                    "sort_key": (contribution.date, 0, contribution.id),
+                }
+                for contribution in contributions
             ]
             + [
                 {

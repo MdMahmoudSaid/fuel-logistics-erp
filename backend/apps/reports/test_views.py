@@ -276,7 +276,6 @@ def test_dashboard_summary_includes_shareholders_summary_section():
     cash_account = CashAccount.objects.create(name="Dash Cash", opening_balance=Decimal("100000.00"))
     ShareholderWithdrawalService.record_withdrawal(
         shareholder_id=a.id,
-        profit_share_id=share.id,
         amount=Decimal("30000.00"),
         date="2026-08-01",
         cash_account_id=cash_account.id,
