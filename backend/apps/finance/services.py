@@ -2458,7 +2458,8 @@ class ShareholderLedgerService:
         )
 
         withdrawals = list(
-            shareholder.withdrawals.select_related("bank_account", "cash_account", "profit_share")
+            shareholder.withdrawals.select_related("bank_account", "cash_account")
+            .prefetch_related("allocations")
             .order_by("-date", "-id")
         )
 
@@ -2476,6 +2477,10 @@ class ShareholderLedgerService:
         total_contributed = (
             shareholder.contributions.aggregate(total=Sum("amount"))["total"] or ZERO
         )
+        capital_returned = (
+            shareholder.contributions.aggregate(total=Sum("amount_returned"))["total"] or ZERO
+        )
+        capital_remaining = total_contributed - capital_returned
 
         return {
             "shareholder": {
@@ -2505,12 +2510,21 @@ class ShareholderLedgerService:
             "loans_lent": loans_lent,
             "net_loan_balance": net_loan_balance,
             "total_contributed": total_contributed,
+            "capital_returned": capital_returned,
+            "capital_remaining": capital_remaining,
             "withdrawals": [
                 {
                     "id": w.id,
                     "amount": w.amount,
                     "date": w.date,
-                    "profit_share_id": w.profit_share_id,
+                    "allocations": [
+                        {
+                            "profit_share": a.profit_share_id,
+                            "contribution": a.contribution_id,
+                            "amount": a.amount,
+                        }
+                        for a in w.allocations.all()
+                    ],
                     "bank_account_id": w.bank_account_id,
                     "cash_account_id": w.cash_account_id,
                     "notes": w.notes,

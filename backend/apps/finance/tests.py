@@ -23,6 +23,7 @@ from apps.finance.models import (
     ExpenseAllocation,
     PaymentAllocation,
     Shareholder,
+    ShareholderContribution,
     ShareholderLoan,
     ShareholderProfitDistribution,
     ShareholderProfitShare,
@@ -4885,6 +4886,41 @@ def test_get_available_balance_ignores_draft_distribution_shares():
     ShareholderDistributionService.validate_distribution(distribution.id, actor)
 
     assert ShareholderLedgerService.get_available_balance(shareholder.id) == Decimal("100000.00")
+
+
+@pytest.mark.django_db
+def test_get_shareholder_summary_includes_capital_totals_and_allocation_breakdown():
+    shareholder = _make_shareholders([Decimal("100")])[0]
+    actor = _make_admin_user("SUMMARY-CAPITAL")
+    _seed_distributable()
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01", period_end="2026-07-31",
+        total_profit=Decimal("100000.00"), actor=actor,
+    )
+    ShareholderDistributionService.validate_distribution(distribution.id, actor)
+    bank = BankAccount.objects.create(name="Summary Bank", opening_balance=Decimal("0.00"))
+    ShareholderContribution.objects.create(
+        shareholder=shareholder, amount=Decimal("500000.00"), date="2026-07-15",
+        bank_account=bank, recorded_by=actor,
+    )
+    cash = CashAccount.objects.create(name="Summary Cash", opening_balance=Decimal("1000000.00"))
+    ShareholderWithdrawalService.record_withdrawal(
+        shareholder_id=shareholder.id, amount=Decimal("150000.00"), date="2026-08-01",
+        cash_account_id=cash.id, actor=actor,
+    )
+
+    summary = ShareholderLedgerService.get_shareholder_summary(shareholder.id)
+
+    assert summary["capital_returned"] == Decimal("50000.00")
+    assert summary["capital_remaining"] == Decimal("450000.00")
+    withdrawal_entry = summary["withdrawals"][0]
+    assert "profit_share_id" not in withdrawal_entry
+    allocations = withdrawal_entry["allocations"]
+    assert len(allocations) == 2
+    profit_alloc = next(a for a in allocations if a["profit_share"] is not None)
+    capital_alloc = next(a for a in allocations if a["contribution"] is not None)
+    assert profit_alloc["amount"] == Decimal("100000.00")
+    assert capital_alloc["amount"] == Decimal("50000.00")
 
 
 @pytest.mark.django_db
