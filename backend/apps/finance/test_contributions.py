@@ -6,6 +6,7 @@ from django.db import IntegrityError, transaction
 
 from apps.accounts.models import Role, User
 from apps.finance.models import BankAccount, CashAccount, Shareholder, ShareholderContribution
+from apps.finance.models import ShareholderWithdrawal
 
 
 def _proof_file(name="proof.jpg"):
@@ -280,10 +281,12 @@ def test_shareholder_update_ignores_submitted_contribution():
 
 
 @pytest.mark.django_db
-def test_shareholder_ledger_exposes_total_contributed_without_mixing_into_available_balance():
-    """total_contributed must show the real apport, but never move
-    available_balance (capital is not distributable profit - design doc
-    2026-09-02-business-corrections-6-phases-design.md Phase 1)."""
+def test_shareholder_ledger_exposes_total_contributed_and_feeds_available_balance():
+    """total_contributed shows the real apport (gross, historical); its
+    still-unreturned remainder now DOES feed available_balance as a
+    withdrawal safety net once profit is exhausted (design doc
+    2026-09-15-capital-associe-retrait-design.md), reversing the older
+    Phase 1 rule that kept capital out of it entirely."""
     admin_user = _make_admin("CONTRIB-LEDGER-1")
     shareholder = _make_shareholder("CONTRIB-LEDGER-1")
     bank = BankAccount.objects.create(name="Bank J", opening_balance=Decimal("0.00"))
@@ -300,7 +303,8 @@ def test_shareholder_ledger_exposes_total_contributed_without_mixing_into_availa
 
     after = client.get(f"/api/shareholders/{shareholder.id}/ledger/")
     assert after.data["total_contributed"] == "10000000.00"
-    assert after.data["available_balance"] == "0.00"
+    assert after.data["capital_remaining"] == "10000000.00"
+    assert after.data["available_balance"] == "10000000.00"
 
 
 @pytest.mark.django_db
@@ -465,3 +469,63 @@ def test_profit_preview_pdf_endpoint_still_blocked_for_a_role_with_no_shareholde
     response = client.get("/api/shareholders/profit-preview/pdf/")
 
     assert response.status_code == 403
+
+
+@pytest.mark.django_db
+def test_contribution_remaining_capital_defaults_to_full_amount():
+    admin_user = _make_admin("CONTRIB-REMAIN-1")
+    shareholder = _make_shareholder("CONTRIB-REMAIN-1")
+    bank = BankAccount.objects.create(name="Bank Remain 1", opening_balance=Decimal("0.00"))
+    contribution = ShareholderContribution.objects.create(
+        shareholder=shareholder, amount=Decimal("1000000.00"), date="2026-09-15",
+        bank_account=bank, recorded_by=admin_user,
+    )
+
+    assert contribution.amount_returned == Decimal("0.00")
+    assert contribution.remaining_capital == Decimal("1000000.00")
+
+
+@pytest.mark.django_db
+def test_contribution_amount_returned_cannot_exceed_amount():
+    admin_user = _make_admin("CONTRIB-REMAIN-2")
+    shareholder = _make_shareholder("CONTRIB-REMAIN-2")
+    bank = BankAccount.objects.create(name="Bank Remain 2", opening_balance=Decimal("0.00"))
+    contribution = ShareholderContribution.objects.create(
+        shareholder=shareholder, amount=Decimal("1000.00"), date="2026-09-15",
+        bank_account=bank, recorded_by=admin_user,
+    )
+
+    with pytest.raises(IntegrityError):
+        with transaction.atomic():
+            contribution.amount_returned = Decimal("1000.01")
+            contribution.save()
+
+
+@pytest.mark.django_db
+def test_sync_amount_returned_recomputes_from_allocations():
+    """sync_amount_returned() is the only writer - it must always recompute
+    from actual ShareholderWithdrawalAllocation rows, never drift."""
+    from apps.finance.models import ShareholderWithdrawalAllocation
+
+    admin_user = _make_admin("CONTRIB-REMAIN-3")
+    shareholder = _make_shareholder("CONTRIB-REMAIN-3")
+    bank = BankAccount.objects.create(name="Bank Remain 3", opening_balance=Decimal("0.00"))
+    cash = CashAccount.objects.create(name="Cash Remain 3", opening_balance=Decimal("1000000.00"))
+    contribution = ShareholderContribution.objects.create(
+        shareholder=shareholder, amount=Decimal("1000000.00"), date="2026-09-15",
+        bank_account=bank, recorded_by=admin_user,
+    )
+    withdrawal = ShareholderWithdrawal.objects.create(
+        shareholder=shareholder, amount=Decimal("300000.00"), date="2026-09-16",
+        cash_account=cash, recorded_by=admin_user,
+    )
+    ShareholderWithdrawalAllocation.objects.create(
+        withdrawal=withdrawal, contribution=contribution, amount=Decimal("300000.00"),
+    )
+
+    result = contribution.sync_amount_returned()
+
+    assert result == Decimal("300000.00")
+    contribution.refresh_from_db()
+    assert contribution.amount_returned == Decimal("300000.00")
+    assert contribution.remaining_capital == Decimal("700000.00")

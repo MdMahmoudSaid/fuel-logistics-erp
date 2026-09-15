@@ -18,6 +18,7 @@ from apps.finance.models import (
     Expense,
     ExpenseAllocation,
     Shareholder,
+    ShareholderContribution,
     ShareholderLoan,
     ShareholderProfitDistribution,
     ShareholderProfitShare,
@@ -1036,7 +1037,6 @@ def test_shareholder_statement_lists_profit_shares_withdrawals_and_loans():
     # ever written by sync_amount_withdrawn(), which the service calls.
     ShareholderWithdrawalService.record_withdrawal(
         shareholder_id=shareholder.id,
-        profit_share_id=share.id,
         amount=Decimal("300000.00"),
         date="2026-08-01",
         cash_account_id=cash_account.id,
@@ -1054,6 +1054,36 @@ def test_shareholder_statement_lists_profit_shares_withdrawals_and_loans():
     assert rows[0]["credit"] == Decimal("1000000.00")
     assert rows[1]["debit"] == Decimal("300000.00")
     assert rows[2]["credit"] == Decimal("30000.00")  # 50,000 - 20,000 repaid = remaining_amount
+    assert rows[-1]["balance"] == ShareholderLedgerService.get_available_balance(shareholder.id)
+
+
+@pytest.mark.django_db
+def test_shareholder_statement_includes_capital_contribution_and_stays_balanced():
+    admin_user = _make_admin("SHRSTMTCAP")
+    shareholder = Shareholder.objects.create(name="Assoc SHRSTMTCAP", participation_percent=Decimal("100"))
+    bank = BankAccount.objects.create(name="Bank SHRSTMTCAP", opening_balance=Decimal("0.00"))
+    cash_account = CashAccount.objects.create(
+        name="Cash SHRSTMTCAP", opening_balance=Decimal("1000000.00")
+    )
+
+    ShareholderContribution.objects.create(
+        shareholder=shareholder, amount=Decimal("500000.00"), date="2026-06-01",
+        bank_account=bank, recorded_by=admin_user,
+    )
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01", period_end="2026-07-31",
+        total_profit=Decimal("100000.00"), actor=admin_user,
+    )
+    ShareholderDistributionService.validate_distribution(distribution.id, admin_user)
+    ShareholderWithdrawalService.record_withdrawal(
+        shareholder_id=shareholder.id, amount=Decimal("150000.00"), date="2026-08-01",
+        cash_account_id=cash_account.id, actor=admin_user,
+    )
+
+    rows = ShareholderStatementQuery.run(shareholder_id=shareholder.id)
+
+    assert [r["type"] for r in rows] == ["CONTRIBUTION", "PROFIT_SHARE", "WITHDRAWAL"]
+    assert rows[0]["credit"] == Decimal("500000.00")
     assert rows[-1]["balance"] == ShareholderLedgerService.get_available_balance(shareholder.id)
 
 

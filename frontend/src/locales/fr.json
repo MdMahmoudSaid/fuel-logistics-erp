@@ -1011,14 +1011,15 @@
       "withdrawal": {
         "title": "Retrait d'argent de l'associé",
         "shareholder": "Actionnaire",
-        "profitShare": "Part de bénéfice",
-        "selectProfitShare": "Choisir la répartition validée…",
+        "availableBalanceHint": "Solde disponible pour ce retrait",
         "amount": "Montant",
         "date": "Date",
         "accountType": "Type de compte",
         "account": "Compte",
         "record": "Enregistrer le retrait",
-        "saveError": "Impossible d'enregistrer ce retrait — vérifiez les champs."
+        "saveError": "Impossible d'enregistrer ce retrait — vérifiez les champs.",
+        "sourceProfitShare": "bénéfices",
+        "sourceCapital": "capital"
       },
       "ledger": {
         "title": "Compte de l'actionnaire",
@@ -1036,6 +1037,7 @@
       "capital": {
         "title": "Capital",
         "totalContributed": "Capital apporté (total)",
+        "remaining": "Capital restant",
         "help": "Argent réellement injecté par l'associé — distinct du bénéfice distribuable.",
         "date": "Date",
         "amount": "Montant",

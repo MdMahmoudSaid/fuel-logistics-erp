@@ -1025,11 +1025,15 @@ class ShareholderProfitShare(TimeStampedModel):
         return self.amount_due - self.amount_withdrawn
 
     def sync_amount_withdrawn(self) -> Decimal:
-        """Recompute amount_withdrawn from the actual ShareholderWithdrawal
-        rows against this share - the only way this field is ever written,
-        so it can never drift from withdrawal history (Task 7, client
-        modifications plan: "avoid a field that can silently drift")."""
-        total = self.withdrawals.aggregate(total=models.Sum("amount"))["total"] or Decimal("0.00")
+        """Recompute amount_withdrawn from the actual
+        ShareholderWithdrawalAllocation rows against this share - the only
+        way this field is ever written, so it can never drift from
+        withdrawal history (Task 7, client modifications plan: "avoid a
+        field that can silently drift")."""
+        total = (
+            self.withdrawal_allocations.aggregate(total=models.Sum("amount"))["total"]
+            or Decimal("0.00")
+        )
         self.amount_withdrawn = total
         self.save(update_fields=["amount_withdrawn", "updated_at"])
         return total
@@ -1108,9 +1112,13 @@ class ShareholderLoan(TimeStampedModel):
 
 class ShareholderWithdrawal(AuditableModel, TimeStampedModel):
     """Money paid out from company treasury to a shareholder (Task 7,
-    client modifications plan) - either against a specific
-    ShareholderProfitShare (profit_share set) or a general withdrawal not
-    tied to any distribution (profit_share null).
+    client modifications plan). Which profit share(s) and/or capital
+    contribution(s) it actually drew from is recorded on its `allocations`
+    (ShareholderWithdrawalAllocation, design doc
+    2026-09-15-capital-associe-retrait-design.md) - always at least one,
+    computed automatically by ShareholderWithdrawalService.record_withdrawal
+    (profit due first, oldest first; the shareholder's own capital next,
+    oldest first).
 
     AuditableModel + the same bank_account/cash_account exclusivity
     constraint as SupplierPayment, since this is a real money-out event
@@ -1121,13 +1129,6 @@ class ShareholderWithdrawal(AuditableModel, TimeStampedModel):
 
     shareholder = models.ForeignKey(
         Shareholder, on_delete=models.PROTECT, related_name="withdrawals"
-    )
-    profit_share = models.ForeignKey(
-        ShareholderProfitShare,
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        related_name="withdrawals",
     )
     amount = models.DecimalField(max_digits=16, decimal_places=2)
     date = models.DateField()
@@ -1170,16 +1171,20 @@ class ShareholderContribution(AuditableModel, TimeStampedModel):
     """Real cash injected into the company by a shareholder/associate
     (Phase 1, docs/superpowers/specs/2026-09-02-business-corrections-6-phases-design.md).
 
-    Mirrors SupplierAdvance rather than ShareholderWithdrawal: the proof
-    document is mandatory here (a capital injection is a notable, real
-    money-in event), so creation goes through
+    Its still-unreturned amount (`remaining_capital`) DOES contribute to
+    `ShareholderLedgerService.get_available_balance()` (design doc
+    2026-09-15-capital-associe-retrait-design.md): once a shareholder's
+    profit share is exhausted, a withdrawal may draw down their own
+    capital, oldest contribution first, tracked one
+    ShareholderWithdrawalAllocation row at a time so it never drifts and
+    never touches another shareholder's capital.
+
+    The proof document is mandatory here (a capital injection is a
+    notable, real money-in event), so creation goes through
     ShareholderContributionService.record_contribution, copied from
     AdvanceService.create_supplier_advance rather than routed through
     FinancePostingService (which only fits flows where the document stays
-    optional). Never contributes to
-    ShareholderLedgerService.get_available_balance() or
-    ShareholderStatementQuery's running balance - it is capital, not
-    distributable profit.
+    optional).
     """
 
     shareholder = models.ForeignKey(
@@ -1204,6 +1209,9 @@ class ShareholderContribution(AuditableModel, TimeStampedModel):
     recorded_by = models.ForeignKey(
         "accounts.User", on_delete=models.PROTECT, related_name="shareholder_contributions_recorded"
     )
+    amount_returned = models.DecimalField(
+        max_digits=16, decimal_places=2, default=0, editable=False
+    )
 
     class Meta:
         ordering = ["-date", "-id"]
@@ -1220,6 +1228,14 @@ class ShareholderContribution(AuditableModel, TimeStampedModel):
                 condition=models.Q(bank_account__isnull=False) | models.Q(cash_account__isnull=False),
                 name="finance_shareholdercontribution_requires_account",
             ),
+            models.CheckConstraint(
+                condition=models.Q(amount_returned__gte=0),
+                name="finance_shareholdercontribution_amount_returned_non_negative",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(amount_returned__lte=models.F("amount")),
+                name="finance_shareholdercontribution_returned_not_exceeding_amount",
+            ),
         ]
         indexes = [
             models.Index(fields=["shareholder", "date"], name="finance_shrcontrib_date_idx"),
@@ -1227,3 +1243,75 @@ class ShareholderContribution(AuditableModel, TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.shareholder}: {self.amount} ({self.date})"
+
+    @property
+    def remaining_capital(self) -> Decimal:
+        return self.amount - self.amount_returned
+
+    def sync_amount_returned(self) -> Decimal:
+        """Recompute amount_returned from the actual
+        ShareholderWithdrawalAllocation rows against this contribution -
+        the only writer, so it can never silently drift (same pattern as
+        ShareholderProfitShare.sync_amount_withdrawn)."""
+        total = (
+            self.withdrawal_allocations.aggregate(total=models.Sum("amount"))["total"]
+            or Decimal("0.00")
+        )
+        self.amount_returned = total
+        self.save(update_fields=["amount_returned", "updated_at"])
+        return total
+
+
+class ShareholderWithdrawalAllocation(TimeStampedModel):
+    """Which pool a withdrawal actually drew from - a profit share or a
+    capital contribution, never both on the same row (design doc
+    2026-09-15-capital-associe-retrait-design.md). One ShareholderWithdrawal
+    (one treasury posting) can have several of these, e.g. a withdrawal
+    that exhausts two profit shares and dips into one capital contribution
+    produces three rows here. `ShareholderProfitShare.amount_withdrawn` and
+    `ShareholderContribution.amount_returned` are both recomputed only from
+    these rows (sync_amount_withdrawn/sync_amount_returned), so neither can
+    drift from the actual allocation history.
+    """
+
+    withdrawal = models.ForeignKey(
+        ShareholderWithdrawal, on_delete=models.CASCADE, related_name="allocations"
+    )
+    profit_share = models.ForeignKey(
+        ShareholderProfitShare,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="withdrawal_allocations",
+    )
+    contribution = models.ForeignKey(
+        ShareholderContribution,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="withdrawal_allocations",
+    )
+    amount = models.DecimalField(max_digits=16, decimal_places=2)
+
+    class Meta:
+        ordering = ["id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0),
+                name="finance_shrwithdrawalalloc_amount_positive",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(profit_share__isnull=False, contribution__isnull=True)
+                    | models.Q(profit_share__isnull=True, contribution__isnull=False)
+                ),
+                name="finance_shrwithdrawalalloc_exactly_one_source",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["withdrawal"], name="finance_shrwdalloc_wd_idx"),
+        ]
+
+    def __str__(self) -> str:
+        source = self.profit_share_id and f"share {self.profit_share_id}" or f"contribution {self.contribution_id}"
+        return f"WD-{self.withdrawal_id}: {self.amount} from {source}"

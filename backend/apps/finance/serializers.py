@@ -30,6 +30,7 @@ from .models import (
     ShareholderProfitDistribution,
     ShareholderProfitShare,
     ShareholderWithdrawal,
+    ShareholderWithdrawalAllocation,
     SupplierAdvance,
     SupplierPayment,
     TransporterAdvance,
@@ -1181,20 +1182,25 @@ class ShareholderLoanSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(str(exc))
 
 
-class ShareholderWithdrawalSerializer(serializers.ModelSerializer):
-    """Creation is delegated to ShareholderWithdrawalService.record_withdrawal()
-    (Task 7, client modifications plan) - it, not this serializer, owns the
-    remaining-due check against profit_share, the amount_withdrawn
-    reconciliation, and the TreasuryTransaction(MONEY_OUT) posting, all
-    under one row lock."""
+class ShareholderWithdrawalAllocationSerializer(serializers.ModelSerializer):
+    """Read-only - rows are only ever created by
+    ShareholderWithdrawalService.record_withdrawal()'s automatic
+    allocation (design doc 2026-09-15-capital-associe-retrait-design.md)."""
 
+    class Meta:
+        model = ShareholderWithdrawalAllocation
+        fields = ["profit_share", "contribution", "amount"]
+
+
+class ShareholderWithdrawalSerializer(serializers.ModelSerializer):
     shareholder_detail = ShareholderBriefSerializer(source="shareholder", read_only=True)
     recorded_by_detail = UserSerializer(source="recorded_by", read_only=True)
+    allocations = ShareholderWithdrawalAllocationSerializer(many=True, read_only=True)
 
     class Meta:
         model = ShareholderWithdrawal
         fields = [
-            "id", "shareholder", "shareholder_detail", "profit_share", "amount", "date",
+            "id", "shareholder", "shareholder_detail", "allocations", "amount", "date",
             "bank_account", "cash_account", "notes",
             "recorded_by", "recorded_by_detail", "created_at", "updated_at",
         ]
@@ -1211,24 +1217,10 @@ class ShareholderWithdrawalSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Un compte de tresorerie (banque ou caisse) est requis."
             )
-
-        profit_share = data.get("profit_share", getattr(self.instance, "profit_share", None))
-        shareholder = data.get("shareholder", getattr(self.instance, "shareholder", None))
-        # 2026-09-08 review, point 5: a profit withdrawal is always tied to
-        # one specific validated share - there is no "retrait general".
-        if not profit_share:
-            raise serializers.ValidationError(
-                {"profit_share": "Selectionnez la part de benefice (repartition) concernee."}
-            )
-        if shareholder and profit_share.shareholder_id != shareholder.id:
-            raise serializers.ValidationError(
-                {"profit_share": "Cette part de benefice n'appartient pas a cet actionnaire."}
-            )
         return data
 
     def create(self, validated_data):
         actor = self.context["request"].user
-        profit_share = validated_data.get("profit_share")
         bank_account = validated_data.get("bank_account")
         cash_account = validated_data.get("cash_account")
         try:
@@ -1237,7 +1229,6 @@ class ShareholderWithdrawalSerializer(serializers.ModelSerializer):
                 amount=validated_data["amount"],
                 date=validated_data["date"],
                 actor=actor,
-                profit_share_id=profit_share.id if profit_share else None,
                 bank_account_id=bank_account.id if bank_account else None,
                 cash_account_id=cash_account.id if cash_account else None,
                 notes=validated_data.get("notes", ""),
@@ -1261,15 +1252,17 @@ class ShareholderContributionSerializer(serializers.ModelSerializer):
     recorded_by_detail = UserSerializer(source="recorded_by", read_only=True)
     attachment = serializers.FileField(write_only=True, required=False, allow_null=True, default=None)
     proof_url = serializers.SerializerMethodField()
+    remaining_capital = serializers.DecimalField(max_digits=16, decimal_places=2, read_only=True)
 
     class Meta:
         model = ShareholderContribution
         fields = [
-            "id", "shareholder", "shareholder_detail", "amount", "date",
+            "id", "shareholder", "shareholder_detail", "amount", "amount_returned",
+            "remaining_capital", "date",
             "bank_account", "cash_account", "reference", "notes", "attachment", "proof_url",
             "recorded_by", "recorded_by_detail", "created_at", "updated_at",
         ]
-        read_only_fields = ["id", "recorded_by", "created_at", "updated_at"]
+        read_only_fields = ["id", "amount_returned", "remaining_capital", "recorded_by", "created_at", "updated_at"]
 
     def get_proof_url(self, obj) -> str | None:
         if not obj.document_id or not obj.document.file:

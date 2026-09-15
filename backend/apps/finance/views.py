@@ -687,10 +687,10 @@ class ShareholderLoanViewSet(viewsets.ModelViewSet):
 
 class ShareholderWithdrawalViewSet(viewsets.ModelViewSet):
     queryset = ShareholderWithdrawal.objects.select_related(
-        "shareholder", "profit_share", "bank_account", "cash_account", "recorded_by"
-    ).all()
+        "shareholder", "bank_account", "cash_account", "recorded_by"
+    ).prefetch_related("allocations").all()
     serializer_class = ShareholderWithdrawalSerializer
-    filterset_fields = ["shareholder", "profit_share"]
+    filterset_fields = ["shareholder"]
     permission_classes = [HasModulePermission]
     module = "shareholders"
 
