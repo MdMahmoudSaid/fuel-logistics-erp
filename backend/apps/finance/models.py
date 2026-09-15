@@ -1259,3 +1259,58 @@ class ShareholderContribution(AuditableModel, TimeStampedModel):
         self.amount_returned = total
         self.save(update_fields=["amount_returned", "updated_at"])
         return total
+
+
+class ShareholderWithdrawalAllocation(TimeStampedModel):
+    """Which pool a withdrawal actually drew from - a profit share or a
+    capital contribution, never both on the same row (design doc
+    2026-09-15-capital-associe-retrait-design.md). One ShareholderWithdrawal
+    (one treasury posting) can have several of these, e.g. a withdrawal
+    that exhausts two profit shares and dips into one capital contribution
+    produces three rows here. `ShareholderProfitShare.amount_withdrawn` and
+    `ShareholderContribution.amount_returned` are both recomputed only from
+    these rows (sync_amount_withdrawn/sync_amount_returned), so neither can
+    drift from the actual allocation history.
+    """
+
+    withdrawal = models.ForeignKey(
+        ShareholderWithdrawal, on_delete=models.CASCADE, related_name="allocations"
+    )
+    profit_share = models.ForeignKey(
+        ShareholderProfitShare,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="withdrawal_allocations",
+    )
+    contribution = models.ForeignKey(
+        ShareholderContribution,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="withdrawal_allocations",
+    )
+    amount = models.DecimalField(max_digits=16, decimal_places=2)
+
+    class Meta:
+        ordering = ["id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0),
+                name="finance_shrwithdrawalalloc_amount_positive",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(profit_share__isnull=False, contribution__isnull=True)
+                    | models.Q(profit_share__isnull=True, contribution__isnull=False)
+                ),
+                name="finance_shrwithdrawalalloc_exactly_one_source",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["withdrawal"], name="finance_shrwdalloc_wd_idx"),
+        ]
+
+    def __str__(self) -> str:
+        source = self.profit_share_id and f"share {self.profit_share_id}" or f"contribution {self.contribution_id}"
+        return f"WD-{self.withdrawal_id}: {self.amount} from {source}"
