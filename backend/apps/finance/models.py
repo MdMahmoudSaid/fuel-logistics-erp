@@ -1108,9 +1108,13 @@ class ShareholderLoan(TimeStampedModel):
 
 class ShareholderWithdrawal(AuditableModel, TimeStampedModel):
     """Money paid out from company treasury to a shareholder (Task 7,
-    client modifications plan) - either against a specific
-    ShareholderProfitShare (profit_share set) or a general withdrawal not
-    tied to any distribution (profit_share null).
+    client modifications plan). Which profit share(s) and/or capital
+    contribution(s) it actually drew from is recorded on its `allocations`
+    (ShareholderWithdrawalAllocation, design doc
+    2026-09-15-capital-associe-retrait-design.md) - always at least one,
+    computed automatically by ShareholderWithdrawalService.record_withdrawal
+    (profit due first, oldest first; the shareholder's own capital next,
+    oldest first).
 
     AuditableModel + the same bank_account/cash_account exclusivity
     constraint as SupplierPayment, since this is a real money-out event
@@ -1121,13 +1125,6 @@ class ShareholderWithdrawal(AuditableModel, TimeStampedModel):
 
     shareholder = models.ForeignKey(
         Shareholder, on_delete=models.PROTECT, related_name="withdrawals"
-    )
-    profit_share = models.ForeignKey(
-        ShareholderProfitShare,
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        related_name="withdrawals",
     )
     amount = models.DecimalField(max_digits=16, decimal_places=2)
     date = models.DateField()
