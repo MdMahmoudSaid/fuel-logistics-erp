@@ -11,6 +11,7 @@ import { customerOrderResource } from '@/modules/sales/api'
 import type { CustomerOrder } from '@/modules/sales/types'
 import { tripResource } from './api'
 import type { Trip, TruckBrief, TransporterBrief, DriverBrief, CustomerBrief } from './types'
+import { formatTruckPlates } from './formatTruckPlates'
 import { translateApiError, extractFieldErrors } from '@/i18n/apiErrors'
 import Button from '@/components/ui/Button.vue'
 import { formatQuantity } from '@/utils/currency'
@@ -303,7 +304,7 @@ async function onSubmit() {
           >
             <option value="" disabled>{{ t('trips.newForm.selectTruck') }}</option>
             <option v-for="truck in trucks" :key="truck.id" :value="truck.id">
-              {{ truck.internal_id }}
+              {{ formatTruckPlates(truck) }}
               <template v-if="truck.status !== 'AVAILABLE'">
                 {{ ' ' + t('trips.newForm.occupied', { status: truckStatusLabel(truck.status) }) }}
               </template>

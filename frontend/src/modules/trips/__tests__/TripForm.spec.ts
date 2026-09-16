@@ -150,14 +150,16 @@ describe('TripForm', () => {
     setActivePinia(createPinia())
   })
 
-  it('defaults the truck picker to AVAILABLE trucks only', async () => {
+  it('shows tractor and tanker registrations for AVAILABLE trucks', async () => {
     const router = makeRouter()
     await router.isReady()
     const wrapper = mount(TripForm, { global: { plugins: [router] } })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('TRK-001')
-    expect(wrapper.text()).not.toContain('TRK-002')
+    const truckOptions = wrapper.findAll('#truck option').map((option) => option.text())
+    expect(truckOptions).toContain('AA-001 / BB-001')
+    expect(truckOptions).not.toContain('TRK-001')
+    expect(truckOptions).not.toContain('AA-002 / BB-002')
   })
 
   it('defaults the transporter picker to available transporters only', async () => {
@@ -280,7 +282,7 @@ describe('TripForm', () => {
     await wrapper.find('#show_busy').setValue(true)
     await flushPromises()
 
-    expect(wrapper.text()).toContain('TRK-002')
+    expect(wrapper.text()).toContain('AA-002 / BB-002')
     expect(wrapper.text()).toContain('Sow Transport')
   })
 
