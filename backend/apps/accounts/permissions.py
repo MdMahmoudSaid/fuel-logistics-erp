@@ -42,6 +42,12 @@ ACTION_MAP = {
     # its own action name, unlike profit_preview's own gap above (fixed
     # 2026-09-06) which is exactly why this one isn't skipped.
     "profit_preview_pdf": "view",
+    # Sum of every active shareholder's real ledger balance (client request
+    # 2026-09-16) - read-only, same "view" tier as `ledger`/`profit_preview`
+    # above. Listed explicitly to avoid the exact profit_preview gap fixed
+    # 2026-09-06: a custom action missing from this map silently falls back
+    # to its own name, which is never a valid Role.ACTIONS tier.
+    "balances": "view",
     "create": "create",
     "update": "edit",
     "partial_update": "edit",

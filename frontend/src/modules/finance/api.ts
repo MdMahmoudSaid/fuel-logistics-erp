@@ -12,6 +12,7 @@ import type {
   PartyBalance,
   PartyType,
   Shareholder,
+  ShareholderBalancesSummary,
   ShareholderContribution,
   ShareholderLedger,
   ShareholderLoan,
@@ -382,6 +383,16 @@ export function createShareholderContribution(payload: {
 export function fetchShareholderLedger(shareholderId: number): Promise<ShareholderLedger> {
   return apiClient
     .get<ShareholderLedger>(`/shareholders/${shareholderId}/ledger/`)
+    .then((r) => r.data)
+}
+
+// backend/apps/finance/services.py ShareholderLedgerService.get_balances_summary()
+// Real, comptable balance per active shareholder (same figure as the Grand
+// livre tab's "solde disponible"), summed - distinct from the indicative
+// profit-preview figures below.
+export function fetchShareholderBalancesSummary(): Promise<ShareholderBalancesSummary> {
+  return apiClient
+    .get<ShareholderBalancesSummary>('/shareholders/balances/')
     .then((r) => r.data)
 }
 

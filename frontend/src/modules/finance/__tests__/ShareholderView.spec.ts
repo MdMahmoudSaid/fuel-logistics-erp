@@ -12,6 +12,7 @@ import { i18n } from '@/i18n'
 
 const fetchShareholderLedger = vi.fn()
 const fetchShareholderProfitPreview = vi.fn()
+const fetchShareholderBalancesSummary = vi.fn()
 const shareholderResourceList = vi.fn()
 const shareholderContributionResourceList = vi.fn()
 const shareholderWithdrawalResourceList = vi.fn()
@@ -70,6 +71,7 @@ vi.mock('../api', () => ({
   },
   fetchShareholderLedger: (...args: unknown[]) => fetchShareholderLedger(...args),
   fetchShareholderProfitPreview: (...args: unknown[]) => fetchShareholderProfitPreview(...args),
+  fetchShareholderBalancesSummary: (...args: unknown[]) => fetchShareholderBalancesSummary(...args),
   validateShareholderDistribution: vi.fn(),
   cancelShareholderDistribution: (...args: unknown[]) => cancelShareholderDistribution(...args),
   recordShareholderLoanRepayment: vi.fn(),
@@ -150,6 +152,10 @@ describe('ShareholderView', () => {
       ],
       net_loan_balance: '15000.00',
       withdrawals: [],
+    })
+    fetchShareholderBalancesSummary.mockResolvedValue({
+      shareholders: [{ id: 1, name: 'Ahmed', available_balance: '615000.00' }],
+      total: '615000.00',
     })
   })
 
@@ -409,6 +415,91 @@ describe('ShareholderView', () => {
     // and net_loan_balance (15000) alone - proves the combined figure
     // renders, not just its two components separately.
     expect(wrapper.text()).toContain('615 000 XOF')
+  })
+
+  it('shows the total shareholder balances card, distinct from the indicative preview', async () => {
+    const wrapper = mount(ShareholderView)
+    await flushPromises()
+
+    expect(fetchShareholderBalancesSummary).toHaveBeenCalled()
+    expect(wrapper.text()).toContain('Solde total des actionnaires')
+    expect(wrapper.text()).toContain('615 000 XOF')
+  })
+
+  it('drills into a shareholder\'s Grand livre by clicking their name in the balances card', async () => {
+    // Client feedback (2026-09-16, second pass): a separate "Voir le grand
+    // livre" button was replaced by making the shareholder's own name the
+    // underlined clickable link, for a simpler, less cluttered card.
+    const wrapper = mount(ShareholderView)
+    await flushPromises()
+
+    const nameLink = wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Ahmed' && b.classes().includes('underline'))
+    expect(nameLink).toBeTruthy()
+    await nameLink!.trigger('click')
+    await flushPromises()
+
+    expect(fetchShareholderLedger).toHaveBeenCalledWith(1)
+    // The ledger tab's own loaded content ("Solde disponible" only renders
+    // once `ledger` is populated) proves the click both switched tabs and
+    // loaded that shareholder, not just navigated to an empty tab.
+    expect(wrapper.text()).toContain('Solde disponible')
+  })
+
+  it('shows the real negative "reste disponible pour repartition" in the indicative box, but floors the Resume cards to 0', async () => {
+    // Client feedback (2026-09-16, second pass): the orange "Indicatif" box
+    // is the detailed/real view and must show the true figure, negative
+    // included - only the simplified per-shareholder Resume cards below
+    // must never show a negative amount (a non-technical shareholder read
+    // that as being personally in debt).
+    fetchShareholderProfitPreview.mockResolvedValue({
+      period_start: '2026-08-01',
+      period_end: null,
+      current_profit: '0.00',
+      operational_profit: '0.00',
+      general_expenses_paid: '0.00',
+      net_profit: '0.00',
+      working_capital: {
+        capital: '32800000.00',
+        treasury_available: '0.00',
+        customer_receivables: '0.00',
+        supplier_debt_total: '500000000.00',
+        transporter_debt_total: '0.00',
+        other_debts: '0.00',
+        supplier_reliquat_value: '32800000.00',
+        supplier_in_transit_value: '0.00',
+        supplier_company_stock_value: '0.00',
+        gross: '0.00',
+        total: '532800000.00',
+      },
+      already_distributed: '0.00',
+      distributable_result: '-32800000.00',
+      shareholders: [
+        {
+          shareholder_id: 1,
+          name: 'Ahmed',
+          participation_percent: '80.00',
+          indicative_share: '-26240000.00',
+        },
+      ],
+    })
+
+    const wrapper = mount(ShareholderView)
+    await flushPromises()
+
+    // The indicative box: real, negative figures.
+    expect(wrapper.text()).toContain('-32 800 000 XOF')
+    expect(wrapper.text()).toContain('-26 240 000 XOF')
+
+    // The Resume cards: floored to 0 with an explanatory note, never a
+    // negative amount or the word "dette" anywhere on them.
+    await wrapper.findAll('button').find((b) => b.text() === 'Résumé')!.trigger('click')
+    await flushPromises()
+    const summarySection = wrapper.get('[class*="grid"][class*="md:grid-cols-2"]')
+    expect(summarySection.text()).not.toContain('-26 240 000')
+    expect(summarySection.text()).toContain('0 XOF')
+    expect(summarySection.text()).toContain('Aucun montant disponible pour le moment')
   })
 
   it('shows shareholder contribution in the associates table but not in the add/edit form', async () => {

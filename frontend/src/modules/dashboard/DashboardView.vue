@@ -229,7 +229,6 @@ const workingCapitalCard = computed(() => {
     // the headline, never subtracted from it).
     totalParts: formatMoneyParts(wc.total),
     negative: Number(wc.total) < 0,
-    grossParts: formatMoneyParts(wc.gross),
     capitalParts: formatMoneyParts(wc.capital),
     treasuryParts: formatMoneyParts(wc.treasury_available),
     receivablesParts: formatMoneyParts(wc.customer_receivables),
@@ -563,12 +562,6 @@ const compactEnRouteTrips = computed(() => enRouteTrips.value.slice(0, 5))
               <MonoValue v-bind="workingCapitalCard.totalParts" align="left" />
             </p>
             <dl v-if="workingCapitalCard" class="mt-4 grid gap-2 text-sm">
-              <div class="bg-sable flex items-center justify-between gap-3 rounded-lg px-3 py-2">
-                <dt class="text-texte-2">{{ t('dashboard.final.workingCapitalGross') }}</dt>
-                <dd class="text-texte font-medium">
-                  <MonoValue v-bind="workingCapitalCard.grossParts" />
-                </dd>
-              </div>
               <div class="bg-sable flex items-center justify-between gap-3 rounded-lg px-3 py-2">
                 <dt class="text-texte-2">{{ t('dashboard.final.capitalContributed') }}</dt>
                 <dd class="text-texte font-medium">
