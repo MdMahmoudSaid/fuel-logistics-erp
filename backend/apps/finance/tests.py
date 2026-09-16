@@ -4845,6 +4845,52 @@ def test_get_available_balance_ignores_draft_distribution_shares():
 
 
 @pytest.mark.django_db
+def test_get_balances_summary_sums_available_balance_across_active_shareholders():
+    """Client request (2026-09-16): a "somme des soldes des actionnaires"
+    card needs the real, comptable balance (same figure as the Grand
+    livre's "solde disponible") summed across every active shareholder -
+    not the indicative profit-preview figure used elsewhere on the page."""
+    a, b = _make_shareholders([Decimal("60"), Decimal("40")], prefix="BALSUM")
+    actor = _make_admin_user("BALSUM")
+    _seed_distributable()
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=actor,
+    )
+    ShareholderDistributionService.validate_distribution(distribution.id, actor)
+
+    summary = ShareholderLedgerService.get_balances_summary()
+
+    balances = {row["id"]: row["available_balance"] for row in summary["shareholders"]}
+    assert balances[a.id] == Decimal("60000.00")
+    assert balances[b.id] == Decimal("40000.00")
+    assert summary["total"] == Decimal("100000.00")
+
+
+@pytest.mark.django_db
+def test_get_balances_summary_excludes_inactive_shareholders():
+    shareholder = _make_shareholders([Decimal("100")])[0]
+    actor = _make_admin_user("BALSUMINACTIVE")
+    _seed_distributable()
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=actor,
+    )
+    ShareholderDistributionService.validate_distribution(distribution.id, actor)
+    shareholder.is_active = False
+    shareholder.save(update_fields=["is_active"])
+
+    summary = ShareholderLedgerService.get_balances_summary()
+
+    assert summary["shareholders"] == []
+    assert summary["total"] == Decimal("0.00")
+
+
+@pytest.mark.django_db
 def test_get_shareholder_summary_includes_capital_totals_and_allocation_breakdown():
     shareholder = _make_shareholders([Decimal("100")])[0]
     actor = _make_admin_user("SUMMARY-CAPITAL")
@@ -5257,6 +5303,30 @@ def test_shareholder_ledger_endpoint_money_fields_are_strings_not_floats(admin_c
     assert isinstance(response.data["loans_lent"][0]["amount"], str)
     assert isinstance(response.data["loans_lent"][0]["remaining_amount"], str)
     assert isinstance(response.data["withdrawals"][0]["amount"], str)
+
+
+@pytest.mark.django_db
+def test_shareholder_balances_endpoint_via_api(admin_client):
+    a, b = _make_shareholders([Decimal("60"), Decimal("40")], prefix="BALAPI")
+    actor = _make_admin_user("BALAPI")
+    _seed_distributable()
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=actor,
+    )
+    ShareholderDistributionService.validate_distribution(distribution.id, actor)
+
+    response = admin_client.get("/api/shareholders/balances/")
+
+    assert response.status_code == 200, response.data
+    assert isinstance(response.data["total"], str)
+    assert response.data["total"] == "100000.00"
+    balances = {row["id"]: row["available_balance"] for row in response.data["shareholders"]}
+    assert balances[a.id] == "60000.00"
+    assert balances[b.id] == "40000.00"
+    assert isinstance(balances[a.id], str)
 
 
 # ---------------------------------------------------------------------------

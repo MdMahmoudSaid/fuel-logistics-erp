@@ -596,6 +596,22 @@ export interface ShareholderLedger {
   withdrawals: ShareholderLedgerWithdrawal[]
 }
 
+// GET /api/shareholders/balances/ (ShareholderLedgerService.get_balances_summary)
+// Real, comptable balance per active shareholder - the same figure as the
+// Grand livre tab's "solde disponible" - summed across all of them. Client
+// request (2026-09-16): distinct from ShareholderProfitPreview below, which
+// is only an indicative/forecast distribution figure.
+export interface ShareholderBalanceRow {
+  id: number
+  name: string
+  available_balance: string
+}
+
+export interface ShareholderBalancesSummary {
+  shareholders: ShareholderBalanceRow[]
+  total: string
+}
+
 // GET /api/shareholders/profit-preview/ (ShareholderProfitPreviewService.get_preview)
 // Read-only and indicative only - never a stored figure, never affects
 // available_balance or withdrawal eligibility.

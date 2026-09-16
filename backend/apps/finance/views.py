@@ -549,6 +549,19 @@ class ShareholderViewSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         raise MethodNotAllowed("DELETE", detail=_NO_HARD_DELETE_DETAIL)
 
+    @action(detail=False, methods=["get"])
+    def balances(self, request):
+        """Real, comptable balance per active shareholder (same figure as
+        the Grand livre tab's "solde disponible"), plus the sum across all
+        of them - client request (2026-09-16): a "somme des soldes des
+        actionnaires" card, distinct from the indicative/forecast
+        profit-preview figures.
+
+        GET /api/shareholders/balances/
+        """
+        summary = ShareholderLedgerService.get_balances_summary()
+        return Response(decimals_to_str(summary))
+
     @action(detail=True, methods=["get"])
     def ledger(self, request, pk=None):
         """Per-shareholder summary: profit shares/remaining due, loans in

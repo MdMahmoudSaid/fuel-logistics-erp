@@ -132,7 +132,6 @@
       "banks": "Banques",
       "cashAccounts": "Caisses",
       "workingCapital": "Fond de roulement client",
-      "workingCapitalGross": "Trésorerie + créances clients",
       "workingCapitalHelp": "Trésorerie disponible + créances clients + dettes fournisseurs/transporteurs/douane-transit-frais ouvertes. Différent de la trésorerie disponible (banques + caisses uniquement).",
       "capitalContributed": "Capital apporté (information)",
       "customerReceivables": "Créances clients",
@@ -961,6 +960,10 @@
       "listTitle": "Liste des actionnaires",
       "saveError": "Impossible d'enregistrer cet actionnaire — vérifiez les champs et vos droits.",
       "selectShareholder": "Sélectionner un actionnaire",
+      "balances": {
+        "title": "Solde total des actionnaires",
+        "help": "Montant réel actuellement crédité à chaque actionnaire (capital, bénéfices validés et avances). Cliquez sur un actionnaire pour voir le détail dans son grand livre."
+      },
       "tabs": {
         "summary": "Résumé",
         "associates": "Associés",
@@ -1060,7 +1063,8 @@
         "summaryLabel": "Résultat distribuable proposé",
         "periodProfit": "Bénéfice de la période",
         "alreadyValidatedEngagements": "Engagements déjà validés envers les associés (toutes périodes)",
-        "remainingDistributable": "Reste disponible pour répartition"
+        "remainingDistributable": "Reste disponible pour répartition",
+        "noneAvailable": "Aucun montant disponible pour le moment (des dettes ou du capital restent à couvrir)."
       }
     },
     "profit": {

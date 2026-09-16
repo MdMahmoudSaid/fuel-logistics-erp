@@ -13,6 +13,7 @@ import { useI18n } from 'vue-i18n'
 import { createResourceApi } from '@/api/resource'
 import {
   cancelShareholderDistribution,
+  fetchShareholderBalancesSummary,
   fetchShareholderLedger,
   fetchShareholderProfitPreview,
   recordShareholderLoanRepayment,
@@ -25,6 +26,7 @@ import {
 } from './api'
 import type {
   Shareholder,
+  ShareholderBalancesSummary,
   ShareholderContribution,
   ShareholderLedger,
   ShareholderLoan,
@@ -90,6 +92,7 @@ onMounted(async () => {
     loadLoans(),
     loadWithdrawals(),
     loadPreview(),
+    loadBalancesSummary(),
   ])
 })
 
@@ -120,6 +123,42 @@ async function loadPreview() {
   } catch {
     preview.value = null
   }
+}
+
+// Client feedback (2026-09-16): a non-technical shareholder reading a
+// negative "reste disponible pour repartition" on their own card read it
+// as being personally in debt. This is only ever a display floor - the
+// real (possibly negative) distributable_result still pre-fills the
+// distribution form above and still drives the calculation; we simply
+// never show a negative amount or the word "dette" anywhere on screen.
+const isDistributableNegative = computed(
+  () => Number(preview.value?.distributable_result ?? 0) < 0,
+)
+function clampPositive(value: string | number): number {
+  return Math.max(0, Number(value))
+}
+
+// --- Total shareholder balances (real, comptable - distinct from the
+// indicative preview above) --------------------------------------------
+// Client request (2026-09-16): a card showing the sum of every active
+// shareholder's real ledger balance, with a way to drill into each one's
+// Grand livre for detail - backend/apps/finance/services.py
+// ShareholderLedgerService.get_balances_summary().
+
+const balancesSummary = ref<ShareholderBalancesSummary | null>(null)
+
+async function loadBalancesSummary() {
+  try {
+    balancesSummary.value = await fetchShareholderBalancesSummary()
+  } catch {
+    balancesSummary.value = null
+  }
+}
+
+async function viewShareholderLedger(shareholderId: number) {
+  activeTab.value = 'ledger'
+  ledgerShareholderId.value = String(shareholderId)
+  await loadLedger(shareholderId)
 }
 
 // --- Section 1: Shareholders ------------------------------------------------
@@ -484,6 +523,42 @@ async function onWithdrawalShareholderChange() {
       </h1>
     </div>
 
+    <!-- Total shareholder balances: the real, comptable amount currently
+         credited to each active shareholder (same figure as the Grand
+         livre's "solde disponible"), summed - deliberately visually
+         distinct from the indicative "Reste disponible" box below so the
+         two are never confused. Clicking a shareholder drills into their
+         Grand livre for the detail (client request 2026-09-16). -->
+    <div v-if="balancesSummary" class="border-ligne rounded-xl border bg-white p-4">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p class="text-texte font-semibold">{{ t('finance.shareholder.balances.title') }}</p>
+          <p class="text-texte-2 text-sm">{{ t('finance.shareholder.balances.help') }}</p>
+        </div>
+        <MonoValue class="text-xl font-semibold" :value="formatMoney(balancesSummary.total)" />
+      </div>
+      <dl v-if="balancesSummary.shareholders.length" class="mt-3 grid gap-2 sm:grid-cols-2">
+        <div
+          v-for="row in balancesSummary.shareholders"
+          :key="row.id"
+          class="bg-sable flex items-center justify-between gap-3 rounded-lg px-3 py-2"
+        >
+          <dt>
+            <button
+              type="button"
+              class="text-transit-texte text-left underline underline-offset-2"
+              @click="viewShareholderLedger(row.id)"
+            >
+              {{ row.name }}
+            </button>
+          </dt>
+          <dd>
+            <MonoValue class="text-texte font-medium" :value="formatMoney(row.available_balance)" />
+          </dd>
+        </div>
+      </dl>
+    </div>
+
     <!-- Live profit preview: read-only, clearly marked as indicative - it
          never gates a withdrawal and is never a stored distribution.
          Business decision (2026-09-04, distribution basis change): shows
@@ -499,9 +574,13 @@ async function onWithdrawalShareholderChange() {
         </div>
         <MonoValue
           class="text-lg font-semibold"
+          :class="isDistributableNegative ? 'text-critique' : ''"
           :value="formatMoney(preview.distributable_result)"
         />
       </div>
+      <!-- Client feedback (2026-09-16): this box is the detailed/real view
+           (unlike the Resume cards below) - it must show the true figure,
+           negative included, never floored to 0. -->
       <!-- 2026-09-08 review, point 7: the three amounts must be shown
            distinctly and never conflated - the period benefit, what is
            already validated as owed to the associates (all periods), and
@@ -521,13 +600,23 @@ async function onWithdrawalShareholderChange() {
         </div>
         <div class="border-ligne flex flex-wrap justify-between gap-2 border-t pt-1 font-medium">
           <dt>{{ t('finance.shareholder.preview.remainingDistributable') }}</dt>
-          <dd><MonoValue class="inline" :value="formatMoney(preview.distributable_result)" /></dd>
+          <dd>
+            <MonoValue
+              class="inline"
+              :class="isDistributableNegative ? 'text-critique' : ''"
+              :value="formatMoney(preview.distributable_result)"
+            />
+          </dd>
         </div>
       </dl>
       <div v-if="preview.shareholders.length" class="mt-3 flex flex-wrap gap-4">
         <div v-for="row in preview.shareholders" :key="row.shareholder_id" class="text-sm">
           <span class="text-texte-2">{{ row.name }} ({{ row.participation_percent }}%):</span>
-          <MonoValue class="ms-1 inline" :value="formatMoney(row.indicative_share)" />
+          <MonoValue
+            class="ms-1 inline"
+            :class="Number(row.indicative_share) < 0 ? 'text-critique' : ''"
+            :value="formatMoney(row.indicative_share)"
+          />
         </div>
       </div>
     </div>
@@ -559,8 +648,11 @@ async function onWithdrawalShareholderChange() {
         <MonoValue
           class="text-lg font-semibold"
           align="left"
-          :value="formatMoney(row.indicative_share)"
+          :value="formatMoney(clampPositive(row.indicative_share))"
         />
+        <p v-if="Number(row.indicative_share) < 0" class="text-texte-3 mt-1 text-xs">
+          {{ t('finance.shareholder.preview.noneAvailable') }}
+        </p>
       </div>
     </section>
 

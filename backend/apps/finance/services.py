@@ -2409,6 +2409,29 @@ class ShareholderLedgerService:
         return pools_remaining + loans_given_remaining - loans_received_remaining
 
     @staticmethod
+    def get_balances_summary() -> dict:
+        """Real, comptable balance per active shareholder (each one
+        get_available_balance(), the same figure the Grand livre tab
+        shows), plus the total across all of them - client request
+        (2026-09-16): a card showing "la somme des soldes des
+        actionnaires", distinct from ShareholderProfitPreviewService's
+        indicative/forecast distributable_result shown elsewhere on the
+        page."""
+        shareholders = [
+            {"id": s.id, "name": s.name}
+            for s in Shareholder.objects.filter(is_active=True).order_by("name")
+        ]
+        rows = [
+            {
+                **s,
+                "available_balance": ShareholderLedgerService.get_available_balance(s["id"]),
+            }
+            for s in shareholders
+        ]
+        total = sum((row["available_balance"] for row in rows), ZERO)
+        return {"shareholders": rows, "total": total}
+
+    @staticmethod
     def get_shareholder_summary(shareholder_id) -> dict:
         shareholder = Shareholder.objects.get(pk=shareholder_id)
 

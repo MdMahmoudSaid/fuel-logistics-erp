@@ -132,7 +132,6 @@
       "banks": "Banks",
       "cashAccounts": "Cash accounts",
       "workingCapital": "Client working capital",
-      "workingCapitalGross": "Cash + customer receivables",
       "workingCapitalHelp": "Available cash + customer receivables + open supplier/transporter/customs-transit-fee debts. Different from available cash (banks + cash accounts only).",
       "capitalContributed": "Capital contributed (information)",
       "customerReceivables": "Customer receivables",
@@ -959,6 +958,10 @@
       "listTitle": "Shareholder list",
       "saveError": "Could not save this shareholder — check the fields and your permissions.",
       "selectShareholder": "Select a shareholder",
+      "balances": {
+        "title": "Total shareholder balances",
+        "help": "Real amount currently credited to each shareholder (capital, validated profit shares and loans). Click a shareholder to see the detail in their ledger."
+      },
       "tabs": {
         "summary": "Summary",
         "associates": "Associates",
@@ -1058,7 +1061,8 @@
         "summaryLabel": "Suggested distributable result",
         "periodProfit": "Profit for the period",
         "alreadyValidatedEngagements": "Engagements already validated to shareholders (all periods)",
-        "remainingDistributable": "Still available for distribution"
+        "remainingDistributable": "Still available for distribution",
+        "noneAvailable": "Nothing available for distribution right now (open debts or capital still need to be covered)."
       }
     },
     "profit": {
