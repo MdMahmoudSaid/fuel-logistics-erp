@@ -27,7 +27,7 @@ import Modal from '@/components/ui/Modal.vue'
 import { useTripStatusLabel } from './tripStatusLabels'
 import { formatTruckPlates } from './formatTruckPlates'
 import { cancelExpense, expenseResource } from '@/modules/finance/api'
-import { transportPaymentResource } from '@/modules/finance/api'
+import { cancelTransportPayment, transportPaymentResource } from '@/modules/finance/api'
 import ExpenseForm from '@/modules/finance/ExpenseForm.vue'
 import TransportPaymentForm from '@/modules/finance/TransportPaymentForm.vue'
 import AssignCustomerForm from './AssignCustomerForm.vue'
@@ -90,12 +90,25 @@ const cancellingExpenseId = ref<number | null>(null)
 const showTransportPaymentForm = ref(false)
 const automaticTransportTitle = ref<string | null>(null)
 const editingTransportPayment = ref<TransportPayment | null>(null)
+const transportPaymentFormMode = ref<'edit' | 'correct'>('edit')
 const deletingTransportPaymentId = ref<number | null>(null)
 const canEditCommission = computed(() => auth.can('finance', 'edit'))
 
 function onEditTransportPayment(payment: TransportPayment) {
   editingTransportPayment.value = payment
+  transportPaymentFormMode.value = 'edit'
   automaticTransportTitle.value = t('trips.detail.editCommission')
+  showTransportPaymentForm.value = true
+}
+
+// Part 2 of the commission-actions bug fix (2026-09-17): reuses the same
+// form the transporter already knows, in "correct" mode - a settled
+// commission's rate/amount can now be fixed in place (POST /correct/)
+// instead of forcing a full cancel-then-recreate cycle.
+function onCorrectTransportPayment(payment: TransportPayment) {
+  editingTransportPayment.value = payment
+  transportPaymentFormMode.value = 'correct'
+  automaticTransportTitle.value = t('trips.detail.correctCommission')
   showTransportPaymentForm.value = true
 }
 
@@ -105,6 +118,25 @@ async function onDeleteTransportPayment(payment: TransportPayment) {
   expensesError.value = ''
   try {
     await transportPaymentResource.remove(payment.id)
+    await Promise.all([loadExpenses(), loadMargin()])
+  } catch (e) {
+    const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+    expensesError.value = translateApiError(detail) || t('trips.detail.commissionDeleteError')
+  } finally {
+    deletingTransportPaymentId.value = null
+  }
+}
+
+// Bug fix (2026-09-17): once a commission is settled, can_modify flips to
+// false and the Edit/Delete block disappears entirely - there was never a
+// reversal action to replace it, unlike every other trip fee (Expense's
+// onCancelExpense above). Mirrors that same POST /cancel/ pattern.
+async function onCancelTransportPayment(payment: TransportPayment) {
+  if (!window.confirm(t('trips.detail.cancelCommissionConfirm'))) return
+  deletingTransportPaymentId.value = payment.id
+  expensesError.value = ''
+  try {
+    await cancelTransportPayment(payment.id)
     await Promise.all([loadExpenses(), loadMargin()])
   } catch (e) {
     const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
@@ -268,6 +300,7 @@ async function onDeleteExpense(expense: Expense) {
 
 async function onTransportPaymentSaved() {
   editingTransportPayment.value = null
+  transportPaymentFormMode.value = 'edit'
   showTransportPaymentForm.value = false
   automaticTransportTitle.value = null
   await Promise.all([loadExpenses(), loadMargin()])
@@ -851,6 +884,27 @@ const cessionProofUrl = computed(
                     {{ t('trips.detail.deleteExpense') }}
                   </button>
                 </div>
+                <div
+                  v-else-if="canCancelExpenses && payment.status !== 'CANCELLED'"
+                  class="flex gap-2"
+                >
+                  <button
+                    type="button"
+                    class="text-bitume text-xs hover:brightness-90 disabled:opacity-50"
+                    :disabled="deletingTransportPaymentId === payment.id"
+                    @click="onCorrectTransportPayment(payment)"
+                  >
+                    {{ t('trips.detail.correctExpense') }}
+                  </button>
+                  <button
+                    type="button"
+                    class="text-critique text-xs hover:brightness-90 disabled:opacity-50"
+                    :disabled="deletingTransportPaymentId === payment.id"
+                    @click="onCancelTransportPayment(payment)"
+                  >
+                    {{ t('trips.detail.cancelExpense') }}
+                  </button>
+                </div>
               </div>
             </li>
             <li
@@ -1071,6 +1125,7 @@ const cessionProofUrl = computed(
         <div class="max-h-[90vh] w-full max-w-lg overflow-y-auto">
           <TransportPaymentForm
             :payment="editingTransportPayment"
+            :mode="transportPaymentFormMode"
             :title="automaticTransportTitle ?? undefined"
             :trip-id="trip.id"
             :trip-reference="trip.reference"
@@ -1081,7 +1136,8 @@ const cessionProofUrl = computed(
             @cancel="
               ;((showTransportPaymentForm = false),
                 (automaticTransportTitle = null),
-                (editingTransportPayment = null))
+                (editingTransportPayment = null),
+                (transportPaymentFormMode = 'edit'))
             "
           />
         </div>

@@ -77,6 +77,10 @@ from .services import (
     ShareholderProfitPreviewService,
     SupplierPaymentCancellationError,
     SupplierPaymentCancellationService,
+    TransportPaymentCancellationError,
+    TransportPaymentCancellationService,
+    TransportPaymentCorrectionError,
+    TransportPaymentCorrectionService,
     TreasuryService,
     TreasuryTransferError,
     WorkingCapitalService,
@@ -283,6 +287,60 @@ class TransportPaymentViewSet(viewsets.ModelViewSet):
         response = HttpResponse(pdf_bytes, content_type="application/pdf")
         response["Content-Disposition"] = f'attachment; filename="reglement-{payment.trip.reference}.pdf"'
         return response
+
+    @action(detail=True, methods=["post"])
+    def cancel(self, request, pk=None):
+        """Reverse a PAID/PARTIALLY_PAID/DEDUCTION_APPLIED TransportPayment,
+        mirroring ExpenseViewSet.cancel: once a commission has real
+        accounting impact, _editable_payment() blocks PATCH/DELETE, so this
+        is the only way to unwind it (bug fix, 2026-09-17: the frontend
+        never exposed an "Annule" action for commission rows the way it
+        does for other trip fees).
+
+        POST /api/transport-payments/{id}/cancel/
+        """
+        payment = self.get_object()
+        try:
+            payment = TransportPaymentCancellationService.cancel_transport_payment(
+                payment, request.user
+            )
+        except TransportPaymentCancellationError as exc:
+            return Response({"detail": str(exc)}, status=http_status.HTTP_400_BAD_REQUEST)
+        return Response(TransportPaymentSerializer(payment, context={"request": request}).data)
+
+    @action(detail=True, methods=["post"])
+    def correct(self, request, pk=None):
+        """Corrects a settled commission's rate/amount in place (e.g. a
+        wrong per-litre rate discovered after payment), without the
+        cancel-then-recreate cycle /cancel/ would otherwise force - see
+        TransportPaymentCorrectionService for the accounting rationale
+        (client discussion 2026-09-17).
+
+        POST /api/transport-payments/{id}/correct/
+        body: {"unit_price_per_litre": "60"} or {"base_amount": "..."},
+        plus an optional {"reason": "..."} kept on the audit trail.
+        """
+        payment = self.get_object()
+        editable_fields = {"calculation_method", "base_amount", "unit_price_per_litre"}
+        if any(key not in editable_fields | {"reason"} for key in request.data):
+            raise ValidationError({
+                "detail": "Seuls le mode de calcul, le montant et le motif peuvent etre transmis."
+            })
+        reason = request.data.get("reason", "")
+        serializer = self.get_serializer(payment, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        changes = {
+            field: value
+            for field, value in serializer.validated_data.items()
+            if field in editable_fields
+        }
+        try:
+            payment = TransportPaymentCorrectionService.correct_payment(
+                payment, changes, request.user, reason=reason
+            )
+        except TransportPaymentCorrectionError as exc:
+            return Response({"detail": str(exc)}, status=http_status.HTTP_400_BAD_REQUEST)
+        return Response(TransportPaymentSerializer(payment, context={"request": request}).data)
 
 
 class ExpenseViewSet(viewsets.ModelViewSet):

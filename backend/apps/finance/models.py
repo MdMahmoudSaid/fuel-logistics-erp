@@ -499,7 +499,7 @@ class AdvanceConsumption(TimeStampedModel):
         return f"{advance}: {self.amount} -> {self.debt_object}"
 
 
-class TransportPayment(TimeStampedModel):
+class TransportPayment(AuditableModel, TimeStampedModel):
     """Settlement of a trip's transport cost, net of loss deductions and any
     advance consumed (docs/PHASE_5_PLAN.md Etape 3;
     guide Section 1.5/8.6: earned - deductions - advances - payments =
@@ -509,6 +509,11 @@ class TransportPayment(TimeStampedModel):
     TransportDeduction total at settlement time - the deduction rows
     themselves stay the auditable source of truth (guide Section 1.5: "do
     not silently reduce the transport cost field").
+
+    AuditableModel since 2026-09-17 (commission correction feature): a
+    settled commission's amount can now be corrected in place
+    (TransportPaymentCorrectionService) - this gives that, and /cancel/,
+    the same automatic AuditLog trail Expense already has.
     """
 
     class CalculationMethod(models.TextChoices):
@@ -609,6 +614,17 @@ class TransportPayment(TimeStampedModel):
                 self.base_amount - self.deduction_amount - consumed
             ).quantize(Decimal("0.01"))
             super().save(*args, **kwargs)
+
+    def is_locked_for_deletion(self) -> bool:
+        # Same carve-out as Expense.is_locked_for_deletion: a commission
+        # with no financial history yet is a genuine draft (can_modify_
+        # commission() already gates TransportPaymentViewSet.destroy() the
+        # same way) - anything settled/advance-linked stays hard-delete-
+        # blocked by AuditableModel's default, unwindable only via /cancel/
+        # or /correct/.
+        from .commission import can_modify_commission
+
+        return not can_modify_commission(self)
 
 
 class ExpenseCategory(TimeStampedModel):

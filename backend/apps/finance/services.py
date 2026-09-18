@@ -305,9 +305,15 @@ class TransportPaymentCancellationService:
     @staticmethod
     @transaction.atomic
     def cancel_transport_payment(payment: TransportPayment, actor) -> TransportPayment:
+        from .commission import can_modify_commission
+
         payment = TransportPayment.objects.select_for_update().get(pk=payment.pk)
         if payment.status == TransportPayment.Status.CANCELLED:
             raise TransportPaymentCancellationError("Ce paiement transport est deja annule.")
+        if can_modify_commission(payment):
+            raise TransportPaymentCancellationError(
+                "Cette commission n'est pas encore reglee ; modifiez-la ou supprimez-la directement."
+            )
 
         content_type = ContentType.objects.get_for_model(TransportPayment)
         paid_transactions = TreasuryTransaction.objects.filter(
@@ -334,6 +340,77 @@ class TransportPaymentCancellationService:
 
         payment.status = TransportPayment.Status.CANCELLED
         payment.save(update_fields=["status", "updated_at"])
+        return payment
+
+
+class TransportPaymentCorrectionError(ValueError):
+    """Raised when a TransportPayment cannot be corrected as requested."""
+
+
+class TransportPaymentCorrectionService:
+    """Corrects a settled commission's rate/amount in place (e.g. a wrong
+    per-litre rate discovered after payment) without the cancel-then-
+    recreate cycle /cancel/ would otherwise force.
+
+    Never touches what has already physically moved (real TreasuryTransaction
+    rows and AdvanceConsumption stay exactly as recorded) - it only changes
+    what the trip's commission was OWED, then reclassifies the gap:
+
+    - Owed MORE than settled so far (undercharged at the wrong rate): the
+      difference becomes a normal outstanding balance, payable through the
+      usual /controlled-debt-payments/ flow, same as any PARTIALLY_PAID
+      commission.
+    - Owed LESS than settled so far (overcharged - the client's example:
+      65 F/L paid, real rate was 60 F/L): rather than trying to physically
+      claw back cash the transporter already received, the payment is left
+      with a *negative* remaining_amount. ControlledDebtPaymentService's
+      transporter FIFO (_open_transport_payments/describe_transporter)
+      already treats a negative-remaining line as money the transporter
+      owes back (this is the exact mechanism an OWES-BACK TransportDeduction
+      relies on, see test_transporter_balance_reflects_a_payment_the_
+      transporter_owes_back) - it silently caps every future payout to that
+      transporter by the excess, with no separate deduction record needed.
+
+    Only reachable once a commission has real financial history
+    (can_modify_commission() is False) - an unsettled commission should be
+    edited directly (PATCH), not "corrected".
+    """
+
+    @staticmethod
+    @transaction.atomic
+    def correct_payment(payment: TransportPayment, changes: dict, actor, reason: str = "") -> TransportPayment:
+        from .commission import can_modify_commission
+
+        payment = TransportPayment.objects.select_for_update().get(pk=payment.pk)
+        if payment.status == TransportPayment.Status.CANCELLED:
+            raise TransportPaymentCorrectionError(
+                "Ce paiement transport est annule ; il ne peut pas etre corrige."
+            )
+        if can_modify_commission(payment):
+            raise TransportPaymentCorrectionError(
+                "Cette commission n'est pas encore reglee ; modifiez-la directement plutot que de la corriger."
+            )
+
+        content_type = ContentType.objects.get_for_model(TransportPayment)
+        paid_amount = TreasuryTransaction.objects.filter(
+            source_content_type=content_type,
+            source_object_id=payment.id,
+            type=TreasuryTransaction.Type.MONEY_OUT,
+        ).aggregate(total=Sum("amount"))["total"] or ZERO
+        consumed = AdvanceConsumptionService.get_consumed_amount(payment)
+        settled = paid_amount + consumed
+
+        for field, value in changes.items():
+            setattr(payment, field, value)
+        new_net_amount = (
+            payment.base_amount - payment.deduction_amount - consumed
+        ).quantize(Decimal("0.01"))
+        payment.status = (
+            TransportPayment.Status.PAID
+            if new_net_amount == settled
+            else TransportPayment.Status.PARTIALLY_PAID
+        )
+        payment.save(reason=reason)
         return payment
 
 
@@ -2806,7 +2883,16 @@ class TransporterLedgerService:
                 ),
             })
 
-        payments = list(TransportPayment.objects.filter(transporter=transporter).select_related("trip"))
+        # A cancelled TransportPayment never really counted - excluded here
+        # (same "reads as what's currently true" rule as SupplierLedgerService
+        # excluding is_reversed=True payments above) so a per-fee /cancel/
+        # doesn't leave a phantom debt/payment pair behind; the cancellation
+        # itself stays fully traceable in the Journal d'audit.
+        payments = list(
+            TransportPayment.objects.filter(transporter=transporter)
+            .exclude(status=TransportPayment.Status.CANCELLED)
+            .select_related("trip")
+        )
         for payment in payments:
             entries.append({
                 "type": "debt_created",

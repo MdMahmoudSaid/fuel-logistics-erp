@@ -231,6 +231,8 @@ const removeExpense = vi.fn(async (_id: number) => undefined)
 const cancelExpense = vi.fn(async (_id: number) => ({}))
 const createTransportPayment = vi.fn(async (_payload: Record<string, unknown>) => ({}))
 const removeTransportPayment = vi.fn(async (_id: number) => undefined)
+const cancelTransportPayment = vi.fn(async (_id: number) => ({}))
+const correctTransportPayment = vi.fn(async (_id: number, _payload: Record<string, unknown>) => ({}))
 const expenseList = vi.fn(async (_params: Record<string, unknown>) => ({
   count: expensesToReturn.length,
   next: null,
@@ -253,6 +255,9 @@ vi.mock('@/modules/finance/api', () => ({
     remove: (id: number) => removeExpense(id),
   },
   cancelExpense: (id: number) => cancelExpense(id),
+  cancelTransportPayment: (id: number) => cancelTransportPayment(id),
+  correctTransportPayment: (id: number, payload: Record<string, unknown>) =>
+    correctTransportPayment(id, payload),
   transportPaymentResource: {
     remove: (id: number) => removeTransportPayment(id),
     list: (params: Record<string, unknown>) => transportPaymentList(params),
@@ -431,6 +436,130 @@ describe('TripDetail expenses section', () => {
     )
     expect(wrapper.text()).toContain('Modifier la commission transporteur')
   })
+
+  // Bug fix (2026-09-17): once a commission is settled, can_modify flips to
+  // false and Modifier/Supprimer disappear - there was no "Annuler" action
+  // to replace them, unlike every other trip fee (Expense's own "Annuler").
+  it('shows an Annuler action instead of Modifier/Supprimer once the commission is settled', async () => {
+    setUser({ operations: ['view'], finance: ['view', 'edit', 'cancel'] })
+    transportPaymentsToReturn = [
+      makeTransportPayment({ status: 'PAID', can_modify: false }),
+    ]
+    const wrapper = await mountAt()
+    const buttons = wrapper.findAll('button').map((b) => b.text())
+    expect(buttons).not.toContain('Modifier')
+    expect(buttons).not.toContain('Supprimer')
+    expect(buttons).toContain('Annuler')
+  })
+
+  it('does not cancel a settled commission when confirmation is declined', async () => {
+    setUser({ operations: ['view'], finance: ['view', 'cancel'] })
+    transportPaymentsToReturn = [
+      makeTransportPayment({ status: 'PAID', can_modify: false }),
+    ]
+    const wrapper = await mountAt()
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Annuler')!
+      .trigger('click')
+    expect(cancelTransportPayment).not.toHaveBeenCalled()
+    confirm.mockRestore()
+  })
+
+  it('cancels a settled commission after confirmation and refreshes the fees', async () => {
+    setUser({ operations: ['view'], finance: ['view', 'cancel'] })
+    transportPaymentsToReturn = [
+      makeTransportPayment({ status: 'PAID', can_modify: false }),
+    ]
+    const wrapper = await mountAt()
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const before = transportPaymentList.mock.calls.length
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Annuler')!
+      .trigger('click')
+    await flushPromises()
+    expect(cancelTransportPayment).toHaveBeenCalledWith(8)
+    expect(transportPaymentList.mock.calls.length).toBeGreaterThan(before)
+    confirm.mockRestore()
+  })
+
+  it('shows cancellation errors and keeps the commission visible', async () => {
+    setUser({ operations: ['view'], finance: ['view', 'cancel'] })
+    transportPaymentsToReturn = [
+      makeTransportPayment({ status: 'PAID', can_modify: false }),
+    ]
+    cancelTransportPayment.mockRejectedValueOnce({
+      response: { data: { detail: 'Commission deja annulee' } },
+    })
+    const wrapper = await mountAt()
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Annuler')!
+      .trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('Commission deja annulee')
+    expect(wrapper.text()).toContain('Commission transporteur')
+    confirm.mockRestore()
+  })
+
+  it('never shows an Annuler action for an already cancelled commission', async () => {
+    setUser({ operations: ['view'], finance: ['view', 'edit', 'cancel'] })
+    transportPaymentsToReturn = [
+      makeTransportPayment({ status: 'CANCELLED', can_modify: false }),
+    ]
+    const wrapper = await mountAt()
+    expect(wrapper.findAll('button').find((b) => b.text() === 'Annuler')).toBeUndefined()
+  })
+
+  // Part 2 of the commission-actions bug fix (2026-09-17): a settled
+  // commission also gets a "Corriger" action next to "Annuler", so its
+  // rate/amount can be fixed in place instead of a full cancel+recreate.
+  it('shows a Corriger action next to Annuler once the commission is settled', async () => {
+    setUser({ operations: ['view'], finance: ['view', 'cancel'] })
+    transportPaymentsToReturn = [
+      makeTransportPayment({ status: 'PAID', can_modify: false }),
+    ]
+    const wrapper = await mountAt()
+    const buttons = wrapper.findAll('button').map((b) => b.text())
+    expect(buttons).toContain('Corriger')
+    expect(buttons).toContain('Annuler')
+  })
+
+  it('corrects a settled commission and refreshes the fees', async () => {
+    setUser({ operations: ['view'], finance: ['view', 'cancel'] })
+    transportPaymentsToReturn = [
+      makeTransportPayment({
+        id: 8,
+        status: 'PAID',
+        can_modify: false,
+        calculation_method: 'PER_LITRE',
+        unit_price_per_litre: '65.0000',
+        base_amount: '2925000',
+      }),
+    ]
+    const wrapper = await mountAt()
+    const before = transportPaymentList.mock.calls.length
+
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Corriger')!
+      .trigger('click')
+    expect(wrapper.text()).toContain('Corriger la commission transporteur')
+    await wrapper.find('#unit_price_per_litre').setValue('60')
+    await wrapper.find('#correction_reason').setValue('Taux errone, le bon taux est 60 F/L')
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(correctTransportPayment).toHaveBeenCalledWith(8, {
+      unit_price_per_litre: '60',
+      reason: 'Taux errone, le bon taux est 60 F/L',
+    })
+    expect(transportPaymentList.mock.calls.length).toBeGreaterThan(before)
+  })
+
   beforeEach(() => {
     vi.clearAllMocks()
     setActivePinia(createPinia())

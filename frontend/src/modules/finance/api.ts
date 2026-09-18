@@ -219,6 +219,32 @@ export function cancelExpense(expenseId: number): Promise<Expense> {
   return apiClient.post(`/expenses/${expenseId}/cancel/`).then((r) => r.data as Expense)
 }
 
+// backend/apps/finance/services.py TransportPaymentCancellationService.
+// cancel_transport_payment() is the sole authority on this flow (bug fix,
+// 2026-09-17: the frontend never exposed a way to reverse a settled
+// "Commission transporteur" the way it already does for other trip fees)
+// - this just posts the request.
+export function cancelTransportPayment(paymentId: number): Promise<TransportPayment> {
+  return apiClient
+    .post(`/transport-payments/${paymentId}/cancel/`)
+    .then((r) => r.data as TransportPayment)
+}
+
+// backend/apps/finance/services.py TransportPaymentCorrectionService.
+// correct_payment() is the sole authority on this flow: corrects a settled
+// commission's rate/amount in place (e.g. a wrong per-litre rate found
+// after payment) without a cancel-then-recreate cycle. A trop-percu never
+// triggers a cash clawback - it silently caps future payouts to that
+// transporter instead (client discussion 2026-09-17).
+export function correctTransportPayment(
+  paymentId: number,
+  payload: { base_amount?: string; unit_price_per_litre?: string; reason?: string },
+): Promise<TransportPayment> {
+  return apiClient
+    .post(`/transport-payments/${paymentId}/correct/`, payload)
+    .then((r) => r.data as TransportPayment)
+}
+
 // backend/apps/finance/services.py SupplierPaymentCancellationService.
 // cancel_supplier_payment() is the sole authority on this flow (Task 6,
 // client business decision confirmed 2026-09-06) - this just posts the

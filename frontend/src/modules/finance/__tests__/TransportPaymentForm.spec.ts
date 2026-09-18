@@ -8,12 +8,15 @@ const createTransportPayment = vi.fn(async (payload: Record<string, unknown>) =>
   ...payload,
 }))
 const updateTransportPayment = vi.fn(async (_id: number, _payload: Record<string, unknown>) => ({}))
+const correctTransportPayment = vi.fn(async (_id: number, _payload: Record<string, unknown>) => ({}))
 
 vi.mock('../api', () => ({
   transportPaymentResource: {
     update: (id: number, payload: Record<string, unknown>) => updateTransportPayment(id, payload),
     create: (payload: Record<string, unknown>) => createTransportPayment(payload),
   },
+  correctTransportPayment: (id: number, payload: Record<string, unknown>) =>
+    correctTransportPayment(id, payload),
 }))
 
 const defaultProps = {
@@ -132,5 +135,80 @@ describe('TransportPaymentForm', () => {
 
     expect(wrapper.emitted('cancel')).toEqual([[]])
     expect(createTransportPayment).not.toHaveBeenCalled()
+  })
+
+  // Part 2 of the commission-actions bug fix (2026-09-17): mode="correct"
+  // targets a settled commission via POST /correct/, never PATCH - see
+  // TransportPaymentCorrectionService (backend) for why a trop-percu is
+  // never clawed back in cash.
+  describe('correction mode', () => {
+    it('shows the correction notice and a required reason field', async () => {
+      const wrapper = mount(TransportPaymentForm, {
+        props: {
+          ...defaultProps,
+          mode: 'correct',
+          payment: {
+            id: 8,
+            calculation_method: 'PER_LITRE',
+            unit_price_per_litre: '65.0000',
+            base_amount: '2925000',
+          } as TransportPayment,
+        },
+      })
+      expect(wrapper.find('#correction_reason').exists()).toBe(true)
+      expect(
+        (wrapper.find('#correction_reason').element as HTMLTextAreaElement).required,
+      ).toBe(true)
+    })
+
+    it('posts the corrected per-litre rate and reason via correctTransportPayment, never PATCH', async () => {
+      const wrapper = mount(TransportPaymentForm, {
+        props: {
+          ...defaultProps,
+          mode: 'correct',
+          payment: {
+            id: 8,
+            calculation_method: 'PER_LITRE',
+            unit_price_per_litre: '65.0000',
+            base_amount: '2925000',
+          } as TransportPayment,
+        },
+      })
+      await wrapper.find('#unit_price_per_litre').setValue('60')
+      await wrapper.find('#correction_reason').setValue('Taux errone, le bon taux est 60 F/L')
+      await wrapper.find('form').trigger('submit.prevent')
+      await flushPromises()
+
+      expect(correctTransportPayment).toHaveBeenCalledWith(8, {
+        unit_price_per_litre: '60',
+        reason: 'Taux errone, le bon taux est 60 F/L',
+      })
+      expect(updateTransportPayment).not.toHaveBeenCalled()
+      expect(wrapper.emitted('success')).toEqual([[]])
+    })
+
+    it('posts a corrected fixed amount and reason', async () => {
+      const wrapper = mount(TransportPaymentForm, {
+        props: {
+          ...defaultProps,
+          mode: 'correct',
+          payment: {
+            id: 8,
+            calculation_method: 'FIXED',
+            unit_price_per_litre: null,
+            base_amount: '100000',
+          } as TransportPayment,
+        },
+      })
+      await wrapper.find('#commission_amount').setValue('90000')
+      await wrapper.find('#correction_reason').setValue('Trop-percu constate')
+      await wrapper.find('form').trigger('submit.prevent')
+      await flushPromises()
+
+      expect(correctTransportPayment).toHaveBeenCalledWith(8, {
+        base_amount: '90000',
+        reason: 'Trop-percu constate',
+      })
+    })
   })
 })

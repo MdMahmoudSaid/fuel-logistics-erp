@@ -391,7 +391,10 @@
       "deleteExpenseConfirm": "Permanently delete this unpaid fee?",
       "expenseCancelled": "Cancelled fee",
       "editCommission": "Edit transporter commission",
+      "correctCommission": "Correct transporter commission",
+      "correctExpense": "Correct",
       "deleteCommissionConfirm": "Permanently delete this unsettled transporter commission?",
+      "cancelCommissionConfirm": "Cancel this already-settled transporter commission? The paid amount will return to treasury.",
       "commissionDeleteError": "Unable to delete the transporter commission.",
       "transportPaymentCancelled": "Cancelled transport payment",
       "addTransportFee": "+ Add transport fee (per litre)",
@@ -676,7 +679,9 @@
       "calculation": "Payable amount",
       "saving": "Saving…",
       "save": "Save transport fee",
-      "saveError": "Could not save this transport fee — check the fields."
+      "saveError": "Could not save this transport fee — check the fields.",
+      "correctionNotice": "This commission is already settled. A higher corrected amount stays payable normally; a lower corrected amount is automatically deducted from this transporter's future commissions, with no manual claim needed.",
+      "correctionReason": "Reason for the correction"
     },
     "supplierPayment": {
       "recordPayment": "Record a payment",

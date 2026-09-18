@@ -21,6 +21,7 @@ from apps.finance.services import (
     AdvanceService,
     ControlledDebtPaymentService,
     SupplierLedgerService,
+    TransportPaymentCancellationService,
     TransporterLedgerService,
 )
 from apps.purchasing.models import SupplierOrder
@@ -1071,6 +1072,48 @@ def test_transporter_ledger_service_reports_summary_and_entries():
     assert ledger["summary"]["total_due"] == Decimal("500000.00")
     types_present = {entry["type"] for entry in ledger["entries"]}
     assert types_present == {"advance_given", "debt_created", "advance_consumed"}
+
+
+@pytest.mark.django_db
+def test_transporter_ledger_service_excludes_a_cancelled_commission():
+    # A per-fee /cancel/ (bug fix, 2026-09-17) never really counted - same
+    # "reads as what's currently true" rule already applied to a cancelled
+    # SupplierPayment above - so it must not leave a phantom debt/payment
+    # pair behind once cancelled.
+    trip, transporter = _make_trip_for_deduction("LEDGER-CANCELLED")
+    actor = trip.created_by
+    cash_account = CashAccount.objects.create(name="Ledger cancel cash")
+    cancelled = TransportPayment.objects.create(
+        trip=trip, transporter=transporter,
+        calculation_method=TransportPayment.CalculationMethod.FIXED,
+        base_amount=Decimal("100000.00"), status=TransportPayment.Status.PAID,
+    )
+    TreasuryTransaction.objects.create(
+        cash_account=cash_account, type=TreasuryTransaction.Type.MONEY_OUT,
+        amount=Decimal("100000.00"), date="2026-09-17",
+        source_content_type=ContentType.objects.get_for_model(TransportPayment),
+        source_object_id=cancelled.id, recorded_by=actor,
+    )
+    TransportPaymentCancellationService.cancel_transport_payment(cancelled, actor)
+
+    other_trip, _same = _make_trip_for_deduction("LEDGER-STILL-OPEN")
+    other_trip.transporter = transporter
+    other_trip.save(update_fields=["transporter", "updated_at"])
+    TransportPayment.objects.create(
+        trip=other_trip, transporter=transporter,
+        calculation_method=TransportPayment.CalculationMethod.FIXED,
+        base_amount=Decimal("50000.00"),
+    )
+
+    ledger = TransporterLedgerService.get_ledger(transporter)
+
+    references = [entry["reference"] for entry in ledger["entries"]]
+    assert trip.reference not in references
+    assert other_trip.reference in references
+    assert not any(
+        entry["type"] == "payment" and entry["amount"] == Decimal("100000.00")
+        for entry in ledger["entries"]
+    )
 
 
 @pytest.mark.django_db

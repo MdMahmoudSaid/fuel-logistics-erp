@@ -4,6 +4,7 @@ from decimal import Decimal
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import IntegrityError, transaction
+from django.db.models import Sum
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -138,6 +139,246 @@ def test_commission_cannot_be_changed_after_settlement(admin_client, settled):
     assert admin_client.delete(url).status_code == 400
     payment.refresh_from_db()
     assert payment.base_amount == Decimal("1000")
+
+
+@pytest.mark.django_db
+def test_cancel_paid_commission_reverses_treasury_and_marks_cancelled(admin_client):
+    trip, transporter = _make_trip_for_deduction("COM-CANCEL-PAID")
+    payment = TransportPayment.objects.create(
+        trip=trip, transporter=transporter, calculation_method="FIXED",
+        base_amount=Decimal("100000"), status=TransportPayment.Status.PAID,
+    )
+    TreasuryTransaction.objects.create(
+        cash_account=CashAccount.objects.create(name="Commission cancel cash"),
+        type="MONEY_OUT", amount=Decimal("100000"), date="2026-09-17",
+        source_content_type=ContentType.objects.get_for_model(TransportPayment),
+        source_object_id=payment.pk, recorded_by=trip.created_by,
+    )
+
+    response = admin_client.post(f"/api/transport-payments/{payment.pk}/cancel/")
+
+    assert response.status_code == 200, response.data
+    payment.refresh_from_db()
+    assert payment.status == TransportPayment.Status.CANCELLED
+    reversal = TreasuryTransaction.objects.get(
+        source_content_type=ContentType.objects.get_for_model(TransportPayment),
+        source_object_id=payment.pk, type=TreasuryTransaction.Type.MONEY_IN,
+    )
+    assert reversal.amount == Decimal("100000")
+
+
+@pytest.mark.django_db
+def test_cancel_partially_paid_commission_reverses_only_the_amount_actually_paid(admin_client):
+    trip, transporter = _make_trip_for_deduction("COM-CANCEL-PARTIAL")
+    payment = TransportPayment.objects.create(
+        trip=trip, transporter=transporter, calculation_method="FIXED",
+        base_amount=Decimal("200000"), status=TransportPayment.Status.PARTIALLY_PAID,
+    )
+    TreasuryTransaction.objects.create(
+        cash_account=CashAccount.objects.create(name="Commission partial cash"),
+        type="MONEY_OUT", amount=Decimal("80000"), date="2026-09-17",
+        source_content_type=ContentType.objects.get_for_model(TransportPayment),
+        source_object_id=payment.pk, recorded_by=trip.created_by,
+    )
+
+    response = admin_client.post(f"/api/transport-payments/{payment.pk}/cancel/")
+
+    assert response.status_code == 200, response.data
+    reversal = TreasuryTransaction.objects.get(
+        source_content_type=ContentType.objects.get_for_model(TransportPayment),
+        source_object_id=payment.pk, type=TreasuryTransaction.Type.MONEY_IN,
+    )
+    assert reversal.amount == Decimal("80000")
+
+
+@pytest.mark.django_db
+def test_cancel_already_cancelled_commission_is_rejected(admin_client):
+    trip, transporter = _make_trip_for_deduction("COM-CANCEL-TWICE")
+    payment = TransportPayment.objects.create(
+        trip=trip, transporter=transporter, calculation_method="FIXED",
+        base_amount=Decimal("1000"), status=TransportPayment.Status.CANCELLED,
+    )
+
+    response = admin_client.post(f"/api/transport-payments/{payment.pk}/cancel/")
+
+    assert response.status_code == 400
+    assert "annule" in str(response.data)
+
+
+@pytest.mark.django_db
+def test_cancel_unsettled_commission_is_rejected(admin_client):
+    trip, transporter = _make_trip_for_deduction("COM-CANCEL-UNSETTLED")
+    payment = TransportPayment.objects.create(
+        trip=trip, transporter=transporter, calculation_method="FIXED",
+        base_amount=Decimal("1000"),
+    )
+
+    response = admin_client.post(f"/api/transport-payments/{payment.pk}/cancel/")
+
+    assert response.status_code == 400
+    payment.refresh_from_db()
+    assert payment.status == TransportPayment.Status.PLANNED
+
+
+@pytest.mark.django_db
+def test_correct_commission_rate_downward_after_full_payment_leaves_a_negative_balance(admin_client):
+    # Client's own example: commission recorded at 65 F/L for 45 000 L
+    # (2 925 000 XOF) and fully paid, but the real rate was 60 F/L
+    # (2 700 000 XOF) - discovered only after payment.
+    trip, transporter = _make_trip_for_deduction("COM-CORRECT-DOWN")
+    payment = TransportPayment.objects.create(
+        trip=trip, transporter=transporter, calculation_method="PER_LITRE",
+        unit_price_per_litre=Decimal("65"), base_amount=Decimal("2925000"),
+        status=TransportPayment.Status.PAID,
+    )
+    TreasuryTransaction.objects.create(
+        cash_account=CashAccount.objects.create(name="Commission correct cash"),
+        type="MONEY_OUT", amount=Decimal("2925000"), date="2026-09-17",
+        source_content_type=ContentType.objects.get_for_model(TransportPayment),
+        source_object_id=payment.pk, recorded_by=trip.created_by,
+    )
+
+    response = admin_client.post(
+        f"/api/transport-payments/{payment.pk}/correct/",
+        {"unit_price_per_litre": "60", "reason": "Taux errone, le bon taux est 60 F/L"},
+        format="json",
+    )
+
+    assert response.status_code == 200, response.data
+    payment.refresh_from_db()
+    assert payment.unit_price_per_litre == Decimal("60")
+    assert payment.base_amount == Decimal("2700000.00")
+    assert payment.net_amount == Decimal("2700000.00")
+    # Never touches what was already physically paid.
+    assert payment.status == TransportPayment.Status.PARTIALLY_PAID
+    assert TreasuryTransaction.objects.filter(
+        source_content_type=ContentType.objects.get_for_model(TransportPayment),
+        source_object_id=payment.pk,
+    ).aggregate(total=Sum("amount"))["total"] == Decimal("2925000")
+
+    # The 225 000 overpayment silently caps every future payout to this
+    # transporter - no separate deduction record, no cash clawback needed.
+    balance = ControlledDebtPaymentService.describe_transporter(transporter)
+    assert balance["remaining_amount"] == Decimal("-225000.00")
+
+
+@pytest.mark.django_db
+def test_correct_commission_upward_leaves_a_payable_balance(admin_client):
+    trip, transporter = _make_trip_for_deduction("COM-CORRECT-UP")
+    payment = TransportPayment.objects.create(
+        trip=trip, transporter=transporter, calculation_method="FIXED",
+        base_amount=Decimal("100000"), status=TransportPayment.Status.PAID,
+    )
+    bank = BankAccount.objects.create(name="Bank correct up", opening_balance=Decimal("1000000"))
+    TreasuryTransaction.objects.create(
+        bank_account=bank,
+        type="MONEY_OUT", amount=Decimal("100000"), date="2026-09-17",
+        source_content_type=ContentType.objects.get_for_model(TransportPayment),
+        source_object_id=payment.pk, recorded_by=trip.created_by,
+    )
+
+    response = admin_client.post(
+        f"/api/transport-payments/{payment.pk}/correct/", {"base_amount": "150000"}, format="json"
+    )
+
+    assert response.status_code == 200, response.data
+    payment.refresh_from_db()
+    assert payment.base_amount == Decimal("150000.00")
+    assert payment.status == TransportPayment.Status.PARTIALLY_PAID
+    balance = ControlledDebtPaymentService.describe_transporter(transporter)
+    assert balance["remaining_amount"] == Decimal("50000.00")
+
+    ControlledDebtPaymentService.record_payment(
+        debt_type=ControlledDebtPaymentService.TRANSPORTER,
+        debt_id=transporter.id, bank_account_id=bank.id, amount=Decimal("50000"),
+        date="2026-09-17", reference="", actor=trip.created_by,
+    )
+    payment.refresh_from_db()
+    assert payment.status == TransportPayment.Status.PAID
+
+
+@pytest.mark.django_db
+def test_correct_commission_to_the_amount_already_paid_marks_it_paid(admin_client):
+    trip, transporter = _make_trip_for_deduction("COM-CORRECT-EXACT")
+    payment = TransportPayment.objects.create(
+        trip=trip, transporter=transporter, calculation_method="FIXED",
+        base_amount=Decimal("100000"), status=TransportPayment.Status.PAID,
+    )
+    TreasuryTransaction.objects.create(
+        cash_account=CashAccount.objects.create(name="Commission exact cash"),
+        type="MONEY_OUT", amount=Decimal("80000"), date="2026-09-17",
+        source_content_type=ContentType.objects.get_for_model(TransportPayment),
+        source_object_id=payment.pk, recorded_by=trip.created_by,
+    )
+
+    response = admin_client.post(
+        f"/api/transport-payments/{payment.pk}/correct/", {"base_amount": "80000"}, format="json"
+    )
+
+    assert response.status_code == 200, response.data
+    payment.refresh_from_db()
+    assert payment.status == TransportPayment.Status.PAID
+
+
+@pytest.mark.django_db
+def test_correct_unsettled_commission_is_rejected(admin_client):
+    trip, transporter = _make_trip_for_deduction("COM-CORRECT-UNSETTLED")
+    payment = TransportPayment.objects.create(
+        trip=trip, transporter=transporter, calculation_method="FIXED",
+        base_amount=Decimal("1000"),
+    )
+
+    response = admin_client.post(
+        f"/api/transport-payments/{payment.pk}/correct/", {"base_amount": "2000"}, format="json"
+    )
+
+    assert response.status_code == 400
+    payment.refresh_from_db()
+    assert payment.base_amount == Decimal("1000")
+
+
+@pytest.mark.django_db
+def test_correct_already_cancelled_commission_is_rejected(admin_client):
+    trip, transporter = _make_trip_for_deduction("COM-CORRECT-CANCELLED")
+    payment = TransportPayment.objects.create(
+        trip=trip, transporter=transporter, calculation_method="FIXED",
+        base_amount=Decimal("1000"), status=TransportPayment.Status.CANCELLED,
+    )
+
+    response = admin_client.post(
+        f"/api/transport-payments/{payment.pk}/correct/", {"base_amount": "2000"}, format="json"
+    )
+
+    assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_correct_commission_records_reason_in_audit_log(admin_client):
+    trip, transporter = _make_trip_for_deduction("COM-CORRECT-AUDIT")
+    payment = TransportPayment.objects.create(
+        trip=trip, transporter=transporter, calculation_method="FIXED",
+        base_amount=Decimal("100000"), status=TransportPayment.Status.PAID,
+    )
+    TreasuryTransaction.objects.create(
+        cash_account=CashAccount.objects.create(name="Commission audit cash"),
+        type="MONEY_OUT", amount=Decimal("100000"), date="2026-09-17",
+        source_content_type=ContentType.objects.get_for_model(TransportPayment),
+        source_object_id=payment.pk, recorded_by=trip.created_by,
+    )
+
+    response = admin_client.post(
+        f"/api/transport-payments/{payment.pk}/correct/",
+        {"base_amount": "90000", "reason": "Trop-percu constate"},
+        format="json",
+    )
+
+    assert response.status_code == 200, response.data
+    entry = AuditLog.objects.filter(
+        content_type=ContentType.objects.get_for_model(TransportPayment),
+        object_id=payment.pk,
+    ).order_by("-id").first()
+    assert entry is not None
+    assert entry.reason == "Trop-percu constate"
 
 
 @pytest.mark.django_db

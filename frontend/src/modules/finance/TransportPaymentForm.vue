@@ -11,7 +11,7 @@ import AppAlert from '@/components/ui/AppAlert.vue'
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { translateApiError } from '@/i18n/apiErrors'
-import { transportPaymentResource } from './api'
+import { correctTransportPayment, transportPaymentResource } from './api'
 import type { TransportPayment } from './types'
 import Button from '@/components/ui/Button.vue'
 import { formatMoney, formatQuantity, formatUnitMoney } from '@/utils/currency'
@@ -24,15 +24,22 @@ const props = defineProps<{
   quantityLoaded: string
   title?: string
   payment?: TransportPayment | null
+  // 'correct' targets a commission already settled (real treasury/advance
+  // history - can_modify is false), via POST /correct/ instead of PATCH:
+  // never touches what's already been paid, only what was owed (bug fix,
+  // 2026-09-17 - see TransportPaymentCorrectionService, backend).
+  mode?: 'edit' | 'correct'
 }>()
 const emit = defineEmits<{ success: []; cancel: [] }>()
 const { t } = useI18n()
 
+const isCorrection = computed(() => props.mode === 'correct')
 const isPerLitre = computed(
   () => !props.payment || props.payment.calculation_method === 'PER_LITRE',
 )
 const unitPricePerLitre = ref(props.payment?.unit_price_per_litre ?? '')
 const baseAmount = ref(props.payment?.base_amount ?? '')
+const reason = ref('')
 
 const total = computed(() => {
   const quantity = Number(props.quantityLoaded)
@@ -48,7 +55,14 @@ async function onSubmit() {
   saving.value = true
   error.value = ''
   try {
-    if (props.payment) {
+    if (props.payment && isCorrection.value) {
+      await correctTransportPayment(props.payment.id, {
+        ...(isPerLitre.value
+          ? { unit_price_per_litre: String(unitPricePerLitre.value) }
+          : { base_amount: String(baseAmount.value) }),
+        reason: reason.value,
+      })
+    } else if (props.payment) {
       await transportPaymentResource.update(
         props.payment.id,
         isPerLitre.value
@@ -157,6 +171,24 @@ async function onSubmit() {
           {{ formatQuantity(quantityLoaded) }} × {{ formatUnitMoney(unitPricePerLitre || 0) }} =
           {{ total !== null ? formatMoney(total) : '—' }}
         </span>
+      </div>
+
+      <div v-if="isCorrection" class="space-y-4">
+        <p class="border-ligne rounded-lg border bg-fond px-3.5 py-2.5 text-xs text-texte-2">
+          {{ t('finance.transportPayment.correctionNotice') }}
+        </p>
+        <div class="space-y-1.5">
+          <label for="correction_reason" class="text-texte-2 text-sm font-medium">{{
+            t('finance.transportPayment.correctionReason')
+          }}</label>
+          <textarea
+            id="correction_reason"
+            v-model="reason"
+            required
+            rows="2"
+            class="border-ligne-forte w-full rounded-lg border bg-white px-3.5 py-2.5"
+          />
+        </div>
       </div>
 
       <div class="flex justify-end gap-2">

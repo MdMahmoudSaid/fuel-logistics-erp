@@ -391,7 +391,10 @@
       "deleteExpenseConfirm": "هل تريد حذف هذا الرسم غير المدفوع نهائيًا؟",
       "expenseCancelled": "رسم ملغى",
       "editCommission": "تعديل عمولة الناقل",
+      "correctCommission": "تصحيح عمولة الناقل",
+      "correctExpense": "تصحيح",
       "deleteCommissionConfirm": "هل تريد حذف عمولة الناقل غير المسددة نهائياً؟",
+      "cancelCommissionConfirm": "هل تريد إلغاء عمولة الناقل هذه المسددة بالفعل؟ سيعود المبلغ المدفوع إلى الخزينة.",
       "commissionDeleteError": "تعذر حذف عمولة الناقل.",
       "transportPaymentCancelled": "دفعة نقل ملغاة",
       "addTransportFee": "+ إضافة رسوم نقل (لكل لتر)",
@@ -676,7 +679,9 @@
       "calculation": "المبلغ المستحق",
       "saving": "جارٍ الحفظ…",
       "save": "حفظ رسوم النقل",
-      "saveError": "تعذر حفظ رسوم النقل هذه — تحقق من الحقول."
+      "saveError": "تعذر حفظ رسوم النقل هذه — تحقق من الحقول.",
+      "correctionNotice": "هذه العمولة مسددة بالفعل. إذا كان المبلغ المصحح أعلى، يبقى الفرق مستحقًا للدفع بشكل عادي؛ وإذا كان أقل، يُخصم الفرق تلقائيًا من عمولات هذا الناقل المستقبلية دون أي مطالبة يدوية.",
+      "correctionReason": "سبب التصحيح"
     },
     "supplierPayment": {
       "recordPayment": "تسجيل دفعة",
