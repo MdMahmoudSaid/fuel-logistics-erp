@@ -7,6 +7,15 @@ import { useAuthStore } from '@/stores/auth'
 import type { Trip, TripMargin } from '../types'
 import type { Expense, TransportPayment } from '@/modules/finance/types'
 
+// Bug fix (2026-09-18): destructive actions now go through the app's own
+// popup instead of window.confirm() - see useConfirmDialog. Defaults to
+// "confirmed"; tests exercising the decline path override with
+// mockResolvedValueOnce(false).
+const confirmDialogMock = vi.fn(async () => true)
+vi.mock('@/composables/useConfirmDialog', () => ({
+  confirmDialog: (message: string) => confirmDialogMock(message),
+}))
+
 function makeTrip(overrides: Partial<Trip> = {}): Trip {
   return {
     id: 9,
@@ -365,13 +374,12 @@ describe('TripDetail expenses section', () => {
     setUser({ operations: ['view'], finance: ['view', 'cancel'] })
     transportPaymentsToReturn = [makeTransportPayment({ can_modify: true })]
     const wrapper = await mountAt()
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    confirmDialogMock.mockResolvedValueOnce(false)
     await wrapper
       .findAll('button')
       .find((b) => b.text() === 'Supprimer')!
       .trigger('click')
     expect(removeTransportPayment).not.toHaveBeenCalled()
-    confirm.mockRestore()
   })
 
   it('hides commission actions when the API marks it settled or the user has no write permissions', async () => {
@@ -397,7 +405,7 @@ describe('TripDetail expenses section', () => {
       response: { data: { detail: 'Commission déjà réglée' } },
     })
     const wrapper = await mountAt()
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    confirmDialogMock.mockResolvedValueOnce(true)
     await wrapper
       .findAll('button')
       .find((b) => b.text() === 'Supprimer')!
@@ -405,13 +413,12 @@ describe('TripDetail expenses section', () => {
     await flushPromises()
     expect(wrapper.text()).toContain('Commission déjà réglée')
     expect(wrapper.text()).toContain('Commission transporteur')
-    confirm.mockRestore()
   })
   it('deletes an unsettled commission after confirmation and refreshes the fees', async () => {
     setUser({ operations: ['view'], finance: ['view', 'edit', 'cancel'] })
     transportPaymentsToReturn = [makeTransportPayment({ can_modify: true })]
     const wrapper = await mountAt()
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    confirmDialogMock.mockResolvedValueOnce(true)
     const before = transportPaymentList.mock.calls.length
     await wrapper
       .findAll('button')
@@ -420,7 +427,6 @@ describe('TripDetail expenses section', () => {
     await flushPromises()
     expect(removeTransportPayment).toHaveBeenCalledWith(8)
     expect(transportPaymentList.mock.calls.length).toBeGreaterThan(before)
-    confirm.mockRestore()
   })
 
   it('opens the existing commission with its current rate for editing', async () => {
@@ -458,13 +464,12 @@ describe('TripDetail expenses section', () => {
       makeTransportPayment({ status: 'PAID', can_modify: false }),
     ]
     const wrapper = await mountAt()
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    confirmDialogMock.mockResolvedValueOnce(false)
     await wrapper
       .findAll('button')
       .find((b) => b.text() === 'Annuler')!
       .trigger('click')
     expect(cancelTransportPayment).not.toHaveBeenCalled()
-    confirm.mockRestore()
   })
 
   it('cancels a settled commission after confirmation and refreshes the fees', async () => {
@@ -473,7 +478,7 @@ describe('TripDetail expenses section', () => {
       makeTransportPayment({ status: 'PAID', can_modify: false }),
     ]
     const wrapper = await mountAt()
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    confirmDialogMock.mockResolvedValueOnce(true)
     const before = transportPaymentList.mock.calls.length
     await wrapper
       .findAll('button')
@@ -482,7 +487,6 @@ describe('TripDetail expenses section', () => {
     await flushPromises()
     expect(cancelTransportPayment).toHaveBeenCalledWith(8)
     expect(transportPaymentList.mock.calls.length).toBeGreaterThan(before)
-    confirm.mockRestore()
   })
 
   it('shows cancellation errors and keeps the commission visible', async () => {
@@ -494,7 +498,7 @@ describe('TripDetail expenses section', () => {
       response: { data: { detail: 'Commission deja annulee' } },
     })
     const wrapper = await mountAt()
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    confirmDialogMock.mockResolvedValueOnce(true)
     await wrapper
       .findAll('button')
       .find((b) => b.text() === 'Annuler')!
@@ -502,7 +506,6 @@ describe('TripDetail expenses section', () => {
     await flushPromises()
     expect(wrapper.text()).toContain('Commission deja annulee')
     expect(wrapper.text()).toContain('Commission transporteur')
-    confirm.mockRestore()
   })
 
   it('never shows an Annuler action for an already cancelled commission', async () => {
@@ -663,7 +666,7 @@ describe('TripDetail expenses section', () => {
   it('deletes an unpaid fee after confirmation and reloads the list', async () => {
     setUser({ operations: ['view'], finance: ['view', 'create'] })
     expensesToReturn = [makeExpense({ id: 8, status: 'UNPAID' })]
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    confirmDialogMock.mockResolvedValueOnce(true)
 
     const wrapper = await mountAt()
     expect(expenseList).toHaveBeenCalledTimes(1)
@@ -681,7 +684,7 @@ describe('TripDetail expenses section', () => {
   it('does not delete an unpaid fee when the confirmation is declined', async () => {
     setUser({ operations: ['view'], finance: ['view', 'create'] })
     expensesToReturn = [makeExpense({ id: 9, status: 'UNPAID' })]
-    vi.spyOn(window, 'confirm').mockReturnValue(false)
+    confirmDialogMock.mockResolvedValueOnce(false)
 
     const wrapper = await mountAt()
     await wrapper

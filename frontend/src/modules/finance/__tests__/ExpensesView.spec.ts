@@ -2,6 +2,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import ExpensesView from '../ExpensesView.vue'
 
+// Bug fix (2026-09-18): destructive actions now go through the app's own
+// popup instead of window.confirm() - see useConfirmDialog.
+const confirmDialogMock = vi.fn(async () => true)
+vi.mock('@/composables/useConfirmDialog', () => ({
+  confirmDialog: (message: string) => confirmDialogMock(message),
+}))
+
 const expenseList = vi.fn()
 const expenseRemove = vi.fn()
 const categoryList = vi.fn()
@@ -181,7 +188,7 @@ describe('ExpensesView', () => {
   })
 
   it('hard deletes an unpaid expense after confirmation, then reloads', async () => {
-    window.confirm = vi.fn(() => true)
+    confirmDialogMock.mockResolvedValueOnce(true)
     expenseList.mockResolvedValue({
       count: 1,
       next: null,
@@ -201,7 +208,7 @@ describe('ExpensesView', () => {
   })
 
   it('does not delete when the confirmation is declined', async () => {
-    window.confirm = vi.fn(() => false)
+    confirmDialogMock.mockResolvedValueOnce(false)
     expenseList.mockResolvedValue({
       count: 1,
       next: null,

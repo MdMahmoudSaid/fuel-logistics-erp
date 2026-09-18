@@ -4,6 +4,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { confirmDialog } from '@/composables/useConfirmDialog'
 import { fetchSupplierLedger } from '@/modules/purchasing/api'
 import { cancelSupplierPayment, exportLedgerPdf, exportSupplierPaymentPdf } from '@/modules/finance/api'
 import type { SupplierLedger } from '@/modules/purchasing/types'
@@ -86,7 +87,7 @@ async function exportPaymentPdf(paymentId: number) {
 }
 
 async function onCancelSupplierPayment(paymentId: number) {
-  if (!window.confirm(t('purchasing.supplierLedger.paymentsTable.cancelConfirm'))) return
+  if (!(await confirmDialog(t('purchasing.supplierLedger.paymentsTable.cancelConfirm')))) return
   cancellingPaymentId.value = paymentId
   cancelError.value = ''
   try {

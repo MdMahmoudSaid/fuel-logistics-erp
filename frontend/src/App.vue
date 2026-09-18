@@ -2,6 +2,7 @@
 import { onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import AlertNotifications from '@/components/ui/AlertNotifications.vue'
+import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 
 const auth = useAuthStore()
 
@@ -23,4 +24,5 @@ onMounted(() => {
 <template>
   <router-view />
   <AlertNotifications />
+  <ConfirmDialog />
 </template>

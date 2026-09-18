@@ -5,6 +5,12 @@ import MasterDataView from '@/components/master-data/MasterDataView.vue'
 import type { FieldSchema } from '@/components/master-data/types'
 import { i18n } from '@/i18n'
 
+// Bug fix (2026-09-18): destructive actions now go through the app's own
+// popup instead of window.confirm() - see useConfirmDialog.
+vi.mock('@/composables/useConfirmDialog', () => ({
+  confirmDialog: vi.fn(async () => true),
+}))
+
 function makeRouter() {
   const stub = { template: '<div />' }
   return createRouter({
@@ -73,7 +79,6 @@ describe('MasterDataView', () => {
   })
 
   it('deletes a record through the Delete flow when there is no is_active field', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
     const noActiveFields: FieldSchema[] = [
       { key: 'name', label: 'Name', type: 'text', required: true },
     ]

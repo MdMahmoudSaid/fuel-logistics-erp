@@ -2,6 +2,7 @@
 import AppAlert from '@/components/ui/AppAlert.vue'
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { confirmDialog } from '@/composables/useConfirmDialog'
 import Button from '@/components/ui/Button.vue'
 import Modal from '@/components/ui/Modal.vue'
 import MonoValue from '@/components/ui/MonoValue.vue'
@@ -139,7 +140,7 @@ async function onCancelExpenseRow(expense: Expense) {
 }
 
 async function onDeleteExpense(expense: Expense) {
-  if (!window.confirm(t('finance.expensesView.deleteExpenseConfirm'))) return
+  if (!(await confirmDialog(t('finance.expensesView.deleteExpenseConfirm')))) return
   deletingId.value = expense.id
   actionError.value = ''
   try {

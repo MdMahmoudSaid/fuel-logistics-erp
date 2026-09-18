@@ -539,7 +539,8 @@
     "PAYABLE": "Payable",
     "PARTIALLY_PAID": "Partially paid",
     "PAID": "Paid",
-    "DEDUCTION_APPLIED": "Deduction applied"
+    "DEDUCTION_APPLIED": "Deduction applied",
+    "CANCELLED": "Cancelled"
   },
   "paymentMethod": {
     "CASH": "Cash",

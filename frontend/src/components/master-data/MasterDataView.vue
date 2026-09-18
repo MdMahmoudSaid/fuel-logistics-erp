@@ -2,6 +2,7 @@
 import AppAlert from '@/components/ui/AppAlert.vue'
 import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { confirmDialog } from '@/composables/useConfirmDialog'
 import DataTable from './DataTable.vue'
 import EntityForm from './EntityForm.vue'
 import Button from '@/components/ui/Button.vue'
@@ -119,7 +120,7 @@ async function onSubmit() {
 }
 
 async function onDelete(row: Record<string, unknown>) {
-  if (!window.confirm(t('masterData.confirmDelete'))) {
+  if (!(await confirmDialog(t('masterData.confirmDelete')))) {
     return
   }
   try {

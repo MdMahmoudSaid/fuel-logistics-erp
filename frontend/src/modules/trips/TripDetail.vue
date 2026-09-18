@@ -12,6 +12,7 @@ import {
   postTripStatus,
 } from './api'
 import { translateApiError } from '@/i18n/apiErrors'
+import { confirmDialog } from '@/composables/useConfirmDialog'
 import DeliveryControlForm from './DeliveryControlForm.vue'
 import ClientVerificationForm from './ClientVerificationForm.vue'
 import ClientVerificationCorrectionForm from './ClientVerificationCorrectionForm.vue'
@@ -113,7 +114,7 @@ function onCorrectTransportPayment(payment: TransportPayment) {
 }
 
 async function onDeleteTransportPayment(payment: TransportPayment) {
-  if (!window.confirm(t('trips.detail.deleteCommissionConfirm'))) return
+  if (!(await confirmDialog(t('trips.detail.deleteCommissionConfirm')))) return
   deletingTransportPaymentId.value = payment.id
   expensesError.value = ''
   try {
@@ -132,7 +133,7 @@ async function onDeleteTransportPayment(payment: TransportPayment) {
 // reversal action to replace it, unlike every other trip fee (Expense's
 // onCancelExpense above). Mirrors that same POST /cancel/ pattern.
 async function onCancelTransportPayment(payment: TransportPayment) {
-  if (!window.confirm(t('trips.detail.cancelCommissionConfirm'))) return
+  if (!(await confirmDialog(t('trips.detail.cancelCommissionConfirm')))) return
   deletingTransportPaymentId.value = payment.id
   expensesError.value = ''
   try {
@@ -284,7 +285,7 @@ function onEditExpense(expense: Expense) {
 }
 
 async function onDeleteExpense(expense: Expense) {
-  if (!window.confirm(t('trips.detail.deleteExpenseConfirm'))) return
+  if (!(await confirmDialog(t('trips.detail.deleteExpenseConfirm')))) return
   deletingExpenseId.value = expense.id
   expensesError.value = ''
   try {

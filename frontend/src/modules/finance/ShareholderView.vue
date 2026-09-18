@@ -10,6 +10,7 @@ import AppAlert from '@/components/ui/AppAlert.vue'
 // ShareholderLoanViewSet/ShareholderWithdrawalViewSet.
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { confirmDialog } from '@/composables/useConfirmDialog'
 import { createResourceApi } from '@/api/resource'
 import {
   cancelShareholderDistribution,
@@ -290,7 +291,7 @@ async function onValidateDistribution(distribution: ShareholderProfitDistributio
 }
 
 async function onCancelDistribution(distribution: ShareholderProfitDistribution) {
-  if (!window.confirm(t('finance.shareholder.distribution.cancelConfirm'))) return
+  if (!(await confirmDialog(t('finance.shareholder.distribution.cancelConfirm')))) return
   try {
     await cancelShareholderDistribution(distribution.id)
     await loadDistributions()

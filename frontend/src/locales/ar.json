@@ -539,7 +539,8 @@
     "PAYABLE": "مستحق الدفع",
     "PARTIALLY_PAID": "مدفوع جزئيًا",
     "PAID": "مدفوع",
-    "DEDUCTION_APPLIED": "تم تطبيق الخصم"
+    "DEDUCTION_APPLIED": "تم تطبيق الخصم",
+    "CANCELLED": "ملغى"
   },
   "paymentMethod": {
     "CASH": "نقدًا",

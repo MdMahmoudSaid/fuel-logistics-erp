@@ -17,7 +17,11 @@ function setUser(permissions: Record<string, string[]>) {
   }
 }
 
-vi.stubGlobal('confirm', vi.fn(() => true))
+// Bug fix (2026-09-18): destructive actions now go through the app's own
+// popup instead of window.confirm() - see useConfirmDialog.
+vi.mock('@/composables/useConfirmDialog', () => ({
+  confirmDialog: vi.fn(async () => true),
+}))
 
 const push = vi.fn()
 vi.mock('vue-router', () => ({

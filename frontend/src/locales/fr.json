@@ -541,7 +541,8 @@
     "PAYABLE": "À payer",
     "PARTIALLY_PAID": "Partiellement payé",
     "PAID": "Payé",
-    "DEDUCTION_APPLIED": "Déduction appliquée"
+    "DEDUCTION_APPLIED": "Déduction appliquée",
+    "CANCELLED": "Annulé"
   },
   "paymentMethod": {
     "CASH": "Espèces",

@@ -3,6 +3,13 @@ import { mount, flushPromises } from '@vue/test-utils'
 import ShareholderView from '../ShareholderView.vue'
 import { i18n } from '@/i18n'
 
+// Bug fix (2026-09-18): destructive actions now go through the app's own
+// popup instead of window.confirm() - see useConfirmDialog.
+const confirmDialogMock = vi.fn(async () => true)
+vi.mock('@/composables/useConfirmDialog', () => ({
+  confirmDialog: (message: string) => confirmDialogMock(message),
+}))
+
 // Design doc 2026-08-26-benefices-associes-refinement-design.md: focused
 // coverage for what this pass added to the page - the read-only, clearly
 // labelled live profit preview banner, and the ledger's new
@@ -746,7 +753,7 @@ describe('ShareholderView', () => {
       id: 7,
       status: 'CANCELLED',
     })
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    confirmDialogMock.mockResolvedValueOnce(true)
 
     const wrapper = mount(ShareholderView)
     await flushPromises()
@@ -784,7 +791,7 @@ describe('ShareholderView', () => {
     cancelShareholderDistribution.mockRejectedValue({
       response: { data: { detail: "Impossible d'annuler cette repartition." } },
     })
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    confirmDialogMock.mockResolvedValueOnce(true)
 
     const wrapper = mount(ShareholderView)
     await flushPromises()
