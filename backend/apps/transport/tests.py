@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 import pytest
 from rest_framework.test import APIClient
 
@@ -363,3 +365,46 @@ def test_internal_transporter_can_be_turned_external_when_another_stays_internal
     assert response.data["is_internal"] is False
     second_internal.refresh_from_db()
     assert second_internal.is_internal is True
+
+
+# ---------------------------------------------------------------------------
+# Bug fix (2026-09-18): the Transporteurs list's gross_earned/deductions/
+# advances_applied/net_balance columns counted a CANCELLED TransportPayment
+# as if it were still owed - same "reads as what's currently true" rule
+# already applied to TransporterLedgerService.get_ledger.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_transporter_list_excludes_a_cancelled_commission_from_its_totals(ops_client):
+    from apps.finance.models import TransportPayment
+    from apps.finance.services import TransportPaymentCancellationService
+    from apps.trips.tests import _make_trip, _make_truck, _setup_fixtures
+
+    fx = _setup_fixtures("TRP-LIST-CANCEL")
+    transporter = fx["transporter"]
+
+    cancelled_trip = _make_trip(fx, _make_truck("TRK-LIST-CANCEL"), "TRIP-LIST-CANCEL-001")
+    cancelled_payment = TransportPayment.objects.create(
+        trip=cancelled_trip, transporter=transporter,
+        calculation_method=TransportPayment.CalculationMethod.FIXED,
+        base_amount=Decimal("2700000.00"), deduction_amount=Decimal("117000.00"),
+        status=TransportPayment.Status.PAID,
+    )
+    TransportPaymentCancellationService.cancel_transport_payment(
+        cancelled_payment, fx["admin_user"]
+    )
+
+    active_trip = _make_trip(fx, _make_truck("TRK-LIST-ACTIVE"), "TRIP-LIST-ACTIVE-001")
+    TransportPayment.objects.create(
+        trip=active_trip, transporter=transporter,
+        calculation_method=TransportPayment.CalculationMethod.FIXED,
+        base_amount=Decimal("500000.00"), deduction_amount=Decimal("20000.00"),
+    )
+
+    response = ops_client.get(f"/api/transporters/{transporter.id}/")
+
+    assert response.status_code == 200, response.data
+    assert response.data["gross_earned"] == "500000.00"
+    assert response.data["deductions"] == "20000.00"
+    assert response.data["net_balance"] == "480000.00"

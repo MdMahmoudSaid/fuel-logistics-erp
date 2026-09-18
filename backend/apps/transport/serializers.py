@@ -70,19 +70,28 @@ class TransporterSerializer(serializers.ModelSerializer):
                 )
         return data
 
+    def _active_payments(self, obj):
+        # Bug fix (2026-09-18): a CANCELLED TransportPayment never really
+        # counted - same "reads as what's currently true" rule already
+        # applied to TransporterLedgerService.get_ledger - so it must not
+        # keep inflating gross_earned/deductions/advances_applied (and, via
+        # net_balance, look like an outstanding debt for a trip that was
+        # cancelled).
+        return obj.transport_payments.exclude(status="CANCELLED")
+
     def get_gross_earned(self, obj) -> str:
-        total = obj.transport_payments.aggregate(total=Sum("base_amount"))["total"] or Decimal("0.00")
+        total = self._active_payments(obj).aggregate(total=Sum("base_amount"))["total"] or Decimal("0.00")
         return f"{total:.2f}"
 
     def get_deductions(self, obj) -> str:
-        total = obj.transport_payments.aggregate(total=Sum("deduction_amount"))["total"] or Decimal("0.00")
+        total = self._active_payments(obj).aggregate(total=Sum("deduction_amount"))["total"] or Decimal("0.00")
         return f"{total:.2f}"
 
     def get_advances_applied(self, obj) -> str:
         total = sum(
             (
                 payment.advance_applied.amount
-                for payment in obj.transport_payments.select_related("advance_applied")
+                for payment in self._active_payments(obj).select_related("advance_applied")
                 if payment.advance_applied_id
             ),
             Decimal("0.00"),
