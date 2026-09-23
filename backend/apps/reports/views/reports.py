@@ -15,6 +15,7 @@ from apps.reports.queries.customer_outstanding_report import CustomerOutstanding
 from apps.reports.queries.customer_statement import CustomerStatementQuery
 from apps.reports.queries.expense_report import ExpenseReportQuery
 from apps.reports.queries.fuel_stock_report import FuelStockReportQuery
+from apps.reports.queries.general_debt_report import GeneralDebtReportQuery
 from apps.reports.queries.general_expense_report import GeneralExpenseReportQuery
 from apps.reports.queries.loss_report import LossReportQuery
 from apps.reports.queries.margin_report import MarginReportQuery
@@ -26,6 +27,7 @@ from apps.reports.queries.supplier_statement import SupplierStatementQuery
 from apps.reports.queries.transporter_outstanding_report import TransporterOutstandingReportQuery
 from apps.reports.queries.transporter_statement import TransporterStatementQuery
 from apps.reports.queries.treasury_statement import TreasuryStatementQuery
+from apps.reports.queries.trip_fee_debt_report import TripFeeDebtReportQuery
 from apps.reports.queries.trip_report import TripReportQuery
 from apps.reports.queries.truck_history import TruckHistoryQuery
 from apps.reports.serialization import decimals_to_str
@@ -56,6 +58,8 @@ REPORT_REGISTRY = {
     "shareholder-statement": ShareholderStatementQuery,
     "capital-report": CapitalReportQuery,
     "general-expense-report": GeneralExpenseReportQuery,
+    "trip-fee-debt-report": TripFeeDebtReportQuery,
+    "general-debt-report": GeneralDebtReportQuery,
 }
 
 _EXPORT_CONTENT_TYPES = {

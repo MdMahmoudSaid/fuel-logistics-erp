@@ -30,6 +30,8 @@ TITLES = {
     "shareholder-statement": ("Relevé actionnaire", "Shareholder statement", "كشف حساب المساهم"),
     "capital-report": ("Rapport de capital", "Capital report", "تقرير رأس المال"),
     "general-expense-report": ("Rapport des dépenses générales", "General expense report", "تقرير المصروفات العامة"),
+    "trip-fee-debt-report": ("Dettes de frais de trajet", "Trip fee debts", "ديون رسوم الرحلات"),
+    "general-debt-report": ("Dettes générales", "General debts", "الديون العامة"),
 }
 
 FIELDS = {
@@ -105,6 +107,8 @@ FIELDS = {
     "remaining_amount": ("Reste", "Remaining", "المتبقي"),
     "count": ("Nombre", "Count", "العدد"),
     "general-expense-report.total_amount": ("Montant total", "Total amount", "المبلغ الإجمالي"),
+    "fee_type": ("Type de frais", "Fee type", "نوع الرسوم"),
+    "trips": ("Trajets", "Trips", "الرحلات"),
 }
 
 TABLE_TITLES = {
@@ -115,6 +119,11 @@ TABLE_TITLES = {
     "capital-report.2": ("Apports de la période", "Contributions in the period", "مساهمات الفترة"),
     "general-expense-report.1": ("Dépenses", "Expenses", "المصروفات"),
     "general-expense-report.2": ("Récapitulatif par catégorie", "Summary by category", "ملخص حسب الفئة"),
+    "trip-fee-debt-report.1": ("Détail des dettes", "Debt detail", "تفاصيل الديون"),
+    "trip-fee-debt-report.2": ("Récapitulatif par type de frais", "Summary by fee type", "ملخص حسب نوع الرسوم"),
+    "general-debt-report.1": ("Dettes fournisseurs", "Supplier debts", "ديون الموردين"),
+    "general-debt-report.2": ("Dettes transporteurs", "Transporter debts", "ديون الناقلين"),
+    "general-debt-report.3": ("Frais de trajet", "Trip fees", "رسوم الرحلات"),
 }
 
 SUMMARY = {
@@ -164,6 +173,14 @@ SUMMARY = {
     "unpaid_count": ("Dépenses non payées", "Unpaid expenses", "مصروفات غير مدفوعة"),
     "partially_paid_count": ("Dépenses partiellement payées", "Partially paid expenses", "مصروفات مدفوعة جزئيًا"),
     "paid_count": ("Dépenses payées", "Paid expenses", "مصروفات مدفوعة"),
+    "debt_lines_count": ("Nombre de dettes", "Number of debts", "عدد الديون"),
+    "suppliers_debt_subtotal": ("Sous-total fournisseurs", "Suppliers subtotal", "المجموع الفرعي للموردين"),
+    "transporters_debt_subtotal": ("Sous-total transporteurs", "Transporters subtotal", "المجموع الفرعي للناقلين"),
+    "trip_fees_debt_subtotal": ("Sous-total frais de trajet", "Trip fees subtotal", "المجموع الفرعي لرسوم الرحلات"),
+    "total_debts": ("Total général des dettes", "Total debts", "إجمالي الديون"),
+    "supplier_lines_count": ("Lignes fournisseurs", "Supplier lines", "بنود الموردين"),
+    "transporter_lines_count": ("Lignes transporteurs", "Transporter lines", "بنود الناقلين"),
+    "trip_fee_lines_count": ("Lignes frais de trajet", "Trip fee lines", "بنود رسوم الرحلات"),
 }
 
 ENTITY = {

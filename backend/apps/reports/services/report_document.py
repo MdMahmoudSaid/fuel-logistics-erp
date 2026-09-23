@@ -220,6 +220,31 @@ def _general_expense_summary(slug, rows, context):
     ]
 
 
+def _trip_fee_debt_summary(slug, rows, context):
+    lines = [r for r in rows if r.get("section") == "line"]
+    return [
+        _line("debt_lines_count", len(lines), "count"),
+        _line("total_amount", _sum(lines, "total_amount"), "money"),
+        _line("paid_total", _sum(lines, "paid_amount"), "money"),
+        _line("remaining_total", _sum(lines, "remaining_amount"), "money", True),
+    ]
+
+
+def _general_debt_summary(slug, rows, context):
+    by = lambda section: [r for r in rows if r.get("section") == section]  # noqa: E731
+    suppliers, transporters, fees = by("supplier"), by("transporter"), by("trip_fee")
+    remaining = "remaining_amount"
+    return [
+        _line("suppliers_debt_subtotal", _sum(suppliers, remaining), "money"),
+        _line("transporters_debt_subtotal", _sum(transporters, remaining), "money"),
+        _line("trip_fees_debt_subtotal", _sum(fees, remaining), "money"),
+        _line("total_debts", _sum(rows, remaining), "money", True),
+        _line("supplier_lines_count", len(suppliers), "count"),
+        _line("transporter_lines_count", len(transporters), "count"),
+        _line("trip_fee_lines_count", len(fees), "count"),
+    ]
+
+
 def _outstanding_summary(count_key):
     def summarize(slug, rows, context):
         return [
@@ -379,6 +404,49 @@ REPORT_SPECS = {
             ),
         ),
         _general_expense_summary,
+    ),
+    "trip-fee-debt-report": ReportSpec(
+        "landscape",
+        (
+            TableSpec(
+                (("fee_type", "enum", "feeType"), ("date", "date"), ("trips", "text"),
+                 ("notes", "text"), ("total_amount", "money"), ("paid_amount", "money"),
+                 ("remaining_amount", "money"), ("status", "status", "expenseStatus")),
+                section="line",
+            ),
+            TableSpec(
+                (("fee_type", "enum", "feeType"), ("count", "text"), ("total_amount", "money"),
+                 ("paid_amount", "money"), ("remaining_amount", "money")),
+                section="type_total",
+            ),
+        ),
+        _trip_fee_debt_summary,
+        entity=("fee_type", "fee_type"), period_mode="as_of",
+    ),
+    "general-debt-report": ReportSpec(
+        "landscape",
+        (
+            TableSpec(
+                (("supplier", "text"), ("reference", "ref"), ("date", "date"), ("total_amount", "money"),
+                 ("paid_amount", "money"), ("remaining_amount", "money"),
+                 ("status", "status", "expenseStatus")),
+                section="supplier",
+            ),
+            TableSpec(
+                (("transporter", "text"), ("trip_reference", "ref"), ("date", "date"),
+                 ("total_amount", "money"), ("paid_amount", "money"), ("remaining_amount", "money"),
+                 ("status", "status", "expenseStatus")),
+                section="transporter",
+            ),
+            TableSpec(
+                (("fee_type", "enum", "feeType"), ("date", "date"), ("trips", "text"), ("notes", "text"),
+                 ("total_amount", "money"), ("paid_amount", "money"), ("remaining_amount", "money"),
+                 ("status", "status", "expenseStatus")),
+                section="trip_fee",
+            ),
+        ),
+        _general_debt_summary,
+        period_mode="as_of",
     ),
     "customer-outstanding": ReportSpec(
         "portrait", (TableSpec((("customer", "text"), ("outstanding", "money"))),),
