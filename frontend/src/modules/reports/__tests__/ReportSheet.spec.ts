@@ -140,6 +140,13 @@ describe('ReportSheet', () => {
     }
   })
 
+  it('never uses a <header> element: the print stylesheet hides every <header> (app topbar)', () => {
+    const wrapper = mountSheet()
+
+    expect(wrapper.find('header').exists()).toBe(false)
+    expect(wrapper.find('.report-masthead').exists()).toBe(true)
+  })
+
   it('renders translated headers and formatted cells, never raw values', () => {
     const wrapper = mountSheet()
     const headers = wrapper.findAll('thead th').map((th) => th.text())

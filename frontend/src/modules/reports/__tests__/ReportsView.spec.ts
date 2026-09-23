@@ -161,10 +161,25 @@ describe('ReportsView', () => {
     )
   })
 
-  it('calls window.print for the Imprimer button', async () => {
+  it('prints only the sheet: the selection zone and page title are hidden while printing', async () => {
     setAuthPermissions({ reports: ['view', 'export'] })
-    const printSpy = vi.spyOn(window, 'print').mockImplementation(() => {})
-    const wrapper = mount(ReportsView)
+    let duringPrint: {
+      toolbar: boolean
+      title: boolean
+      sheet: boolean
+      landscape: boolean
+    } | null = null
+    const printSpy = vi.spyOn(window, 'print').mockImplementation(() => {
+      duringPrint = {
+        toolbar: !!document.querySelector('.no-print[data-print-hidden]'),
+        title: !!document.querySelector('h1[data-print-hidden]'),
+        sheet: !!document.querySelector('.report-sheet-scroll[data-print-hidden]'),
+        landscape: !!document
+          .getElementById('report-page-size')
+          ?.textContent?.includes('landscape'),
+      }
+    })
+    const wrapper = mount(ReportsView, { attachTo: document.body })
     await wrapper.find('button').trigger('click')
     await flushPromises()
 
@@ -172,6 +187,11 @@ describe('ReportsView', () => {
     await printButton!.trigger('click')
 
     expect(printSpy).toHaveBeenCalled()
+    // The mocked report is landscape (trip-report document).
+    expect(duringPrint).toEqual({ toolbar: true, title: true, sheet: false, landscape: true })
+    window.dispatchEvent(new Event('afterprint'))
+    expect(document.querySelector('[data-print-hidden]')).toBeNull()
     printSpy.mockRestore()
+    wrapper.unmount()
   })
 })

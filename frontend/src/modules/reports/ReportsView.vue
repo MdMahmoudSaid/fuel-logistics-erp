@@ -9,6 +9,7 @@ import AppAlert from '@/components/ui/AppAlert.vue'
 // document-comptable-design.md) - labels, formatting rules and totals come
 // from the API, so screen, print and PDF share one structure.
 import { ref, computed, watch } from 'vue'
+import { usePrintScope } from '@/composables/usePrintScope'
 import { useI18n } from 'vue-i18n'
 import DateRangeFilter from '@/components/DateRangeFilter.vue'
 import type { DateRangeValue } from '@/components/date-range'
@@ -128,9 +129,11 @@ async function exportPdf() {
   }
 }
 
-function printReport() {
-  window.print()
-}
+// Print only the sheet: usePrintScope hides everything else (spec D6).
+const sheetRef = ref<InstanceType<typeof ReportSheet> | null>(null)
+const sheetEl = computed<HTMLElement | null>(() => (sheetRef.value?.$el as HTMLElement) ?? null)
+const sheetOrientation = computed(() => report.value?.document?.orientation ?? 'portrait')
+const { print: printReport } = usePrintScope(sheetEl, sheetOrientation)
 
 function onDateRangeChange(value: DateRangeValue) {
   dateRange.value = value
@@ -184,6 +187,7 @@ function onDateRangeChange(value: DateRangeValue) {
 
     <ReportSheet
       v-else-if="report && report.document"
+      ref="sheetRef"
       :document="report.document"
       :rows="report.rows"
       :report-type="report.report_type"
