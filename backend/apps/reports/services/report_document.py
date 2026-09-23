@@ -425,6 +425,7 @@ def _column(slug, spec_column, labels):
         "align": "end" if kind in ("money", "unit_money", "quantity") else "start",
     }
     if kind in ("enum", "status"):
+        column["namespace"] = spec_column[2]
         prefix = f"enum.{spec_column[2]}."
         column["enum_labels"] = {k[len(prefix):]: v for k, v in labels.items() if k.startswith(prefix)}
     return column

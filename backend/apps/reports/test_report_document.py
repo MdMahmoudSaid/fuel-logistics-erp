@@ -435,6 +435,8 @@ def test_column_kinds_and_alignment():
     assert columns["unit_price"]["kind"] == "unit_money" and columns["total_amount"]["kind"] == "money"
     assert columns["status"]["kind"] == "status" and columns["status"]["enum_labels"]["CANCELLED"] == "Annulée"
     assert columns["reference"]["kind"] == "ref"
+    assert columns["status"]["namespace"] == "purchaseOrderStatus"  # badge colours depend on it
+    assert "namespace" not in columns["reference"]
 
 
 @pytest.mark.parametrize("slug", sorted(REPORT_REGISTRY))

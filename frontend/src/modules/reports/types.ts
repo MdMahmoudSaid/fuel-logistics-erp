@@ -59,8 +59,60 @@ export const REPORT_TYPES: ReportTypeOption[] = [
   },
 ]
 
+// Mirrors backend/apps/reports/services/report_document.build_report_document
+// (docs/superpowers/specs/2026-09-23-rapports-document-comptable-design.md).
+// Decimal values arrive as strings; labels are already translated (spec D2).
+export type ReportColumnKind =
+  'date' | 'text' | 'ref' | 'money' | 'unit_money' | 'quantity' | 'enum' | 'status'
+
+export interface ReportColumn {
+  field: string
+  label: string
+  kind: ReportColumnKind
+  align: 'start' | 'end'
+  /** enum/status columns: which value family (badge colours depend on it). */
+  namespace?: string
+  enum_labels?: Record<string, string>
+}
+
+export interface ReportTable {
+  key: string
+  title: string | null
+  columns: ReportColumn[]
+  /** Rows whose `field` equals `equals` are printed bold (fuel-stock TOTAL). */
+  emphasis: { field: string; equals: string } | null
+}
+
+export interface ReportSummaryLine {
+  key: string
+  label: string
+  value: string | number | null
+  kind: 'money' | 'quantity' | 'count'
+  emphasis: boolean
+}
+
+export interface ReportDocument {
+  title: string
+  company: { name: string }
+  generated_on: string
+  lang: 'fr' | 'en' | 'ar'
+  direction: 'ltr' | 'rtl'
+  currency: string
+  orientation: 'portrait' | 'landscape'
+  period: { mode: 'range' | 'open' | 'as_of'; from: string | null; to: string | null; text: string }
+  entity: { label: string; name: string } | null
+  info: { key: string; label: string; value: string }[]
+  tables: ReportTable[]
+  opening_balance: { label: string; value: string | number; column: string } | null
+  summary: ReportSummaryLine[]
+  empty_text: string
+  labels: { page: string }
+}
+
 export interface ReportResponse {
   report_type: string
   fields: string[]
   rows: Record<string, unknown>[]
+  /** Only present when requested with ?document=1 (spec D3). */
+  document?: ReportDocument
 }
