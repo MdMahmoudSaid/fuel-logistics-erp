@@ -1,6 +1,7 @@
 # ReportViewSet (docs/PHASE_6_PLAN.md Etape 5;
 # ERP_Implementation_Experience_Guide.md Section 9.7).
 
+from django.core.exceptions import ObjectDoesNotExist
 from django.http import HttpResponse
 from rest_framework import viewsets
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
@@ -111,6 +112,9 @@ class ReportViewSet(viewsets.ViewSet):
             # TypeError: a required filter (e.g. customer_id) is missing;
             # ValueError: a malformed id ("abc") - both are client errors.
             raise ValidationError(str(exc))
+        except ObjectDoesNotExist:
+            # e.g. an unknown bank/cash account id on a treasury statement.
+            raise NotFound("Entité introuvable pour ce rapport.")
 
         export_format = request.query_params.get("export")
         if export_format:

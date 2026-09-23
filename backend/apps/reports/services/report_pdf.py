@@ -44,6 +44,11 @@ _KIND_WIDTH_MM = {
 }
 _TEXT_MIN_MM = 30
 _NUMERIC = ("money", "unit_money", "quantity")
+# One table row cannot span pages: a pasted multi-thousand-character note
+# would make the whole export fail with a LayoutError. The PDF keeps the
+# first MAX_TEXT_CHARS characters and ends with an ellipsis (the on-screen
+# sheet always shows the full text).
+MAX_TEXT_CHARS = 600
 
 
 _CELL_PADDING = 6  # points: left + right padding of a table cell
@@ -94,7 +99,8 @@ def _cell_text(column: dict, value) -> str:
         return _format_quantity(value).replace(" ", NBSP)
     if kind in ("enum", "status"):
         return column["enum_labels"].get(str(value), str(value))
-    return str(value)
+    text = str(value)
+    return text if len(text) <= MAX_TEXT_CHARS else text[:MAX_TEXT_CHARS] + "…"
 
 
 def _summary_text(line: dict) -> str:

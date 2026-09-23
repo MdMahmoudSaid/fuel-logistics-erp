@@ -1534,3 +1534,19 @@ def test_report_endpoint_document_never_turns_a_bad_entity_id_into_a_500(params)
 
     assert legacy.status_code < 500
     assert with_document.status_code == legacy.status_code
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "report_type, param",
+    [("bank-statement", "bank_account_id"), ("cash-statement", "cash_account_id")],
+)
+def test_report_endpoint_unknown_treasury_account_is_a_404_not_a_500(report_type, param):
+    admin_user = _make_admin("REPNOACCT")
+    client = APIClient()
+    client.force_authenticate(admin_user)
+
+    legacy = client.get(f"/api/reports/{report_type}/", {param: 999999})
+    with_document = client.get(f"/api/reports/{report_type}/", {param: 999999, "document": "1"})
+
+    assert legacy.status_code == with_document.status_code == 404

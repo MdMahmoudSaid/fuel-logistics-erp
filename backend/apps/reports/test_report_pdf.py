@@ -288,3 +288,20 @@ def test_visual_text_mirrors_brackets_in_right_to_left_lines_only():
     assert visual_text("الكمية (لتر)").startswith("(")  # ")" logically last, drawn leftmost, mirrored
     assert visual_text("Qty (L)") == "Qty (L)"  # LTR text untouched
     assert visual_text("1 250 000 XOF") == "1 250 000 XOF"
+
+
+# ---------------------------------------------------------------------------
+# Final-review fixes
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("note", ["x" * 3000, ("mot " * 900).strip(), "ن" * 3000])
+def test_a_huge_free_text_note_never_breaks_the_pdf_export(note):
+    row = {"trip_reference": "T1", "control_date": date(2026, 9, 1), "loaded_quantity": D("1000"),
+           "received_quantity": D("990"), "loss_quantity": D("10"), "tolerance_quantity": D("5"),
+           "chargeable_loss_quantity": D("5"), "verified_at": None, "notes": note}
+    for lang in ("fr", "ar"):
+        _, content = render("loss-report", [row], lang=lang)
+
+        assert content.startswith(b"%PDF-")
+    assert "…" in "\n".join(pdf_pages(render("loss-report", [row])[1])[1])  # truncated, and says so
