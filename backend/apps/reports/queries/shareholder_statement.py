@@ -24,8 +24,6 @@
 # ShareholderLedgerService.get_available_balance() for the same shareholder,
 # since both are derived from the same rows/formula.
 
-from django.utils.dateparse import parse_date
-
 from apps.finance.models import (
     ShareholderContribution,
     ShareholderLoan,
@@ -34,27 +32,17 @@ from apps.finance.models import (
     ShareholderWithdrawal,
 )
 
+from apps.reports.queries.statement_common import opening_balance, statement_rows
+
 FIELDS = ["date", "type", "reference", "debit", "credit", "balance"]
-
-
-def _as_date(value):
-    """date_from/date_to arrive as either a "YYYY-MM-DD" string (explicit
-    ?from=/&to=) or an already-resolved date (named ?range=), and the rows
-    here are merged in Python rather than filtered via the ORM (unlike
-    CustomerStatementQuery) - so, same fix as TreasuryStatementQuery,
-    always coerce to a real date before comparing against entry["date"]."""
-    if value is None or not isinstance(value, str):
-        return value
-    return parse_date(value)
 
 
 class ShareholderStatementQuery:
     FIELDS = FIELDS
+    DIRECTION = -1  # credit - debit: a positive balance is what the company owes the shareholder
 
     @classmethod
-    def run(cls, *, shareholder_id, date_from=None, date_to=None) -> list[dict]:
-        date_from = _as_date(date_from)
-        date_to = _as_date(date_to)
+    def _entries(cls, shareholder_id) -> list[dict]:
         # Only VALIDATED distributions are a real engagement to the
         # shareholder (2026-09-08 review): a DRAFT is a preview, a
         # CANCELLED one no longer grants a right - neither belongs in the
@@ -129,24 +117,14 @@ class ShareholderStatementQuery:
                 for loan in loans_borrowed
             ]
         )
-        if date_from:
-            entries = [entry for entry in entries if entry["date"] >= date_from]
-        if date_to:
-            entries = [entry for entry in entries if entry["date"] <= date_to]
-        entries.sort(key=lambda entry: entry["sort_key"])
+        return entries
 
-        balance = 0
-        rows = []
-        for entry in entries:
-            balance += (entry["credit"] or 0) - (entry["debit"] or 0)
-            rows.append(
-                {
-                    "date": entry["date"],
-                    "type": entry["type"],
-                    "reference": entry["reference"],
-                    "debit": entry["debit"],
-                    "credit": entry["credit"],
-                    "balance": balance,
-                }
-            )
-        return rows
+    @classmethod
+    def opening_balance(cls, *, shareholder_id, date_from=None, date_to=None):
+        return opening_balance(cls._entries(shareholder_id), date_from=date_from, direction=cls.DIRECTION)
+
+    @classmethod
+    def run(cls, *, shareholder_id, date_from=None, date_to=None) -> list[dict]:
+        return statement_rows(
+            cls._entries(shareholder_id), date_from=date_from, date_to=date_to, direction=cls.DIRECTION
+        )

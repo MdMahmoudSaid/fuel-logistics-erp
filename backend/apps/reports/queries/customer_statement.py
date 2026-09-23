@@ -8,6 +8,7 @@
 # total received" formula one line at a time instead of as a single total.
 
 from apps.finance.models import CustomerPayment
+from apps.reports.queries.statement_common import opening_balance, statement_rows
 from apps.sales.models import Invoice
 
 FIELDS = ["date", "type", "reference", "debit", "credit", "balance"]
@@ -15,21 +16,15 @@ FIELDS = ["date", "type", "reference", "debit", "credit", "balance"]
 
 class CustomerStatementQuery:
     FIELDS = FIELDS
+    DIRECTION = 1  # debit - credit: a positive balance is money owed by the customer
 
     @classmethod
-    def run(cls, *, customer_id, date_from=None, date_to=None) -> list[dict]:
+    def _entries(cls, customer_id) -> list[dict]:
         invoices = Invoice.objects.filter(sale__customer_id=customer_id).exclude(
             status=Invoice.Status.CANCELLED
         )
         payments = CustomerPayment.objects.filter(customer_id=customer_id)
-        if date_from:
-            invoices = invoices.filter(issued_date__gte=date_from)
-            payments = payments.filter(payment_date__gte=date_from)
-        if date_to:
-            invoices = invoices.filter(issued_date__lte=date_to)
-            payments = payments.filter(payment_date__lte=date_to)
-
-        entries = [
+        return [
             {
                 "date": invoice.issued_date,
                 "type": "INVOICE",
@@ -50,20 +45,13 @@ class CustomerStatementQuery:
             }
             for payment in payments
         ]
-        entries.sort(key=lambda entry: entry["sort_key"])
 
-        balance = 0
-        rows = []
-        for entry in entries:
-            balance += (entry["debit"] or 0) - (entry["credit"] or 0)
-            rows.append(
-                {
-                    "date": entry["date"],
-                    "type": entry["type"],
-                    "reference": entry["reference"],
-                    "debit": entry["debit"],
-                    "credit": entry["credit"],
-                    "balance": balance,
-                }
-            )
-        return rows
+    @classmethod
+    def opening_balance(cls, *, customer_id, date_from=None, date_to=None):
+        return opening_balance(cls._entries(customer_id), date_from=date_from, direction=cls.DIRECTION)
+
+    @classmethod
+    def run(cls, *, customer_id, date_from=None, date_to=None) -> list[dict]:
+        return statement_rows(
+            cls._entries(customer_id), date_from=date_from, date_to=date_to, direction=cls.DIRECTION
+        )
