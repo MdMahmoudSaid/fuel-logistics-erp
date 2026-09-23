@@ -7,6 +7,10 @@ export interface ReportTypeOption {
   label: string
   idParam?: string
   idLabel?: string
+  /** "Situation courante" report: no period filter, no period params sent. */
+  periodless?: boolean
+  /** Second selector sent as a query param (e.g. the trip-fee type). */
+  paramSelect?: { param: string; options: string[]; defaultValue: string }
 }
 
 export const REPORT_TYPES: ReportTypeOption[] = [
@@ -33,10 +37,10 @@ export const REPORT_TYPES: ReportTypeOption[] = [
   { value: 'purchase-report', label: 'Purchase report' },
   { value: 'sales-report', label: 'Sales report' },
   { value: 'expense-report', label: 'Expense report' },
-  { value: 'customer-outstanding', label: 'Customer outstanding' },
-  { value: 'supplier-outstanding', label: 'Supplier outstanding' },
-  { value: 'transporter-outstanding', label: 'Transporter outstanding' },
-  { value: 'fuel-stock', label: 'Fuel stock' },
+  { value: 'customer-outstanding', label: 'Customer outstanding', periodless: true },
+  { value: 'supplier-outstanding', label: 'Supplier outstanding', periodless: true },
+  { value: 'transporter-outstanding', label: 'Transporter outstanding', periodless: true },
+  { value: 'fuel-stock', label: 'Fuel stock', periodless: true },
   { value: 'loss-report', label: 'Loss report' },
   { value: 'margin-report', label: 'Margin report' },
   {

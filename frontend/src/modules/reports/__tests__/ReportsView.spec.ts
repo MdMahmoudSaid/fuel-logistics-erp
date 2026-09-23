@@ -3,6 +3,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
 import ReportsView from '../ReportsView.vue'
+import DateRangeFilter from '@/components/DateRangeFilter.vue'
 import type { ReportDocument, ReportResponse } from '../types'
 import type { FetchReportOptions } from '../api'
 
@@ -193,5 +194,41 @@ describe('ReportsView', () => {
     expect(document.querySelector('[data-print-hidden]')).toBeNull()
     printSpy.mockRestore()
     wrapper.unmount()
+  })
+
+  describe('"situation courante" (periodless) reports', () => {
+    it('hides the period filter and sends no period for the preview and the PDF export', async () => {
+      setAuthPermissions({ reports: ['view', 'export'] })
+      const wrapper = mount(ReportsView)
+      await wrapper.find('select').setValue('customer-outstanding')
+      expect(wrapper.findComponent(DateRangeFilter).exists()).toBe(false)
+
+      await wrapper.find('button').trigger('click')
+      await flushPromises()
+      const exportButton = wrapper.findAll('button').find((b) => b.text() === 'Exporter PDF')
+      await exportButton!.trigger('click')
+      await flushPromises()
+
+      expect(fetchReport).toHaveBeenCalledWith('customer-outstanding', {}, expect.any(Object))
+      expect(downloadReportExport).toHaveBeenCalledWith('customer-outstanding', 'pdf', {}, 'fr')
+    })
+
+    it('shows the period filter again, with a fresh period, on a report that uses it', async () => {
+      setAuthPermissions({ reports: ['view'] })
+      const wrapper = mount(ReportsView)
+      await wrapper.find('select').setValue('fuel-stock')
+      expect(wrapper.findComponent(DateRangeFilter).exists()).toBe(false)
+
+      await wrapper.find('select').setValue('trip-report')
+      await wrapper.find('button').trigger('click')
+      await flushPromises()
+
+      expect(wrapper.findComponent(DateRangeFilter).exists()).toBe(true)
+      expect(fetchReport).toHaveBeenLastCalledWith(
+        'trip-report',
+        { preset: 'month', range: 'month' },
+        expect.any(Object),
+      )
+    })
   })
 })

@@ -94,8 +94,34 @@ watch(
   { immediate: true },
 )
 
+const paramValue = ref('')
+
+// A type change resets the extra selector to its default and, for a
+// "situation courante" report, drops the period (the filter is hidden).
+watch(
+  currentOption,
+  (option) => {
+    paramValue.value = option?.paramSelect?.defaultValue ?? ''
+    if (option?.periodless) dateRange.value = {}
+  },
+  { immediate: true },
+)
+
+function paramOptionLabel(value: string): string {
+  const key = `reports.feeTypes.${value}`
+  return te(key) ? t(key) : value
+}
+function paramLabel(slug: string): string {
+  const key = `reports.types.${slug}.paramLabel`
+  return te(key) ? t(key) : ''
+}
+
 function buildParams(): Record<string, string | undefined> {
-  const params: Record<string, string | undefined> = { ...dateRange.value }
+  const params: Record<string, string | undefined> = currentOption.value?.periodless
+    ? {}
+    : { ...dateRange.value }
+  const paramSelect = currentOption.value?.paramSelect
+  if (paramSelect && paramValue.value) params[paramSelect.param] = paramValue.value
   if (currentOption.value?.idParam && entityId.value) {
     params[currentOption.value.idParam] = entityId.value
   }
@@ -166,7 +192,20 @@ function onDateRangeChange(value: DateRangeValue) {
         <SearchableSelect v-model="entityId" :options="entityOptions" />
       </label>
 
-      <DateRangeFilter @change="onDateRangeChange" />
+      <label v-if="currentOption?.paramSelect" class="space-y-1.5 text-sm">
+        <span class="text-texte-2 block font-medium">{{ paramLabel(currentOption.value) }}</span>
+        <select
+          v-model="paramValue"
+          data-test="param-select"
+          class="border-ligne-forte h-11 rounded-lg border bg-white px-3 text-sm"
+        >
+          <option v-for="option in currentOption.paramSelect.options" :key="option" :value="option">
+            {{ paramOptionLabel(option) }}
+          </option>
+        </select>
+      </label>
+
+      <DateRangeFilter v-if="!currentOption?.periodless" @change="onDateRangeChange" />
 
       <Button variant="primary" :disabled="loading" @click="runReport">{{
         t('reports.runReport')
