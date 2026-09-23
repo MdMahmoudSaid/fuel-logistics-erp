@@ -37,7 +37,7 @@ Three findings from reading the code shape this design:
 | D4 | **Solde antérieur is computed inside each business query** over the full history (see §Statements). | User requirement (2026-09-23): it must not be reconstructed in the view/builder from a re-fetched row list. |
 | D5 | Treasury **internal transfers enter a signed reconciliation equation** rather than being ignored (see §Statements). | User requirement (2026-09-23). |
 | D6 | **Print hides everything outside `ReportSheet` explicitly** (see §Print). | User requirement (2026-09-23): a CSS list of known shell elements is not enough. |
-| D7 | Rows with status `CANCELLED` stay visible but are **excluded from numeric totals**, with a note "N annulé(s) exclu(s) du total" shown only when N > 0. Applies to purchase-report, trip-report, truck-history. | A cancelled order inflating a total would make the summary misleading; the query itself includes them, so hiding them would break parity with the current screen. *(Assumption — flagged for review.)* |
+| D7 | Rows with status `CANCELLED` stay visible but are **excluded from amounts, quantities, margins and operational counts**; the summary carries a `cancelled_excluded` line ("Annulés exclus : N", always shown on these reports, 0 allowed). Applies to purchase-report, trip-report, truck-history and margin-report (margin rows carry no status: the builder looks trip statuses up by `trip_reference`; `FIELDS`/rows unchanged). *(Validated by the user 2026-09-23.)* | A cancelled order inflating a total would make the summary misleading; the query itself includes them, so hiding them would break parity with the current screen. |
 | D8 | Margin report prints as **three stacked tables** over the same rows (quantities & prices / costs / losses & margin), landscape. | 23 columns in one row cannot stay legible on A4 (≈12 mm each). Each table repeats trip and client. |
 | D9 | No "chiffre d'affaires" line on the margin report. | Revenue is not a field of the margin response and margin ≠ revenue − displayed costs in every case (loss indemnities); we do not derive it. |
 | D10 | Print = `window.print()` on the HTML sheet; PDF = backend document. Same structure and content, not pixel-identical. | Blob-iframe printing of a PDF is unreliable in Safari/Firefox; native print also handles Arabic natively. |
@@ -69,7 +69,6 @@ Three findings from reading the code shape this design:
                           {"field": "type", "kind": "enum", "enum_labels": {"INVOICE": "Facture", "PAYMENT": "Paiement"}}]}],
   "opening_balance": {"label": "Solde antérieur", "value": "125000.00", "column": "balance"},  // statements only, else null
   "summary": [{"key": "total_debit", "label": "Total débit", "value": "…", "kind": "money", "emphasis": false}, …],
-  "notes": ["2 commande(s) annulée(s) exclue(s) du total"],
   "empty_text": "Aucune donnée pour la période sélectionnée."
 }
 ```
@@ -79,7 +78,7 @@ Three findings from reading the code shape this design:
 **`apps/reports/services/pdf_template.py`** (new) — shared PDF building blocks: company constant (`DEFAULT_COMPANY_NAME`, moved here and re-exported from `ledger_pdf`), logo `Image` (same `assets/azur-energie-icon.png`, missing file never blocks an export), `masthead(...)`, `page_decorations(title, lang)` (running title on pages ≥ 2, "Page n / total" footer via a two-pass `NumberedCanvas`), `safe_text` (the existing `_safe_paragraph_text`), font registration, `shape(text, lang)`.
 `ledger_pdf._pdf_masthead` and `profit_pdf`'s logo/company block are changed to call it; their bodies and their existing tests are untouched.
 
-**`apps/reports/services/report_pdf.py`** (new) — `render_report_pdf(document, rows, lang) -> bytes`. Replaces `rows_to_pdf()` (removed from `export.py`; its two tests are rewritten against the new function). Layout: masthead → general-info block (2-column label/value grid: generation date, period, entity, currency) → horizontal rule → each table (`repeatRows=1`, Paragraph cells for wrapping, explicit column widths from kind weights: refs/dates/money fixed-ish, text columns take the remainder, never font < 7 pt) → opening-balance row inserted first in the table when present → summary block (right-aligned 2-column grid, emphasized final line) → notes. Empty rows: header kept + one spanning row `empty_text`, summary still printed (zeroes). A4 portrait or landscape from `orientation`.
+**`apps/reports/services/report_pdf.py`** (new) — `render_report_pdf(document, rows, lang) -> bytes`. Replaces `rows_to_pdf()` (removed from `export.py`; its two tests are rewritten against the new function). Layout: masthead → general-info block (2-column label/value grid: generation date, period, entity, currency) → horizontal rule → each table (`repeatRows=1`, Paragraph cells for wrapping, explicit column widths from kind weights: refs/dates/money fixed-ish, text columns take the remainder, never font < 7 pt) → opening-balance row inserted first in the table when present → summary block (right-aligned 2-column grid, emphasized final line). Empty rows: header kept + one spanning row `empty_text`, summary still printed (zeroes). A4 portrait or landscape from `orientation`.
 
 **API** (`views/reports.py`): `retrieve` gains `?document=1&lang=`. When set, it additionally calls `query_class.statement_context(**params)` if defined, builds `document`, and returns `{report_type, fields, rows, document}`. `?export=pdf` now builds the document (always, lang from `?lang=`) and calls `render_report_pdf`; CSV/XLSX unchanged. Filename `f"{report_type}.pdf"` unchanged.
 
@@ -90,7 +89,7 @@ See §Statements. The `run()` signature and row shape are unchanged.
 ### Frontend
 
 - `modules/reports/types.ts`: `ReportResponse` gains optional `document?: ReportDocument`; `ReportDocument` mirrors the payload. `api.ts`: `fetchReport(type, params, { document, lang })` (default off, so existing callers are unchanged); `downloadReportExport` passes `lang`.
-- `modules/reports/ReportSheet.vue` (new): white sheet, `width: 210mm` (portrait) / `297mm` (landscape), centred, inside an `overflow-x-auto` wrapper so phones scroll horizontally; padding equivalent to print margins. Renders masthead (logo `assets/azur-energie-icon.png` + company text, matching the PDF), info grid, table(s) from `document.tables` with `<thead>` repeated in print (`display: table-header-group`), opening-balance row, summary block, notes, empty row. Money/quantity/date formatting reuses `@/utils/currency` + a `formatDateDMY` helper (JJ/MM/AAAA); money tone colours from the current screen are kept for money cells only. `dir` comes from `document.direction`; in RTL the column order is reversed by the presenter exactly as the PDF renderer does.
+- `modules/reports/ReportSheet.vue` (new): white sheet, `width: 210mm` (portrait) / `297mm` (landscape), centred, inside an `overflow-x-auto` wrapper so phones scroll horizontally; padding equivalent to print margins. Renders masthead (logo `assets/azur-energie-icon.png` + company text, matching the PDF), info grid, table(s) from `document.tables` with `<thead>` repeated in print (`display: table-header-group`), opening-balance row, summary block, empty row. Money/quantity/date formatting reuses `@/utils/currency` + a `formatDateDMY` helper (JJ/MM/AAAA); money tone colours from the current screen are kept for money cells only. `dir` comes from `document.direction`; in RTL the column order is reversed by the presenter exactly as the PDF renderer does.
 - `ReportsView.vue`: selection zone unchanged (type, entity, period, generate, print, PDF). After generation it renders `<ReportSheet>` instead of the inline table; the badge/enum/tone helpers move into the sheet or a small `reportCells.ts`. Language passed = `useI18n().locale`. **Behaviour to note:** changing the UI language after generating does not re-translate the loaded report until the user regenerates (same as today for the run/export split); the export button always uses the current locale.
 
 ## Statements
@@ -162,7 +161,7 @@ Notes: the transporter statement label for `advance_applied` is "Avance déduite
 ## Arabic / RTL
 
 - **Dependencies:** `arabic-reshaper` and `python-bidi` added to `requirements/base.txt`; `pypdf` added to `requirements/dev.txt` (tests only). A Noto Naskh Arabic Regular + Bold font (SIL OFL) is committed under `apps/reports/assets/fonts/` with its licence file; registered once in `pdf_template`. French/English keep Helvetica.
-- `shape(text, lang)` (ar only): `arabic_reshaper.reshape` then `bidi.get_display`, applied to every string that reaches a `Paragraph` **after** XML escaping of user content. Numbers, references, dates and money stay LTR runs (isolated) so `23 576 205 XOF` is never reordered — same concern as `formatMoney`'s LRI/PDI wrapping.
+- `shape(text, lang)` (ar only): `arabic_reshaper.reshape` then `bidi.get_display`, applied to the raw text first, then XML-escaped, then non-Arabic runs wrapped in a Helvetica `<font>` span (escaping before bidi would let it reorder `&lt;`). Numbers, references, dates and money stay LTR runs (isolated) so `23 576 205 XOF` is never reordered — same concern as `formatMoney`'s LRI/PDI wrapping.
 - RTL layout: column order reversed, table and paragraphs right-aligned, info/summary grids mirrored, page footer mirrored. Arabic-Indic digits are **not** used (Western digits, consistent with the app).
 - User-entered strings (entity/party names, notes, references) are always escaped with `safe_text` before being placed in a `Paragraph`.
 
@@ -190,7 +189,7 @@ Their existing specs must pass unmodified, and new contract tests (below) pin th
 **Backend** (pytest, new files `test_report_document.py`, `test_report_pdf.py`; existing files adapted only where noted):
 
 1. *Header*: for every one of the 17 slugs, `build_report_document` returns title (translated, never the slug), company `AZUR ÉNERGIE`, generated date, period (range / open / as_of as appropriate), currency `XOF`, orientation per the table, translated column labels with no `_` and no raw field name, entity name for the 7 entity reports (and for optional filters when given).
-2. *Totals*: per family (financial statements, transporter, purchases/sales, expenses, stock incl. TOTAL row not double-counted, losses, margins, trips, outstanding) — summary values equal the sum of the displayed rows computed independently in the test; CANCELLED exclusion + note (D7).
+2. *Totals*: per family (financial statements, transporter, purchases/sales, expenses, stock incl. TOTAL row not double-counted, losses, margins, trips, outstanding) — summary values equal the sum of the displayed rows computed independently in the test; CANCELLED exclusion and `cancelled_excluded` line (D7).
 3. *Opening balance*: customer/supplier/shareholder with entries before and inside the period: `opening_balance` equals the balance the unfiltered run showed just before `date_from`; first row balance includes it; `opening + net == closing == last row balance`; no `date_from` → opening 0, rows identical to the legacy run; empty period → summary shows opening = closing.
 4. *Treasury reconciliation*: account with opening balance, in/out, and a transfer before, inside and after the period: the signed equation holds exactly; `transfers_net` negative case; the "Écart de rapprochement" line appears only for an inconsistent stubbed context.
 5. *Empty case*: each of the 17 reports with zero rows → table header kept, `empty_text` present, summary present with zeroes, PDF builds.
@@ -202,7 +201,7 @@ Their existing specs must pass unmodified, and new contract tests (below) pin th
 
 **Frontend** (vitest):
 
-1. `ReportSheet.spec.ts`: masthead (company, title, date, period, entity), columns and formatted cells (DD/MM/YYYY, XOF), opening-balance row, summary lines, notes, empty state, portrait vs landscape width class, RTL (`dir="rtl"`, reversed columns) for an `ar` document, several tables (margin).
+1. `ReportSheet.spec.ts`: masthead (company, title, date, period, entity), columns and formatted cells (DD/MM/YYYY, XOF), opening-balance row, summary lines, empty state, portrait vs landscape width class, RTL (`dir="rtl"`, reversed columns) for an `ar` document, several tables (margin).
 2. `usePrintScope.spec.ts`: builds a DOM with sidebar/topbar/toast/selection/page-title siblings around the sheet at several depths; after `beforeprint` every off-chain sibling has `data-print-hidden`, the sheet and its ancestors do not; markers and the `@page` style are removed after `afterprint`, on unmount and when `print()` throws.
 3. `ReportsView.spec.ts` (existing, adapted): passes `document=1` and `lang`, renders the sheet, print/PDF buttons still gated as before.
 4. Compatibility: existing `TripDetail`, `DashboardView`, `ProfitView` specs pass unchanged; a new small spec asserts `fetchReport(type, params)` without options sends no `document`/`lang` params and returns the legacy shape typed as before.
@@ -225,6 +224,5 @@ Frontend — new: `modules/reports/ReportSheet.vue`, `modules/reports/reportCell
 
 ## Open points for review
 
-- **D7** (cancelled rows excluded from totals with a note) is my assumption; the alternative is to sum every displayed row.
 - **Language change after generation** does not re-translate a loaded report until it is regenerated (cheap alternative: re-fetch on locale change — not planned).
 - **Print vs PDF** are structurally identical but not pixel-identical (D10).
