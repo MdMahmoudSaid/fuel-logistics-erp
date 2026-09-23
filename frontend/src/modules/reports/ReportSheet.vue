@@ -9,7 +9,14 @@ import { computed } from 'vue'
 import Badge from '@/components/ui/Badge.vue'
 import azurEnergieIcon from '@/assets/azur-energie-icon.png'
 import type { ReportDocument, ReportTable } from './types'
-import { badgeVariant, cellText, isEmphasisRow, moneyToneClass, summaryText } from './reportCells'
+import {
+  badgeVariant,
+  cellText,
+  isEmphasisRow,
+  moneyToneClass,
+  summaryText,
+  tableRows,
+} from './reportCells'
 
 defineOptions({ name: 'ReportSheet' })
 
@@ -104,7 +111,7 @@ function openingIndex(table: ReportTable): number {
               </template>
             </tr>
             <tr
-              v-for="(row, index) in rows"
+              v-for="(row, index) in tableRows(table, rows)"
               :key="index"
               class="report-row"
               :class="isEmphasisRow(table, row) ? 'bg-sable/60 font-semibold' : ''"
@@ -132,7 +139,7 @@ function openingIndex(table: ReportTable): number {
                 }}</span>
               </td>
             </tr>
-            <tr v-if="rows.length === 0">
+            <tr v-if="tableRows(table, rows).length === 0">
               <td
                 :colspan="table.columns.length"
                 class="report-empty text-texte-3 border border-black/25 px-2 py-8 text-center"

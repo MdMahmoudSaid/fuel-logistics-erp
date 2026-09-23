@@ -63,7 +63,7 @@ export const REPORT_TYPES: ReportTypeOption[] = [
 // (docs/superpowers/specs/2026-09-23-rapports-document-comptable-design.md).
 // Decimal values arrive as strings; labels are already translated (spec D2).
 export type ReportColumnKind =
-  'date' | 'text' | 'ref' | 'money' | 'unit_money' | 'quantity' | 'enum' | 'status'
+  'date' | 'text' | 'ref' | 'money' | 'unit_money' | 'quantity' | 'percent' | 'enum' | 'status'
 
 export interface ReportColumn {
   field: string
@@ -81,6 +81,8 @@ export interface ReportTable {
   columns: ReportColumn[]
   /** Rows whose `field` equals `equals` are printed bold (fuel-stock TOTAL). */
   emphasis: { field: string; equals: string } | null
+  /** Set: the table shows only the rows whose `section` equals it. */
+  section?: string | null
 }
 
 export interface ReportSummaryLine {

@@ -146,6 +146,7 @@ ENTITY = {
     "bank_account": ("Compte bancaire", "Bank account", "الحساب البنكي"),
     "cash_account": ("Caisse", "Cash account", "الصندوق"),
     "shareholder": ("Associé", "Shareholder", "المساهم"),
+    "fee_type": ("Type de frais", "Fee type", "نوع الرسوم"),
 }
 
 UI = {
@@ -235,6 +236,14 @@ ENUMS = {
         "COMPLETED": ("Terminé", "Completed", "مكتمل"),
         "BLOCKED": ("Bloqué", "Blocked", "محظور"),
         "CANCELLED": ("Annulé", "Cancelled", "ملغى"),
+    },
+    "feeType": {
+        "all": ("Tous", "All", "الكل"),
+        "customs": ("Douane", "Customs", "الجمارك"),
+        "transit": ("Transit", "Transit", "العبور"),
+        "road_transit": ("Transit routière", "Road transit", "العبور البري"),
+        "border": ("Frontière", "Border", "الحدود"),
+        "loading": ("Chargement", "Loading", "التحميل"),
     },
     "fuelComponent": {
         "SUPPLIER_RELIQUAT": ("Reliquat fournisseur", "Supplier balance", "رصيد المورد"),

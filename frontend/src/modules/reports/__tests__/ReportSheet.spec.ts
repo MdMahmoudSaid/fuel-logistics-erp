@@ -315,3 +315,60 @@ describe('ReportSheet', () => {
     expect(money(first, 5)).toContain('text-emerald-600')
   })
 })
+
+describe('ReportSheet sections and percent cells', () => {
+  const col = (field: string, kind: 'text' | 'percent' | 'money', label: string) => ({
+    field,
+    label,
+    kind,
+    align: kind === 'text' ? ('start' as const) : ('end' as const),
+  })
+  const sectioned: ReportDocument = {
+    ...BASE,
+    opening_balance: null,
+    tables: [
+      {
+        key: 't1',
+        title: 'Par actionnaire',
+        emphasis: null,
+        section: 'shareholder',
+        columns: [col('name', 'text', 'Nom'), col('share', 'percent', '% du capital')],
+      },
+      {
+        key: 't2',
+        title: 'Apports',
+        emphasis: null,
+        section: 'contribution',
+        columns: [col('name', 'text', 'Nom'), col('amount', 'money', 'Montant')],
+      },
+    ],
+  }
+  const sectionRows = [
+    { section: 'shareholder', name: 'Alpha', share: '12.5' },
+    { section: 'shareholder', name: 'Beta', share: '87.5' },
+  ]
+
+  it('shows only the rows of each table section, with its own empty line', () => {
+    const wrapper = mountSheet(sectioned, sectionRows, 'capital-report')
+    const [first, second] = wrapper.findAll('table.report-table')
+
+    expect(first!.findAll('tbody tr.report-row')).toHaveLength(2)
+    expect(second!.findAll('tbody tr.report-row')).toHaveLength(0)
+    expect(second!.find('.report-empty').exists()).toBe(true)
+    expect(first!.find('.report-empty').exists()).toBe(false)
+  })
+
+  it('formats percent cells with two decimals and no currency suffix', () => {
+    const wrapper = mountSheet(sectioned, sectionRows, 'capital-report')
+    const cells = wrapper.findAll('table.report-table')[0]!.findAll('tbody tr.report-row td')
+
+    expect(clean(cells[1]!.text())).toBe('12,50 %')
+    expect(clean(cells[3]!.text())).toBe('87,50 %')
+  })
+
+  it('keeps showing every row when a table has no section', () => {
+    const wrapper = mountSheet()
+
+    expect(wrapper.findAll('tbody tr.report-row')).toHaveLength(ROWS.length)
+  })
+})

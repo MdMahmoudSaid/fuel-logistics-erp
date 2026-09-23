@@ -32,6 +32,7 @@ Column = tuple
 class TableSpec:
     columns: tuple
     emphasis: dict | None = None  # {"field": ..., "equals": ...}: rows printed bold
+    section: str | None = None  # only rows whose row["section"] equals it
 
 
 @dataclass(frozen=True)
@@ -374,6 +375,11 @@ def _resolve_entity(spec, params, slug, lang):
         return None
     kind, param = spec.entity
     value = params.get(param)
+    if kind == "fee_type":
+        # Fixed vocabulary, not a model; an empty selection means "all".
+        value = value or "all"
+        name = LABELS[lang].get(f"enum.feeType.{value}", str(value))
+        return {"label": LABELS[lang]["entity.fee_type"], "name": name}
     if value in (None, ""):
         return None
     from apps.customers.models import Customer
@@ -415,19 +421,33 @@ def _period(spec, params, labels, generated_on):
     return {"mode": mode, "from": iso(date_from), "to": iso(date_to), "text": text}
 
 
-def _column(slug, spec_column, labels):
+def _custom_category_names(rows, field, known):
+    """{code: ExpenseCategory.name} for the category codes present in `rows`
+    that the label catalog does not translate (user-created categories)."""
+    codes = {row.get(field) for row in rows if row.get(field)} - set(known)
+    if not codes:
+        return {}
+    from apps.finance.models import ExpenseCategory
+
+    return dict(ExpenseCategory.objects.filter(code__in=codes).values_list("code", "name"))
+
+
+def _column(slug, spec_column, labels, rows=()):
     field, kind = spec_column[0], spec_column[1]
     label = labels.get(f"field.{slug}.{field}") or labels[f"field.{field}"]
     column = {
         "field": field,
         "label": label,
         "kind": kind,
-        "align": "end" if kind in ("money", "unit_money", "quantity") else "start",
+        "align": "end" if kind in ("money", "unit_money", "quantity", "percent") else "start",
     }
     if kind in ("enum", "status"):
         column["namespace"] = spec_column[2]
         prefix = f"enum.{spec_column[2]}."
         column["enum_labels"] = {k[len(prefix):]: v for k, v in labels.items() if k.startswith(prefix)}
+        if spec_column[2] == "expenseCategory":
+            # Never show a technical code: custom categories use their own name.
+            column["enum_labels"].update(_custom_category_names(rows, field, column["enum_labels"]))
     return column
 
 
@@ -463,8 +483,9 @@ def build_report_document(
             {
                 "key": f"t{index}",
                 "title": labels.get(title_key),
-                "columns": [_column(report_type, column, labels) for column in table.columns],
+                "columns": [_column(report_type, column, labels, rows) for column in table.columns],
                 "emphasis": table.emphasis,
+                "section": table.section,
             }
         )
 

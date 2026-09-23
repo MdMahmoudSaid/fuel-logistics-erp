@@ -1,6 +1,6 @@
 // Cell formatting for ReportSheet. Everything is driven by the backend
 // document's column `kind` (spec D2) - no client-side report translation.
-import { formatMoney, formatUnitMoney, formatQuantity } from '@/utils/currency'
+import { formatMoney, formatUnitMoney, formatQuantity, formatPercent } from '@/utils/currency'
 import { formatDateDMY } from '@/utils/date'
 import type { ReportColumn, ReportSummaryLine, ReportTable } from './types'
 
@@ -22,6 +22,8 @@ export function cellText(column: ReportColumn, value: unknown): string {
       return formatUnitMoney(raw)
     case 'quantity':
       return formatQuantity(raw)
+    case 'percent':
+      return formatPercent(raw)
     case 'enum':
     case 'status':
       return column.enum_labels?.[raw] ?? raw
@@ -36,6 +38,14 @@ export function summaryText(line: ReportSummaryLine): string {
   if (line.kind === 'money') return formatMoney(raw)
   if (line.kind === 'quantity') return formatQuantity(raw)
   return raw
+}
+
+/** Rows of one table: all rows, or only those of its `section` (spec: several row sets in one report). */
+export function tableRows(
+  table: ReportTable,
+  rows: Record<string, unknown>[],
+): Record<string, unknown>[] {
+  return table.section ? rows.filter((row) => row.section === table.section) : rows
 }
 
 export function isEmphasisRow(table: ReportTable, row: Record<string, unknown>): boolean {

@@ -8,6 +8,7 @@
 
 import datetime
 import io
+from decimal import Decimal
 
 from django.utils import timezone
 from django.utils.dateparse import parse_date
@@ -41,9 +42,10 @@ DASH = "—"
 # Fixed widths (mm) by column kind; text columns share what is left (>= 30mm).
 _KIND_WIDTH_MM = {
     "date": 21, "ref": 32, "money": 26, "unit_money": 34, "quantity": 22, "enum": 30, "status": 30,
+    "percent": 20,
 }
 _TEXT_MIN_MM = 30
-_NUMERIC = ("money", "unit_money", "quantity")
+_NUMERIC = ("money", "unit_money", "quantity", "percent")
 # One table row cannot span pages: a pasted multi-thousand-character note
 # would make the whole export fail with a LayoutError. The PDF keeps the
 # first MAX_TEXT_CHARS characters and ends with an ellipsis (the on-screen
@@ -97,6 +99,8 @@ def _cell_text(column: dict, value) -> str:
         return _format_unit_money(value).replace(" ", NBSP)
     if kind == "quantity":
         return _format_quantity(value).replace(" ", NBSP)
+    if kind == "percent":
+        return f"{Decimal(str(value)):.2f}".replace(".", ",") + NBSP + "%"
     if kind in ("enum", "status"):
         return column["enum_labels"].get(str(value), str(value))
     text = str(value)
@@ -253,7 +257,10 @@ def build_report_flowables(document: dict, rows: list[dict], lang: str | None = 
             elements.append(_p(table["title"], _cell_style(bold=True, size=10, rtl=rtl), document["lang"]))
             elements.append(Spacer(1, 1.5 * mm))
         opening = document["opening_balance"] if index == 0 else None
-        elements.append(_data_table(document, table, rows, opening, available, rtl))
+        # A table with a `section` shows only its own rows (spec §Changements du cadre).
+        section = table.get("section")
+        table_rows = [r for r in rows if r.get("section") == section] if section else rows
+        elements.append(_data_table(document, table, table_rows, opening, available, rtl))
         elements.append(Spacer(1, 4 * mm))
     elements.append(_summary_block(document, available, rtl))
     return elements, available

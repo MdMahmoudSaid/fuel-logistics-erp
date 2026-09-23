@@ -305,3 +305,46 @@ def test_a_huge_free_text_note_never_breaks_the_pdf_export(note):
 
         assert content.startswith(b"%PDF-")
     assert "…" in "\n".join(pdf_pages(render("loss-report", [row])[1])[1])  # truncated, and says so
+
+
+# --- percent kind and per-table sections (spec 2026-09-23-rapports-capital-
+# dettes-creances, "Changements du cadre").
+
+
+def _sectioned_document(monkeypatch, rows):
+    from apps.reports.services.report_document import REPORT_SPECS, ReportSpec, TableSpec
+
+    columns = (("customer", "text"), ("outstanding", "percent"))
+    monkeypatch.setitem(
+        REPORT_SPECS,
+        "customer-outstanding",
+        ReportSpec(
+            "portrait",
+            (TableSpec(columns, section="a"), TableSpec(columns, section="b")),
+            lambda slug, rows, context: [
+                {"key": "customers_count", "value": len(rows), "kind": "count", "emphasis": False}
+            ],
+            period_mode="as_of",
+        ),
+    )
+    return render("customer-outstanding", rows)
+
+
+def test_percent_cells_print_two_decimals_and_a_percent_sign_without_xof(monkeypatch):
+    rows = [{"section": "a", "customer": "Alpha", "outstanding": D("12.5")}]
+
+    _, content = _sectioned_document(monkeypatch, rows)
+    text = "\n".join(pdf_pages(content)[1])
+
+    assert "12,50 %" in text
+    assert "12,50 % XOF" not in text and "12,50 XOF" not in text
+
+
+def test_each_sectioned_table_prints_only_its_own_rows_and_its_own_empty_line(monkeypatch):
+    rows = [{"section": "a", "customer": "Alpha", "outstanding": D("1")}]
+
+    document, content = _sectioned_document(monkeypatch, rows)
+    text = "\n".join(pdf_pages(content)[1])
+
+    assert text.count("Alpha") == 1
+    assert text.count(document["empty_text"]) == 1  # table "b" is empty, "a" is not

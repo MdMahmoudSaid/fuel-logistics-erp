@@ -485,3 +485,88 @@ def test_every_summary_and_field_label_exists_in_each_language(lang):
         for table in document["tables"]:
             for column in table["columns"]:
                 assert not column["label"].startswith("field."), (slug, column["field"])
+
+
+# --- Framework additions: percent kind, per-table sections, fee_type entity,
+# custom expense category labels (spec 2026-09-23-rapports-capital-dettes-
+# creances, section "Changements du cadre" / "Libellés des catégories").
+
+
+def _sectioned_spec(entity=None):
+    from apps.reports.services.report_document import ReportSpec, TableSpec
+
+    columns = (("customer", "text"), ("outstanding", "percent"))
+    return ReportSpec(
+        "portrait",
+        (TableSpec(columns, section="a"), TableSpec(columns, section="b")),
+        lambda slug, rows, context: [],
+        period_mode="as_of",
+        entity=entity,
+    )
+
+
+def test_tables_expose_their_section_and_percent_columns_align_right(monkeypatch):
+    monkeypatch.setitem(REPORT_SPECS, "customer-outstanding", _sectioned_spec())
+
+    document = build_report_document("customer-outstanding", [], {}, "fr", generated_on=TODAY)
+
+    assert [table["section"] for table in document["tables"]] == ["a", "b"]
+    percent = document["tables"][0]["columns"][1]
+    assert (percent["kind"], percent["align"]) == ("percent", "end")
+
+
+def test_existing_tables_have_no_section():
+    document = build_report_document("margin-report", [], {}, "fr", generated_on=TODAY)
+
+    assert [table["section"] for table in document["tables"]] == [None, None, None]
+
+
+@pytest.mark.parametrize(
+    "lang,expected",
+    [("fr", ("Type de frais", "Douane")), ("en", ("Fee type", "Customs")), ("ar", ("نوع الرسوم", "الجمارك"))],
+)
+def test_fee_type_entity_is_translated(monkeypatch, lang, expected):
+    monkeypatch.setitem(
+        REPORT_SPECS, "customer-outstanding", _sectioned_spec(entity=("fee_type", "fee_type"))
+    )
+
+    document = build_report_document(
+        "customer-outstanding", [], {"fee_type": "customs"}, lang, generated_on=TODAY
+    )
+
+    assert (document["entity"]["label"], document["entity"]["name"]) == expected
+
+
+@pytest.mark.parametrize("params", [{}, {"fee_type": ""}, {"fee_type": "all"}])
+def test_fee_type_entity_defaults_to_all(monkeypatch, params):
+    monkeypatch.setitem(
+        REPORT_SPECS, "customer-outstanding", _sectioned_spec(entity=("fee_type", "fee_type"))
+    )
+
+    document = build_report_document("customer-outstanding", [], params, "fr", generated_on=TODAY)
+
+    assert document["entity"]["name"] == "Tous"
+
+
+@pytest.mark.django_db
+def test_custom_expense_category_shows_its_name_never_its_code():
+    from apps.finance.models import ExpenseCategory
+
+    ExpenseCategory.objects.create(name="Fournitures de bureau", code="fournitures_bureau")
+    rows = [
+        {"date": TODAY, "category": "fournitures_bureau", "amount": D("1000.00"),
+         "calculation_method": "FIXED", "status": "UNPAID"},
+        {"date": TODAY, "category": "rent", "amount": D("500.00"),
+         "calculation_method": "FIXED", "status": "PAID"},
+    ]
+
+    labels = {
+        lang: build_report_document("expense-report", rows, {}, lang, generated_on=TODAY)["tables"][0][
+            "columns"
+        ][1]["enum_labels"]
+        for lang in ("fr", "en", "ar")
+    }
+
+    assert all(entry["fournitures_bureau"] == "Fournitures de bureau" for entry in labels.values())
+    assert (labels["fr"]["rent"], labels["en"]["rent"]) == ("Loyer", "Rent")
+    assert ARABIC.search(labels["ar"]["rent"])
