@@ -110,6 +110,12 @@
     display: none !important;
   }
 
+  /* Le fond beige de l'appli (body) ne doit pas s'imprimer autour de la feuille. */
+  html:has([data-print-chain]),
+  body:has([data-print-chain]) {
+    background: #fff !important;
+  }
+
   [data-print-chain] {
     display: block !important;
     position: static !important;
