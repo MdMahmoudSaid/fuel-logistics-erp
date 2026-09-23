@@ -46,12 +46,23 @@ _TEXT_MIN_MM = 30
 _NUMERIC = ("money", "unit_money", "quantity")
 
 
+_CELL_PADDING = 6  # points: left + right padding of a table cell
+
+
+def _p(text, style, lang, width=None) -> Paragraph:
+    """Paragraph with escaped/shaped text; `width` (points) lets Arabic text
+    wrap correctly inside a table cell."""
+    return Paragraph(
+        para_text(text, lang, bold=style.fontName.endswith("Bold"), width=width, size=style.fontSize), style
+    )
+
+
 def _cell_style(*, bold=False, numeric=False, size=8, color=INK, rtl=False) -> ParagraphStyle:
     return ParagraphStyle(
         f"cell-{int(bold)}-{int(numeric)}-{size}-{int(rtl)}",
         fontName="Helvetica-Bold" if bold else "Helvetica",
         fontSize=size,
-        leading=size + 1.8,
+        leading=size * 1.45,
         textColor=color,
         alignment=TA_RIGHT if (numeric or rtl) else TA_LEFT,
     )
@@ -113,34 +124,40 @@ def _column_widths(columns: list[dict], available: float) -> list[float]:
 def _header_block(document: dict, available: float, rtl: bool) -> list:
     company, title = document["company"]["name"], document["title"]
     logo = logo_image(16 * mm)
-    company_par = Paragraph(para_text(company, document["lang"]), _cell_style(bold=True, size=15, rtl=rtl))
-    if logo is not None:
-        head = Table([[logo, company_par]], colWidths=[22 * mm, available - 22 * mm])
-    else:
+    company_par = _p(company, _cell_style(bold=True, size=15, rtl=rtl), document["lang"])
+    if logo is None:
         head = Table([[company_par]], colWidths=[available])
-    head.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("LEFTPADDING", (0, 0), (-1, -1), 0)]))
+    elif rtl:
+        head = Table([[company_par, logo]], colWidths=[available - 22 * mm, 22 * mm])
+    else:
+        head = Table([[logo, company_par]], colWidths=[22 * mm, available - 22 * mm])
+    head.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                              ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
 
     label_style = _cell_style(bold=True, size=8, color=MUTED, rtl=rtl)
     value_style = _cell_style(size=9, rtl=rtl)
     info = document["info"]
+    label_w, value_w = 30 * mm, (available - 60 * mm) / 2
     rows = []
     for i in range(0, len(info), 2):
-        pair = info[i : i + 2]
         cells = []
-        for item in pair:
-            cells += [Paragraph(para_text(item["label"], document["lang"]), label_style),
-                      Paragraph(para_text(item["value"], document["lang"]), value_style)]
+        for item in info[i : i + 2]:
+            cells += [_p(item["label"], label_style, document["lang"]),
+                      _p(item["value"], value_style, document["lang"], value_w - _CELL_PADDING)]
         while len(cells) < 4:
             cells.append("")
         rows.append(cells)
-    label_w, value_w = 30 * mm, (available - 60 * mm) / 2
-    info_table = Table(rows, colWidths=[label_w, value_w, label_w, value_w], hAlign="LEFT")
+    widths = [label_w, value_w, label_w, value_w]
+    if rtl:  # mirrored grid: value | label, and the pair order reversed
+        rows = [list(reversed(row)) for row in rows]
+        widths = list(reversed(widths))
+    info_table = Table(rows, colWidths=widths, hAlign="RIGHT" if rtl else "LEFT")
     info_table.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 0),
                                     ("TOPPADDING", (0, 0), (-1, -1), 1.5), ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5)]))
     return [
         head,
         Spacer(1, 3 * mm),
-        Paragraph(para_text(title, document["lang"]), _cell_style(bold=True, size=17, rtl=rtl)),
+        _p(title, _cell_style(bold=True, size=17, rtl=rtl), document["lang"]),
         Spacer(1, 3 * mm),
         info_table,
         Spacer(1, 2 * mm),
@@ -150,10 +167,10 @@ def _header_block(document: dict, available: float, rtl: bool) -> list:
 
 def _data_table(document: dict, table: dict, rows: list[dict], opening: dict | None, available: float, rtl: bool):
     lang = document["lang"]
-    columns = table["columns"]
+    columns = list(reversed(table["columns"])) if rtl else table["columns"]
     widths = _column_widths(columns, available)
-    header = [Paragraph(para_text(c["label"], lang), _cell_style(bold=True, numeric=c["align"] == "end", rtl=rtl))
-              for c in columns]
+    header = [_p(c["label"], _cell_style(bold=True, numeric=c["align"] == "end", rtl=rtl), lang, w - _CELL_PADDING)
+              for c, w in zip(columns, widths)]
     data = [header]
     styles = [
         ("BACKGROUND", (0, 0), (-1, 0), HEADER_FILL),
@@ -166,10 +183,8 @@ def _data_table(document: dict, table: dict, rows: list[dict], opening: dict | N
     if opening is not None:
         balance_index = next(i for i, c in enumerate(columns) if c["field"] == opening["column"])
         row = [""] * len(columns)
-        label = Paragraph(para_text(opening["label"], lang), _cell_style(bold=True, rtl=rtl))
-        value = Paragraph(
-            para_text(_cell_text({"kind": "money"}, opening["value"]), lang), _cell_style(bold=True, numeric=True)
-        )
+        label = _p(opening["label"], _cell_style(bold=True, rtl=rtl), lang)
+        value = _p(_cell_text({"kind": "money"}, opening["value"]), _cell_style(bold=True, numeric=True), lang)
         row[balance_index] = value
         if balance_index > 0:
             row[0] = label
@@ -186,16 +201,15 @@ def _data_table(document: dict, table: dict, rows: list[dict], opening: dict | N
     for row in rows:
         bold = bool(emphasis and row.get(emphasis["field"]) == emphasis["equals"])
         cells = []
-        for column in columns:
-            text = para_text(_cell_text(column, row.get(column["field"])), lang)
-            cells.append(Paragraph(f"<b>{text}</b>" if bold else text,
-                                   _cell_style(numeric=column["align"] == "end", rtl=rtl)))
+        for column, column_width in zip(columns, widths):
+            style = _cell_style(bold=bold, numeric=column["align"] == "end", rtl=rtl)
+            cells.append(_p(_cell_text(column, row.get(column["field"])), style, lang, column_width - _CELL_PADDING))
         if bold:
             styles.append(("BACKGROUND", (0, len(data)), (-1, len(data)), TOTAL_FILL))
         data.append(cells)
 
     if not rows:
-        empty = [Paragraph(para_text(document["empty_text"], lang), _cell_style(color=MUTED))] + [""] * (len(columns) - 1)
+        empty = [_p(document["empty_text"], _cell_style(color=MUTED, rtl=rtl), lang)] + [""] * (len(columns) - 1)
         styles.append(("SPAN", (0, len(data)), (-1, len(data))))
         data.append(empty)
 
@@ -210,13 +224,12 @@ def _summary_block(document: dict, available: float, rtl: bool):
                         ("BOTTOMPADDING", (0, 0), (-1, -1), 3), ("LINEBELOW", (0, 0), (-1, -1), 0.3, LINE)]
     for index, line in enumerate(document["summary"]):
         bold = line["emphasis"]
-        data.append([
-            Paragraph(para_text(line["label"], lang), _cell_style(bold=bold, size=9, rtl=rtl)),
-            Paragraph(para_text(_summary_text(line), lang), _cell_style(bold=bold, numeric=True, size=9)),
-        ])
+        cells = [_p(line["label"], _cell_style(bold=bold, size=9, rtl=rtl), lang, 75 * mm - _CELL_PADDING),
+                 _p(_summary_text(line), _cell_style(bold=bold, numeric=True, size=9), lang)]
+        data.append(list(reversed(cells)) if rtl else cells)
         if bold:
             styles += [("BACKGROUND", (0, index), (-1, index), TOTAL_FILL), ("LINEABOVE", (0, index), (-1, index), 0.8, INK)]
-    block = Table(data, colWidths=[75 * mm, 45 * mm], hAlign="RIGHT")
+    block = Table(data, colWidths=[45 * mm, 75 * mm] if rtl else [75 * mm, 45 * mm], hAlign="LEFT" if rtl else "RIGHT")
     block.setStyle(TableStyle(styles))
     return KeepTogether([Spacer(1, 6 * mm), block])
 
@@ -231,8 +244,7 @@ def build_report_flowables(document: dict, rows: list[dict], lang: str | None = 
     elements = _header_block(document, available, rtl)
     for index, table in enumerate(document["tables"]):
         if table.get("title"):
-            elements.append(Paragraph(para_text(table["title"], document["lang"]),
-                                      _cell_style(bold=True, size=10, rtl=rtl)))
+            elements.append(_p(table["title"], _cell_style(bold=True, size=10, rtl=rtl), document["lang"]))
             elements.append(Spacer(1, 1.5 * mm))
         opening = document["opening_balance"] if index == 0 else None
         elements.append(_data_table(document, table, rows, opening, available, rtl))

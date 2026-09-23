@@ -97,9 +97,11 @@ def test_long_report_paginates_repeating_title_and_column_headers_with_correct_t
     assert box.width > box.height  # landscape for a wide report
     for number, text in enumerate(pages, start=1):
         assert f"Page {number} / {len(pages)}" in text
-        assert "Référence" in text and "Fournisseur" in text  # table header repeated
+        if "SO-" in text:  # every page that carries rows repeats the column header
+            assert "Référence" in text and "Fournisseur" in text
         if number > 1:
             assert "Rapport des achats" in text and "AZUR ÉNERGIE" in text  # running title
+    assert "SO-0149" in pages[-2] + pages[-1]
     assert "Montant total" in pages[-1]
 
 
@@ -167,3 +169,122 @@ def test_export_pdf_endpoint_returns_the_new_document(params):
     text = "\n".join(pdf_pages(response.content)[1])
     assert "Rapport des trajets" in text and "AZUR ÉNERGIE" in text and "Nombre de trajets" in text
     assert "TRIP-QUERY-PDFEXPORT" in text.replace("\n", "")
+
+
+# ---------------------------------------------------------------------------
+# Arabic / RTL (spec section Arabic / RTL)
+# ---------------------------------------------------------------------------
+
+import re  # noqa: E402
+
+from apps.reports.services.pdf_template import para_text, visual_text  # noqa: E402
+
+
+def visual(text):
+    """The glyph string Arabic text is drawn with: reshaped then bidi-ordered."""
+    return visual_text(text)
+
+
+def words_present(text, phrase):
+    """Every word of an Arabic phrase, in shaped logical form, is in `text`
+    (pypdf returns each drawn word separately, in drawing order)."""
+    return all(shaped(word) in text for word in phrase.split())
+
+
+def shaped(text):
+    """Reshaped (joined presentation forms) in LOGICAL order - pypdf hands
+    right-to-left text back in reading order, not drawing order."""
+    import arabic_reshaper
+
+    return squash(arabic_reshaper.reshape(text))
+
+
+def squash(text):
+    return re.sub(r"\s+", "", text)
+
+
+def font_names(reader):
+    names = set()
+    for page in reader.pages:
+        for font in page["/Resources"]["/Font"].values():
+            names.add(str(font.get_object()["/BaseFont"]))
+    return names
+
+
+def test_arabic_statement_pdf_embeds_noto_shapes_text_and_keeps_numbers_ltr():
+    document, content = render("customer-statement", STATEMENT_ROWS,
+                               {"date_from": "2026-09-01", "date_to": "2026-09-23"}, lang="ar",
+                               context={"opening_balance": D("500000.00")})
+    reader, pages = pdf_pages(content)
+    text = squash("\n".join(pages))
+
+    assert any("NotoNaskhArabic" in name for name in font_names(reader))
+    assert document["direction"] == "rtl"
+    assert words_present(text, document["title"])
+    assert words_present(text, document["summary"][0]["label"])  # "الرصيد السابق"
+    assert re.search("[ﹰ-﻿ﭐ-﷿]", text)  # presentation forms = shaped
+    for expected in ("23/09/2026", "01/09/2026", "1250000XOF",
+                     "AZURÉNERGIE", "FAC-1"):
+        assert expected in text, expected
+    assert "�" not in text and "■" not in text
+
+
+def test_arabic_statement_reverses_column_order():
+    document = build_report_document("customer-statement", STATEMENT_ROWS, {}, "ar",
+                                     statement_context={"opening_balance": D("0")}, generated_on=TODAY)
+    flowables, _ = build_report_flowables(document, STATEMENT_ROWS, "ar")
+    table = next(f for f in flowables if f.__class__.__name__ == "Table" and f.repeatRows)
+    header = [squash(cell.getPlainText()) for cell in table._cellvalues[0]]
+    logical = [squash(visual(c["label"])) for c in document["tables"][0]["columns"]]
+
+    assert header == list(reversed(logical))  # balance first (leftmost) ... date last (rightmost)
+    first_data_row = [cell.getPlainText() for cell in table._cellvalues[2]]
+    assert first_data_row[0].replace("\u00a0", " ") == "1 750 000 XOF"  # balance leads the row
+    assert first_data_row[-1] == "02/09/2026"
+
+
+@pytest.mark.django_db
+def test_arabic_names_render_in_arabic_and_french_documents_without_crashing():
+    from apps.customers.models import Customer
+
+    customer = Customer.objects.create(name="شركة النور <b> & أبناؤه")
+    for lang in ("ar", "fr"):
+        document, content = render("customer-statement", STATEMENT_ROWS, {"customer_id": customer.id},
+                                   lang=lang, context={"opening_balance": D("0")})
+        reader, pages = pdf_pages(content)
+        assert any("NotoNaskhArabic" in name for name in font_names(reader)), lang
+        assert shaped("شركة") in squash("\n".join(pages)), lang
+
+
+def test_para_text_leaves_latin_text_alone_and_escapes_it():
+    assert para_text("Ets <b> & Frères", "fr") == "Ets &lt;b&gt; &amp; Frères"
+    assert para_text("Ets <b> & Frères", "ar") == "Ets &lt;b&gt; &amp; Frères"
+    assert para_text(None, "ar") == "" and para_text("1 250 000 XOF", "ar") == "1 250 000 XOF"
+
+
+def test_para_text_shapes_arabic_runs_in_noto_and_escapes_markup():
+    out = para_text("نص <script> & آخر", "ar")
+
+    assert '<font name="NotoNaskhArabic">' in out
+    assert "&lt;script&gt;" in out and "&amp;" in out and "<script>" not in out
+    assert "نص" not in out  # replaced by its shaped presentation forms
+    assert '<font name="NotoNaskhArabic-Bold">' in para_text("نص", "ar", bold=True)
+
+
+def test_para_text_wraps_arabic_in_logical_order_line_by_line():
+    words = ["الكلمة" + str(i) for i in range(1, 13)]
+    out = para_text(" ".join(words), "ar", width=60, size=8)
+    lines = out.split("<br/>")
+    plain = [re.sub(r"<[^>]+>", "", line) for line in lines]
+
+    assert len(lines) > 1
+    # Each line is bidi-ordered on its own, and the first logical word sits on line 1.
+    assert squash(visual(words[0])) in squash(plain[0])
+    assert squash(visual(words[-1])) in squash(plain[-1])
+    assert all(squash(visual(w)) in squash("".join(plain)) for w in words)
+
+
+def test_visual_text_mirrors_brackets_in_right_to_left_lines_only():
+    assert visual_text("الكمية (لتر)").startswith("(")  # ")" logically last, drawn leftmost, mirrored
+    assert visual_text("Qty (L)") == "Qty (L)"  # LTR text untouched
+    assert visual_text("1 250 000 XOF") == "1 250 000 XOF"
