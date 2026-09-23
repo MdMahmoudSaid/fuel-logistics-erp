@@ -26,6 +26,7 @@ from apps.reports.queries.treasury_statement import TreasuryStatementQuery
 from apps.reports.queries.trip_report import TripReportQuery
 from apps.reports.queries.truck_history import TruckHistoryQuery
 from apps.reports.serialization import decimals_to_str
+from apps.reports.services.report_document import build_report_document
 
 # The 16 V1 report types from ERP_Specification.md Section 37. Bank
 # statement/cash statement are one TreasuryStatementQuery implementation
@@ -86,6 +87,8 @@ class ReportViewSet(viewsets.ViewSet):
             if key
             not in {
                 "export",
+                "document",
+                "lang",
                 "preset",
                 "range",
                 "start_date",
@@ -103,16 +106,35 @@ class ReportViewSet(viewsets.ViewSet):
             params["date_to"] = date_to
         try:
             rows = query_class.run(**params)
-        except TypeError as exc:
+        except (TypeError, ValueError) as exc:
+            # TypeError: a required filter (e.g. customer_id) is missing;
+            # ValueError: a malformed id ("abc") - both are client errors.
             raise ValidationError(str(exc))
 
         export_format = request.query_params.get("export")
         if export_format:
             return self._export(pk, query_class, rows, export_format, request.user)
 
-        return Response(
-            decimals_to_str({"report_type": pk, "fields": query_class.FIELDS, "rows": rows})
-        )
+        payload = {"report_type": pk, "fields": query_class.FIELDS, "rows": rows}
+        if request.query_params.get("document") in ("1", "true"):
+            payload["document"] = build_report_document(
+                pk,
+                rows,
+                params,
+                request.query_params.get("lang", "fr"),
+                statement_context=self._statement_context(query_class, params),
+            )
+        return Response(decimals_to_str(payload))
+
+    @staticmethod
+    def _statement_context(query_class, params):
+        """Opening/closing figures computed by the business query itself
+        (spec D4/D5) - only statements define them."""
+        if hasattr(query_class, "statement_context"):
+            return query_class.statement_context(**params)
+        if hasattr(query_class, "opening_balance"):
+            return {"opening_balance": query_class.opening_balance(**params)}
+        return None
 
     def _export(self, report_type, query_class, rows, export_format, user):
         if not _user_can_export(user):
