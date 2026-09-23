@@ -52,7 +52,14 @@ Pour les trois rapports « situation courante », on applique **les deux garde-f
 1. **Front :** `REPORT_TYPES` porte un drapeau `periodless: true`. Pour ces types, `ReportsView` masque `DateRangeFilter`, n'envoie aucun paramètre de période (ni pour l'aperçu ni pour l'export PDF) et réinitialise la période quand on change de type.
 2. **Back :** leur `run()` accepte `date_from`/`date_to` et les **ignore** (au lieu de lever `TypeError`, ce qui donnerait un 400 via la vue). Un test le prouve.
 
-**Constat (bug existant, vérifié en direct le 2026-09-23) :** `GET /api/reports/customer-outstanding/?from=…&to=…` et `fuel-stock` renvoient **400**, car leur `run()` n'accepte aucun argument alors que la page envoie la période choisie. **Décision proposée :** poser le même drapeau `periodless` sur ces quatre rapports existants (`customer-outstanding`, `supplier-outstanding`, `transporter-outstanding`, `fuel-stock`), en une ligne de données chacun. C'est le même mécanisme et il corrige l'erreur de chargement quand un utilisateur choisit une période. À confirmer à la relecture.
+**Constat (bug existant, vérifié en direct le 2026-09-23) :** `GET /api/reports/customer-outstanding/?from=…&to=…` et `fuel-stock` renvoient **400**, car leur `run()` n'accepte aucun argument alors que la page envoie la période choisie.
+
+**Décision validée (2026-09-23) :** les quatre rapports existants `customer-outstanding`, `supplier-outstanding`, `transporter-outstanding` et `fuel-stock` sont déclarés `periodless` et reçoivent **les deux protections**, comme les trois nouveaux rapports :
+
+1. **Front :** drapeau `periodless: true` dans `REPORT_TYPES` (filtre de période masqué, période non envoyée pour l'aperçu et l'export PDF, réinitialisée au changement de type).
+2. **Back :** leur `run()` accepte `date_from`/`date_to` et les **ignore**. Une requête directe contenant des dates (`?from=…&to=…`, `?range=…`, `?preset=…`) ne produit plus de 400 et renvoie **le même payload et les mêmes chiffres** que sans dates.
+
+Leur payload legacy (`report_type`, `fields`, `rows`), leurs chiffres et leur document restent inchangés ; seuls le refus des dates (400 → 200) et le filtre masqué changent.
 
 ## Changements du cadre (communs aux 5 rapports)
 
@@ -61,6 +68,16 @@ Pour les trois rapports « situation courante », on applique **les deux garde-f
 3. **Entité « type de frais »** : `_resolve_entity` sait résoudre `fee_type` (valeur fixe traduite via l'espace de noms `feeType`), affichée dans l'en-tête comme « Type de frais : Douane » ou « Tous ».
 4. **Espace de noms `feeType`** dans `report_labels.py` : `customs` Douane, `transit` Transit, `road_transit` Transit routier, `border` Frontière, `loading` Chargement, avec `all` = Tous. Les autres espaces réutilisés existent déjà (`expenseCategory`, `expenseStatus`, `expenseCalcMethod`).
 5. **Section `labels`** : titres, en-têtes de colonne, libellés de synthèse et de tableau, texte de cas vide pour les 5 rapports, en fr/en/ar.
+
+## Libellés des catégories de dépenses
+
+Le code technique d'une catégorie (par exemple `fournitures_bureau`) n'est **jamais** affiché. Dans la colonne `category` (espace de noms `expenseCategory`) :
+
+- une **catégorie standard** utilise la traduction fr/en/ar du catalogue `report_labels.py` ;
+- une **catégorie personnalisée** (absente du catalogue) utilise `ExpenseCategory.name` (la même valeur dans les trois langues, faute de traduction) ;
+- une catégorie sans ligne `ExpenseCategory` ni traduction (donnée orpheline) retombe sur le code, dernier recours.
+
+Les libellés sont résolus **une seule fois** dans la définition de colonne (`enum_labels` de `_column`, pour les codes présents dans les lignes), donc le tableau principal et le récapitulatif par catégorie du rapport 2 affichent toujours le même libellé, à l'écran comme dans le PDF. Cette résolution s'applique à toute colonne `expenseCategory` : le rapport existant `expense-report` en bénéficie aussi (son payload legacy, lui, ne change pas : `rows` garde le code).
 
 ## Les cinq rapports
 
@@ -210,12 +227,14 @@ Tests précis exigés :
 - **Dettes de frais de trajet :** chaque `fee_type` valide et `all` ; `fee_type` inconnu → 400 ; totaux = `get_payable_debts` et `get_other_debts_breakdown` ; frais payé directement par le client absent.
 - **Dettes générales :** sous-totaux égaux aux sorties de `get_payable_debts` (fournisseur, transporteur) et de `get_other_debts_breakdown` ; avance consommée sur une commande ; paiement fournisseur annulé qui rétablit la dette ; ligne transporteur négative ; transporteur absent quand son reste n'est pas positif.
 - **Capital :** total = `get_total_capital()` ; actionnaire inactif inclus ; capital nul (pas de division par zéro) ; libellés « % de participation » et « % du capital » distincts ; pourcentages et dates sans suffixe XOF, montants avec XOF (écran et PDF).
+- **Rapports existants `periodless` :** pour chacun des quatre, une requête avec `from`/`to` renvoie 200 et exactement le même payload que sans dates ; le front masque le filtre et n'envoie aucune période.
+- **Libellés de catégories :** une catégorie personnalisée (`fournitures_bureau` / nom « Fournitures de bureau ») s'affiche par son nom dans le tableau et le récapitulatif ; une catégorie standard par sa traduction fr/en/ar ; jamais le code brut.
 - **Cadre :** kind `percent` (écran + PDF) ; filtrage par `section` sans effet sur les tableaux existants (rapport de marges à 3 tableaux inchangé).
 - **Non-régression :** les 17 rapports existants gardent leur payload `report_type/fields/rows` ; suites backend et frontend complètes aux points de contrôle.
 
-## Points signalés à la relecture
+## Décisions validées à la relecture (2026-09-23)
 
-1. Le drapeau `periodless` sur les 4 rapports « situation courante » **déjà existants** (correction du 400 constaté) : recommandé, mais cela modifie le comportement de rapports existants.
-2. `unloading` et `import_intention` sont traités comme dépenses générales (comme le sélecteur actuel) ; `transport` (catégorie retirée) est traité comme frais de trajet.
-3. Le rapport « Créances clients générales » inclut les clients sans facture mais avec un paiement ; `customer-outstanding` ne les inclut pas.
-4. Les brouillons de facture comptent dans les créances, comme dans `get_customer_outstanding`.
+1. Drapeau `periodless` et double protection sur les quatre rapports existants (§Périodes).
+2. `unloading` et `import_intention` restent des dépenses générales ; l'ancienne catégorie `transport` est traitée comme frais de trajet.
+3. Le rapport « Créances clients générales » inclut les clients qui ont un crédit sans facture ; `customer-outstanding` ne les inclut pas (les totaux ne diffèrent que dans ce cas).
+4. Les brouillons de facture comptent dans les créances, comme dans `PaymentAllocationService.get_customer_outstanding`.
