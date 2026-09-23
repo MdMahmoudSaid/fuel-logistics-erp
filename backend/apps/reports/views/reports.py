@@ -10,10 +10,12 @@ from rest_framework.response import Response
 from apps.accounts.permissions import HasModulePermission
 from apps.reports.date_range import resolve_date_range
 from apps.reports.export import rows_to_csv, rows_to_xlsx
+from apps.reports.queries.capital_report import CapitalReportQuery
 from apps.reports.queries.customer_outstanding_report import CustomerOutstandingReportQuery
 from apps.reports.queries.customer_statement import CustomerStatementQuery
 from apps.reports.queries.expense_report import ExpenseReportQuery
 from apps.reports.queries.fuel_stock_report import FuelStockReportQuery
+from apps.reports.queries.general_expense_report import GeneralExpenseReportQuery
 from apps.reports.queries.loss_report import LossReportQuery
 from apps.reports.queries.margin_report import MarginReportQuery
 from apps.reports.queries.purchase_report import PurchaseReportQuery
@@ -52,6 +54,8 @@ REPORT_REGISTRY = {
     "bank-statement": TreasuryStatementQuery,
     "cash-statement": TreasuryStatementQuery,
     "shareholder-statement": ShareholderStatementQuery,
+    "capital-report": CapitalReportQuery,
+    "general-expense-report": GeneralExpenseReportQuery,
 }
 
 _EXPORT_CONTENT_TYPES = {

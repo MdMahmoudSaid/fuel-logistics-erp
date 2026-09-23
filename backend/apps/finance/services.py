@@ -12,7 +12,7 @@ from decimal import ROUND_DOWN, Decimal, InvalidOperation
 
 from django.contrib.contenttypes.models import ContentType
 from django.db import connection, transaction
-from django.db.models import F, Sum
+from django.db.models import F, Q, Sum
 from django.utils import timezone
 
 from apps.documents.models import Document
@@ -1477,6 +1477,28 @@ class ControlledDebtPaymentService:
             "status": "PARTIALLY_PAID" if paid > ZERO else "UNPAID",
             "lines": lines,
         }
+
+    @classmethod
+    def describe_expense_settlement(cls, expense) -> dict:
+        """total / paid / remaining of ONE expense for the general-expense
+        report. Total = describe_expense()'s (sum of allocations, else the
+        raw amount - never a per-litre rate). Paid: customer-paid directly =
+        the whole total (no TreasuryTransaction exists for it); otherwise
+        the NET of the expense's treasury payments (MONEY_OUT - MONEY_IN).
+        describe_expense() itself stays untouched (payment screens)."""
+        total = cls.describe_expense(expense)["total_amount"]
+        if expense.paid_by_customer_directly:
+            paid = total
+        else:
+            moves = TreasuryTransaction.objects.filter(
+                source_content_type=ContentType.objects.get_for_model(Expense),
+                source_object_id=expense.id,
+            ).aggregate(
+                out=Sum("amount", filter=Q(type=TreasuryTransaction.Type.MONEY_OUT)),
+                back=Sum("amount", filter=Q(type=TreasuryTransaction.Type.MONEY_IN)),
+            )
+            paid = (moves["out"] or ZERO) - (moves["back"] or ZERO)
+        return {"total_amount": total, "paid_amount": paid, "remaining_amount": total - paid}
 
     @classmethod
     def describe_expense(cls, expense) -> dict:

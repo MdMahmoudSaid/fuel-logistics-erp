@@ -192,6 +192,34 @@ def _expense_summary(slug, rows, context):
     ]
 
 
+def _capital_summary(slug, rows, context):
+    holders = [r for r in rows if r.get("section") == "shareholder"]
+    contributions = [r for r in rows if r.get("section") == "contribution"]
+    return [
+        _line("opening_contributions_total", _sum(holders, "opening_contribution"), "money"),
+        _line("later_contributions_total", _sum(holders, "later_contributions"), "money"),
+        _line("total_capital", _sum(holders, "gross_capital"), "money", True),
+        _line("period_contributions_total", _sum(contributions, "amount"), "money"),
+        _line("contributions_count", len(contributions), "count"),
+    ]
+
+
+def _general_expense_summary(slug, rows, context):
+    detail = [r for r in rows if r.get("section") == "expense"]
+    kept = [r for r in detail if r.get("status") != CANCELLED]
+    by_status = lambda status: sum(1 for r in kept if r["status"] == status)  # noqa: E731
+    return [
+        _line("expenses_count", len(kept), "count"),
+        _line("total_amount", _sum(kept, "total_amount"), "money"),
+        _line("paid_total", _sum(kept, "paid_amount"), "money"),
+        _line("remaining_total", _sum(kept, "remaining_amount"), "money", True),
+        _line("unpaid_count", by_status("UNPAID"), "count"),
+        _line("partially_paid_count", by_status("PARTIALLY_PAID"), "count"),
+        _line("paid_count", by_status("PAID"), "count"),
+        _line("cancelled_excluded", len(detail) - len(kept), "count"),
+    ]
+
+
 def _outstanding_summary(count_key):
     def summarize(slug, rows, context):
         return [
@@ -316,6 +344,41 @@ REPORT_SPECS = {
                     ("calculation_method", "enum", "expenseCalcMethod"),
                     ("status", "status", "expenseStatus"))),),
         _expense_summary,
+    ),
+    "capital-report": ReportSpec(
+        "portrait",
+        (
+            TableSpec(
+                (("shareholder", "text"), ("participation_percent", "percent"),
+                 ("opening_contribution", "money"), ("later_contributions", "money"),
+                 ("gross_capital", "money"), ("capital_percent", "percent")),
+                section="shareholder",
+            ),
+            TableSpec(
+                (("date", "date"), ("shareholder", "text"), ("amount", "money"),
+                 ("account", "text"), ("reference", "ref"), ("notes", "text")),
+                section="contribution",
+            ),
+        ),
+        _capital_summary,
+    ),
+    "general-expense-report": ReportSpec(
+        "landscape",
+        (
+            TableSpec(
+                (("date", "date"), ("category", "enum", "expenseCategory"), ("notes", "text"),
+                 ("calculation_method", "enum", "expenseCalcMethod"), ("total_amount", "money"),
+                 ("paid_amount", "money"), ("remaining_amount", "money"),
+                 ("status", "status", "expenseStatus")),
+                section="expense",
+            ),
+            TableSpec(
+                (("category", "enum", "expenseCategory"), ("count", "text"), ("total_amount", "money"),
+                 ("paid_amount", "money"), ("remaining_amount", "money")),
+                section="category_total",
+            ),
+        ),
+        _general_expense_summary,
     ),
     "customer-outstanding": ReportSpec(
         "portrait", (TableSpec((("customer", "text"), ("outstanding", "money"))),),

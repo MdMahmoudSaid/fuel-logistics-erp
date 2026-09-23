@@ -30,7 +30,11 @@ D = Decimal
 ARABIC = re.compile("[؀-ۿ]")
 TODAY = date(2026, 9, 23)
 
-LANDSCAPE = {"trip-report", "purchase-report", "sales-report", "loss-report", "margin-report"}
+LANDSCAPE = {
+    "trip-report", "purchase-report", "sales-report", "loss-report", "margin-report",
+    "general-expense-report", "trip-fee-debt-report", "general-debt-report",
+    "general-receivable-report",
+}
 ENTITY_PARAM = {
     "customer-statement": "customer_id",
     "supplier-statement": "supplier_id",
@@ -62,9 +66,10 @@ def all_fields(document):
 # ---------------------------------------------------------------------------
 
 
-def test_registry_and_specs_cover_the_same_17_reports():
+def test_registry_and_specs_cover_the_same_reports():
+    # The 22-slug cross-check with the frontend selector lives in
+    # test_report_slug_completeness.py.
     assert set(REPORT_SPECS) == set(REPORT_REGISTRY)
-    assert len(REPORT_SPECS) == 17
 
 
 @pytest.mark.parametrize("slug", sorted(REPORT_REGISTRY))

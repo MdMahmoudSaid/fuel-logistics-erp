@@ -28,6 +28,8 @@ TITLES = {
     "bank-statement": ("Relevé bancaire", "Bank statement", "كشف الحساب البنكي"),
     "cash-statement": ("Relevé de caisse", "Cash statement", "كشف حساب الصندوق"),
     "shareholder-statement": ("Relevé actionnaire", "Shareholder statement", "كشف حساب المساهم"),
+    "capital-report": ("Rapport de capital", "Capital report", "تقرير رأس المال"),
+    "general-expense-report": ("Rapport des dépenses générales", "General expense report", "تقرير المصروفات العامة"),
 }
 
 FIELDS = {
@@ -91,12 +93,28 @@ FIELDS = {
     "unit_profit": ("Profit unitaire", "Unit profit", "ربح الوحدة"),
     # Per-report overrides (field.<slug>.<name>)
     "margin-report.quantity": ("Qté", "Qty", "الكمية"),
+    # Per-report overrides (field.<slug>.<name>) and the general-report columns
+    "shareholder": ("Actionnaire", "Shareholder", "المساهم"),
+    "participation_percent": ("% de participation", "Profit share %", "نسبة المشاركة في الأرباح"),
+    "opening_contribution": ("Apport initial", "Opening contribution", "المساهمة الأولية"),
+    "later_contributions": ("Apports ultérieurs", "Later contributions", "المساهمات اللاحقة"),
+    "gross_capital": ("Capital brut", "Gross capital", "رأس المال الإجمالي"),
+    "capital_percent": ("% du capital", "Share of capital %", "نسبة رأس المال"),
+    "account": ("Compte", "Account", "الحساب"),
+    "paid_amount": ("Payé", "Paid", "المدفوع"),
+    "remaining_amount": ("Reste", "Remaining", "المتبقي"),
+    "count": ("Nombre", "Count", "العدد"),
+    "general-expense-report.total_amount": ("Montant total", "Total amount", "المبلغ الإجمالي"),
 }
 
 TABLE_TITLES = {
     "margin-report.1": ("Quantités et prix", "Quantities and prices", "الكميات والأسعار"),
     "margin-report.2": ("Coûts", "Costs", "التكاليف"),
     "margin-report.3": ("Pertes et marge", "Losses and margin", "الفاقد والهامش"),
+    "capital-report.1": ("Capital par actionnaire", "Capital by shareholder", "رأس المال حسب المساهم"),
+    "capital-report.2": ("Apports de la période", "Contributions in the period", "مساهمات الفترة"),
+    "general-expense-report.1": ("Dépenses", "Expenses", "المصروفات"),
+    "general-expense-report.2": ("Récapitulatif par catégorie", "Summary by category", "ملخص حسب الفئة"),
 }
 
 SUMMARY = {
@@ -136,6 +154,16 @@ SUMMARY = {
     "total_invoiced": ("Quantité facturée totale", "Total invoiced quantity", "إجمالي الكمية المفوترة"),
     "total_real_cost": ("Coût réel total", "Total real cost", "التكلفة الفعلية الإجمالية"),
     "cancelled_excluded": ("Annulés exclus", "Cancelled excluded", "الملغاة المستبعدة"),
+    "opening_contributions_total": ("Total apports initiaux", "Total opening contributions", "إجمالي المساهمات الأولية"),
+    "later_contributions_total": ("Total apports ultérieurs", "Total later contributions", "إجمالي المساهمات اللاحقة"),
+    "total_capital": ("Capital total", "Total capital", "رأس المال الإجمالي"),
+    "period_contributions_total": ("Apports de la période", "Contributions in the period", "مساهمات الفترة"),
+    "contributions_count": ("Nombre d'apports", "Number of contributions", "عدد المساهمات"),
+    "paid_total": ("Total payé", "Total paid", "إجمالي المدفوع"),
+    "remaining_total": ("Reste à payer", "Remaining to pay", "المتبقي للدفع"),
+    "unpaid_count": ("Dépenses non payées", "Unpaid expenses", "مصروفات غير مدفوعة"),
+    "partially_paid_count": ("Dépenses partiellement payées", "Partially paid expenses", "مصروفات مدفوعة جزئيًا"),
+    "paid_count": ("Dépenses payées", "Paid expenses", "مصروفات مدفوعة"),
 }
 
 ENTITY = {
