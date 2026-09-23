@@ -8,7 +8,7 @@ from rest_framework.response import Response
 
 from apps.accounts.permissions import HasModulePermission
 from apps.reports.date_range import resolve_date_range
-from apps.reports.export import rows_to_csv, rows_to_pdf, rows_to_xlsx
+from apps.reports.export import rows_to_csv, rows_to_xlsx
 from apps.reports.queries.customer_outstanding_report import CustomerOutstandingReportQuery
 from apps.reports.queries.customer_statement import CustomerStatementQuery
 from apps.reports.queries.expense_report import ExpenseReportQuery
@@ -27,6 +27,7 @@ from apps.reports.queries.trip_report import TripReportQuery
 from apps.reports.queries.truck_history import TruckHistoryQuery
 from apps.reports.serialization import decimals_to_str
 from apps.reports.services.report_document import build_report_document
+from apps.reports.services.report_pdf import render_report_pdf
 
 # The 16 V1 report types from ERP_Specification.md Section 37. Bank
 # statement/cash statement are one TreasuryStatementQuery implementation
@@ -113,18 +114,22 @@ class ReportViewSet(viewsets.ViewSet):
 
         export_format = request.query_params.get("export")
         if export_format:
-            return self._export(pk, query_class, rows, export_format, request.user)
+            return self._export(pk, query_class, rows, export_format, request, params)
 
         payload = {"report_type": pk, "fields": query_class.FIELDS, "rows": rows}
         if request.query_params.get("document") in ("1", "true"):
-            payload["document"] = build_report_document(
-                pk,
-                rows,
-                params,
-                request.query_params.get("lang", "fr"),
-                statement_context=self._statement_context(query_class, params),
-            )
+            payload["document"] = self._document(pk, query_class, rows, params, request)
         return Response(decimals_to_str(payload))
+
+    @classmethod
+    def _document(cls, report_type, query_class, rows, params, request):
+        return build_report_document(
+            report_type,
+            rows,
+            params,
+            request.query_params.get("lang", "fr"),
+            statement_context=cls._statement_context(query_class, params),
+        )
 
     @staticmethod
     def _statement_context(query_class, params):
@@ -136,8 +141,8 @@ class ReportViewSet(viewsets.ViewSet):
             return {"opening_balance": query_class.opening_balance(**params)}
         return None
 
-    def _export(self, report_type, query_class, rows, export_format, user):
-        if not _user_can_export(user):
+    def _export(self, report_type, query_class, rows, export_format, request, params):
+        if not _user_can_export(request.user):
             raise PermissionDenied("Export non autorise pour ce role.")
         if export_format not in _EXPORT_CONTENT_TYPES:
             raise NotFound(f"Format d'export inconnu : '{export_format}'.")
@@ -147,7 +152,8 @@ class ReportViewSet(viewsets.ViewSet):
         elif export_format == "xlsx":
             content = rows_to_xlsx(query_class.FIELDS, rows)
         else:
-            content = rows_to_pdf(query_class.FIELDS, rows, title=report_type)
+            document = self._document(report_type, query_class, rows, params, request)
+            content = render_report_pdf(document, rows)
         response = HttpResponse(content, content_type=_EXPORT_CONTENT_TYPES[export_format])
         response["Content-Disposition"] = f'attachment; filename="{report_type}.{export_format}"'
         return response

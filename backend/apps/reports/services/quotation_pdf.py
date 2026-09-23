@@ -20,7 +20,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from apps.reports.services.ledger_pdf import DEFAULT_COMPANY_NAME
+from apps.reports.services.pdf_template import DEFAULT_COMPANY_NAME
 
 _LOGO_PATH = Path(__file__).resolve().parent.parent / "assets" / "azur-energie-icon.png"
 

@@ -9,7 +9,6 @@ from decimal import Decimal
 
 import pytest
 
-from apps.customers.models import Customer
 from apps.finance.models import (
     BankAccount,
     CashAccount,
@@ -25,8 +24,6 @@ from apps.reports.services.report_document import (
 from apps.reports.services.report_labels import LABELS
 from apps.reports.test_queries import _make_admin, _make_full_trip
 from apps.reports.views.reports import REPORT_REGISTRY
-from apps.suppliers.models import Supplier
-from apps.transport.models import Transporter
 from apps.trips.models import Trip
 
 D = Decimal

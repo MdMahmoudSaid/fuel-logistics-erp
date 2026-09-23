@@ -30,8 +30,6 @@
 import datetime
 import io
 from decimal import ROUND_HALF_UP, Decimal
-from pathlib import Path
-from xml.sax.saxutils import escape as xml_escape
 
 from django.utils import timezone
 from reportlab.lib import colors
@@ -39,7 +37,9 @@ from reportlab.lib.enums import TA_RIGHT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+from apps.reports.services.pdf_template import DEFAULT_COMPANY_NAME, masthead, safe_text
 
 # No per-tenant "company name" setting exists anywhere in this codebase
 # (grepped models/settings/frontend branding) - a fixed constant is used
@@ -47,7 +47,8 @@ from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Tabl
 # elsewhere (frontend/index.html <title>).
 # Rebrand (2026-09-05): AZUR ÉNERGIE, no "ERP" suffix on PDFs specifically
 # (kept only in the browser title / API schema title).
-DEFAULT_COMPANY_NAME = "AZUR ÉNERGIE"
+# DEFAULT_COMPANY_NAME now lives in pdf_template (re-exported here: the 3 party-ledger
+# views import it from this module).
 
 # Client feedback (2026-09-06): the 3 party ledgers (Grand livre fournisseur/
 # transporteur/client) and their per-payment PDFs looked "mal structuree" -
@@ -55,7 +56,6 @@ DEFAULT_COMPANY_NAME = "AZUR ÉNERGIE"
 # already-approved apps.reports.services.profit_pdf ("Benefices" PDF, same
 # client request). Same logo asset profit_pdf.py already uses, reused here
 # rather than duplicated as a second file.
-_LOGO_PATH = Path(__file__).resolve().parent.parent / "assets" / "azur-energie-icon.png"
 
 LEDGER_PDF_LABELS = {
     "fr": {
@@ -494,24 +494,9 @@ def _format_field_value(key: str, value, lang: str = "fr") -> str:
     return _stringify(value, lang)
 
 
-def _safe_paragraph_text(value) -> str:
-    """Escape free-text before it reaches a reportlab Paragraph.
-
-    Security fix (2026-09-06): Paragraph parses a mini-XML/HTML markup
-    language, including <img src="..."> tags that reportlab resolves as a
-    real file/URL fetch at render time (SSRF/LFI), plus arbitrary
-    formatting/link injection and outright parse crashes on an unbalanced
-    "<" or "&" - the same class of bug already fixed for quotation notes
-    (apps.reports.services.quotation_pdf). A customer/supplier/transporter
-    name is free text an operator types into a form (e.g. "Ets Diallo &
-    Freres", or a name with a stray "<") and must never be trusted here:
-    a value going into a plain Table cell (a bare str) is never markup-
-    parsed by reportlab and needs no escaping, but every value wrapped in
-    a Paragraph must be escaped first via this helper - including the
-    Paragraph-based table cells _section_table/_label_value_pdf build
-    below (2026-09-06 restructure), not just the free-standing headings.
-    """
-    return xml_escape(str(value)) if value is not None else ""
+# Kept under its historical name: the docstring/rationale now lives in
+# pdf_template.safe_text.
+_safe_paragraph_text = safe_text
 
 
 def _translate_key(key: str, lang: str) -> str:
@@ -553,20 +538,9 @@ def _cell_style(lang: str, *, header: bool = False, numeric: bool = False) -> Pa
 
 
 def _pdf_masthead(*, company_name: str, doc_title: str, styles, heading_style) -> list:
-    """Logo + company name + document-title heading, shared by every PDF
-    this module renders (2026-09-06 restructure, client feedback: the 3
-    party ledgers and their per-payment PDFs had no logo/company name and
-    read as a bare data dump, unlike the already-approved "Benefices" PDF -
-    apps.reports.services.profit_pdf.render_profit_report_pdf - which this
-    mirrors). A missing logo file never blocks the export (same
-    `.exists()` guard profit_pdf uses)."""
-    elements: list = []
-    if _LOGO_PATH.exists():
-        elements.append(Image(str(_LOGO_PATH), width=18 * mm, height=18 * mm))
-        elements.append(Spacer(1, 3 * mm))
-    elements.append(Paragraph(_safe_paragraph_text(company_name), styles["Title"]))
-    elements.append(Paragraph(_safe_paragraph_text(doc_title), heading_style))
-    return elements
+    """Logo + company name + document-title heading, shared by every PDF this
+    module renders - see pdf_template.masthead."""
+    return masthead(company_name=company_name, doc_title=doc_title, styles=styles, heading_style=heading_style)
 
 
 _PAGE_CONTENT_WIDTH = A4[0] - 30 * mm

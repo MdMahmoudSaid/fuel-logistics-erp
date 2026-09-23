@@ -16,7 +16,7 @@ from decimal import Decimal
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 
-from apps.reports.services.ledger_pdf import DEFAULT_COMPANY_NAME
+from apps.reports.services.pdf_template import DEFAULT_COMPANY_NAME
 from apps.reports.services.report_labels import LABELS
 
 ZERO = Decimal("0.00")
