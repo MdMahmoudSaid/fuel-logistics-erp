@@ -648,13 +648,14 @@ def test_cession_letter_next_reference_endpoint():
 
 
 # ---------------------------------------------------------------------------
-# docs/superpowers/plans/2026-09-01-supplier-transporter-advances.md, final
-# review: financial fields must be frozen once a SupplierOrder is CONFIRMED,
-# so an edit can never silently desync total_amount from what an
-# AdvanceConsumption has already consumed against it. The only way to
-# change the amount is the explicit cancellation workflow (PATCH
-# status=CANCELLED, which reverses any advance consumption), not an
-# in-place edit of a confirmed order's quantity/price/costs.
+# Amending a CONFIRMED SupplierOrder (client request 2026-09-24): quantity,
+# unit price and optional costs used to be frozen (the only way out was
+# cancelling the order, which orphaned every trip already loaded on it).
+# They can now be corrected in place, provided a written reason is given
+# (kept on the audit trail) and the change can't strand what already
+# depends on the order: litres already loaded on trips, active cession
+# letters, and cash already paid to the supplier. Advance consumption is
+# recomputed against the new total.
 # ---------------------------------------------------------------------------
 
 
@@ -680,32 +681,227 @@ def _confirmed_order(suffix):
     return client, order
 
 
+def _patch(client, order, **payload):
+    return client.patch(f"/api/supplier-orders/{order.id}/", payload, format="json")
+
+
+def _admin_of(order):
+    return order.created_by
+
+
+def _cession(order, quantity, suffix):
+    return CessionLetter.objects.create(
+        reference=f"CL-{suffix}", supplier_order=order,
+        authorized_quantity=Decimal(quantity), issue_date="2026-08-18",
+        created_by=order.created_by,
+    )
+
+
+def _pay(order, amount, suffix):
+    from apps.finance.models import CashAccount
+
+    cash = CashAccount.objects.create(name=f"Cash {suffix}")
+    return SupplierPayment.objects.create(
+        supplier=order.supplier, supplier_order=order, amount=Decimal(amount),
+        payment_date="2026-08-19", method=SupplierPayment.Method.CASH,
+        cash_account=cash, recorded_by=order.created_by,
+    )
+
+
+def _advance(order, amount, suffix):
+    from apps.finance.models import CashAccount, SupplierAdvance
+
+    cash = CashAccount.objects.create(name=f"AdvCash {suffix}")
+    return SupplierAdvance.objects.create(
+        supplier=order.supplier, amount=Decimal(amount), date="2026-08-10",
+        cash_account=cash, recorded_by=order.created_by,
+    )
+
+
 @pytest.mark.django_db
-def test_confirmed_order_rejects_quantity_change():
-    client, order = _confirmed_order("LOCK-QTY")
-    response = client.patch(f"/api/supplier-orders/{order.id}/", {"quantity_litres": "2000.00"})
+def test_confirmed_order_quantity_change_requires_a_reason():
+    client, order = _confirmed_order("AMD-NOREASON")
+    response = _patch(client, order, quantity_litres="2000.00")
     assert response.status_code == 400
-    assert "quantity_litres" in response.data
+    assert "reason" in response.data
     order.refresh_from_db()
     assert order.quantity_litres == Decimal("1000.00")
 
 
 @pytest.mark.django_db
-def test_confirmed_order_rejects_unit_price_change():
-    client, order = _confirmed_order("LOCK-PRICE")
-    response = client.patch(f"/api/supplier-orders/{order.id}/", {"unit_price": "700.0000"})
+def test_confirmed_order_blank_reason_is_rejected():
+    client, order = _confirmed_order("AMD-BLANK")
+    response = _patch(client, order, quantity_litres="2000.00", reason="   ")
     assert response.status_code == 400
-    assert "unit_price" in response.data
-    order.refresh_from_db()
-    assert order.unit_price == Decimal("600.0000")
+    assert "reason" in response.data
 
 
 @pytest.mark.django_db
-def test_confirmed_order_rejects_optional_costs_change():
-    client, order = _confirmed_order("LOCK-COSTS")
-    response = client.patch(f"/api/supplier-orders/{order.id}/", {"optional_costs": "10000.00"})
+def test_confirmed_order_quantity_can_be_amended_with_a_reason():
+    client, order = _confirmed_order("AMD-QTY")
+    response = _patch(client, order, quantity_litres="2000.00", reason="Erreur de saisie")
+    assert response.status_code == 200, response.data
+    order.refresh_from_db()
+    assert order.quantity_litres == Decimal("2000.00")
+    assert order.total_amount == Decimal("1200000.00")
+
+
+@pytest.mark.django_db
+def test_confirmed_order_unit_price_and_optional_costs_can_be_amended():
+    client, order = _confirmed_order("AMD-PRICE")
+    response = _patch(
+        client, order, unit_price="700.0000", optional_costs="10000.00", reason="Prix corrige"
+    )
+    assert response.status_code == 200, response.data
+    order.refresh_from_db()
+    assert order.unit_price == Decimal("700.0000")
+    assert order.total_amount == Decimal("710000.00")
+
+
+@pytest.mark.django_db
+def test_amendment_reason_is_stored_on_the_audit_log():
+    from apps.audit.models import AuditLog
+
+    client, order = _confirmed_order("AMD-AUDIT")
+    _patch(client, order, quantity_litres="2000.00", reason="Erreur de saisie")
+    log = AuditLog.objects.filter(
+        content_type=ContentType.objects.get_for_model(SupplierOrder),
+        object_id=order.id,
+        action=AuditLog.Action.UPDATE,
+    ).latest("id")
+    assert log.reason == "Erreur de saisie"
+    assert log.previous_value["quantity_litres"] == "1000.00"
+    assert log.new_value["quantity_litres"] == "2000.00"
+
+
+@pytest.mark.django_db
+def test_amendment_with_loaded_trips_and_higher_quantity_is_allowed():
+    client, order = _confirmed_order("AMD-LOADED")
+    cession = _cession(order, "800.00", "AMD-LOADED")
+    _load_trip(
+        supplier_order=order, cession=cession, quantity=Decimal("500.00"),
+        suffix="AMD-LOADED", admin_user=order.created_by,
+    )
+    response = _patch(client, order, quantity_litres="1500.00", reason="Erreur de saisie")
+    assert response.status_code == 200, response.data
+    order.refresh_from_db()
+    assert SupplierStockService.get_purchase_reliquat(order) == Decimal("1000.00")
+
+
+@pytest.mark.django_db
+def test_amendment_below_loaded_quantity_is_rejected_with_the_minimum():
+    client, order = _confirmed_order("AMD-BELOWLOAD")
+    cession = _cession(order, "800.00", "AMD-BELOWLOAD")
+    _load_trip(
+        supplier_order=order, cession=cession, quantity=Decimal("500.00"),
+        suffix="AMD-BELOWLOAD", admin_user=order.created_by,
+    )
+    response = _patch(client, order, quantity_litres="400.00", reason="Erreur de saisie")
     assert response.status_code == 400
-    assert "optional_costs" in response.data
+    assert "quantity_litres" in response.data
+    assert "500" in str(response.data["quantity_litres"])
+    order.refresh_from_db()
+    assert order.quantity_litres == Decimal("1000.00")
+
+
+@pytest.mark.django_db
+def test_amendment_ignores_cancelled_trips_when_computing_the_minimum():
+    client, order = _confirmed_order("AMD-CANCELTRIP")
+    cession = _cession(order, "800.00", "AMD-CANCELTRIP")
+    trip = _load_trip(
+        supplier_order=order, cession=cession, quantity=Decimal("500.00"),
+        suffix="AMD-CANCELTRIP", admin_user=order.created_by,
+    )
+    trip.status = Trip.Status.CANCELLED
+    trip.save(update_fields=["status"])
+    cession.status = CessionLetter.Status.CANCELLED
+    cession.save()
+    response = _patch(client, order, quantity_litres="400.00", reason="Erreur de saisie")
+    assert response.status_code == 200, response.data
+
+
+@pytest.mark.django_db
+def test_amendment_below_active_cessions_is_rejected_with_the_minimum():
+    client, order = _confirmed_order("AMD-BELOWCES")
+    _cession(order, "800.00", "AMD-BELOWCES")
+    response = _patch(client, order, quantity_litres="700.00", reason="Erreur de saisie")
+    assert response.status_code == 400
+    assert "quantity_litres" in response.data
+    assert "800" in str(response.data["quantity_litres"])
+
+
+@pytest.mark.django_db
+def test_amendment_below_cash_already_paid_is_rejected():
+    client, order = _confirmed_order("AMD-BELOWPAID")
+    _pay(order, "500000.00", "AMD-BELOWPAID")
+    # 1000 L x 600 = 600 000; cutting to 500 L => 300 000 < 500 000 already paid.
+    response = _patch(client, order, quantity_litres="500.00", reason="Erreur de saisie")
+    assert response.status_code == 400
+    assert "quantity_litres" in response.data
+    assert "500" in str(response.data["quantity_litres"])
+
+
+@pytest.mark.django_db
+def test_amendment_down_to_exactly_the_amount_paid_is_allowed():
+    client, order = _confirmed_order("AMD-EXACTPAID")
+    _pay(order, "300000.00", "AMD-EXACTPAID")
+    response = _patch(client, order, quantity_litres="500.00", reason="Erreur de saisie")
+    assert response.status_code == 200, response.data
+
+
+@pytest.mark.django_db
+def test_reversed_payments_do_not_block_an_amendment():
+    client, order = _confirmed_order("AMD-REVPAID")
+    payment = _pay(order, "500000.00", "AMD-REVPAID")
+    payment.is_reversed = True
+    payment.save()
+    response = _patch(client, order, quantity_litres="500.00", reason="Erreur de saisie")
+    assert response.status_code == 200, response.data
+
+
+@pytest.mark.django_db
+def test_amendment_decrease_releases_the_excess_advance_consumption():
+    from apps.finance.services import AdvanceConsumptionService
+
+    admin_role = Role.objects.get(name=Role.NAME_ADMIN)
+    admin_user = User.objects.create_user(phone="+2220000777", pin="1234", role=admin_role)
+    supplier = Supplier.objects.create(name="Adv Supplier", country="Senegal")
+    order = SupplierOrder.objects.create(
+        reference="SO-AMD-ADV", supplier=supplier, product=Product.objects.get(code="gasoil"),
+        purchase_date="2026-08-18", quantity_litres=Decimal("1000.00"),
+        unit_price=Decimal("600.0000"), status=SupplierOrder.Status.DRAFT,
+        created_by=admin_user,
+    )
+    advance = _advance(order, "900000.00", "AMD-ADV")
+    order.status = SupplierOrder.Status.CONFIRMED
+    order.save()
+    assert AdvanceConsumptionService.get_consumed_amount(order) == Decimal("600000.00")
+    assert advance.remaining_amount == Decimal("300000.00")
+
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    response = _patch(client, order, quantity_litres="500.00", reason="Erreur de saisie")
+    assert response.status_code == 200, response.data
+    order.refresh_from_db()
+    # New total 300 000 => consumption trimmed to 300 000, the rest is back.
+    assert AdvanceConsumptionService.get_consumed_amount(order) == Decimal("300000.00")
+    assert advance.remaining_amount == Decimal("600000.00")
+
+
+@pytest.mark.django_db
+def test_amendment_increase_does_not_double_cover_what_was_already_paid_in_cash():
+    from apps.finance.services import AdvanceConsumptionService
+
+    client, order = _confirmed_order("AMD-NODOUBLE")
+    _pay(order, "600000.00", "AMD-NODOUBLE")
+    advance = _advance(order, "900000.00", "AMD-NODOUBLE")
+    # Order is fully paid in cash: no advance was (or should be) consumed.
+    response = _patch(client, order, quantity_litres="1500.00", reason="Erreur de saisie")
+    assert response.status_code == 200, response.data
+    order.refresh_from_db()
+    # New total 900 000; 600 000 paid in cash; only the 300 000 delta is covered.
+    assert AdvanceConsumptionService.get_consumed_amount(order) == Decimal("300000.00")
+    assert advance.remaining_amount == Decimal("600000.00")
 
 
 @pytest.mark.django_db

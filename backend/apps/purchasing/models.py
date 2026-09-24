@@ -64,11 +64,18 @@ class SupplierOrder(AuditableModel, TimeStampedModel):
     def is_locked_for_deletion(self) -> bool:
         return self.status != self.Status.DRAFT
 
+    @staticmethod
+    def compute_total(quantity_litres, unit_price, optional_costs) -> Decimal:
+        """The one formula behind total_amount, shared with the serializer's
+        amendment guard so a proposed edit is checked against exactly the
+        total save() would store."""
+        total = (quantity_litres * unit_price) + (optional_costs or Decimal("0.00"))
+        return total.quantize(Decimal("0.01"))
+
     def save(self, *args, **kwargs):
-        total = (self.quantity_litres * self.unit_price) + (
-            self.optional_costs or Decimal("0.00")
+        self.total_amount = self.compute_total(
+            self.quantity_litres, self.unit_price, self.optional_costs
         )
-        self.total_amount = total.quantize(Decimal("0.01"))
 
         previous_status = None
         if self.pk:

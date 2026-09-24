@@ -35,6 +35,28 @@ const form = ref({
   status: 'DRAFT' as SupplierOrderStatus,
 })
 
+// A CONFIRMED order's quantity / price / costs can be corrected in place, but
+// only with a written reason (kept on the audit trail) - see the backend's
+// SupplierOrderAmendmentService for the limits it enforces.
+const amendReason = ref('')
+
+const isConfirmedEdit = computed(() => !isNew.value && order.value?.status === 'CONFIRMED')
+
+const financialFieldsChanged = computed(() => {
+  const current = order.value
+  if (!isConfirmedEdit.value || !current) return false
+  return (
+    toAmount(form.value.quantity_litres) !== toAmount(current.quantity_litres) ||
+    toAmount(form.value.unit_price) !== toAmount(current.unit_price) ||
+    toAmount(form.value.optional_costs) !== toAmount(current.optional_costs ?? '')
+  )
+})
+
+const loadedMinimum = computed(() => {
+  const loaded = toAmount(order.value?.loaded_quantity ?? '')
+  return isConfirmedEdit.value && loaded > 0 ? loaded : null
+})
+
 const saving = ref(false)
 const error = ref('')
 const fieldErrors = ref<Record<string, string>>({})
@@ -108,6 +130,7 @@ async function onSubmit() {
     optional_costs: form.value.optional_costs || null,
     notes: form.value.notes,
     status: form.value.status,
+    ...(financialFieldsChanged.value ? { reason: amendReason.value } : {}),
   }
   try {
     if (isNew.value) {
@@ -120,6 +143,7 @@ async function onSubmit() {
       router.replace({ name: 'supplier-order-detail', params: { id: created.id } })
     } else {
       order.value = await supplierOrderResource.update(orderId.value!, payload)
+      amendReason.value = ''
     }
   } catch (e) {
     const response = (e as { response?: { status?: number; data?: Record<string, unknown> } })
@@ -311,6 +335,16 @@ function goToNewCession() {
         <p v-if="fieldErrors.currency" class="text-critique text-xs">{{ fieldErrors.currency }}</p>
       </div>
 
+      <p
+        v-if="loadedMinimum !== null"
+        data-testid="amend-minimum-notice"
+        class="bg-sable border-ligne text-texte-2 rounded-lg border px-3.5 py-2.5 text-sm md:col-span-2"
+      >
+        {{
+          t('purchasing.orderForm.amendMinimumNotice', { quantity: formatQuantity(loadedMinimum) })
+        }}
+      </p>
+
       <div class="space-y-1.5">
         <label class="text-texte-2 text-sm font-medium" for="quantity_litres">{{
           t('purchasing.orderForm.quantity')
@@ -385,6 +419,22 @@ function goToNewCession() {
         >
           {{ formatQuantity(displayedReliquat) }}
         </p>
+      </div>
+
+      <div v-if="financialFieldsChanged" class="md:col-span-2 space-y-1.5">
+        <label class="text-texte-2 text-sm font-medium" for="amend_reason">{{
+          t('purchasing.orderForm.amendReason')
+        }}</label>
+        <textarea
+          id="amend_reason"
+          v-model="amendReason"
+          rows="2"
+          required
+          :placeholder="t('purchasing.orderForm.amendReasonPlaceholder')"
+          class="border-ligne-forte w-full rounded-lg border bg-white px-3.5 py-2.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+        />
+        <p class="text-texte-3 text-xs">{{ t('purchasing.orderForm.amendReasonHint') }}</p>
+        <p v-if="fieldErrors.reason" class="text-critique text-xs">{{ fieldErrors.reason }}</p>
       </div>
 
       <div class="md:col-span-2 space-y-1.5">

@@ -5,7 +5,7 @@ from apps.accounts.serializers import UserSerializer
 from apps.core.serializers import ProductSerializer
 from apps.documents.serializers import DocumentSerializer
 from apps.purchasing.models import CessionLetter, SupplierOrder
-from apps.purchasing.services import SupplierStockService
+from apps.purchasing.services import SupplierOrderAmendmentService, SupplierStockService
 from apps.suppliers.serializers import SupplierSerializer
 
 
@@ -74,6 +74,9 @@ class SupplierOrderSerializer(serializers.ModelSerializer):
     created_by_detail = UserSerializer(source="created_by", read_only=True)
     documents = DocumentSerializer(many=True, read_only=True)
     cessions = CessionLetterSerializer(many=True, read_only=True)
+    # Write-only: why a CONFIRMED order's amount is being amended. Never a
+    # model column - it goes to the audit trail (see update()).
+    reason = serializers.CharField(write_only=True, required=False, allow_blank=True)
 
     class Meta:
         model = SupplierOrder
@@ -98,6 +101,7 @@ class SupplierOrderSerializer(serializers.ModelSerializer):
             "loaded_quantity",
             "documents",
             "cessions",
+            "reason",
             "created_at",
             "updated_at",
         ]
@@ -111,27 +115,57 @@ class SupplierOrderSerializer(serializers.ModelSerializer):
         ]
 
     # Fields whose values determine total_amount, and therefore what an
-    # AdvanceConsumption row was computed against - frozen once the order is
-    # CONFIRMED (docs/superpowers/plans/2026-09-01-supplier-transporter-
-    # advances.md, final review): the only way to change the amount is the
-    # explicit cancellation workflow (status=CANCELLED reverses any
-    # consumption), never an in-place edit of a confirmed order.
+    # AdvanceConsumption row was computed against. Once the order is
+    # CONFIRMED they can still be corrected (client request 2026-09-24), but
+    # only with a written reason and only if SupplierOrderAmendmentService
+    # accepts the change.
     _FINANCIAL_FIELDS = ["quantity_litres", "unit_price", "optional_costs"]
 
     def validate(self, data):
-        if self.instance is not None and self.instance.status == SupplierOrder.Status.CONFIRMED:
-            for field in self._FINANCIAL_FIELDS:
-                if field in data and data[field] != getattr(self.instance, field):
-                    raise serializers.ValidationError(
-                        {
-                            field: (
-                                "Ce champ ne peut plus etre modifie une fois la commande "
-                                "confirmee. Annulez la commande (statut CANCELLED) si le "
-                                "montant doit changer."
-                            )
-                        }
-                    )
+        instance = self.instance
+        if instance is None or instance.status != SupplierOrder.Status.CONFIRMED:
+            return data
+        changed = [
+            field
+            for field in self._FINANCIAL_FIELDS
+            if field in data and data[field] != getattr(instance, field)
+        ]
+        if not changed:
+            return data
+
+        errors = {}
+        if not (data.get("reason") or "").strip():
+            errors["reason"] = (
+                "Un motif est obligatoire pour modifier la quantité, le prix ou les "
+                "coûts d'une commande confirmée."
+            )
+        new_quantity = data.get("quantity_litres", instance.quantity_litres)
+        new_total = SupplierOrder.compute_total(
+            new_quantity,
+            data.get("unit_price", instance.unit_price),
+            data.get("optional_costs", instance.optional_costs),
+        )
+        errors.update(
+            SupplierOrderAmendmentService.validate(
+                instance, new_quantity=new_quantity, new_total=new_total
+            )
+        )
+        if errors:
+            raise serializers.ValidationError(errors)
         return data
+
+    def create(self, validated_data):
+        validated_data.pop("reason", None)
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        reason = (validated_data.pop("reason", "") or "").strip() or None
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        # Not super().update(): it calls save() bare, which would drop the
+        # reason before AuditableModel.save can put it on the audit log.
+        instance.save(reason=reason)
+        return instance
 
     def get_reliquat(self, obj) -> str:
         reliquat = SupplierStockService.get_purchase_reliquat(obj)

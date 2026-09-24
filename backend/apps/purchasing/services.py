@@ -261,3 +261,57 @@ class SupplierStockService:
                 f"reliquat de la cession ({remaining} L)."
             )
         return cession
+
+
+class SupplierOrderAmendmentService:
+    """Guards for correcting a CONFIRMED SupplierOrder's quantity/price/costs
+    in place (client request 2026-09-24; previously the only way out was
+    cancelling the order, which left every trip loaded on it untracked).
+
+    An amendment is refused when it would strand something that already
+    depends on the order - litres loaded on trips, active cession letters,
+    cash paid to the supplier. Advance consumption is not a blocker: it is
+    recomputed against the new total (AdvanceConsumptionService).
+    """
+
+    @staticmethod
+    def validate(
+        order: SupplierOrder,
+        *,
+        new_quantity: Decimal,
+        new_total: Decimal,
+    ) -> dict[str, str]:
+        """Returns {field: message} (empty when the amendment is acceptable).
+
+        Runs under a lock on the order row; callers must be inside the same
+        atomic block as the save (SupplierOrderViewSet.update is)."""
+        from apps.finance.services import ControlledDebtPaymentService
+
+        order = SupplierOrder.objects.select_for_update().get(pk=order.pk)
+        errors: dict[str, str] = {}
+
+        if new_quantity != order.quantity_litres:
+            loaded = SupplierStockService.get_purchase_loaded_quantity(order)
+            cessioned = order.cessions.exclude(
+                status=CessionLetter.Status.CANCELLED
+            ).aggregate(total=Sum("authorized_quantity"))["total"] or Decimal("0.00")
+            minimum = max(loaded, cessioned)
+            if new_quantity < minimum:
+                reasons = []
+                if loaded > 0:
+                    reasons.append(f"{loaded:.2f} L déjà chargés sur des trajets")
+                if cessioned > 0:
+                    reasons.append(f"{cessioned:.2f} L autorisés par des lettres de cession")
+                errors["quantity_litres"] = (
+                    f"Quantité minimale autorisée : {minimum:.2f} L "
+                    f"({' ; '.join(reasons)})."
+                )
+
+        if "quantity_litres" not in errors:
+            paid = ControlledDebtPaymentService.get_supplier_order_cash_paid(order)
+            if new_total < paid:
+                errors["quantity_litres" if new_quantity != order.quantity_litres else "unit_price"] = (
+                    f"Le nouveau montant total ({new_total:.2f}) serait inférieur au montant "
+                    f"déjà payé au fournisseur ({paid:.2f}). Annulez d'abord le paiement en trop."
+                )
+        return errors

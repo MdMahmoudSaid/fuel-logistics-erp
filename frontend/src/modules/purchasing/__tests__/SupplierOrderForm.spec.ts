@@ -18,13 +18,15 @@ vi.mock('@/api/resource', () => ({
 }))
 
 const create = vi.fn()
+const getOrder = vi.fn()
+const updateOrder = vi.fn()
 const uploadDocument = vi.fn()
 const fetchNextSupplierOrderReference = vi.fn(async () => 'ACH-202608-0007')
 vi.mock('../api', () => ({
   supplierOrderResource: {
-    get: vi.fn(),
+    get: (id: number) => getOrder(id),
     create: (payload: Record<string, unknown>) => create(payload),
-    update: vi.fn(),
+    update: (id: number, payload: Record<string, unknown>) => updateOrder(id, payload),
   },
   uploadDocument: (payload: Record<string, unknown>) => uploadDocument(payload),
   fetchNextSupplierOrderReference: () => fetchNextSupplierOrderReference(),
@@ -42,6 +44,42 @@ function makeRouter() {
   })
   router.push({ name: 'supplier-order-new' })
   return router
+}
+
+function makeEditRouter() {
+  const stub = { template: '<div />' }
+  const router = createRouter({
+    history: createWebHistory(),
+    routes: [
+      { path: '/supplier-orders/:id', name: 'supplier-order-detail', component: SupplierOrderForm },
+      { path: '/supplier-orders/new', name: 'supplier-order-new', component: stub },
+      { path: '/supplier-orders', name: 'supplier-orders', component: stub },
+    ],
+  })
+  router.push({ name: 'supplier-order-detail', params: { id: '7' } })
+  return router
+}
+
+function confirmedOrder(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 7,
+    reference: 'ACH-202609-0001',
+    supplier: 1,
+    product: 1,
+    purchase_date: '2026-09-15',
+    quantity_litres: '500000.00',
+    unit_price: '740.0000',
+    currency: 'XOF',
+    total_amount: '370000000.00',
+    optional_costs: null,
+    notes: '',
+    status: 'CONFIRMED',
+    reliquat: '0.00',
+    loaded_quantity: '500000.00',
+    documents: [],
+    cessions: [],
+    ...overrides,
+  }
 }
 
 describe('SupplierOrderForm', () => {
@@ -177,5 +215,76 @@ describe('SupplierOrderForm', () => {
 
     expect(wrapper.text()).toContain('Seules les images JPG, JPEG, PNG ou WEBP sont autorisées.')
     expect(uploadDocument).not.toHaveBeenCalled()
+  })
+
+  describe('amending a confirmed order', () => {
+    async function mountEdit(order = confirmedOrder()) {
+      getOrder.mockResolvedValue(order)
+      updateOrder.mockResolvedValue(order)
+      const router = makeEditRouter()
+      await router.isReady()
+      const wrapper = mount(SupplierOrderForm, { global: { plugins: [router] } })
+      await flushPromises()
+      return wrapper
+    }
+
+    it('does not ask for a reason until a financial field is changed', async () => {
+      const wrapper = await mountEdit()
+      expect(wrapper.find('#amend_reason').exists()).toBe(false)
+    })
+
+    it('shows the minimum quantity notice when litres are already loaded', async () => {
+      const wrapper = await mountEdit()
+      expect(wrapper.text()).toContain('500 000')
+      expect(wrapper.find('[data-testid="amend-minimum-notice"]').exists()).toBe(true)
+    })
+
+    it('hides the minimum notice when nothing is loaded', async () => {
+      const wrapper = await mountEdit(confirmedOrder({ loaded_quantity: '0.00' }))
+      expect(wrapper.find('[data-testid="amend-minimum-notice"]').exists()).toBe(false)
+    })
+
+    it('requires a reason once quantity is edited and sends it with the update', async () => {
+      const wrapper = await mountEdit()
+      await wrapper.find('#quantity_litres').setValue('720000')
+
+      const reason = wrapper.find<HTMLTextAreaElement>('#amend_reason')
+      expect(reason.exists()).toBe(true)
+      expect(reason.attributes('required')).toBeDefined()
+
+      await reason.setValue('Erreur de saisie sur la quantité')
+      await wrapper.find('form').trigger('submit.prevent')
+      await flushPromises()
+
+      expect(updateOrder).toHaveBeenCalledTimes(1)
+      const payload = updateOrder.mock.calls[0]![1]
+      expect(Number(payload.quantity_litres)).toBe(720000)
+      expect(payload.reason).toBe('Erreur de saisie sur la quantité')
+    })
+
+    it('does not send a reason for a non-financial edit', async () => {
+      const wrapper = await mountEdit()
+      await wrapper.find('#notes').setValue('note')
+      await wrapper.find('form').trigger('submit.prevent')
+      await flushPromises()
+
+      expect(updateOrder.mock.calls[0]![1].reason).toBeUndefined()
+    })
+
+    it('surfaces the backend minimum-quantity error under the quantity field', async () => {
+      const wrapper = await mountEdit()
+      updateOrder.mockRejectedValueOnce({
+        response: {
+          status: 400,
+          data: { quantity_litres: ['Quantité minimale autorisée : 500000.00 L'] },
+        },
+      })
+      await wrapper.find('#quantity_litres').setValue('100')
+      await wrapper.find('#amend_reason').setValue('Erreur')
+      await wrapper.find('form').trigger('submit.prevent')
+      await flushPromises()
+
+      expect(wrapper.text()).toContain('Quantité minimale autorisée : 500000.00 L')
+    })
   })
 })

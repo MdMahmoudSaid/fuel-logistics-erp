@@ -734,10 +734,20 @@ class AdvanceConsumptionService:
         if order.status != order.Status.CONFIRMED:
             return
         content_type = ContentType.objects.get_for_model(order.__class__)
+        # A confirmed order's amount can now be amended (2026-09-24): cash
+        # already paid counts toward the debt like consumed advances do, so
+        # it must not be covered a second time by pulling more advance; and
+        # when a decrease leaves the order over-covered, every consumption is
+        # released BEFORE the advances are listed (an advance fully used by
+        # this order would otherwise be missing from the open list) and then
+        # re-consumed oldest-first against the new total.
+        cash_paid = ControlledDebtPaymentService.get_supplier_order_cash_paid(order)
+        if cls.get_consumed_amount(order) + cash_paid > order.total_amount:
+            cls.reverse_for_supplier_order(order)
         # Acquire locks on all open advances BEFORE computing remaining_to_cover
         advances = cls.open_supplier_advances(order.supplier, for_update=True)
         # Now compute remaining amount under lock
-        remaining_to_cover = order.total_amount - cls.get_consumed_amount(order)
+        remaining_to_cover = order.total_amount - cash_paid - cls.get_consumed_amount(order)
         if remaining_to_cover <= ZERO:
             return
         for advance in advances:
@@ -1235,10 +1245,9 @@ class ControlledDebtPaymentService:
         )
 
     @staticmethod
-    def _supplier_order_paid(order, *, override=None) -> Decimal:
-        if override is not None:
-            return override
-        payments = (
+    def get_supplier_order_cash_paid(order) -> Decimal:
+        """Cash actually paid against `order`, excluding advance consumption."""
+        return (
             SupplierPayment.objects.filter(
                 supplier_order=order,
                 is_advance=False,
@@ -1252,8 +1261,13 @@ class ControlledDebtPaymentService:
             .aggregate(total=Sum("amount"))["total"]
             or ZERO
         )
+
+    @staticmethod
+    def _supplier_order_paid(order, *, override=None) -> Decimal:
+        if override is not None:
+            return override
         consumed = AdvanceConsumptionService.get_consumed_amount(order)
-        return payments + consumed
+        return ControlledDebtPaymentService.get_supplier_order_cash_paid(order) + consumed
 
     @classmethod
     def _open_supplier_orders(cls, supplier, *, for_update=False):
