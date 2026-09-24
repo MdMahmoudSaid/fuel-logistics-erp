@@ -17,6 +17,7 @@ from apps.reports.queries.expense_report import ExpenseReportQuery
 from apps.reports.queries.fuel_stock_report import FuelStockReportQuery
 from apps.reports.queries.general_debt_report import GeneralDebtReportQuery
 from apps.reports.queries.general_expense_report import GeneralExpenseReportQuery
+from apps.reports.queries.general_receivable_report import GeneralReceivableReportQuery
 from apps.reports.queries.loss_report import LossReportQuery
 from apps.reports.queries.margin_report import MarginReportQuery
 from apps.reports.queries.purchase_report import PurchaseReportQuery
@@ -60,6 +61,7 @@ REPORT_REGISTRY = {
     "general-expense-report": GeneralExpenseReportQuery,
     "trip-fee-debt-report": TripFeeDebtReportQuery,
     "general-debt-report": GeneralDebtReportQuery,
+    "general-receivable-report": GeneralReceivableReportQuery,
 }
 
 _EXPORT_CONTENT_TYPES = {

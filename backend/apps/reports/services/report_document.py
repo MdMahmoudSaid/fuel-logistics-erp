@@ -245,6 +245,20 @@ def _general_debt_summary(slug, rows, context):
     ]
 
 
+def _general_receivable_summary(slug, rows, context):
+    invoices = [r for r in rows if r["line_type"] == "invoice"]
+    credits = [r for r in rows if r["line_type"] == "credit"]
+    totals = [r for r in rows if r["line_type"] == "customer_total"]
+    return [
+        _line("customers_with_balance_count", len(totals), "count"),
+        _line("open_invoices_count", len(invoices), "count"),
+        _line("receivable_invoiced_total", _sum(invoices, "invoiced_amount"), "money"),
+        _line("receivable_received_total", _sum(invoices + credits, "received_amount"), "money"),
+        _line("unallocated_credit_total", _sum(credits, "received_amount"), "money"),
+        _line("total_receivable", _sum(totals, "remaining_amount"), "money", True),
+    ]
+
+
 def _outstanding_summary(count_key):
     def summarize(slug, rows, context):
         return [
@@ -446,6 +460,19 @@ REPORT_SPECS = {
             ),
         ),
         _general_debt_summary,
+        period_mode="as_of",
+    ),
+    "general-receivable-report": ReportSpec(
+        "landscape",
+        (
+            TableSpec(
+                (("customer", "text"), ("line_type", "enum", "receivableLine"), ("reference", "ref"),
+                 ("date", "date"), ("trip_reference", "ref"), ("invoiced_amount", "money"),
+                 ("received_amount", "money"), ("remaining_amount", "money")),
+                emphasis={"field": "line_type", "equals": "customer_total"},
+            ),
+        ),
+        _general_receivable_summary,
         period_mode="as_of",
     ),
     "customer-outstanding": ReportSpec(

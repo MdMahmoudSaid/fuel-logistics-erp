@@ -289,3 +289,192 @@ def test_general_debt_empty_report_period_params_and_export_shape():
     assert [t["section"] for t in payload["document"]["tables"]] == ["supplier", "transporter", "trip_fee"]
     assert payload["document"]["period"]["mode"] == "as_of"
     assert "section" not in payload["fields"] and pdf.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# General receivables
+# ---------------------------------------------------------------------------
+
+from apps.customers.models import Customer  # noqa: E402
+from apps.finance.models import CustomerPayment, PaymentAllocation  # noqa: E402
+from apps.finance.services import PaymentAllocationService  # noqa: E402
+from apps.reports.queries.general_receivable_report import GeneralReceivableReportQuery  # noqa: E402
+from apps.sales.models import Invoice, Sale  # noqa: E402
+
+
+def _invoice(fx, total="1000000.00", status=Invoice.Status.VALIDATED, number=None):
+    return Invoice.objects.create(
+        invoice_number=number or f"INV-{fx['trip'].reference}", sale=fx["sale"], status=status,
+        total_amount=D(total), issued_date="2026-09-01",
+    )
+
+
+def _payment(customer, amount, admin, reversed_=False, invoice=None, allocated=None):
+    payment = CustomerPayment.objects.create(
+        customer=customer, amount=D(amount), payment_date="2026-09-02",
+        method=CustomerPayment.Method.CASH, cash_account=CashAccount.objects.get_or_create(name="Caisse clients")[0],
+        recorded_by=admin, is_reversed=reversed_,
+    )
+    if invoice is not None:
+        PaymentAllocation.objects.create(payment=payment, invoice=invoice, amount=D(allocated or amount))
+    return payment
+
+
+def _customer_rows(name):
+    return [r for r in GeneralReceivableReportQuery.run() if r["customer"] == name]
+
+
+def _assert_ties(customer, expected_outstanding):
+    """The spec's equation: line remainings (credit is negative) sum to the
+    customer's remaining, which is exactly get_customer_outstanding."""
+    rows = _customer_rows(customer.name)
+    total = rows[-1]
+    assert total["line_type"] == "customer_total"
+    assert total["remaining_amount"] == PaymentAllocationService.get_customer_outstanding(customer) == expected_outstanding
+    assert sum(r["remaining_amount"] for r in rows[:-1]) == total["remaining_amount"]
+    for row in rows[:-1]:
+        assert row["remaining_amount"] == (row["invoiced_amount"] or 0) - row["received_amount"]
+        if row["line_type"] == "invoice":
+            invoice = Invoice.objects.get(invoice_number=row["reference"])
+            assert row["remaining_amount"] == PaymentAllocationService.get_invoice_outstanding(invoice)
+    return rows
+
+
+def _receivable_fixture(suffix):
+    admin = _make_admin(suffix)
+    return admin, _make_full_trip(suffix, admin)
+
+
+@pytest.mark.django_db
+def test_partially_allocated_payment_leaves_an_unallocated_credit_line():
+    admin, fx = _receivable_fixture("RCVPART")
+    invoice = _invoice(fx)
+    _payment(fx["customer"], "600000.00", admin, invoice=invoice, allocated="400000.00")
+
+    rows = _assert_ties(fx["customer"], D("400000.00"))
+
+    assert [r["line_type"] for r in rows] == ["invoice", "credit", "customer_total"]
+    assert (rows[0]["received_amount"], rows[0]["remaining_amount"]) == (D("400000.00"), D("600000.00"))
+    assert (rows[1]["received_amount"], rows[1]["remaining_amount"], rows[1]["invoiced_amount"]) == (
+        D("200000.00"), D("-200000.00"), None,
+    )
+
+
+@pytest.mark.django_db
+def test_fully_unallocated_payment_is_a_credit_and_overpayment_hides_the_settled_invoice():
+    admin, fx = _receivable_fixture("RCVUNAL")
+    _invoice(fx)
+    _payment(fx["customer"], "300000.00", admin)
+    rows = _assert_ties(fx["customer"], D("700000.00"))
+    assert [(r["line_type"], r["remaining_amount"]) for r in rows[:-1]] == [
+        ("invoice", D("1000000.00")), ("credit", D("-300000.00")),
+    ]
+
+    admin2, fx2 = _receivable_fixture("RCVOVER")
+    invoice = _invoice(fx2)
+    _payment(fx2["customer"], "1500000.00", admin2, invoice=invoice, allocated="1000000.00")
+    rows = _assert_ties(fx2["customer"], D("-500000.00"))
+    assert [r["line_type"] for r in rows] == ["credit", "customer_total"]  # settled invoice not listed
+
+
+@pytest.mark.django_db
+def test_reversed_payment_no_longer_reduces_the_receivable_or_creates_a_credit():
+    admin, fx = _receivable_fixture("RCVREV")
+    invoice = _invoice(fx)
+    _payment(fx["customer"], "1000000.00", admin, reversed_=True, invoice=invoice)
+
+    rows = _assert_ties(fx["customer"], D("1000000.00"))
+
+    assert [r["line_type"] for r in rows] == ["invoice", "customer_total"]
+    assert rows[0]["received_amount"] == D("0.00")
+
+
+@pytest.mark.django_db
+def test_allocation_on_a_cancelled_invoice_becomes_unallocated_credit():
+    admin, fx = _receivable_fixture("RCVCANC")
+    other = _make_full_trip("RCVCANC2", admin)
+    Sale.objects.filter(pk=other["sale"].pk).update(customer=fx["customer"])
+    other["sale"].refresh_from_db()
+    _invoice(fx)
+    cancelled = _invoice(other, total="500000.00", status=Invoice.Status.CANCELLED)
+    _payment(fx["customer"], "500000.00", admin, invoice=cancelled)
+
+    rows = _assert_ties(fx["customer"], D("500000.00"))
+
+    assert [(r["line_type"], r["remaining_amount"]) for r in rows[:-1]] == [
+        ("invoice", D("1000000.00")), ("credit", D("-500000.00")),
+    ]
+
+
+@pytest.mark.django_db
+def test_invoice_corrected_downward_after_allocation_shows_a_negative_remaining():
+    admin, fx = _receivable_fixture("RCVDOWN")
+    invoice = _invoice(fx)
+    _payment(fx["customer"], "1000000.00", admin, invoice=invoice)
+    Invoice.objects.filter(pk=invoice.pk).update(total_amount=D("800000.00"))
+
+    rows = _assert_ties(fx["customer"], D("-200000.00"))
+
+    assert [(r["line_type"], r["remaining_amount"]) for r in rows[:-1]] == [("invoice", D("-200000.00"))]
+
+
+@pytest.mark.django_db
+def test_customer_with_a_payment_but_no_invoice_and_draft_invoices_are_included():
+    admin = _make_admin("RCVNOINV")
+    lone = Customer.objects.create(name="Client sans facture")
+    _payment(lone, "250000.00", admin)
+    rows = _assert_ties(lone, D("-250000.00"))
+    assert [r["line_type"] for r in rows] == ["credit", "customer_total"]
+
+    fx = _make_full_trip("RCVDRAFT", admin)
+    _invoice(fx, total="400000.00", status=Invoice.Status.DRAFT)
+    assert _assert_ties(fx["customer"], D("400000.00"))[0]["line_type"] == "invoice"
+
+
+@pytest.mark.django_db
+def test_settled_customer_is_absent_and_grand_total_is_the_sum_of_get_customer_outstanding():
+    admin, paid = _receivable_fixture("RCVPAID")
+    invoice = _invoice(paid)
+    _payment(paid["customer"], "1000000.00", admin, invoice=invoice)
+    _, owing = _receivable_fixture("RCVOWE")
+    _invoice(owing, total="700000.00")
+    _, credit = _receivable_fixture("RCVCRED")
+    _invoice(credit, total="100000.00")
+    _payment(credit["customer"], "400000.00", admin)
+
+    rows = GeneralReceivableReportQuery.run()
+    document = _document("general-receivable-report", rows)
+    summary = _summary(document)
+    expected = sum(PaymentAllocationService.get_customer_outstanding(c) for c in Customer.objects.all())
+
+    assert paid["customer"].name not in {r["customer"] for r in rows}
+    assert summary["total_receivable"] == expected == D("400000.00")  # 700 000 + (100 000 - 400 000)
+    assert summary["customers_with_balance_count"] == 2 and summary["open_invoices_count"] == 2
+    assert summary["unallocated_credit_total"] == D("400000.00")
+    assert summary["receivable_invoiced_total"] == D("800000.00")
+    assert summary["receivable_received_total"] == D("400000.00")
+    assert document["period"]["mode"] == "as_of"
+    assert document["tables"][0]["emphasis"] == {"field": "line_type", "equals": "customer_total"}
+    assert document["tables"][0]["columns"][1]["enum_labels"]["credit"] == "Crédit non affecté"
+
+
+@pytest.mark.django_db
+def test_receivable_empty_period_ignored_hostile_name_and_pdf_languages():
+    assert GeneralReceivableReportQuery.run(date_from=date(2026, 1, 1), date_to=date(2026, 1, 2)) == []
+    assert _summary(_document("general-receivable-report", []))["total_receivable"] == D("0.00")
+
+    admin, fx = _receivable_fixture("RCVPDF")
+    Customer.objects.filter(pk=fx["customer"].pk).update(name="<b>Client</b> & " + "x" * 120)
+    _invoice(fx)
+    _payment(fx["customer"], "300000.00", admin)
+    client = _client("RCVPDF2")
+
+    french = client.get("/api/reports/general-receivable-report/", {"export": "pdf", "from": "2026-01-01"})
+    arabic = client.get("/api/reports/general-receivable-report/", {"export": "pdf", "lang": "ar"})
+    payload = client.get("/api/reports/general-receivable-report/", {"document": "1"}).json()
+    text = " ".join("\n".join(pdf_pages(french.content)[1]).split())
+
+    assert french.status_code == arabic.status_code == 200
+    assert "Créances clients" in text and "Crédit non affecté" in text and "Total client" in text
+    assert "<b>Client</b>" in text and "Reste total à encaisser 700 000 XOF" in text
+    assert payload["fields"] == GeneralReceivableReportQuery.FIELDS and "section" not in payload["fields"]

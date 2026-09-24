@@ -32,6 +32,7 @@ TITLES = {
     "general-expense-report": ("Rapport des dépenses générales", "General expense report", "تقرير المصروفات العامة"),
     "trip-fee-debt-report": ("Dettes de frais de trajet", "Trip fee debts", "ديون رسوم الرحلات"),
     "general-debt-report": ("Dettes générales", "General debts", "الديون العامة"),
+    "general-receivable-report": ("Créances clients", "Customer receivables", "مستحقات العملاء التفصيلية"),
 }
 
 FIELDS = {
@@ -109,6 +110,9 @@ FIELDS = {
     "general-expense-report.total_amount": ("Montant total", "Total amount", "المبلغ الإجمالي"),
     "fee_type": ("Type de frais", "Fee type", "نوع الرسوم"),
     "trips": ("Trajets", "Trips", "الرحلات"),
+    "line_type": ("Ligne", "Line", "البند"),
+    "invoiced_amount": ("Facturé", "Invoiced", "المفوتر"),
+    "received_amount": ("Encaissé", "Received", "المحصّل"),
 }
 
 TABLE_TITLES = {
@@ -181,6 +185,12 @@ SUMMARY = {
     "supplier_lines_count": ("Lignes fournisseurs", "Supplier lines", "بنود الموردين"),
     "transporter_lines_count": ("Lignes transporteurs", "Transporter lines", "بنود الناقلين"),
     "trip_fee_lines_count": ("Lignes frais de trajet", "Trip fee lines", "بنود رسوم الرحلات"),
+    "customers_with_balance_count": ("Nombre de clients", "Number of customers", "عدد العملاء"),
+    "open_invoices_count": ("Factures ouvertes", "Open invoices", "الفواتير المفتوحة"),
+    "receivable_invoiced_total": ("Total facturé (factures ouvertes)", "Total invoiced (open invoices)", "إجمالي المفوتر (الفواتير المفتوحة)"),
+    "receivable_received_total": ("Total encaissé", "Total received", "إجمالي المحصّل"),
+    "unallocated_credit_total": ("dont crédits non affectés (déduits)", "of which unallocated credits (deducted)", "منها الأرصدة غير المخصصة (مخصومة)"),
+    "total_receivable": ("Reste total à encaisser", "Total receivable", "إجمالي المتبقي للتحصيل"),
 }
 
 ENTITY = {
@@ -289,6 +299,11 @@ ENUMS = {
         "road_transit": ("Transit routière", "Road transit", "العبور البري"),
         "border": ("Frontière", "Border", "الحدود"),
         "loading": ("Chargement", "Loading", "التحميل"),
+    },
+    "receivableLine": {
+        "invoice": ("Facture", "Invoice", "فاتورة"),
+        "credit": ("Crédit non affecté", "Unallocated credit", "رصيد غير مخصص"),
+        "customer_total": ("Total client", "Customer total", "إجمالي العميل"),
     },
     "fuelComponent": {
         "SUPPLIER_RELIQUAT": ("Reliquat fournisseur", "Supplier balance", "رصيد المورد"),
