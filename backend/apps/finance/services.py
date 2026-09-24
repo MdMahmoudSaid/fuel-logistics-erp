@@ -116,6 +116,15 @@ class PaymentAllocationService:
             invoice = None
             if invoice_id:
                 invoice = Invoice.objects.select_for_update().get(pk=invoice_id)
+                # Same rule as IndirectSettlementService: a payment only ever
+                # settles invoices of its own customer, otherwise the
+                # per-customer balances (and the receivable reports built on
+                # them) stop reconciling with get_customer_outstanding().
+                if invoice.sale.customer_id != payment.customer_id:
+                    raise PaymentAllocationError(
+                        f"La facture {invoice.invoice_number} n'appartient pas "
+                        "au client de ce paiement."
+                    )
                 outstanding = PaymentAllocationService.get_invoice_outstanding(invoice)
                 if amount > outstanding:
                     raise PaymentAllocationError(
