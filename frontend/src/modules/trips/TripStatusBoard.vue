@@ -30,13 +30,7 @@ const error = ref('')
 // les trajets livrés/annulés ont leur propre historique (TripDetail, listes
 // camion/commande) plutôt que de s'accumuler ici indéfiniment.
 type BusinessFilter =
-  | 'all'
-  | 'in-progress'
-  | 'company-stock'
-  | 'to-deliver'
-  | 'to-control'
-  | 'delivered'
-  | 'cancelled'
+  'all' | 'in-progress' | 'company-stock' | 'to-deliver' | 'to-control' | 'delivered' | 'cancelled'
 
 const BUSINESS_FILTERS: { key: BusinessFilter; label: string }[] = [
   { key: 'all', label: 'Tous' },
@@ -91,7 +85,7 @@ const filteredTrips = computed(() => {
     // Only trips that have physically arrived at the depot - matches the
     // dashboard's "Stock de l'entreprise" total (backend
     // reports/views/dashboard.py). Earlier pipeline statuses (LOADING,
-    // IN_TRANSIT, GOING_TO_COMPANY_STOCK...) haven't arrived yet, and a trip
+    // IN_TRANSIT...) haven't arrived yet, and a trip
     // un-assigned from a customer keeps its old status (QUANTITY_CONTROL,
     // DELIVERED...) even once destination_type flips back to COMPANY_STOCK -
     // counting either here would make this list disagree with the number
@@ -117,7 +111,7 @@ const filteredTrips = computed(() => {
     )
   }
   if (selectedFilter.value === 'to-deliver') {
-    return trips.value.filter((t) => ['GOING_TO_CLIENT', 'ARRIVED_AT_CLIENT'].includes(t.status))
+    return trips.value.filter((t) => ['ARRIVED_AT_CLIENT'].includes(t.status))
   }
   if (selectedFilter.value === 'to-control') {
     return trips.value.filter((t) => t.status === 'QUANTITY_CONTROL' || t.status === 'BLOCKED')

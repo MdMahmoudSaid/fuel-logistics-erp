@@ -126,7 +126,6 @@ FULL_SEQUENCE_AFTER_ASSIGNED = [
     Trip.Status.IN_TRANSIT,
     Trip.Status.BORDER,
     Trip.Status.CUSTOMS,
-    Trip.Status.GOING_TO_CLIENT,
     Trip.Status.ARRIVED_AT_CLIENT,
     # Client correction (2026-09-04 recette): QUANTITY_CONTROL is no longer
     # a mandatory intermediate stop - a trip is delivered directly from
@@ -136,7 +135,6 @@ FULL_SEQUENCE_AFTER_ASSIGNED = [
 ]
 
 COMPANY_STOCK_SEQUENCE_AFTER_CUSTOMS = [
-    Trip.Status.GOING_TO_COMPANY_STOCK,
     Trip.Status.ARRIVED_AT_COMPANY_STOCK,
     Trip.Status.STOCKED,
 ]
@@ -284,7 +282,7 @@ def test_trip_serializer_cession_letter_truck_load_count_counts_this_truck_under
 def _advance_to_completed(trip, actor):
     for target in FULL_SEQUENCE_AFTER_ASSIGNED:
         if (
-            target == Trip.Status.GOING_TO_CLIENT
+            target == Trip.Status.ARRIVED_AT_CLIENT
             and not trip.client_id
             and not trip.customer_order_id
         ):
@@ -304,7 +302,7 @@ def _advance_to_arrived_at_client(trip, actor):
     # in between anymore).
     for target in FULL_SEQUENCE_AFTER_ASSIGNED[:-2]:
         if (
-            target == Trip.Status.GOING_TO_CLIENT
+            target == Trip.Status.ARRIVED_AT_CLIENT
             and not trip.client_id
             and not trip.customer_order_id
         ):
@@ -378,27 +376,25 @@ def test_trip_status_history_is_immutable():
 
 
 @pytest.mark.django_db
-def test_trip_workflow_requires_road_transit_before_transit():
+def test_trip_workflow_lets_a_trip_skip_ahead_from_loaded():
     fx = _setup_fixtures("ROAD")
     truck = _make_truck("TRK-ROAD")
     trip = _make_trip(fx, truck, "TRIP-ROAD-001", status=Trip.Status.LOADED)
 
-    allowed = TripWorkflowService.get_allowed_targets(trip)
-
-    assert allowed == {Trip.Status.ROAD_TRANSIT, Trip.Status.CANCELLED, Trip.Status.BLOCKED}
-
-    with pytest.raises(InvalidTripTransition):
-        TripWorkflowService.transition_trip(trip.id, Trip.Status.IN_TRANSIT, fx["admin_user"])
-
-    TripWorkflowService.transition_trip(trip.id, Trip.Status.ROAD_TRANSIT, fx["admin_user"])
-    trip.refresh_from_db()
-
-    assert trip.status == Trip.Status.ROAD_TRANSIT
     assert TripWorkflowService.get_allowed_targets(trip) == {
+        Trip.Status.ROAD_TRANSIT,
         Trip.Status.IN_TRANSIT,
+        Trip.Status.BORDER,
+        Trip.Status.CUSTOMS,
+        Trip.Status.ARRIVED_AT_COMPANY_STOCK,
+        Trip.Status.STOCKED,
         Trip.Status.CANCELLED,
         Trip.Status.BLOCKED,
     }
+
+    TripWorkflowService.transition_trip(trip.id, Trip.Status.IN_TRANSIT, fx["admin_user"])
+    trip.refresh_from_db()
+    assert trip.status == Trip.Status.IN_TRANSIT
 
 
 @pytest.mark.django_db
@@ -569,14 +565,13 @@ def test_workflow_blocks_client_statuses_without_customer_and_routes_to_company_
     trip.refresh_from_db()
 
     allowed = TripWorkflowService.get_allowed_targets(trip)
-    assert Trip.Status.GOING_TO_CLIENT not in allowed
     assert Trip.Status.ARRIVED_AT_CLIENT not in allowed
     assert Trip.Status.QUANTITY_CONTROL not in allowed
-    assert Trip.Status.GOING_TO_COMPANY_STOCK in allowed
+    assert Trip.Status.ARRIVED_AT_COMPANY_STOCK in allowed
 
     with pytest.raises(InvalidTripTransition):
         TripWorkflowService.transition_trip(
-            trip.id, Trip.Status.GOING_TO_CLIENT, fx["admin_user"]
+            trip.id, Trip.Status.ARRIVED_AT_CLIENT, fx["admin_user"]
         )
 
     for target in COMPANY_STOCK_SEQUENCE_AFTER_CUSTOMS:
@@ -688,8 +683,8 @@ def test_workflow_allows_client_statuses_after_customer_assignment():
     trip.refresh_from_db()
 
     allowed = TripWorkflowService.get_allowed_targets(trip)
-    assert Trip.Status.GOING_TO_CLIENT in allowed
-    assert Trip.Status.GOING_TO_COMPANY_STOCK not in allowed
+    assert Trip.Status.ARRIVED_AT_CLIENT in allowed
+    assert Trip.Status.ARRIVED_AT_COMPANY_STOCK not in allowed
 
 
 @pytest.mark.django_db
@@ -1043,7 +1038,6 @@ _FORWARD_SEQUENCE_STATUS_NAMES = [
     "IN_TRANSIT",
     "BORDER",
     "CUSTOMS",
-    "GOING_TO_CLIENT",
     "ARRIVED_AT_CLIENT",
 ]
 
@@ -3708,3 +3702,201 @@ def test_trip_serializer_delivery_control_detail_is_none_before_delivery():
 
     assert response.status_code == 200
     assert response.data["delivery_control_detail"] is None
+
+
+@pytest.mark.django_db
+def test_retired_going_statuses_are_gone_from_the_enum():
+    assert not hasattr(Trip.Status, "GOING_TO_CLIENT")
+    assert not hasattr(Trip.Status, "GOING_TO_COMPANY_STOCK")
+
+
+@pytest.mark.django_db
+def test_customs_leads_straight_to_arrived_at_client_or_company_stock():
+    fx = _setup_fixtures("RETIRED-FORK")
+    stock_trip = _make_trip(
+        fx, _make_truck("TRK-RETIRED-1"), "TRIP-RETIRED-001", status=Trip.Status.CUSTOMS
+    )
+    assert Trip.Status.ARRIVED_AT_COMPANY_STOCK in TripWorkflowService.get_allowed_targets(stock_trip)
+    assert Trip.Status.ARRIVED_AT_CLIENT not in TripWorkflowService.get_allowed_targets(stock_trip)
+
+    client_trip = _make_trip(
+        fx, _make_truck("TRK-RETIRED-2"), "TRIP-RETIRED-002", status=Trip.Status.CUSTOMS
+    )
+    client_trip.client = Customer.objects.create(name="Client retired fork")
+    client_trip.destination_type = Trip.DestinationType.CUSTOMER
+    client_trip.save()
+    allowed = TripWorkflowService.get_allowed_targets(client_trip)
+    assert Trip.Status.ARRIVED_AT_CLIENT in allowed
+    assert Trip.Status.ARRIVED_AT_COMPANY_STOCK not in allowed
+
+
+@pytest.mark.django_db
+def test_stocked_trip_with_client_goes_straight_to_arrived_at_client():
+    fx = _setup_fixtures("RETIRED-STOCKED")
+    trip = _make_trip(
+        fx, _make_truck("TRK-RETIRED-3"), "TRIP-RETIRED-003", status=Trip.Status.STOCKED
+    )
+    trip.client = Customer.objects.create(name="Client retired stocked")
+    trip.destination_type = Trip.DestinationType.CUSTOMER
+    trip.save()
+
+    TripWorkflowService.transition_trip(trip.id, Trip.Status.ARRIVED_AT_CLIENT, fx["admin_user"])
+    trip.refresh_from_db()
+    assert trip.status == Trip.Status.ARRIVED_AT_CLIENT
+
+
+@pytest.mark.django_db
+def test_migration_0010_moves_trips_in_retired_statuses_to_customs_and_keeps_history():
+    import importlib
+
+    from django.apps import apps as django_apps
+
+    migration = importlib.import_module("apps.trips.migrations.0010_retire_going_to_statuses")
+    fx = _setup_fixtures("RETIRED-MIG")
+    going_client = _make_trip(fx, _make_truck("TRK-MIG-1"), "TRIP-MIG-001", status=Trip.Status.CUSTOMS)
+    going_stock = _make_trip(fx, _make_truck("TRK-MIG-2"), "TRIP-MIG-002", status=Trip.Status.CUSTOMS)
+    untouched = _make_trip(fx, _make_truck("TRK-MIG-3"), "TRIP-MIG-003", status=Trip.Status.BORDER)
+    Trip.objects.filter(pk=going_client.pk).update(status="GOING_TO_CLIENT")
+    Trip.objects.filter(pk=going_stock.pk).update(status="GOING_TO_COMPANY_STOCK")
+    TripStatusHistory.objects.create(
+        trip=going_client, previous_status="CUSTOMS", new_status="GOING_TO_CLIENT",
+        changed_by=fx["admin_user"],
+    )
+
+    migration.remap_retired_statuses(django_apps, None)
+
+    going_client.refresh_from_db()
+    going_stock.refresh_from_db()
+    untouched.refresh_from_db()
+    assert going_client.status == Trip.Status.CUSTOMS
+    assert going_stock.status == Trip.Status.CUSTOMS
+    assert untouched.status == Trip.Status.BORDER
+    assert going_client.status_history.filter(new_status="GOING_TO_CLIENT").count() == 1
+
+
+@pytest.mark.django_db
+def test_resuming_a_legacy_trip_blocked_from_a_retired_status_targets_customs():
+    fx = _setup_fixtures("RETIRED-BLOCK")
+    trip = _make_trip(fx, _make_truck("TRK-RETIRED-4"), "TRIP-RETIRED-004", status=Trip.Status.BLOCKED)
+    TripStatusHistory.objects.create(
+        trip=trip, previous_status="GOING_TO_CLIENT", new_status=Trip.Status.BLOCKED,
+        changed_by=fx["admin_user"],
+    )
+
+    assert TripWorkflowService.get_allowed_targets(trip) == {Trip.Status.CUSTOMS}
+
+
+def _client_trip(fx, code, status):
+    trip = _make_trip(fx, _make_truck(f"TRK-{code}"), f"TRIP-{code}-001", status=status)
+    trip.client = Customer.objects.create(name=f"Client {code}")
+    trip.destination_type = Trip.DestinationType.CUSTOMER
+    trip.save()
+    return trip
+
+
+@pytest.mark.django_db
+def test_skip_records_one_history_row_per_traversed_status_and_notes_on_the_last():
+    fx = _setup_fixtures("SKIP-HIST")
+    trip = _make_trip(fx, _make_truck("TRK-SKIP-HIST"), "TRIP-SKIP-HIST-001")
+
+    result = TripWorkflowService.transition_trip(
+        trip.id, Trip.Status.CUSTOMS, fx["admin_user"], notes="direct"
+    )
+
+    S = Trip.Status
+    assert result.status == S.CUSTOMS
+    assert result.traversed_statuses == [
+        S.SENT_FOR_LOADING, S.LOADING, S.LOADED, S.ROAD_TRANSIT, S.IN_TRANSIT, S.BORDER, S.CUSTOMS,
+    ]
+    rows = list(
+        result.status_history.order_by("id").values_list("previous_status", "new_status", "notes")
+    )
+    assert rows == [
+        (S.ASSIGNED, S.SENT_FOR_LOADING, ""),
+        (S.SENT_FOR_LOADING, S.LOADING, ""),
+        (S.LOADING, S.LOADED, ""),
+        (S.LOADED, S.ROAD_TRANSIT, ""),
+        (S.ROAD_TRANSIT, S.IN_TRANSIT, ""),
+        (S.IN_TRANSIT, S.BORDER, ""),
+        (S.BORDER, S.CUSTOMS, "direct"),
+    ]
+
+
+@pytest.mark.django_db
+def test_skip_fork_follows_the_client_assigned_at_call_time():
+    fx = _setup_fixtures("SKIP-FORK")
+    trip = _client_trip(fx, "SKIP-FORK", Trip.Status.LOADED)
+
+    allowed = TripWorkflowService.get_allowed_targets(trip)
+    assert Trip.Status.ARRIVED_AT_CLIENT in allowed
+    assert Trip.Status.ARRIVED_AT_COMPANY_STOCK not in allowed
+    assert Trip.Status.STOCKED not in allowed
+
+    TripWorkflowService.transition_trip(trip.id, Trip.Status.ARRIVED_AT_CLIENT, fx["admin_user"])
+    trip.refresh_from_db()
+    assert trip.status == Trip.Status.ARRIVED_AT_CLIENT
+
+
+@pytest.mark.django_db
+def test_skip_never_reaches_delivered_or_completed():
+    fx = _setup_fixtures("SKIP-FORM")
+    trip = _client_trip(fx, "SKIP-FORM", Trip.Status.CUSTOMS)
+
+    allowed = TripWorkflowService.get_allowed_targets(trip)
+    assert Trip.Status.DELIVERED not in allowed
+    assert Trip.Status.COMPLETED not in allowed
+    for target in (Trip.Status.DELIVERED, Trip.Status.COMPLETED):
+        with pytest.raises(InvalidTripTransition):
+            TripWorkflowService.transition_trip(trip.id, target, fx["admin_user"])
+    trip.refresh_from_db()
+    assert trip.status == Trip.Status.CUSTOMS
+
+
+@pytest.mark.django_db
+def test_invalid_skip_target_writes_no_history_and_keeps_the_status():
+    fx = _setup_fixtures("SKIP-BACK")
+    trip = _make_trip(fx, _make_truck("TRK-SKIP-BACK"), "TRIP-SKIP-BACK-001", status=Trip.Status.LOADED)
+
+    with pytest.raises(InvalidTripTransition):
+        TripWorkflowService.transition_trip(trip.id, Trip.Status.LOADING, fx["admin_user"])
+    with pytest.raises(InvalidTripTransition):
+        TripWorkflowService.transition_trip(trip.id, "NOT_A_STATUS", fx["admin_user"])
+
+    trip.refresh_from_db()
+    assert trip.status == Trip.Status.LOADED
+    assert trip.status_history.count() == 0
+
+
+@pytest.mark.django_db
+def test_block_and_resume_after_a_skip_returns_to_the_skipped_to_status():
+    fx = _setup_fixtures("SKIP-BLOCK")
+    trip = _make_trip(fx, _make_truck("TRK-SKIP-BLOCK"), "TRIP-SKIP-BLOCK-001")
+
+    TripWorkflowService.transition_trip(trip.id, Trip.Status.BORDER, fx["admin_user"])
+    TripWorkflowService.transition_trip(trip.id, Trip.Status.BLOCKED, fx["admin_user"], notes="x")
+    trip.refresh_from_db()
+    assert TripWorkflowService.get_allowed_targets(trip) == {Trip.Status.BORDER}
+
+    TripWorkflowService.transition_trip(trip.id, Trip.Status.BORDER, fx["admin_user"])
+    trip.refresh_from_db()
+    assert trip.status == Trip.Status.BORDER
+
+
+@pytest.mark.django_db
+def test_api_status_skip_returns_traversed_statuses_and_refuses_form_only_targets():
+    fx = _setup_fixtures("API-SKIP")
+    trip = _make_trip(fx, _make_truck("TRK-API-SKIP"), "TRIP-API-SKIP-001")
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+
+    allowed = client.get(f"/api/trips/{trip.id}/allowed-statuses/")
+    assert "CUSTOMS" in allowed.data["statuses"]
+    assert "DELIVERED" not in allowed.data["statuses"]
+
+    response = client.post(f"/api/trips/{trip.id}/status/", {"new_status": "LOADING"})
+    assert response.status_code == 200, response.data
+    assert response.data["status"] == "LOADING"
+    assert response.data["traversed_statuses"] == ["SENT_FOR_LOADING", "LOADING"]
+
+    refused = client.post(f"/api/trips/{trip.id}/status/", {"new_status": "DELIVERED"})
+    assert refused.status_code == 400

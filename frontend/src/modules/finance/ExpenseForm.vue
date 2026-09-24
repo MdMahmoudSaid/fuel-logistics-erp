@@ -41,6 +41,8 @@ import type {
 const props = defineProps<{
   presetAllocation?: { kind: AllocatableKind; objectId: number; label: string }
   initialCategory?: ExpenseCategory
+  cancelLabel?: string
+  commissionAvailable?: boolean
   initialCalculationMethod?: ExpenseCalculationMethod
   perLitreQuantity?: string
   showTreasuryPayment?: boolean
@@ -53,9 +55,18 @@ const props = defineProps<{
   // new one.
   editingExpense?: Expense | null
 }>()
-const emit = defineEmits<{ success: [customerId: number | null]; cancel: [] }>()
+const emit = defineEmits<{
+  success: [customerId: number | null]
+  cancel: []
+  'select-commission': []
+}>()
 const { t } = useI18n()
 const categoryLabel = useExpenseCategoryLabel()
+
+// Sentinel category: the transporter commission is a TransportPayment (own
+// debt/deduction/correction lifecycle), not an Expense - picking it hands the
+// modal over to TransportPaymentForm (TripDetail.vue) instead of submitting here.
+const TRANSPORT_COMMISSION_VALUE = '__transport_commission__'
 
 interface ExpenseFormState {
   category: string
@@ -95,6 +106,13 @@ const form = ref<ExpenseFormState>({
   notes: props.editingExpense?.notes ?? '',
 })
 
+watch(
+  () => form.value.category,
+  (category) => {
+    if (category === TRANSPORT_COMMISSION_VALUE) emit('select-commission')
+  },
+)
+
 const categories = ref<ExpenseCategoryOption[]>([])
 const creatingCategory = ref(false)
 const newCategoryName = ref('')
@@ -109,13 +127,7 @@ const savingCategory = ref(false)
 // is_system=True set (apps/finance/migrations/0014, 0019). "transport" was
 // dropped (migration 0019): a manual transport fee had no debt type to pay
 // it - transporter commission is the only transport-cost channel.
-const TRIP_SYSTEM_CATEGORY_CODES = [
-  'customs',
-  'transit',
-  'road_transit',
-  'road',
-  'loading',
-]
+const TRIP_SYSTEM_CATEGORY_CODES = ['customs', 'transit', 'road_transit', 'road', 'loading']
 
 function fallbackCategories(): ExpenseCategoryOption[] {
   return EXPENSE_CATEGORIES.filter((category) => {
@@ -372,6 +384,12 @@ async function onSubmit() {
           >
             <option v-for="c in categories" :key="c.code" :value="c.code">
               {{ categoryLabel(c) }}
+            </option>
+            <option
+              v-if="commissionAvailable && !editingExpense"
+              :value="TRANSPORT_COMMISSION_VALUE"
+            >
+              {{ t('finance.expense.transportCommission') }}
             </option>
           </select>
           <div v-if="!isTripAllocation" class="space-y-2">
@@ -650,7 +668,7 @@ async function onSubmit() {
 
       <div class="flex justify-end gap-2">
         <Button type="button" variant="ghost" @click="emit('cancel')">
-          {{ t('common.cancel') }}
+          {{ cancelLabel ?? t('common.cancel') }}
         </Button>
         <Button type="submit" variant="primary" :loading="saving">
           {{ saving ? t('finance.expense.saving') : t('finance.expense.save') }}

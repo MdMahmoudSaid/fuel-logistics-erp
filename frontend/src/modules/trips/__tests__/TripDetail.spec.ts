@@ -82,7 +82,13 @@ const tripResourceGet = vi.fn(async (_id: number) => tripToReturn)
 const fetchTripHistory = vi.fn(async (_id: number) => [])
 let marginToReturn: TripMargin = { available: false }
 const fetchTripMargin = vi.fn(async (_id: number) => marginToReturn)
-const postTripStatus = vi.fn(async (_id: number, _status: string, _notes = '') => tripToReturn)
+const postTripStatus = vi.fn(
+  async (
+    _id: number,
+    _status: string,
+    _notes = '',
+  ): Promise<Trip & { traversed_statuses?: string[] }> => tripToReturn,
+)
 let allowedStatusesToReturn: string[] = ['IN_TRANSIT', 'BLOCKED', 'CANCELLED']
 const fetchAllowedTripStatuses = vi.fn(async (_id: number) => allowedStatusesToReturn)
 const postDeliveryControl = vi.fn(async (_tripId: number, payload: Record<string, unknown>) => ({
@@ -241,7 +247,9 @@ const cancelExpense = vi.fn(async (_id: number) => ({}))
 const createTransportPayment = vi.fn(async (_payload: Record<string, unknown>) => ({}))
 const removeTransportPayment = vi.fn(async (_id: number) => undefined)
 const cancelTransportPayment = vi.fn(async (_id: number) => ({}))
-const correctTransportPayment = vi.fn(async (_id: number, _payload: Record<string, unknown>) => ({}))
+const correctTransportPayment = vi.fn(
+  async (_id: number, _payload: Record<string, unknown>) => ({}),
+)
 const expenseList = vi.fn(async (_params: Record<string, unknown>) => ({
   count: expensesToReturn.length,
   next: null,
@@ -448,9 +456,7 @@ describe('TripDetail expenses section', () => {
   // to replace them, unlike every other trip fee (Expense's own "Annuler").
   it('shows an Annuler action instead of Modifier/Supprimer once the commission is settled', async () => {
     setUser({ operations: ['view'], finance: ['view', 'edit', 'cancel'] })
-    transportPaymentsToReturn = [
-      makeTransportPayment({ status: 'PAID', can_modify: false }),
-    ]
+    transportPaymentsToReturn = [makeTransportPayment({ status: 'PAID', can_modify: false })]
     const wrapper = await mountAt()
     const buttons = wrapper.findAll('button').map((b) => b.text())
     expect(buttons).not.toContain('Modifier')
@@ -460,9 +466,7 @@ describe('TripDetail expenses section', () => {
 
   it('does not cancel a settled commission when confirmation is declined', async () => {
     setUser({ operations: ['view'], finance: ['view', 'cancel'] })
-    transportPaymentsToReturn = [
-      makeTransportPayment({ status: 'PAID', can_modify: false }),
-    ]
+    transportPaymentsToReturn = [makeTransportPayment({ status: 'PAID', can_modify: false })]
     const wrapper = await mountAt()
     confirmDialogMock.mockResolvedValueOnce(false)
     await wrapper
@@ -474,9 +478,7 @@ describe('TripDetail expenses section', () => {
 
   it('cancels a settled commission after confirmation and refreshes the fees', async () => {
     setUser({ operations: ['view'], finance: ['view', 'cancel'] })
-    transportPaymentsToReturn = [
-      makeTransportPayment({ status: 'PAID', can_modify: false }),
-    ]
+    transportPaymentsToReturn = [makeTransportPayment({ status: 'PAID', can_modify: false })]
     const wrapper = await mountAt()
     confirmDialogMock.mockResolvedValueOnce(true)
     const before = transportPaymentList.mock.calls.length
@@ -491,9 +493,7 @@ describe('TripDetail expenses section', () => {
 
   it('shows cancellation errors and keeps the commission visible', async () => {
     setUser({ operations: ['view'], finance: ['view', 'cancel'] })
-    transportPaymentsToReturn = [
-      makeTransportPayment({ status: 'PAID', can_modify: false }),
-    ]
+    transportPaymentsToReturn = [makeTransportPayment({ status: 'PAID', can_modify: false })]
     cancelTransportPayment.mockRejectedValueOnce({
       response: { data: { detail: 'Commission deja annulee' } },
     })
@@ -510,9 +510,7 @@ describe('TripDetail expenses section', () => {
 
   it('never shows an Annuler action for an already cancelled commission', async () => {
     setUser({ operations: ['view'], finance: ['view', 'edit', 'cancel'] })
-    transportPaymentsToReturn = [
-      makeTransportPayment({ status: 'CANCELLED', can_modify: false }),
-    ]
+    transportPaymentsToReturn = [makeTransportPayment({ status: 'CANCELLED', can_modify: false })]
     const wrapper = await mountAt()
     expect(wrapper.findAll('button').find((b) => b.text() === 'Annuler')).toBeUndefined()
   })
@@ -522,9 +520,7 @@ describe('TripDetail expenses section', () => {
   // rate/amount can be fixed in place instead of a full cancel+recreate.
   it('shows a Corriger action next to Annuler once the commission is settled', async () => {
     setUser({ operations: ['view'], finance: ['view', 'cancel'] })
-    transportPaymentsToReturn = [
-      makeTransportPayment({ status: 'PAID', can_modify: false }),
-    ]
+    transportPaymentsToReturn = [makeTransportPayment({ status: 'PAID', can_modify: false })]
     const wrapper = await mountAt()
     const buttons = wrapper.findAll('button').map((b) => b.text())
     expect(buttons).toContain('Corriger')
@@ -747,32 +743,55 @@ describe('TripDetail expenses section', () => {
     expect(wrapper.text()).toContain('2 925 000 XOF')
   })
 
-  it('hides "Add transport fee" once a payment already exists for the trip', async () => {
-    // Bug fix (found by chance, client feedback 2026-09-10): this button
-    // had no guard at all, letting an operator create a second
-    // TransportPayment for the same trip.
+  const COMMISSION_VALUE = '__transport_commission__'
+  const openAddExpense = async (wrapper: Awaited<ReturnType<typeof mountAt>>) => {
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text().includes('Ajouter un frais'))!
+      .trigger('click')
+    await flushPromises()
+  }
+
+  it('no longer shows a separate "Add transport fee" button', async () => {
     setUser({ operations: ['view'], finance: ['view', 'create'] })
-    transportPaymentsToReturn = [makeTransportPayment()]
-
     const wrapper = await mountAt()
-
-    expect(
-      wrapper
-        .findAll('button')
-        .find((b) => b.text() === '+ Ajouter des frais de transport (au litre)'),
-    ).toBeUndefined()
+    expect(wrapper.text()).not.toContain('Ajouter des frais de transport')
   })
 
-  it('still shows "Add transport fee" when the trip has no transport payment yet', async () => {
+  it('offers "Commission transporteur" in the add-expense category list and switches to the commission form', async () => {
     setUser({ operations: ['view'], finance: ['view', 'create'] })
-
     const wrapper = await mountAt()
+    await openAddExpense(wrapper)
 
-    expect(
-      wrapper
-        .findAll('button')
-        .find((b) => b.text() === '+ Ajouter des frais de transport (au litre)'),
-    ).toBeTruthy()
+    const option = wrapper.find(`#category option[value="${COMMISSION_VALUE}"]`)
+    expect(option.exists()).toBe(true)
+    expect(option.text()).toBe('Commission transporteur')
+
+    await wrapper.find('#category').setValue(COMMISSION_VALUE)
+    await flushPromises()
+
+    expect(wrapper.find('#unit_price_per_litre').exists()).toBe(true)
+    expect(wrapper.find('#category').exists()).toBe(false)
+  })
+
+  it('hides the commission option once a payment exists for the trip', async () => {
+    setUser({ operations: ['view'], finance: ['view', 'create'] })
+    transportPaymentsToReturn = [makeTransportPayment()]
+    const wrapper = await mountAt()
+    await openAddExpense(wrapper)
+
+    expect(wrapper.find(`#category option[value="${COMMISSION_VALUE}"]`).exists()).toBe(false)
+  })
+
+  it('hides the commission option for an internal (company fleet) transporter', async () => {
+    setUser({ operations: ['view'], finance: ['view', 'create'] })
+    tripResourceGet.mockResolvedValue(
+      makeTrip({ transporter_detail: { id: 2, name: 'Flotte propre', is_internal: true } }),
+    )
+    const wrapper = await mountAt()
+    await openAddExpense(wrapper)
+
+    expect(wrapper.find(`#category option[value="${COMMISSION_VALUE}"]`).exists()).toBe(false)
   })
 
   it('shows an empty state when the trip has no expenses', async () => {
@@ -1014,13 +1033,13 @@ describe('TripDetail expenses section', () => {
   it('shows only backend-allowed next statuses', async () => {
     setUser({ operations: ['view', 'edit'], finance: ['view'] })
     tripResourceGet.mockResolvedValueOnce(makeTrip({ status: 'CUSTOMS', client: null }))
-    allowedStatusesToReturn = ['GOING_TO_COMPANY_STOCK', 'BLOCKED']
+    allowedStatusesToReturn = ['ARRIVED_AT_COMPANY_STOCK', 'BLOCKED']
 
     const wrapper = await mountAt()
 
     const optionText = wrapper.find('#next_status').text()
     expect(fetchAllowedTripStatuses).toHaveBeenCalledWith(9)
-    expect(optionText).toContain('En route vers stock entreprise')
+    expect(optionText).toContain('Arrivé au stock entreprise')
     expect(optionText).not.toContain('En route vers le client')
     expect(optionText).not.toContain('Arrivé chez le client')
     expect(optionText).not.toContain('Contrôle de quantité')
@@ -1457,6 +1476,81 @@ describe('TripDetail expenses section', () => {
     expect((wrapper.find('#category').element as HTMLSelectElement).value).toBe('transit')
     expect((wrapper.find('#category').element as HTMLSelectElement).value).not.toBe('transport')
     expect(wrapper.text()).toContain('Frais transit')
+  })
+
+  async function applyStatus(wrapper: Awaited<ReturnType<typeof mountAt>>, status: string) {
+    await wrapper.find('#next_status').setValue(status)
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Appliquer')!
+      .trigger('click')
+    await flushPromises()
+  }
+  const buttonNamed = (wrapper: Awaited<ReturnType<typeof mountAt>>, label: string) =>
+    wrapper.findAll('button').find((b) => b.text() === label)
+
+  it('chains one fee popup per skipped status, each with a "Passer" button', async () => {
+    setUser({ operations: ['view', 'edit'], finance: ['view', 'create'] })
+    tripResourceGet.mockResolvedValue(makeTrip({ status: 'ASSIGNED' }))
+    allowedStatusesToReturn = ['LOADING']
+    postTripStatus.mockResolvedValueOnce({
+      ...makeTrip({ status: 'ROAD_TRANSIT' }),
+      traversed_statuses: ['SENT_FOR_LOADING', 'LOADING', 'LOADED', 'ROAD_TRANSIT'],
+    })
+
+    const wrapper = await mountAt()
+    await applyStatus(wrapper, 'LOADING')
+
+    // 1) transporter commission
+    expect(wrapper.find('#unit_price_per_litre').exists()).toBe(true)
+    await buttonNamed(wrapper, 'Passer')!.trigger('click')
+    await flushPromises()
+    // 2) loading fee
+    expect((wrapper.find('#category').element as HTMLSelectElement).value).toBe('loading')
+    await buttonNamed(wrapper, 'Passer')!.trigger('click')
+    await flushPromises()
+    // 3) road transit fee (LOADED carries none)
+    expect((wrapper.find('#category').element as HTMLSelectElement).value).toBe('road_transit')
+    await buttonNamed(wrapper, 'Passer')!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('#category').exists()).toBe(false)
+    expect(wrapper.find('#unit_price_per_litre').exists()).toBe(false)
+  })
+
+  it('"Tout passer" closes the whole fee queue at once', async () => {
+    setUser({ operations: ['view', 'edit'], finance: ['view', 'create'] })
+    tripResourceGet.mockResolvedValue(makeTrip({ status: 'ASSIGNED' }))
+    allowedStatusesToReturn = ['LOADING']
+    postTripStatus.mockResolvedValueOnce({
+      ...makeTrip({ status: 'CUSTOMS' }),
+      traversed_statuses: ['SENT_FOR_LOADING', 'LOADING', 'ROAD_TRANSIT', 'CUSTOMS'],
+    })
+
+    const wrapper = await mountAt()
+    await applyStatus(wrapper, 'LOADING')
+    await buttonNamed(wrapper, 'Tout passer')!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('#category').exists()).toBe(false)
+    expect(wrapper.find('#unit_price_per_litre').exists()).toBe(false)
+  })
+
+  it('opens no fee popup and stays usable after a skip without finance create permission', async () => {
+    setUser({ operations: ['view', 'edit'], finance: ['view'] })
+    tripResourceGet.mockResolvedValue(makeTrip({ status: 'ASSIGNED' }))
+    allowedStatusesToReturn = ['LOADING']
+    postTripStatus.mockResolvedValueOnce({
+      ...makeTrip({ status: 'LOADING' }),
+      traversed_statuses: ['SENT_FOR_LOADING', 'LOADING'],
+    })
+
+    const wrapper = await mountAt()
+    await applyStatus(wrapper, 'LOADING')
+
+    expect(wrapper.find('#category').exists()).toBe(false)
+    expect(wrapper.find('#unit_price_per_litre').exists()).toBe(false)
+    expect(wrapper.find('#next_status').exists()).toBe(true)
   })
 
   it('shows road transit as its own line in expenses and margin breakdown', async () => {

@@ -79,6 +79,23 @@ const automaticExpense = ref<{
   category: ExpenseCategory
 } | null>(null)
 const canManageExpenses = computed(() => auth.can('finance', 'create'))
+// One settlement per trip, external transporters only (same rule as the
+// automatic popup at SENT_FOR_LOADING).
+const canAddCommission = computed(
+  () =>
+    canManageExpenses.value &&
+    !!trip.value?.transporter &&
+    !trip.value.transporter_detail?.is_internal &&
+    !transportPayments.value.length,
+)
+
+function onSelectCommission() {
+  showExpenseForm.value = false
+  automaticExpense.value = null
+  editingExpense.value = null
+  automaticTransportTitle.value = null
+  showTransportPaymentForm.value = true
+}
 // Phase 5: POST /api/expenses/{id}/cancel/ requires the "cancel" tier
 // (backend/apps/accounts/permissions.py ACTION_MAP falls back to the raw
 // action name "cancel", same tier already gating destroy/hard-delete
@@ -163,10 +180,8 @@ const showAssignCustomerForm = ref(false)
 const noSaleYet = computed(() => margin.value !== null && !margin.value.available)
 const customsReachedStatuses: TripStatus[] = [
   'CUSTOMS',
-  'GOING_TO_COMPANY_STOCK',
   'ARRIVED_AT_COMPANY_STOCK',
   'STOCKED',
-  'GOING_TO_CLIENT',
   'ARRIVED_AT_CLIENT',
   'QUANTITY_CONTROL',
   'DELIVERED',
@@ -255,6 +270,7 @@ async function onExpenseSaved() {
   automaticExpense.value = null
   editingExpense.value = null
   await Promise.all([loadExpenses(), loadMargin()])
+  if (inFeeQueue.value) showNextFee()
 }
 
 async function onCancelExpense(expense: Expense) {
@@ -305,6 +321,7 @@ async function onTransportPaymentSaved() {
   showTransportPaymentForm.value = false
   automaticTransportTitle.value = null
   await Promise.all([loadExpenses(), loadMargin()])
+  if (inFeeQueue.value) showNextFee()
 }
 
 // TripProfitService.get_cost_breakdown (guide Section 9.1) - only
@@ -419,28 +436,62 @@ const automaticExpenseByStatus: Partial<
   CUSTOMS: { title: t('trips.detail.autoExpense.customs'), category: 'customs' },
 }
 
-function openAutomaticFeePopup(targetStatus: TripStatus) {
-  if (!canManageExpenses.value || !trip.value) return
+function openAutomaticFeePopup(targetStatus: TripStatus): boolean {
+  if (!canManageExpenses.value || !trip.value) return false
   if (targetStatus === 'SENT_FOR_LOADING') {
     // Bug fix (2026-09-03 recette manuelle): a company-owned truck's trip
-    // is now linked to the seeded internal transporter rather than left
-    // blank (Truck.save()), so `!trip.value.transporter` alone no longer
-    // detects "flotte propre" - no commission is ever due for it either
-    // way, so the popup must still be skipped.
-    if (!trip.value.transporter || trip.value.transporter_detail?.is_internal) return
-    // Bug fix (found by chance, client feedback 2026-09-10): nothing
-    // stopped this popup - or the always-visible "Ajouter des frais de
-    // transport" button below - from creating a second TransportPayment
-    // for a trip that already has one. A trip has exactly one settlement.
-    if (transportPayments.value.length) return
+    // is linked to the seeded internal transporter (Truck.save()), so
+    // `!transporter` alone no longer detects "flotte propre" - no commission
+    // is ever due for it, so the popup must still be skipped.
+    if (!trip.value.transporter || trip.value.transporter_detail?.is_internal) return false
+    // A trip has exactly one settlement (bug fix, client feedback 2026-09-10).
+    if (transportPayments.value.length) return false
     automaticTransportTitle.value = t('trips.detail.autoExpense.transporterCommission')
     showTransportPaymentForm.value = true
-    return
+    return true
   }
   const expense = automaticExpenseByStatus[targetStatus]
-  if (!expense) return
+  if (!expense) return false
   automaticExpense.value = expense
   showExpenseForm.value = true
+  return true
+}
+
+// Fee popups still to show after a status change or a multi-status skip: one
+// per traversed status that carries a fee, in path order. "Passer" (the form's
+// cancel button, relabelled while inFeeQueue) moves on to the next one.
+const feeQueue = ref<TripStatus[]>([])
+const inFeeQueue = ref(false)
+
+function showNextFee() {
+  while (feeQueue.value.length) {
+    if (openAutomaticFeePopup(feeQueue.value.shift()!)) return
+  }
+  inFeeQueue.value = false
+}
+
+function skipAllFees() {
+  feeQueue.value = []
+  inFeeQueue.value = false
+  showExpenseForm.value = false
+  showTransportPaymentForm.value = false
+  automaticExpense.value = null
+  automaticTransportTitle.value = null
+}
+
+function onExpenseCancel() {
+  showExpenseForm.value = false
+  automaticExpense.value = null
+  editingExpense.value = null
+  if (inFeeQueue.value) showNextFee()
+}
+
+function onTransportPaymentCancel() {
+  showTransportPaymentForm.value = false
+  automaticTransportTitle.value = null
+  editingTransportPayment.value = null
+  transportPaymentFormMode.value = 'edit'
+  if (inFeeQueue.value) showNextFee()
 }
 
 async function onChangeStatus() {
@@ -449,12 +500,14 @@ async function onChangeStatus() {
   changingStatus.value = true
   statusError.value = ''
   try {
-    await postTripStatus(tripId.value, nextStatus.value, statusNotes.value)
+    const result = await postTripStatus(tripId.value, nextStatus.value, statusNotes.value)
     nextStatus.value = ''
     statusNotes.value = ''
     await Promise.all([load(), loadMargin()])
     await loadAllowedStatuses()
-    openAutomaticFeePopup(targetStatus)
+    feeQueue.value = [...(result?.traversed_statuses ?? [targetStatus])]
+    inFeeQueue.value = true
+    showNextFee()
   } catch (e) {
     const data = (e as { response?: { data?: { detail?: string } } })?.response?.data
     statusError.value = translateApiError(data?.detail) || t('trips.detail.statusChangeError')
@@ -976,18 +1029,6 @@ const cessionProofUrl = computed(
             >
               {{ t('trips.detail.addExpense') }}
             </Button>
-            <Button
-              v-if="
-                canManageExpenses &&
-                trip.transporter &&
-                !trip.transporter_detail?.is_internal &&
-                !transportPayments.length
-              "
-              variant="ghost"
-              @click=";((automaticTransportTitle = null), (showTransportPaymentForm = true))"
-            >
-              {{ t('trips.detail.addTransportFee') }}
-            </Button>
           </div>
         </div>
       </Card>
@@ -1105,17 +1146,24 @@ const cessionProofUrl = computed(
       >
         <div class="max-h-[90vh] w-full max-w-lg overflow-y-auto">
           <ExpenseForm
+            :key="automaticExpense?.category ?? editingExpense?.id ?? 'new'"
             :preset-allocation="{ kind: 'trip', objectId: trip.id, label: trip.reference }"
             :title="automaticExpense?.title"
             :initial-category="automaticExpense?.category"
             :initial-calculation-method="automaticExpense ? 'PER_LITRE' : undefined"
             :per-litre-quantity="trip.quantity_loaded"
             :editing-expense="editingExpense"
+            :cancel-label="inFeeQueue ? t('trips.detail.skipFee') : undefined"
+            :commission-available="canAddCommission && !inFeeQueue"
+            @select-commission="onSelectCommission"
             @success="onExpenseSaved"
-            @cancel="
-              ;((showExpenseForm = false), (automaticExpense = null), (editingExpense = null))
-            "
+            @cancel="onExpenseCancel"
           />
+          <div v-if="inFeeQueue && feeQueue.length" class="mt-2 flex justify-end">
+            <Button variant="ghost" data-test="skip-all-fees" @click="skipAllFees">
+              {{ t('trips.detail.skipAllFees') }}
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -1133,14 +1181,15 @@ const cessionProofUrl = computed(
             :transporter-id="trip.transporter!"
             :transporter-name="trip.transporter_detail?.name ?? ''"
             :quantity-loaded="trip.quantity_loaded"
+            :cancel-label="inFeeQueue ? t('trips.detail.skipFee') : undefined"
             @success="onTransportPaymentSaved"
-            @cancel="
-              ;((showTransportPaymentForm = false),
-                (automaticTransportTitle = null),
-                (editingTransportPayment = null),
-                (transportPaymentFormMode = 'edit'))
-            "
+            @cancel="onTransportPaymentCancel"
           />
+          <div v-if="inFeeQueue && feeQueue.length" class="mt-2 flex justify-end">
+            <Button variant="ghost" data-test="skip-all-fees" @click="skipAllFees">
+              {{ t('trips.detail.skipAllFees') }}
+            </Button>
+          </div>
         </div>
       </div>
 

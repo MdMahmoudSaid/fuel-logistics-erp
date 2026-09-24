@@ -3,7 +3,7 @@
 // arithmetic is needed.
 import type { CessionLetter } from '@/modules/purchasing/types'
 
-// The 14 statuses from spec §13 / backend/apps/trips/models.py Trip.Status.
+// The statuses from spec §13 / backend/apps/trips/models.py Trip.Status.
 // Valid next-transitions are decided exclusively by TripWorkflowService on
 // the backend (guide §6.9: "Do not hard-code workflow rules in Vue") — the
 // UI offers every status and surfaces whatever the server rejects, rather
@@ -17,10 +17,8 @@ export type TripStatus =
   | 'IN_TRANSIT'
   | 'BORDER'
   | 'CUSTOMS'
-  | 'GOING_TO_COMPANY_STOCK'
   | 'ARRIVED_AT_COMPANY_STOCK'
   | 'STOCKED'
-  | 'GOING_TO_CLIENT'
   | 'ARRIVED_AT_CLIENT'
   | 'QUANTITY_CONTROL'
   | 'DELIVERED'
@@ -37,10 +35,8 @@ export const TRIP_STATUSES: TripStatus[] = [
   'IN_TRANSIT',
   'BORDER',
   'CUSTOMS',
-  'GOING_TO_COMPANY_STOCK',
   'ARRIVED_AT_COMPANY_STOCK',
   'STOCKED',
-  'GOING_TO_CLIENT',
   'ARRIVED_AT_CLIENT',
   'QUANTITY_CONTROL',
   'DELIVERED',
@@ -61,10 +57,8 @@ export const TRIP_PIPELINE_STATUSES: TripStatus[] = [
   'IN_TRANSIT',
   'BORDER',
   'CUSTOMS',
-  'GOING_TO_COMPANY_STOCK',
   'ARRIVED_AT_COMPANY_STOCK',
   'STOCKED',
-  'GOING_TO_CLIENT',
   'ARRIVED_AT_CLIENT',
   'QUANTITY_CONTROL',
   'DELIVERED',
