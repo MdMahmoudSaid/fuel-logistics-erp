@@ -17,6 +17,7 @@ import Button from '@/components/ui/Button.vue'
 import { formatMoney, formatQuantity, formatUnitMoney } from '@/utils/currency'
 
 const props = defineProps<{
+  cancelLabel?: string
   tripId: number
   tripReference: string
   transporterId: number
@@ -193,7 +194,7 @@ async function onSubmit() {
 
       <div class="flex justify-end gap-2">
         <Button type="button" variant="ghost" @click="emit('cancel')">
-          {{ t('common.cancel') }}
+          {{ cancelLabel ?? t('common.cancel') }}
         </Button>
         <Button type="submit" variant="primary" :loading="saving">
           {{ saving ? t('finance.transportPayment.saving') : t('finance.transportPayment.save') }}

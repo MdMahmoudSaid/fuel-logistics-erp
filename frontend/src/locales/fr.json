@@ -399,6 +399,8 @@
       "commissionDeleteError": "Impossible de supprimer la commission transporteur.",
       "transportPaymentCancelled": "Paiement transport annulé",
       "addTransportFee": "+ Ajouter des frais de transport (au litre)",
+      "skipFee": "Passer",
+      "skipAllFees": "Tout passer",
       "margin": "Rentabilité du trajet",
       "marginUnavailable": "Disponible une fois la livraison confirmée.",
       "marginLoadError": "Impossible de charger la rentabilité de ce trajet.",

@@ -41,6 +41,7 @@ import type {
 const props = defineProps<{
   presetAllocation?: { kind: AllocatableKind; objectId: number; label: string }
   initialCategory?: ExpenseCategory
+  cancelLabel?: string
   initialCalculationMethod?: ExpenseCalculationMethod
   perLitreQuantity?: string
   showTreasuryPayment?: boolean
@@ -109,13 +110,7 @@ const savingCategory = ref(false)
 // is_system=True set (apps/finance/migrations/0014, 0019). "transport" was
 // dropped (migration 0019): a manual transport fee had no debt type to pay
 // it - transporter commission is the only transport-cost channel.
-const TRIP_SYSTEM_CATEGORY_CODES = [
-  'customs',
-  'transit',
-  'road_transit',
-  'road',
-  'loading',
-]
+const TRIP_SYSTEM_CATEGORY_CODES = ['customs', 'transit', 'road_transit', 'road', 'loading']
 
 function fallbackCategories(): ExpenseCategoryOption[] {
   return EXPENSE_CATEGORIES.filter((category) => {
@@ -650,7 +645,7 @@ async function onSubmit() {
 
       <div class="flex justify-end gap-2">
         <Button type="button" variant="ghost" @click="emit('cancel')">
-          {{ t('common.cancel') }}
+          {{ cancelLabel ?? t('common.cancel') }}
         </Button>
         <Button type="submit" variant="primary" :loading="saving">
           {{ saving ? t('finance.expense.saving') : t('finance.expense.save') }}

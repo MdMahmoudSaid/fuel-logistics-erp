@@ -82,7 +82,13 @@ const tripResourceGet = vi.fn(async (_id: number) => tripToReturn)
 const fetchTripHistory = vi.fn(async (_id: number) => [])
 let marginToReturn: TripMargin = { available: false }
 const fetchTripMargin = vi.fn(async (_id: number) => marginToReturn)
-const postTripStatus = vi.fn(async (_id: number, _status: string, _notes = '') => tripToReturn)
+const postTripStatus = vi.fn(
+  async (
+    _id: number,
+    _status: string,
+    _notes = '',
+  ): Promise<Trip & { traversed_statuses?: string[] }> => tripToReturn,
+)
 let allowedStatusesToReturn: string[] = ['IN_TRANSIT', 'BLOCKED', 'CANCELLED']
 const fetchAllowedTripStatuses = vi.fn(async (_id: number) => allowedStatusesToReturn)
 const postDeliveryControl = vi.fn(async (_tripId: number, payload: Record<string, unknown>) => ({
@@ -1447,6 +1453,81 @@ describe('TripDetail expenses section', () => {
     expect((wrapper.find('#category').element as HTMLSelectElement).value).toBe('transit')
     expect((wrapper.find('#category').element as HTMLSelectElement).value).not.toBe('transport')
     expect(wrapper.text()).toContain('Frais transit')
+  })
+
+  async function applyStatus(wrapper: Awaited<ReturnType<typeof mountAt>>, status: string) {
+    await wrapper.find('#next_status').setValue(status)
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Appliquer')!
+      .trigger('click')
+    await flushPromises()
+  }
+  const buttonNamed = (wrapper: Awaited<ReturnType<typeof mountAt>>, label: string) =>
+    wrapper.findAll('button').find((b) => b.text() === label)
+
+  it('chains one fee popup per skipped status, each with a "Passer" button', async () => {
+    setUser({ operations: ['view', 'edit'], finance: ['view', 'create'] })
+    tripResourceGet.mockResolvedValue(makeTrip({ status: 'ASSIGNED' }))
+    allowedStatusesToReturn = ['LOADING']
+    postTripStatus.mockResolvedValueOnce({
+      ...makeTrip({ status: 'ROAD_TRANSIT' }),
+      traversed_statuses: ['SENT_FOR_LOADING', 'LOADING', 'LOADED', 'ROAD_TRANSIT'],
+    })
+
+    const wrapper = await mountAt()
+    await applyStatus(wrapper, 'LOADING')
+
+    // 1) transporter commission
+    expect(wrapper.find('#unit_price_per_litre').exists()).toBe(true)
+    await buttonNamed(wrapper, 'Passer')!.trigger('click')
+    await flushPromises()
+    // 2) loading fee
+    expect((wrapper.find('#category').element as HTMLSelectElement).value).toBe('loading')
+    await buttonNamed(wrapper, 'Passer')!.trigger('click')
+    await flushPromises()
+    // 3) road transit fee (LOADED carries none)
+    expect((wrapper.find('#category').element as HTMLSelectElement).value).toBe('road_transit')
+    await buttonNamed(wrapper, 'Passer')!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('#category').exists()).toBe(false)
+    expect(wrapper.find('#unit_price_per_litre').exists()).toBe(false)
+  })
+
+  it('"Tout passer" closes the whole fee queue at once', async () => {
+    setUser({ operations: ['view', 'edit'], finance: ['view', 'create'] })
+    tripResourceGet.mockResolvedValue(makeTrip({ status: 'ASSIGNED' }))
+    allowedStatusesToReturn = ['LOADING']
+    postTripStatus.mockResolvedValueOnce({
+      ...makeTrip({ status: 'CUSTOMS' }),
+      traversed_statuses: ['SENT_FOR_LOADING', 'LOADING', 'ROAD_TRANSIT', 'CUSTOMS'],
+    })
+
+    const wrapper = await mountAt()
+    await applyStatus(wrapper, 'LOADING')
+    await buttonNamed(wrapper, 'Tout passer')!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('#category').exists()).toBe(false)
+    expect(wrapper.find('#unit_price_per_litre').exists()).toBe(false)
+  })
+
+  it('opens no fee popup and stays usable after a skip without finance create permission', async () => {
+    setUser({ operations: ['view', 'edit'], finance: ['view'] })
+    tripResourceGet.mockResolvedValue(makeTrip({ status: 'ASSIGNED' }))
+    allowedStatusesToReturn = ['LOADING']
+    postTripStatus.mockResolvedValueOnce({
+      ...makeTrip({ status: 'LOADING' }),
+      traversed_statuses: ['SENT_FOR_LOADING', 'LOADING'],
+    })
+
+    const wrapper = await mountAt()
+    await applyStatus(wrapper, 'LOADING')
+
+    expect(wrapper.find('#category').exists()).toBe(false)
+    expect(wrapper.find('#unit_price_per_litre').exists()).toBe(false)
+    expect(wrapper.find('#next_status').exists()).toBe(true)
   })
 
   it('shows road transit as its own line in expenses and margin breakdown', async () => {

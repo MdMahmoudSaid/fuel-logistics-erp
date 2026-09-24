@@ -398,6 +398,8 @@
       "commissionDeleteError": "تعذر حذف عمولة الناقل.",
       "transportPaymentCancelled": "دفعة نقل ملغاة",
       "addTransportFee": "+ إضافة رسوم نقل (لكل لتر)",
+      "skipFee": "تخطي",
+      "skipAllFees": "تخطي الكل",
       "margin": "ربحية الرحلة",
       "marginUnavailable": "متاحة بعد تأكيد التسليم.",
       "marginLoadError": "تعذر تحميل ربحية هذه الرحلة.",

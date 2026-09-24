@@ -398,6 +398,8 @@
       "commissionDeleteError": "Unable to delete the transporter commission.",
       "transportPaymentCancelled": "Cancelled transport payment",
       "addTransportFee": "+ Add transport fee (per litre)",
+      "skipFee": "Skip",
+      "skipAllFees": "Skip all",
       "margin": "Trip profitability",
       "marginUnavailable": "Available once delivery is confirmed.",
       "marginLoadError": "Could not load this trip's profitability.",
