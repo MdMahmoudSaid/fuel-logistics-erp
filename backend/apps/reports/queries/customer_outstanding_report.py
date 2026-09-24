@@ -18,7 +18,10 @@ class CustomerOutstandingReportQuery:
     FIELDS = FIELDS
 
     @classmethod
-    def run(cls) -> list[dict]:
+    def run(cls, *, date_from=None, date_to=None) -> list[dict]:
+        # "As of today" report: the period params are accepted and ignored
+        # (the Reports page hides the period filter for it; a direct call with
+        # dates must not fail).
         customer_ids = (
             Invoice.objects.exclude(status=Invoice.Status.CANCELLED)
             .values_list("sale__customer_id", flat=True)

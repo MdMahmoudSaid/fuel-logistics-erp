@@ -7,6 +7,10 @@ export interface ReportTypeOption {
   label: string
   idParam?: string
   idLabel?: string
+  /** "Situation courante" report: no period filter, no period params sent. */
+  periodless?: boolean
+  /** Second selector sent as a query param (e.g. the trip-fee type). */
+  paramSelect?: { param: string; options: string[]; defaultValue: string }
 }
 
 export const REPORT_TYPES: ReportTypeOption[] = [
@@ -33,12 +37,26 @@ export const REPORT_TYPES: ReportTypeOption[] = [
   { value: 'purchase-report', label: 'Purchase report' },
   { value: 'sales-report', label: 'Sales report' },
   { value: 'expense-report', label: 'Expense report' },
-  { value: 'customer-outstanding', label: 'Customer outstanding' },
-  { value: 'supplier-outstanding', label: 'Supplier outstanding' },
-  { value: 'transporter-outstanding', label: 'Transporter outstanding' },
-  { value: 'fuel-stock', label: 'Fuel stock' },
+  { value: 'customer-outstanding', label: 'Customer outstanding', periodless: true },
+  { value: 'supplier-outstanding', label: 'Supplier outstanding', periodless: true },
+  { value: 'transporter-outstanding', label: 'Transporter outstanding', periodless: true },
+  { value: 'fuel-stock', label: 'Fuel stock', periodless: true },
   { value: 'loss-report', label: 'Loss report' },
   { value: 'margin-report', label: 'Margin report' },
+  { value: 'capital-report', label: 'Capital report' },
+  { value: 'general-expense-report', label: 'General expense report' },
+  {
+    value: 'trip-fee-debt-report',
+    label: 'Trip fee debt report',
+    periodless: true,
+    paramSelect: {
+      param: 'fee_type',
+      options: ['all', 'customs', 'transit', 'road_transit', 'border', 'loading'],
+      defaultValue: 'all',
+    },
+  },
+  { value: 'general-debt-report', label: 'General debt report', periodless: true },
+  { value: 'general-receivable-report', label: 'General receivable report', periodless: true },
   {
     value: 'bank-statement',
     label: 'Bank statement',
@@ -59,8 +77,62 @@ export const REPORT_TYPES: ReportTypeOption[] = [
   },
 ]
 
+// Mirrors backend/apps/reports/services/report_document.build_report_document
+// (docs/superpowers/specs/2026-09-23-rapports-document-comptable-design.md).
+// Decimal values arrive as strings; labels are already translated (spec D2).
+export type ReportColumnKind =
+  'date' | 'text' | 'ref' | 'money' | 'unit_money' | 'quantity' | 'percent' | 'enum' | 'status'
+
+export interface ReportColumn {
+  field: string
+  label: string
+  kind: ReportColumnKind
+  align: 'start' | 'end'
+  /** enum/status columns: which value family (badge colours depend on it). */
+  namespace?: string
+  enum_labels?: Record<string, string>
+}
+
+export interface ReportTable {
+  key: string
+  title: string | null
+  columns: ReportColumn[]
+  /** Rows whose `field` equals `equals` are printed bold (fuel-stock TOTAL). */
+  emphasis: { field: string; equals: string } | null
+  /** Set: the table shows only the rows whose `section` equals it. */
+  section?: string | null
+}
+
+export interface ReportSummaryLine {
+  key: string
+  label: string
+  value: string | number | null
+  kind: 'money' | 'quantity' | 'count'
+  emphasis: boolean
+}
+
+export interface ReportDocument {
+  title: string
+  company: { name: string }
+  generated_on: string
+  lang: 'fr' | 'en' | 'ar'
+  direction: 'ltr' | 'rtl'
+  currency: string
+  orientation: 'portrait' | 'landscape'
+  period: { mode: 'range' | 'open' | 'as_of'; from: string | null; to: string | null; text: string }
+  entity: { label: string; name: string } | null
+  info: { key: string; label: string; value: string }[]
+  tables: ReportTable[]
+  opening_balance: { label: string; value: string | number; column: string } | null
+  summary: ReportSummaryLine[]
+  empty_text: string
+  labels: { page: string }
+}
+
 export interface ReportResponse {
   report_type: string
   fields: string[]
   rows: Record<string, unknown>[]
+  /** Only present when requested with ?document=1 (spec D3). */
+  document?: ReportDocument
 }

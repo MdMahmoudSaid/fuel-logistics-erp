@@ -99,3 +99,55 @@
     padding: 0 !important;
   }
 }
+
+/* Rapports (2026-09-23) : usePrintScope marque, juste avant window.print(),
+   tout ce qui n'est pas sur le chemin feuille -> <body> (data-print-hidden)
+   et ce chemin lui-même (data-print-chain). Le chemin est remis "à plat"
+   pour que la feuille s'étende sur plusieurs pages (pas de hauteur d'écran,
+   de défilement interne, de flex/grid de la coquille). */
+@media print {
+  [data-print-hidden] {
+    display: none !important;
+  }
+
+  /* Le fond beige de l'appli (body) ne doit pas s'imprimer autour de la feuille. */
+  html:has([data-print-chain]),
+  body:has([data-print-chain]) {
+    background: #fff !important;
+  }
+
+  [data-print-chain] {
+    display: block !important;
+    position: static !important;
+    width: auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-width: none !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    border: 0 !important;
+    background: none !important;
+    box-shadow: none !important;
+  }
+
+  .report-sheet {
+    width: auto !important;
+    min-width: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    --tw-ring-shadow: 0 0 #0000 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .report-table thead {
+    display: table-header-group;
+  }
+
+  .report-table tr,
+  .report-summary {
+    break-inside: avoid;
+  }
+}

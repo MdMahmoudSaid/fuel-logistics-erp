@@ -50,6 +50,11 @@ export function formatUnitMoney(value: string | number): string {
   return isolateLtr(`${formatDecimal(toNumber(value), 4)} ${CURRENCY}/L`)
 }
 
+/** `12,50 %` — a share, never suffixed with the currency. */
+export function formatPercent(value: string | number): string {
+  return isolateLtr(`${formatDecimal(toNumber(value), 2)} %`)
+}
+
 /** `45 000 L` */
 export function formatQuantity(value: string | number): string {
   return isolateLtr(`${formatInteger(toNumber(value))} L`)

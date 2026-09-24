@@ -14,18 +14,15 @@
 import datetime
 import io
 from decimal import ROUND_HALF_UP, Decimal
-from pathlib import Path
-from xml.sax.saxutils import escape as xml_escape
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from apps.reports.services.ledger_pdf import DEFAULT_COMPANY_NAME
+from apps.reports.services.pdf_template import DEFAULT_COMPANY_NAME, masthead, safe_text
 
-_LOGO_PATH = Path(__file__).resolve().parent.parent / "assets" / "azur-energie-icon.png"
 
 ZERO = Decimal("0.00")
 
@@ -167,11 +164,7 @@ _DETAIL_TABLE_STYLE = TableStyle(
 )
 
 
-def _safe_paragraph_text(value) -> str:
-    """See apps.reports.services.ledger_pdf._safe_paragraph_text's
-    docstring for why every Paragraph (never a Table cell) must go
-    through this."""
-    return xml_escape(str(value)) if value is not None else ""
+_safe_paragraph_text = safe_text
 
 
 def _format_money(value) -> str:
@@ -266,13 +259,9 @@ def render_profit_report_pdf(
     buffer = io.BytesIO()
     doc = _doc_template(buffer, title=labels["title"])
 
-    elements: list = []
-    if _LOGO_PATH.exists():
-        logo = Image(str(_LOGO_PATH), width=18 * mm, height=18 * mm)
-        elements.append(logo)
-        elements.append(Spacer(1, 3 * mm))
-    elements.append(Paragraph(_safe_paragraph_text(DEFAULT_COMPANY_NAME), styles["Title"]))
-    elements.append(Paragraph(_safe_paragraph_text(labels["title"]), heading_style))
+    elements: list = masthead(
+        company_name=DEFAULT_COMPANY_NAME, doc_title=labels["title"], styles=styles, heading_style=heading_style
+    )
 
     period_start = preview.get("period_start")
     period_end = preview.get("period_end")

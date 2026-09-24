@@ -1397,3 +1397,162 @@ def test_dashboard_working_capital_matches_client_recette_example():
     assert wc["transporter_debt_total"] == "2925000.00"
     assert wc["other_debts"] == "10255000.00"
     assert wc["total"] == "358180000.00"
+
+
+# ---------------------------------------------------------------------------
+# ?document=1 (docs/superpowers/specs/2026-09-23-rapports-document-comptable-
+# design.md, D3 and section Compatibility contract): opt-in, additive.
+# TripDetail/DashboardView (loss-report) and ProfitView (margin-report) call
+# the endpoint without it and must keep receiving exactly
+# {report_type, fields, rows}.
+# ---------------------------------------------------------------------------
+
+
+def _all_report_params(admin_user, suffix):
+    from apps.finance.models import BankAccount, CashAccount, Shareholder
+
+    fx = _make_full_trip(suffix, admin_user)
+    return fx, {
+        "customer-statement": {"customer_id": fx["customer"].id},
+        "supplier-statement": {"supplier_id": fx["supplier_order"].supplier_id},
+        "transporter-statement": {"transporter_id": fx["trip"].transporter_id},
+        "truck-history": {"truck_id": fx["truck"].id},
+        "trip-report": {},
+        "purchase-report": {},
+        "sales-report": {},
+        "expense-report": {},
+        "customer-outstanding": {},
+        "supplier-outstanding": {},
+        "transporter-outstanding": {},
+        "fuel-stock": {},
+        "loss-report": {},
+        "margin-report": {},
+        "bank-statement": {"bank_account_id": BankAccount.objects.create(name=f"Bank {suffix}").id},
+        "cash-statement": {"cash_account_id": CashAccount.objects.create(name=f"Cash {suffix}").id},
+        "shareholder-statement": {
+            "shareholder_id": Shareholder.objects.create(
+                name=f"Assoc {suffix}", participation_percent=Decimal("100")
+            ).id
+        },
+        # Added 2026-09-23: no entity id needed.
+        "capital-report": {},
+        "general-expense-report": {},
+        "trip-fee-debt-report": {"fee_type": "customs"},
+        "general-debt-report": {},
+        "general-receivable-report": {},
+    }
+
+
+@pytest.mark.django_db
+def test_report_endpoint_legacy_response_is_unchanged_for_every_type_and_document_is_additive():
+    from apps.reports.serialization import decimals_to_str
+    from apps.reports.views.reports import REPORT_REGISTRY
+
+    admin_user = _make_admin("REPCOMPAT")
+    _, params_by_type = _all_report_params(admin_user, "REPCOMPAT")
+    client = APIClient()
+    client.force_authenticate(admin_user)
+
+    assert set(params_by_type) == set(REPORT_REGISTRY)
+    for report_type, params in params_by_type.items():
+        query_class = REPORT_REGISTRY[report_type]
+        legacy = client.get(f"/api/reports/{report_type}/", params)
+
+        assert legacy.status_code == 200, report_type
+        assert set(legacy.data) == {"report_type", "fields", "rows"}, report_type
+        assert legacy.data["report_type"] == report_type
+        assert legacy.data["fields"] == query_class.FIELDS
+        assert legacy.data["rows"] == decimals_to_str(query_class.run(**params)), report_type
+
+        with_document = client.get(f"/api/reports/{report_type}/", {**params, "document": "1", "lang": "fr"})
+
+        assert with_document.status_code == 200, report_type
+        assert set(with_document.data) == {"report_type", "fields", "rows", "document"}
+        for key in ("report_type", "fields", "rows"):
+            assert with_document.data[key] == legacy.data[key], (report_type, key)
+        assert with_document.data["document"]["title"]
+
+
+@pytest.mark.django_db
+def test_report_endpoint_keeps_the_fields_read_by_trip_detail_dashboard_and_profit_views():
+    from apps.reports.queries.loss_report import FIELDS as LOSS_FIELDS
+    from apps.reports.queries.margin_report import FIELDS as MARGIN_FIELDS
+
+    admin_user = _make_admin("REPCONSUMERS")
+    fx = _make_full_trip("REPCONSUMERS", admin_user)
+    client = APIClient()
+    client.force_authenticate(admin_user)
+
+    loss = client.get("/api/reports/loss-report/", {"from": "2026-01-01", "to": "2026-12-31"})
+    margin = client.get("/api/reports/margin-report/")
+
+    assert {"trip_reference", "verified_at", "loaded_quantity", "received_quantity", "loss_quantity",
+            "chargeable_loss_quantity"} <= set(loss.data["fields"])
+    assert loss.data["fields"] == LOSS_FIELDS and set(loss.data) == {"report_type", "fields", "rows"}
+    assert {"trip_reference", "unit_profit", "current_margin", "real_total_cost"} <= set(margin.data["fields"])
+    assert margin.data["fields"] == MARGIN_FIELDS and set(margin.data) == {"report_type", "fields", "rows"}
+    assert any(row["trip_reference"] == fx["trip"].reference for row in margin.data["rows"])
+    assert all(set(row) == set(MARGIN_FIELDS) for row in margin.data["rows"])
+
+
+@pytest.mark.django_db
+def test_report_endpoint_document_for_a_statement_carries_opening_balance_and_entity():
+    from apps.finance.models import CashAccount, CustomerPayment
+    from apps.sales.models import Invoice
+
+    admin_user = _make_admin("REPDOCSTMT")
+    fx = _make_full_trip("REPDOCSTMT", admin_user)
+    invoice = Invoice.objects.create(
+        invoice_number="INV-REPDOCSTMT", sale=fx["sale"], status=Invoice.Status.VALIDATED,
+        total_amount=fx["sale"].subtotal, issued_date="2026-08-18",
+    )
+    CustomerPayment.objects.create(
+        customer=fx["customer"], amount=Decimal("1000.00"), payment_date="2026-09-05",
+        method=CustomerPayment.Method.CASH, cash_account=CashAccount.objects.create(name="Cash REPDOCSTMT"),
+        recorded_by=admin_user,
+    )
+    client = APIClient()
+    client.force_authenticate(admin_user)
+
+    response = client.get(
+        "/api/reports/customer-statement/",
+        {"customer_id": fx["customer"].id, "from": "2026-09-01", "document": "1", "lang": "fr"},
+    )
+
+    assert response.status_code == 200, response.data
+    document = response.data["document"]
+    assert document["opening_balance"]["value"] == str(invoice.total_amount)
+    assert response.data["rows"][0]["balance"] == str(invoice.total_amount - Decimal("1000.00"))
+    assert document["entity"]["name"] == fx["customer"].name
+    assert document["period"]["text"].startswith("À partir du 01/09/2026")
+    assert {line["key"] for line in document["summary"]} >= {"opening_balance", "closing_balance"}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("params", [{}, {"customer_id": "abc"}, {"customer_id": "999999"}])
+def test_report_endpoint_document_never_turns_a_bad_entity_id_into_a_500(params):
+    admin_user = _make_admin("REPBADID")
+    client = APIClient()
+    client.force_authenticate(admin_user)
+
+    legacy = client.get("/api/reports/customer-statement/", params)
+    with_document = client.get("/api/reports/customer-statement/", {**params, "document": "1"})
+
+    assert legacy.status_code < 500
+    assert with_document.status_code == legacy.status_code
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "report_type, param",
+    [("bank-statement", "bank_account_id"), ("cash-statement", "cash_account_id")],
+)
+def test_report_endpoint_unknown_treasury_account_is_a_404_not_a_500(report_type, param):
+    admin_user = _make_admin("REPNOACCT")
+    client = APIClient()
+    client.force_authenticate(admin_user)
+
+    legacy = client.get(f"/api/reports/{report_type}/", {param: 999999})
+    with_document = client.get(f"/api/reports/{report_type}/", {param: 999999, "document": "1"})
+
+    assert legacy.status_code == with_document.status_code == 404

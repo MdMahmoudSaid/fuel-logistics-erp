@@ -22,7 +22,10 @@ class SupplierOutstandingReportQuery:
     FIELDS = FIELDS
 
     @classmethod
-    def run(cls) -> list[dict]:
+    def run(cls, *, date_from=None, date_to=None) -> list[dict]:
+        # "As of today" report: the period params are accepted and ignored
+        # (the Reports page hides the period filter for it; a direct call with
+        # dates must not fail).
         supplier_ids = (
             SupplierOrder.objects.filter(status=SupplierOrder.Status.CONFIRMED)
             .values_list("supplier_id", flat=True)

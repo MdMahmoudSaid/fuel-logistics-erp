@@ -1134,3 +1134,193 @@ def test_shareholder_statement_excludes_draft_distribution_shares():
     ShareholderDistributionService.validate_distribution(distribution.id, admin_user)
 
     assert ShareholderStatementQuery.run(shareholder_id=shareholder.id) != []
+
+
+# ---------------------------------------------------------------------------
+# Statement opening balance (docs/superpowers/specs/2026-09-23-rapports-
+# document-comptable-design.md, section Statements): the running balance of a
+# partial period starts from the balance of the full history before date_from.
+# ---------------------------------------------------------------------------
+
+
+def _customer_history(suffix):
+    admin_user = _make_admin(suffix)
+    fx = _make_full_trip(suffix, admin_user)
+    invoice = Invoice.objects.create(
+        invoice_number=f"INV-QUERY-{suffix}",
+        sale=fx["sale"],
+        status=Invoice.Status.VALIDATED,
+        total_amount=fx["sale"].subtotal,
+        issued_date="2026-08-18",
+    )
+    cash = CashAccount.objects.create(name=f"Cash {suffix}")
+    for payment_date, amount in (("2026-08-19", "10000000.00"), ("2026-09-05", "1000000.00")):
+        CustomerPayment.objects.create(
+            customer=fx["customer"],
+            amount=Decimal(amount),
+            payment_date=payment_date,
+            method=CustomerPayment.Method.CASH,
+            cash_account=cash,
+            recorded_by=admin_user,
+        )
+    return fx, invoice
+
+
+@pytest.mark.django_db
+def test_customer_statement_opening_balance_covers_history_before_date_from():
+    fx, invoice = _customer_history("CUSTOPEN")
+    customer_id = fx["customer"].id
+
+    opening = CustomerStatementQuery.opening_balance(customer_id=customer_id, date_from="2026-09-01")
+    rows = CustomerStatementQuery.run(customer_id=customer_id, date_from="2026-09-01")
+
+    assert opening == invoice.total_amount - Decimal("10000000.00")
+    assert [r["type"] for r in rows] == ["PAYMENT"]
+    assert rows[0]["balance"] == opening - Decimal("1000000.00")
+    closing = CustomerStatementQuery.opening_balance(customer_id=customer_id, date_from="2026-10-01")
+    assert closing == rows[-1]["balance"]
+
+
+@pytest.mark.django_db
+def test_customer_statement_without_date_from_has_zero_opening_and_unchanged_rows():
+    fx, invoice = _customer_history("CUSTOPEN0")
+    customer_id = fx["customer"].id
+
+    assert CustomerStatementQuery.opening_balance(customer_id=customer_id) == Decimal("0.00")
+    rows = CustomerStatementQuery.run(customer_id=customer_id)
+    assert [r["balance"] for r in rows] == [
+        invoice.total_amount,
+        invoice.total_amount - Decimal("10000000.00"),
+        invoice.total_amount - Decimal("11000000.00"),
+    ]
+
+
+@pytest.mark.django_db
+def test_customer_statement_period_without_entries_still_has_nonzero_opening():
+    fx, invoice = _customer_history("CUSTOPENEMPTY")
+    customer_id = fx["customer"].id
+
+    rows = CustomerStatementQuery.run(
+        customer_id=customer_id, date_from="2026-10-01", date_to="2026-10-31"
+    )
+    opening = CustomerStatementQuery.opening_balance(
+        customer_id=customer_id, date_from="2026-10-01", date_to="2026-10-31"
+    )
+
+    assert rows == []
+    assert opening == invoice.total_amount - Decimal("11000000.00")
+
+
+@pytest.mark.django_db
+def test_supplier_statement_opening_balance_covers_history_before_date_from():
+    admin_user = _make_admin("SUPPOPEN")
+    fx = _make_full_trip("SUPPOPEN", admin_user)
+    cash = CashAccount.objects.create(name="Cash SUPPOPEN")
+    for payment_date, amount in (("2026-08-19", "5000000.00"), ("2026-09-05", "1000000.00")):
+        SupplierPayment.objects.create(
+            supplier=fx["supplier"],
+            amount=Decimal(amount),
+            payment_date=payment_date,
+            method=SupplierPayment.Method.CASH,
+            cash_account=cash,
+            recorded_by=admin_user,
+        )
+    supplier_id = fx["supplier"].id
+
+    opening = SupplierStatementQuery.opening_balance(supplier_id=supplier_id, date_from="2026-09-01")
+    rows = SupplierStatementQuery.run(supplier_id=supplier_id, date_from="2026-09-01")
+
+    assert opening == fx["supplier_order"].total_amount - Decimal("5000000.00")
+    assert [r["type"] for r in rows] == ["PAYMENT"]
+    assert rows[0]["balance"] == opening - Decimal("1000000.00")
+    assert SupplierStatementQuery.opening_balance(supplier_id=supplier_id) == Decimal("0.00")
+
+
+@pytest.mark.django_db
+def test_shareholder_statement_opening_balance_covers_history_before_date_from():
+    admin_user = _make_admin("SHROPEN")
+    shareholder = Shareholder.objects.create(name="Assoc SHROPEN", participation_percent=Decimal("100"))
+    bank = BankAccount.objects.create(name="Bank SHROPEN", opening_balance=Decimal("0.00"))
+    for contribution_date, amount in (("2026-06-01", "500000.00"), ("2026-09-05", "100000.00")):
+        ShareholderContribution.objects.create(
+            shareholder=shareholder, amount=Decimal(amount), date=contribution_date,
+            bank_account=bank, recorded_by=admin_user,
+        )
+
+    opening = ShareholderStatementQuery.opening_balance(
+        shareholder_id=shareholder.id, date_from="2026-09-01"
+    )
+    rows = ShareholderStatementQuery.run(shareholder_id=shareholder.id, date_from="2026-09-01")
+
+    assert opening == Decimal("500000.00")
+    assert [r["credit"] for r in rows] == [Decimal("100000.00")]
+    assert rows[0]["balance"] == Decimal("600000.00")
+    assert ShareholderStatementQuery.opening_balance(shareholder_id=shareholder.id) == Decimal("0.00")
+
+
+def _treasury_history(suffix):
+    admin_user = _make_admin(suffix)
+    account = CashAccount.objects.create(name=f"Cash {suffix}", opening_balance=Decimal("100000.00"))
+    IN, OUT = TreasuryTransaction.Type.MONEY_IN, TreasuryTransaction.Type.MONEY_OUT
+    for txn_type, amount, txn_date, is_transfer in (
+        (IN, "1000000.00", "2026-08-10", False),
+        (OUT, "200000.00", "2026-08-15", True),  # transfer before the period
+        (IN, "500000.00", "2026-09-05", False),
+        (OUT, "100000.00", "2026-09-10", False),
+        (OUT, "50000.00", "2026-09-12", True),  # transfers inside the period
+        (IN, "20000.00", "2026-09-20", True),
+        (IN, "999.00", "2026-10-05", False),  # after the period
+    ):
+        TreasuryTransaction.objects.create(
+            cash_account=account, type=txn_type, amount=Decimal(amount), date=txn_date,
+            is_transfer=is_transfer, recorded_by=admin_user,
+        )
+    return account
+
+
+@pytest.mark.django_db
+def test_treasury_statement_context_reconciles_with_signed_internal_transfers():
+    account = _treasury_history("TREASCTX")
+    period = {"cash_account_id": account.id, "date_from": "2026-09-01", "date_to": "2026-09-30"}
+
+    context = TreasuryStatementQuery.statement_context(**period)
+    rows = TreasuryStatementQuery.run(**period)
+
+    assert context["opening_balance"] == Decimal("900000.00")  # 100,000 + 1,000,000 - 200,000
+    assert context["period_in"] == Decimal("500000.00")
+    assert context["period_out"] == Decimal("100000.00")
+    assert context["transfers_net"] == Decimal("-30000.00")  # -50,000 + 20,000, signed
+    assert context["closing_balance"] == Decimal("1270000.00")  # the 10-05 entry is after date_to
+    assert (
+        context["opening_balance"] + context["period_in"] - context["period_out"] + context["transfers_net"]
+        == context["closing_balance"]
+    )
+    # period_in/out are exactly the sums of the displayed (non-transfer) rows.
+    assert context["period_in"] == sum(r["amount"] for r in rows if r["type"] == "MONEY_IN")
+    assert context["period_out"] == sum(r["amount"] for r in rows if r["type"] == "MONEY_OUT")
+
+
+@pytest.mark.django_db
+def test_treasury_statement_context_without_dates_spans_the_full_history():
+    account = _treasury_history("TREASCTXALL")
+
+    context = TreasuryStatementQuery.statement_context(cash_account_id=account.id)
+
+    assert context["opening_balance"] == Decimal("100000.00")  # the account's own opening balance
+    assert context["closing_balance"] == TreasuryStatementQuery.run(cash_account_id=account.id)[-1]["balance"]
+    assert (
+        context["opening_balance"] + context["period_in"] - context["period_out"] + context["transfers_net"]
+        == context["closing_balance"]
+    )
+
+
+@pytest.mark.django_db
+def test_treasury_statement_context_for_an_empty_period_keeps_the_opening_balance():
+    account = _treasury_history("TREASCTXEMPTY")
+
+    context = TreasuryStatementQuery.statement_context(
+        cash_account_id=account.id, date_from="2026-12-01", date_to="2026-12-31"
+    )
+
+    assert context["opening_balance"] == context["closing_balance"] == Decimal("1270000.00") + Decimal("999.00")
+    assert context["period_in"] == context["period_out"] == context["transfers_net"] == Decimal("0.00")

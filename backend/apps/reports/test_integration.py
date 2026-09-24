@@ -142,7 +142,8 @@ def test_financial_coherence_profit_by_customer_truck_and_order_matches_individu
 def test_all_report_types_return_valid_structured_data_via_the_api():
     """Spec Section 37 lists 16 V1 report types, plus shareholder-statement
     (UI pass 2026-08-27: Reports page needed a report for
-    Actionnaires/Associes); walk every one through the live API and check
+    Actionnaires/Associes), plus the 5 capital/expense/debt/receivable
+    reports of 2026-09-23; walk every one through the live API and check
     it returns a well-formed {fields, rows} payload."""
     admin_user = _make_admin("SIXTEEN")
     customer = Customer.objects.create(name="Client SIXTEEN")
@@ -183,6 +184,12 @@ def test_all_report_types_return_valid_structured_data_via_the_api():
         "bank-statement": {"bank_account_id": bank_account.id},
         "cash-statement": {"cash_account_id": cash_account.id},
         "shareholder-statement": {"shareholder_id": shareholder.id},
+        # Added 2026-09-23 (capital / general expense / debts / receivables).
+        "capital-report": {},
+        "general-expense-report": {},
+        "trip-fee-debt-report": {"fee_type": "all"},
+        "general-debt-report": {},
+        "general-receivable-report": {},
     }
 
     assert set(params_by_report_type) == set(REPORT_REGISTRY)

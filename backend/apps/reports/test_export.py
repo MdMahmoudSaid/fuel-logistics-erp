@@ -1,6 +1,6 @@
 # Report export tests (docs/PHASE_6_PLAN.md Etape 4: "Ajouter le support
-# de l'exportation (CSV, Excel avec openpyxl)"; PDF added for the
-# "Exporter PDF" action on the Reports page, UI pass 2026-08-27).
+# de l'exportation (CSV, Excel avec openpyxl)"). PDF export now lives in
+# test_report_pdf.py.
 
 import csv
 import io
@@ -8,7 +8,7 @@ from decimal import Decimal
 
 from openpyxl import load_workbook
 
-from apps.reports.export import rows_to_csv, rows_to_pdf, rows_to_xlsx
+from apps.reports.export import rows_to_csv, rows_to_xlsx
 
 FIELDS = ["date", "reference", "amount"]
 ROWS = [
@@ -36,21 +36,3 @@ def test_rows_to_xlsx_writes_header_and_rows():
     assert values[0] == tuple(FIELDS)
     assert values[1] == ("2026-08-18", "SO-1", "600000.00")
     assert values[2] == ("2026-08-19", "SO-2", None)  # openpyxl reads back "" as None
-
-
-def test_rows_to_pdf_produces_a_non_empty_pdf_document():
-    content = rows_to_pdf(FIELDS, ROWS, title="purchase-report")
-
-    # Not re-parsing the PDF's internal table structure here - that's
-    # reportlab's own test surface, not ours. Checking it's a real,
-    # non-trivial PDF is enough to catch a broken call (bad TableStyle
-    # index, missing font, etc.) without coupling this test to reportlab's
-    # binary format.
-    assert content.startswith(b"%PDF-")
-    assert len(content) > 500
-
-
-def test_rows_to_pdf_handles_zero_rows():
-    content = rows_to_pdf(FIELDS, [], title="empty-report")
-
-    assert content.startswith(b"%PDF-")

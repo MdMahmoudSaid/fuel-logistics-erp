@@ -683,6 +683,15 @@ class Expense(AuditableModel, TimeStampedModel):
         PAID = "PAID", "Paid"
         CANCELLED = "CANCELLED", "Cancelled"
 
+    # System trip-fee categories (ExpenseCategory.is_system seed, migration
+    # 0014) plus the retired "transport" one, which may still tag old trip
+    # fees. Every other category - including user-created ones, "unloading"
+    # and "import_intention" - is a general expense (Rapport des depenses
+    # generales, spec 2026-09-23-rapports-capital-dettes-creances, N4).
+    TRIP_FEE_CATEGORY_CODES = frozenset(
+        {"customs", "transit", "road_transit", "road", "loading", "transport"}
+    )
+
     category = models.CharField(max_length=30)
     amount = models.DecimalField(max_digits=16, decimal_places=2)
     calculation_method = models.CharField(max_length=20, choices=CalculationMethod.choices)

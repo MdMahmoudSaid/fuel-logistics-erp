@@ -8,15 +8,17 @@
 
 from apps.finance.models import SupplierPayment
 from apps.purchasing.models import SupplierOrder
+from apps.reports.queries.statement_common import opening_balance, statement_rows
 
 FIELDS = ["date", "type", "reference", "debit", "credit", "balance"]
 
 
 class SupplierStatementQuery:
     FIELDS = FIELDS
+    DIRECTION = 1  # debit - credit: a positive balance is money owed to the supplier
 
     @classmethod
-    def run(cls, *, supplier_id, date_from=None, date_to=None) -> list[dict]:
+    def _entries(cls, supplier_id) -> list[dict]:
         orders = SupplierOrder.objects.filter(
             supplier_id=supplier_id,
             status=SupplierOrder.Status.CONFIRMED,
@@ -26,14 +28,7 @@ class SupplierStatementQuery:
         payments = SupplierPayment.objects.filter(supplier_id=supplier_id).exclude(
             is_reversed=True
         )
-        if date_from:
-            orders = orders.filter(purchase_date__gte=date_from)
-            payments = payments.filter(payment_date__gte=date_from)
-        if date_to:
-            orders = orders.filter(purchase_date__lte=date_to)
-            payments = payments.filter(payment_date__lte=date_to)
-
-        entries = [
+        return [
             {
                 "date": order.purchase_date,
                 "type": "PURCHASE",
@@ -54,20 +49,13 @@ class SupplierStatementQuery:
             }
             for payment in payments
         ]
-        entries.sort(key=lambda entry: entry["sort_key"])
 
-        balance = 0
-        rows = []
-        for entry in entries:
-            balance += (entry["debit"] or 0) - (entry["credit"] or 0)
-            rows.append(
-                {
-                    "date": entry["date"],
-                    "type": entry["type"],
-                    "reference": entry["reference"],
-                    "debit": entry["debit"],
-                    "credit": entry["credit"],
-                    "balance": balance,
-                }
-            )
-        return rows
+    @classmethod
+    def opening_balance(cls, *, supplier_id, date_from=None, date_to=None):
+        return opening_balance(cls._entries(supplier_id), date_from=date_from, direction=cls.DIRECTION)
+
+    @classmethod
+    def run(cls, *, supplier_id, date_from=None, date_to=None) -> list[dict]:
+        return statement_rows(
+            cls._entries(supplier_id), date_from=date_from, date_to=date_to, direction=cls.DIRECTION
+        )

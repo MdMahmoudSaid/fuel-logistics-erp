@@ -1,6 +1,7 @@
 # ReportViewSet (docs/PHASE_6_PLAN.md Etape 5;
 # ERP_Implementation_Experience_Guide.md Section 9.7).
 
+from django.core.exceptions import ObjectDoesNotExist
 from django.http import HttpResponse
 from rest_framework import viewsets
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
@@ -8,11 +9,15 @@ from rest_framework.response import Response
 
 from apps.accounts.permissions import HasModulePermission
 from apps.reports.date_range import resolve_date_range
-from apps.reports.export import rows_to_csv, rows_to_pdf, rows_to_xlsx
+from apps.reports.export import rows_to_csv, rows_to_xlsx
+from apps.reports.queries.capital_report import CapitalReportQuery
 from apps.reports.queries.customer_outstanding_report import CustomerOutstandingReportQuery
 from apps.reports.queries.customer_statement import CustomerStatementQuery
 from apps.reports.queries.expense_report import ExpenseReportQuery
 from apps.reports.queries.fuel_stock_report import FuelStockReportQuery
+from apps.reports.queries.general_debt_report import GeneralDebtReportQuery
+from apps.reports.queries.general_expense_report import GeneralExpenseReportQuery
+from apps.reports.queries.general_receivable_report import GeneralReceivableReportQuery
 from apps.reports.queries.loss_report import LossReportQuery
 from apps.reports.queries.margin_report import MarginReportQuery
 from apps.reports.queries.purchase_report import PurchaseReportQuery
@@ -23,9 +28,12 @@ from apps.reports.queries.supplier_statement import SupplierStatementQuery
 from apps.reports.queries.transporter_outstanding_report import TransporterOutstandingReportQuery
 from apps.reports.queries.transporter_statement import TransporterStatementQuery
 from apps.reports.queries.treasury_statement import TreasuryStatementQuery
+from apps.reports.queries.trip_fee_debt_report import TripFeeDebtReportQuery
 from apps.reports.queries.trip_report import TripReportQuery
 from apps.reports.queries.truck_history import TruckHistoryQuery
 from apps.reports.serialization import decimals_to_str
+from apps.reports.services.report_document import build_report_document
+from apps.reports.services.report_pdf import render_report_pdf
 
 # The 16 V1 report types from ERP_Specification.md Section 37. Bank
 # statement/cash statement are one TreasuryStatementQuery implementation
@@ -49,6 +57,11 @@ REPORT_REGISTRY = {
     "bank-statement": TreasuryStatementQuery,
     "cash-statement": TreasuryStatementQuery,
     "shareholder-statement": ShareholderStatementQuery,
+    "capital-report": CapitalReportQuery,
+    "general-expense-report": GeneralExpenseReportQuery,
+    "trip-fee-debt-report": TripFeeDebtReportQuery,
+    "general-debt-report": GeneralDebtReportQuery,
+    "general-receivable-report": GeneralReceivableReportQuery,
 }
 
 _EXPORT_CONTENT_TYPES = {
@@ -86,6 +99,8 @@ class ReportViewSet(viewsets.ViewSet):
             if key
             not in {
                 "export",
+                "document",
+                "lang",
                 "preset",
                 "range",
                 "start_date",
@@ -103,19 +118,45 @@ class ReportViewSet(viewsets.ViewSet):
             params["date_to"] = date_to
         try:
             rows = query_class.run(**params)
-        except TypeError as exc:
+        except (TypeError, ValueError) as exc:
+            # TypeError: a required filter (e.g. customer_id) is missing;
+            # ValueError: a malformed id ("abc") - both are client errors.
             raise ValidationError(str(exc))
+        except ObjectDoesNotExist:
+            # e.g. an unknown bank/cash account id on a treasury statement.
+            raise NotFound("Entité introuvable pour ce rapport.")
 
         export_format = request.query_params.get("export")
         if export_format:
-            return self._export(pk, query_class, rows, export_format, request.user)
+            return self._export(pk, query_class, rows, export_format, request, params)
 
-        return Response(
-            decimals_to_str({"report_type": pk, "fields": query_class.FIELDS, "rows": rows})
+        payload = {"report_type": pk, "fields": query_class.FIELDS, "rows": rows}
+        if request.query_params.get("document") in ("1", "true"):
+            payload["document"] = self._document(pk, query_class, rows, params, request)
+        return Response(decimals_to_str(payload))
+
+    @classmethod
+    def _document(cls, report_type, query_class, rows, params, request):
+        return build_report_document(
+            report_type,
+            rows,
+            params,
+            request.query_params.get("lang", "fr"),
+            statement_context=cls._statement_context(query_class, params),
         )
 
-    def _export(self, report_type, query_class, rows, export_format, user):
-        if not _user_can_export(user):
+    @staticmethod
+    def _statement_context(query_class, params):
+        """Opening/closing figures computed by the business query itself
+        (spec D4/D5) - only statements define them."""
+        if hasattr(query_class, "statement_context"):
+            return query_class.statement_context(**params)
+        if hasattr(query_class, "opening_balance"):
+            return {"opening_balance": query_class.opening_balance(**params)}
+        return None
+
+    def _export(self, report_type, query_class, rows, export_format, request, params):
+        if not _user_can_export(request.user):
             raise PermissionDenied("Export non autorise pour ce role.")
         if export_format not in _EXPORT_CONTENT_TYPES:
             raise NotFound(f"Format d'export inconnu : '{export_format}'.")
@@ -125,7 +166,8 @@ class ReportViewSet(viewsets.ViewSet):
         elif export_format == "xlsx":
             content = rows_to_xlsx(query_class.FIELDS, rows)
         else:
-            content = rows_to_pdf(query_class.FIELDS, rows, title=report_type)
+            document = self._document(report_type, query_class, rows, params, request)
+            content = render_report_pdf(document, rows)
         response = HttpResponse(content, content_type=_EXPORT_CONTENT_TYPES[export_format])
         response["Content-Disposition"] = f'attachment; filename="{report_type}.{export_format}"'
         return response

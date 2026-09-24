@@ -30,10 +30,9 @@ FIELDS = ["date", "type", "amount", "reference", "balance"]
 class TreasuryStatementQuery:
     FIELDS = FIELDS
 
-    @classmethod
-    def run(cls, *, bank_account_id=None, cash_account_id=None, date_from=None, date_to=None) -> list[dict]:
-        date_from = _as_date(date_from)
-        date_to = _as_date(date_to)
+    @staticmethod
+    def _load(bank_account_id, cash_account_id):
+        """(transactions ordered by date/id, account opening balance)."""
         transactions = TreasuryTransaction.objects.all()
         if bank_account_id:
             transactions = transactions.filter(bank_account_id=bank_account_id)
@@ -43,18 +42,25 @@ class TreasuryStatementQuery:
             balance = CashAccount.objects.get(pk=cash_account_id).opening_balance
         else:
             balance = Decimal("0.00")
+        return transactions.order_by("date", "id"), balance
+
+    @staticmethod
+    def _signed(txn):
+        return txn.amount if txn.type == TreasuryTransaction.Type.MONEY_IN else -txn.amount
+
+    @classmethod
+    def run(cls, *, bank_account_id=None, cash_account_id=None, date_from=None, date_to=None) -> list[dict]:
+        date_from = _as_date(date_from)
+        date_to = _as_date(date_to)
         # Walk the account's *entire* transaction history in order, so the
         # running balance is always correct - date_from/date_to only decide
         # which rows are emitted below, exactly like the transfer exclusion,
         # rather than truncating the balance calculation itself.
-        transactions = transactions.order_by("date", "id")
+        transactions, balance = cls._load(bank_account_id, cash_account_id)
 
         rows = []
         for txn in transactions:
-            signed_amount = (
-                txn.amount if txn.type == TreasuryTransaction.Type.MONEY_IN else -txn.amount
-            )
-            balance += signed_amount
+            balance += cls._signed(txn)
             if txn.is_transfer:
                 continue
             if date_from and txn.date < date_from:
@@ -71,3 +77,41 @@ class TreasuryStatementQuery:
                 }
             )
         return rows
+
+    @classmethod
+    def statement_context(
+        cls, *, bank_account_id=None, cash_account_id=None, date_from=None, date_to=None
+    ) -> dict:
+        """Reconciliation figures for the summary block (spec section
+        Internal transfers): opening + period_in - period_out + transfers_net
+        = closing. transfers_net is signed (in +, out -) and covers the
+        is_transfer legs run() leaves out of the rows. closing_balance is
+        tracked independently (running balance up to date_to), so the
+        equation is a real check rather than a tautology."""
+        date_from = _as_date(date_from)
+        date_to = _as_date(date_to)
+        transactions, account_opening = cls._load(bank_account_id, cash_account_id)
+
+        zero = Decimal("0.00")
+        opening = closing = account_opening
+        period_in = period_out = transfers_net = zero
+        for txn in transactions:
+            signed = cls._signed(txn)
+            if date_from and txn.date < date_from:
+                opening += signed
+            elif not (date_to and txn.date > date_to):
+                if txn.is_transfer:
+                    transfers_net += signed
+                elif signed > 0:
+                    period_in += signed
+                else:
+                    period_out -= signed
+            if not (date_to and txn.date > date_to):
+                closing += signed
+        return {
+            "opening_balance": opening,
+            "period_in": period_in,
+            "period_out": period_out,
+            "transfers_net": transfers_net,
+            "closing_balance": closing,
+        }
