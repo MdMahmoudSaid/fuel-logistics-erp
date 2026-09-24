@@ -163,10 +163,8 @@ const showAssignCustomerForm = ref(false)
 const noSaleYet = computed(() => margin.value !== null && !margin.value.available)
 const customsReachedStatuses: TripStatus[] = [
   'CUSTOMS',
-  'GOING_TO_COMPANY_STOCK',
   'ARRIVED_AT_COMPANY_STOCK',
   'STOCKED',
-  'GOING_TO_CLIENT',
   'ARRIVED_AT_CLIENT',
   'QUANTITY_CONTROL',
   'DELIVERED',

@@ -6,6 +6,7 @@ import type {
   Trip,
   TripCostBasis,
   TripMargin,
+  TripStatus,
   TripStatusHistoryEntry,
 } from './types'
 
@@ -40,9 +41,15 @@ export function fetchTripCostBasis(tripId: number): Promise<TripCostBasis> {
 // on whether new_status is a valid transition from the trip's current
 // status — this just posts the request and lets the caller surface
 // whatever the server accepts or rejects.
-export function postTripStatus(tripId: number, newStatus: string, notes = ''): Promise<Trip> {
+export type TripStatusChange = Trip & { traversed_statuses?: TripStatus[] }
+
+export function postTripStatus(
+  tripId: number,
+  newStatus: string,
+  notes = '',
+): Promise<TripStatusChange> {
   return apiClient
-    .post<Trip>(`/trips/${tripId}/status/`, { new_status: newStatus, notes })
+    .post<TripStatusChange>(`/trips/${tripId}/status/`, { new_status: newStatus, notes })
     .then((r) => r.data)
 }
 

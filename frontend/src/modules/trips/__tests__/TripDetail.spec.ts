@@ -241,7 +241,9 @@ const cancelExpense = vi.fn(async (_id: number) => ({}))
 const createTransportPayment = vi.fn(async (_payload: Record<string, unknown>) => ({}))
 const removeTransportPayment = vi.fn(async (_id: number) => undefined)
 const cancelTransportPayment = vi.fn(async (_id: number) => ({}))
-const correctTransportPayment = vi.fn(async (_id: number, _payload: Record<string, unknown>) => ({}))
+const correctTransportPayment = vi.fn(
+  async (_id: number, _payload: Record<string, unknown>) => ({}),
+)
 const expenseList = vi.fn(async (_params: Record<string, unknown>) => ({
   count: expensesToReturn.length,
   next: null,
@@ -448,9 +450,7 @@ describe('TripDetail expenses section', () => {
   // to replace them, unlike every other trip fee (Expense's own "Annuler").
   it('shows an Annuler action instead of Modifier/Supprimer once the commission is settled', async () => {
     setUser({ operations: ['view'], finance: ['view', 'edit', 'cancel'] })
-    transportPaymentsToReturn = [
-      makeTransportPayment({ status: 'PAID', can_modify: false }),
-    ]
+    transportPaymentsToReturn = [makeTransportPayment({ status: 'PAID', can_modify: false })]
     const wrapper = await mountAt()
     const buttons = wrapper.findAll('button').map((b) => b.text())
     expect(buttons).not.toContain('Modifier')
@@ -460,9 +460,7 @@ describe('TripDetail expenses section', () => {
 
   it('does not cancel a settled commission when confirmation is declined', async () => {
     setUser({ operations: ['view'], finance: ['view', 'cancel'] })
-    transportPaymentsToReturn = [
-      makeTransportPayment({ status: 'PAID', can_modify: false }),
-    ]
+    transportPaymentsToReturn = [makeTransportPayment({ status: 'PAID', can_modify: false })]
     const wrapper = await mountAt()
     confirmDialogMock.mockResolvedValueOnce(false)
     await wrapper
@@ -474,9 +472,7 @@ describe('TripDetail expenses section', () => {
 
   it('cancels a settled commission after confirmation and refreshes the fees', async () => {
     setUser({ operations: ['view'], finance: ['view', 'cancel'] })
-    transportPaymentsToReturn = [
-      makeTransportPayment({ status: 'PAID', can_modify: false }),
-    ]
+    transportPaymentsToReturn = [makeTransportPayment({ status: 'PAID', can_modify: false })]
     const wrapper = await mountAt()
     confirmDialogMock.mockResolvedValueOnce(true)
     const before = transportPaymentList.mock.calls.length
@@ -491,9 +487,7 @@ describe('TripDetail expenses section', () => {
 
   it('shows cancellation errors and keeps the commission visible', async () => {
     setUser({ operations: ['view'], finance: ['view', 'cancel'] })
-    transportPaymentsToReturn = [
-      makeTransportPayment({ status: 'PAID', can_modify: false }),
-    ]
+    transportPaymentsToReturn = [makeTransportPayment({ status: 'PAID', can_modify: false })]
     cancelTransportPayment.mockRejectedValueOnce({
       response: { data: { detail: 'Commission deja annulee' } },
     })
@@ -510,9 +504,7 @@ describe('TripDetail expenses section', () => {
 
   it('never shows an Annuler action for an already cancelled commission', async () => {
     setUser({ operations: ['view'], finance: ['view', 'edit', 'cancel'] })
-    transportPaymentsToReturn = [
-      makeTransportPayment({ status: 'CANCELLED', can_modify: false }),
-    ]
+    transportPaymentsToReturn = [makeTransportPayment({ status: 'CANCELLED', can_modify: false })]
     const wrapper = await mountAt()
     expect(wrapper.findAll('button').find((b) => b.text() === 'Annuler')).toBeUndefined()
   })
@@ -522,9 +514,7 @@ describe('TripDetail expenses section', () => {
   // rate/amount can be fixed in place instead of a full cancel+recreate.
   it('shows a Corriger action next to Annuler once the commission is settled', async () => {
     setUser({ operations: ['view'], finance: ['view', 'cancel'] })
-    transportPaymentsToReturn = [
-      makeTransportPayment({ status: 'PAID', can_modify: false }),
-    ]
+    transportPaymentsToReturn = [makeTransportPayment({ status: 'PAID', can_modify: false })]
     const wrapper = await mountAt()
     const buttons = wrapper.findAll('button').map((b) => b.text())
     expect(buttons).toContain('Corriger')
@@ -1014,13 +1004,13 @@ describe('TripDetail expenses section', () => {
   it('shows only backend-allowed next statuses', async () => {
     setUser({ operations: ['view', 'edit'], finance: ['view'] })
     tripResourceGet.mockResolvedValueOnce(makeTrip({ status: 'CUSTOMS', client: null }))
-    allowedStatusesToReturn = ['GOING_TO_COMPANY_STOCK', 'BLOCKED']
+    allowedStatusesToReturn = ['ARRIVED_AT_COMPANY_STOCK', 'BLOCKED']
 
     const wrapper = await mountAt()
 
     const optionText = wrapper.find('#next_status').text()
     expect(fetchAllowedTripStatuses).toHaveBeenCalledWith(9)
-    expect(optionText).toContain('En route vers stock entreprise')
+    expect(optionText).toContain('Arrivé au stock entreprise')
     expect(optionText).not.toContain('En route vers le client')
     expect(optionText).not.toContain('Arrivé chez le client')
     expect(optionText).not.toContain('Contrôle de quantité')
