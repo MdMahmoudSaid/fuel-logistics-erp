@@ -218,6 +218,9 @@ const treasuryCard = computed(() => {
   }
 })
 
+// Fond de roulement breakdown is collapsed by default (client request 2026-09-24).
+const workingCapitalOpen = ref(false)
+
 const workingCapitalCard = computed(() => {
   if (!summary.value) return null
   const wc = summary.value.working_capital
@@ -554,14 +557,35 @@ const compactEnRouteTrips = computed(() => enRouteTrips.value.slice(0, 5))
               </h2>
             </div>
             <p class="text-texte-3 mt-1 text-xs">{{ t('dashboard.final.workingCapitalHelp') }}</p>
-            <p
-              v-if="workingCapitalCard"
-              class="mt-3 text-2xl font-semibold"
-              :class="workingCapitalCard.negative ? 'text-critique' : 'text-texte'"
+            <div v-if="workingCapitalCard" class="mt-3 flex items-center gap-2">
+              <p
+                class="text-2xl font-semibold"
+                :class="workingCapitalCard.negative ? 'text-critique' : 'text-texte'"
+              >
+                <MonoValue v-bind="workingCapitalCard.totalParts" align="left" />
+              </p>
+              <button
+                type="button"
+                data-test="working-capital-toggle"
+                class="text-texte-3 hover:text-texte hover:bg-sable focus-visible:ring-transit inline-flex size-8 shrink-0 items-center justify-center rounded-lg transition-colors focus-visible:ring-2 focus-visible:outline-none"
+                :aria-expanded="workingCapitalOpen"
+                aria-controls="working-capital-detail"
+                :aria-label="
+                  workingCapitalOpen
+                    ? t('dashboard.final.hideDetail')
+                    : t('dashboard.final.showDetail')
+                "
+                @click="workingCapitalOpen = !workingCapitalOpen"
+              >
+                <Icon :name="workingCapitalOpen ? 'eye-off' : 'eye'" :size="18" />
+              </button>
+            </div>
+            <dl
+              v-if="workingCapitalCard && workingCapitalOpen"
+              id="working-capital-detail"
+              data-test="working-capital-detail"
+              class="mt-4 grid gap-2 text-sm"
             >
-              <MonoValue v-bind="workingCapitalCard.totalParts" align="left" />
-            </p>
-            <dl v-if="workingCapitalCard" class="mt-4 grid gap-2 text-sm">
               <div class="bg-sable flex items-center justify-between gap-3 rounded-lg px-3 py-2">
                 <dt class="text-texte-2">{{ t('dashboard.final.capitalContributed') }}</dt>
                 <dd class="text-texte font-medium">
@@ -599,9 +623,9 @@ const compactEnRouteTrips = computed(() => enRouteTrips.value.slice(0, 5))
                 </dd>
               </div>
               <div class="bg-sable flex items-center justify-between gap-3 rounded-lg px-3 py-2">
-                <dt class="text-texte-2">{{ t('dashboard.final.supplierReliquatValue') }}</dt>
+                <dt class="text-texte-2">{{ t('dashboard.final.supplierCompanyStockValue') }}</dt>
                 <dd class="text-texte font-medium">
-                  <MonoValue v-bind="workingCapitalCard.supplierReliquatParts" />
+                  <MonoValue v-bind="workingCapitalCard.supplierCompanyStockParts" />
                 </dd>
               </div>
               <div class="bg-sable flex items-center justify-between gap-3 rounded-lg px-3 py-2">
@@ -611,9 +635,9 @@ const compactEnRouteTrips = computed(() => enRouteTrips.value.slice(0, 5))
                 </dd>
               </div>
               <div class="bg-sable flex items-center justify-between gap-3 rounded-lg px-3 py-2">
-                <dt class="text-texte-2">{{ t('dashboard.final.supplierCompanyStockValue') }}</dt>
+                <dt class="text-texte-2">{{ t('dashboard.final.supplierReliquatValue') }}</dt>
                 <dd class="text-texte font-medium">
-                  <MonoValue v-bind="workingCapitalCard.supplierCompanyStockParts" />
+                  <MonoValue v-bind="workingCapitalCard.supplierReliquatParts" />
                 </dd>
               </div>
             </dl>

@@ -2223,6 +2223,15 @@ class WorkingCapitalService:
     cost basis here would double-count them too (client decision,
     2026-09-14, choosing the simpler basis specifically to avoid reopening
     the same class of bug on a second axis).
+
+    Allocation-order correction (client rule, recette meeting 2026-09-24):
+    the per-order paid budget is consumed company stock -> en cours ->
+    reliquat, not reliquat first. The client's reading is that a payment
+    first covers fuel already taken from the supplier, and only then fuel
+    still sitting at the supplier; with reliquat first, a payment equal to
+    the value of the fuel already loaded showed up entirely as "reliquat"
+    while stock entreprise read 0. The three lines are an allocation of
+    payments, not additional debts - the ordering never changes their sum.
     """
 
     @staticmethod
@@ -2264,17 +2273,22 @@ class WorkingCapitalService:
     @staticmethod
     def get_supplier_pipeline_breakdown() -> dict:
         """Per confirmed SupplierOrder, splits how much of its still-
-        unsold fuel value (reliquat at the supplier -> en cours on a truck
-        -> stocked at the depot) counts as a company-held asset in the Fond
+        unsold fuel value (stocked at the depot -> en cours on a truck ->
+        reliquat at the supplier) counts as a company-held asset in the Fond
         de roulement, capped IN TOTAL by what has actually been paid to
         that supplier so far - see the class docstring's 2026-09-14 entries
-        for why. Consumed in that pipeline order (reliquat first, then en
-        cours, then company stock) purely to produce a single stable 3-way
-        split when a partial payment doesn't cover all three raw values;
-        the total counted (and so `total`'s own value) does not depend on
-        this ordering choice - only which bucket a partial payment lands in
-        does. get_working_capital() calls this too, so the two can never
-        drift apart."""
+        for why.
+
+        Allocation order (client rule confirmed 2026-09-24, reversing the
+        2026-09-14 reliquat-first order): a payment first covers the fuel
+        already taken from the supplier - company stock, then en cours -
+        and only then the reliquat still sitting at the supplier. The
+        order only decides which of the three lines a payment lands in:
+        the total counted (and so `total`, and distributable_result which
+        subtracts the same three lines back out) never depends on it.
+        Sold trips stay excluded from en cours / company stock as before;
+        no separate allocation rule exists for them. get_working_capital()
+        calls this too, so the two can never drift apart."""
         reliquat_total = ZERO
         in_transit_total = ZERO
         company_stock_total = ZERO
@@ -2283,16 +2297,18 @@ class WorkingCapitalService:
                 "paid_amount"
             ]
 
-            reliquat_counted = min(paid_remaining, SupplierStockService.get_purchase_reliquat_amount(order))
-            paid_remaining -= reliquat_counted
+            company_stock_counted = min(
+                paid_remaining, SupplierStockService.get_purchase_company_stock_amount(order)
+            )
+            paid_remaining -= company_stock_counted
 
             in_transit_counted = min(
                 paid_remaining, SupplierStockService.get_purchase_in_transit_amount(order)
             )
             paid_remaining -= in_transit_counted
 
-            company_stock_counted = min(
-                paid_remaining, SupplierStockService.get_purchase_company_stock_amount(order)
+            reliquat_counted = min(
+                paid_remaining, SupplierStockService.get_purchase_reliquat_amount(order)
             )
 
             reliquat_total += reliquat_counted

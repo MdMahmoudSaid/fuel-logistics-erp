@@ -27,8 +27,13 @@ from apps.finance.models import (
     SupplierAdvance,
     SupplierPayment,
 )
-from apps.finance.services import WorkingCapitalService
+from apps.finance.services import (
+    ControlledDebtPaymentService,
+    ShareholderProfitPreviewService,
+    WorkingCapitalService,
+)
 from apps.purchasing.models import CessionLetter, SupplierOrder
+from apps.purchasing.services import SupplierStockService
 from apps.sales.models import Invoice, Sale
 from apps.suppliers.models import Supplier
 from apps.transport.models import Transporter, Truck
@@ -393,16 +398,21 @@ def test_working_capital_includes_paid_reliquat_as_an_asset():
     result = WorkingCapitalService.get_working_capital()
 
     assert result["supplier_debt_total"] == Decimal("45000000.00")
-    assert result["supplier_reliquat_value"] == Decimal("155000000.00")
     # The 45,000 L loaded via _load_partial sits at the default ASSIGNED
-    # status (still "en cours"), but the full 155,000,000 payment is
-    # consumed by the reliquat bucket first (pipeline order: reliquat -> en
-    # cours -> stock), leaving nothing for en cours/stock here.
-    assert result["supplier_in_transit_value"] == Decimal("0.00")
+    # status (still "en cours"). Client rule (2026-09-24): a payment first
+    # covers fuel that has already left the supplier (company stock, then
+    # en cours) and only then the reliquat still at the supplier - so the
+    # 155,000,000 payment gives 45,000,000 to en cours and the remaining
+    # 110,000,000 to the reliquat.
     assert result["supplier_company_stock_value"] == Decimal("0.00")
-    assert result["supplier_debt_total"] + result["supplier_reliquat_value"] == Decimal(
-        "200000000.00"
-    )
+    assert result["supplier_in_transit_value"] == Decimal("45000000.00")
+    assert result["supplier_reliquat_value"] == Decimal("110000000.00")
+    assert (
+        result["supplier_debt_total"]
+        + result["supplier_reliquat_value"]
+        + result["supplier_in_transit_value"]
+        + result["supplier_company_stock_value"]
+    ) == Decimal("200000000.00")
     assert result["total"] == (
         result["gross"] + result["supplier_debt_total"] + result["transporter_debt_total"]
         + result["other_debts"] + result["supplier_reliquat_value"]
@@ -484,3 +494,198 @@ def test_working_capital_supplier_reliquat_ignores_draft_and_cancelled_orders():
     assert result["supplier_reliquat_value"] == Decimal("0.00")
     assert result["supplier_in_transit_value"] == Decimal("0.00")
     assert result["supplier_company_stock_value"] == Decimal("0.00")
+
+
+# --- Payment allocation order across the three pipeline stages -----------
+# Client rule (2026-09-24, recette meeting): a supplier payment first covers
+# the fuel already taken from the supplier - company stock, then en cours -
+# and only then the reliquat still sitting at the supplier. The physical
+# values do not change; only which of the 3 lines a payment lands in.
+#
+# Shared scenario: 100,000 L at 1,000 XOF/L = 100,000,000. 20,000 L arrived
+# in company stock (20,000,000), 10,000 L en cours (10,000,000), 70,000 L
+# still at the supplier (70,000,000).
+
+
+def _pipeline_scenario(suffix, *, paid):
+    admin_user, supplier, order = _make_supplier_order_with_status(
+        suffix, SupplierOrder.Status.CONFIRMED,
+        quantity=Decimal("100000.00"), unit_price=Decimal("1000.0000"),
+    )
+    _load_partial(order, Decimal("10000.00"), suffix=f"{suffix}-TRANSIT")
+    stocked_trip = _load_partial(order, Decimal("20000.00"), suffix=f"{suffix}-STOCK")
+    stocked_trip.status = Trip.Status.STOCKED
+    stocked_trip.save(update_fields=["status"])
+    if paid:
+        cash = CashAccount.objects.create(
+            name=f"WC {suffix} Cash", opening_balance=Decimal("500000000.00")
+        )
+        SupplierPayment.objects.create(
+            supplier=supplier, supplier_order=order, amount=paid,
+            payment_date="2026-08-19", method=SupplierPayment.Method.CASH,
+            cash_account=cash, recorded_by=admin_user,
+        )
+    return order
+
+
+def _three_lines(result):
+    return (
+        result["supplier_company_stock_value"],
+        result["supplier_in_transit_value"],
+        result["supplier_reliquat_value"],
+    )
+
+
+@pytest.mark.django_db
+def test_payment_covers_company_stock_then_in_transit_then_reliquat():
+    _pipeline_scenario("WCORDER-PARTIAL", paid=Decimal("50000000.00"))
+
+    result = WorkingCapitalService.get_working_capital()
+
+    assert _three_lines(result) == (
+        Decimal("20000000.00"), Decimal("10000000.00"), Decimal("20000000.00"),
+    )
+    assert result["supplier_debt_total"] == Decimal("50000000.00")
+
+
+@pytest.mark.django_db
+def test_payment_smaller_than_company_stock_goes_entirely_to_company_stock():
+    _pipeline_scenario("WCORDER-SMALL", paid=Decimal("15000000.00"))
+
+    result = WorkingCapitalService.get_working_capital()
+
+    assert _three_lines(result) == (
+        Decimal("15000000.00"), Decimal("0.00"), Decimal("0.00"),
+    )
+
+
+@pytest.mark.django_db
+def test_payment_covering_company_stock_and_part_of_in_transit_leaves_reliquat_at_zero():
+    _pipeline_scenario("WCORDER-MID", paid=Decimal("25000000.00"))
+
+    result = WorkingCapitalService.get_working_capital()
+
+    assert _three_lines(result) == (
+        Decimal("20000000.00"), Decimal("5000000.00"), Decimal("0.00"),
+    )
+
+
+@pytest.mark.django_db
+def test_fully_paid_order_covers_each_stage_at_its_raw_value():
+    order = _pipeline_scenario("WCORDER-FULL", paid=Decimal("100000000.00"))
+
+    result = WorkingCapitalService.get_working_capital()
+
+    assert _three_lines(result) == (
+        Decimal("20000000.00"), Decimal("10000000.00"), Decimal("70000000.00"),
+    )
+    assert result["supplier_debt_total"] == Decimal("0.00")
+    # Each counted line equals the raw physical value of its stage.
+    assert result["supplier_company_stock_value"] == (
+        SupplierStockService.get_purchase_company_stock_amount(order)
+    )
+    assert result["supplier_in_transit_value"] == (
+        SupplierStockService.get_purchase_in_transit_amount(order)
+    )
+    assert result["supplier_reliquat_value"] == (
+        SupplierStockService.get_purchase_reliquat_amount(order)
+    )
+
+
+@pytest.mark.django_db
+def test_unpaid_order_counts_nothing_and_keeps_the_full_debt():
+    _pipeline_scenario("WCORDER-UNPAID", paid=None)
+
+    result = WorkingCapitalService.get_working_capital()
+
+    assert _three_lines(result) == (Decimal("0.00"), Decimal("0.00"), Decimal("0.00"))
+    assert result["supplier_debt_total"] == Decimal("100000000.00")
+
+
+@pytest.mark.django_db
+def test_sold_trip_stays_excluded_from_in_transit_and_company_stock():
+    """No new allocation rule for sold trips (deliberately out of scope):
+    a trip attached to a Sale is a customer receivable, so it is still left
+    out of the en cours / stock entreprise lines exactly as before."""
+    admin_user, supplier, order = _make_supplier_order_with_status(
+        "WCORDER-SOLD", SupplierOrder.Status.CONFIRMED,
+        quantity=Decimal("100000.00"), unit_price=Decimal("1000.0000"),
+    )
+    stocked_trip = _load_partial(order, Decimal("20000.00"), suffix="WCORDER-SOLD-STOCK")
+    stocked_trip.status = Trip.Status.STOCKED
+    stocked_trip.save(update_fields=["status"])
+    sold_trip = _load_partial(order, Decimal("10000.00"), suffix="WCORDER-SOLD-SALE")
+    Sale.objects.create(
+        trip=sold_trip, customer=Customer.objects.create(name="WC Sold Customer"),
+        product=order.product, delivered_quantity=Decimal("10000.00"),
+        unit_selling_price=Decimal("1500.0000"),
+    )
+    cash = CashAccount.objects.create(
+        name="WC Sold Cash", opening_balance=Decimal("500000000.00")
+    )
+    SupplierPayment.objects.create(
+        supplier=supplier, supplier_order=order, amount=Decimal("100000000.00"),
+        payment_date="2026-08-19", method=SupplierPayment.Method.CASH,
+        cash_account=cash, recorded_by=admin_user,
+    )
+
+    result = WorkingCapitalService.get_working_capital()
+
+    assert result["supplier_company_stock_value"] == Decimal("20000000.00")
+    assert result["supplier_in_transit_value"] == Decimal("0.00")
+    assert result["supplier_reliquat_value"] == Decimal("70000000.00")
+
+
+def _old_reliquat_first_breakdown():
+    """Reference copy of the pre-2026-09-24 allocation (reliquat -> en cours
+    -> company stock), used only to prove that the order is purely a
+    presentation split of the same total."""
+    zero = Decimal("0.00")
+    reliquat_total = in_transit_total = company_stock_total = zero
+    for order in SupplierOrder.objects.filter(status=SupplierOrder.Status.CONFIRMED):
+        paid = ControlledDebtPaymentService.describe_supplier_order(order)["paid_amount"]
+        reliquat = min(paid, SupplierStockService.get_purchase_reliquat_amount(order))
+        paid -= reliquat
+        in_transit = min(paid, SupplierStockService.get_purchase_in_transit_amount(order))
+        paid -= in_transit
+        company_stock = min(paid, SupplierStockService.get_purchase_company_stock_amount(order))
+        reliquat_total += reliquat
+        in_transit_total += in_transit
+        company_stock_total += company_stock
+    return {
+        "supplier_reliquat_value": reliquat_total,
+        "supplier_in_transit_value": in_transit_total,
+        "supplier_company_stock_value": company_stock_total,
+    }
+
+
+@pytest.mark.django_db
+def test_allocation_order_changes_only_the_split_never_the_total_or_distributable_result(
+    monkeypatch,
+):
+    BankAccount.objects.create(name="WC Order Bank", opening_balance=Decimal("40000000.00"), is_active=True)
+    _pipeline_scenario("WCORDER-INVARIANT", paid=Decimal("50000000.00"))
+
+    new_wc = WorkingCapitalService.get_working_capital()
+    new_preview = ShareholderProfitPreviewService.get_preview()
+
+    monkeypatch.setattr(
+        WorkingCapitalService, "get_supplier_pipeline_breakdown",
+        staticmethod(_old_reliquat_first_breakdown),
+    )
+    old_wc = WorkingCapitalService.get_working_capital()
+    old_preview = ShareholderProfitPreviewService.get_preview()
+
+    # The split differs (old: everything in reliquat first)...
+    assert _three_lines(old_wc) == (
+        Decimal("0.00"), Decimal("0.00"), Decimal("50000000.00"),
+    )
+    assert _three_lines(new_wc) != _three_lines(old_wc)
+    # ...but nothing else moves.
+    assert sum(_three_lines(new_wc), Decimal("0.00")) == sum(_three_lines(old_wc), Decimal("0.00"))
+    for key in (
+        "treasury_available", "customer_receivables", "supplier_debt_total",
+        "transporter_debt_total", "other_debts", "gross", "total", "capital",
+    ):
+        assert new_wc[key] == old_wc[key], key
+    assert new_preview["distributable_result"] == old_preview["distributable_result"]

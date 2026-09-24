@@ -30,6 +30,8 @@ export type IconName =
   | 'credit-card'
   | 'banknote'
   | 'more-horizontal'
+  | 'eye'
+  | 'eye-off'
 
 withDefaults(defineProps<{ name: IconName; size?: number }>(), { size: 20 })
 </script>
@@ -150,6 +152,16 @@ withDefaults(defineProps<{ name: IconName; size?: number }>(), { size: 20 })
       <rect x="2" y="6" width="20" height="12" rx="2" />
       <circle cx="12" cy="12" r="2.5" />
       <path d="M6 9v.01M18 15v.01" />
+    </g>
+    <g v-else-if="name === 'eye'">
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
+      <circle cx="12" cy="12" r="3" />
+    </g>
+    <g v-else-if="name === 'eye-off'">
+      <path d="M9.9 5.2A9.7 9.7 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.2" />
+      <path d="M6.6 6.6C3.8 8.4 2 12 2 12s3.5 7 10 7c1.7 0 3.2-.5 4.5-1.2" />
+      <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+      <path d="M3 3l18 18" />
     </g>
     <g v-else-if="name === 'more-horizontal'">
       <circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none" />

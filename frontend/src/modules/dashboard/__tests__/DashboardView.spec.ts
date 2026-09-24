@@ -589,7 +589,7 @@ describe('DashboardView', () => {
     const pipelineCards = wrapper.findAll('[data-test="pipeline-card"]')
     expect(pipelineCards).toHaveLength(3)
     expect(pipelineCards.map((card) => card.text())).toEqual([
-      expect.stringContaining('Reliquat fournisseur'),
+      expect.stringContaining('Carburant restant chez le fournisseur'),
       expect.stringContaining('En cours'),
       expect.stringContaining('Stock entreprise'),
     ])
@@ -619,7 +619,7 @@ describe('DashboardView', () => {
     const pipelineCards = wrapper.findAll('[data-test="pipeline-card"]')
     expect(pipelineCards).toHaveLength(1)
     expect(pipelineCards[0].text()).toContain('Stock entreprise')
-    expect(wrapper.text()).not.toContain('Reliquat fournisseur')
+    expect(wrapper.text()).not.toContain('Carburant restant chez le fournisseur')
   })
 
   it('hides the whole pipeline row when all three buckets are empty, leaving no empty shell', async () => {
@@ -693,7 +693,17 @@ describe('DashboardView', () => {
     const wrapper = mount(DashboardView, { global: { plugins: [makeRouter()] } })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('77 500 000 XOF')
+    await wrapper.find('[data-test="working-capital-toggle"]').trigger('click')
+
+    // Scoped to the detail list: the headline total (477 500 000 XOF) would
+    // otherwise match this substring by itself.
+    const detailRows = wrapper
+      .find('[data-test="working-capital-detail"]')
+      .findAll('div')
+      .map((row) => row.text().replace(/\s+/g, ' '))
+    expect(detailRows.find((row) => row.startsWith('Payé : chez le fournisseur'))).toContain(
+      '77 500 000 XOF',
+    )
   })
 
   it('shows the en-cours and company-stock pipeline values as their own lines', async () => {
@@ -720,8 +730,86 @@ describe('DashboardView', () => {
     const wrapper = mount(DashboardView, { global: { plugins: [makeRouter()] } })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('5 000 000 XOF')
-    expect(wrapper.text()).toContain('3 000 000 XOF')
+    await wrapper.find('[data-test="working-capital-toggle"]').trigger('click')
+
+    const detailText = wrapper.find('[data-test="working-capital-detail"]').text()
+    expect(detailText).toContain('5 000 000 XOF')
+    expect(detailText).toContain('3 000 000 XOF')
+  })
+
+  it('labels the three fond de roulement lines as payment allocations, not extra debts', async () => {
+    // Client recette (2026-09-24): "Stock fournisseur (reliquat non chargé)"
+    // was read as a second supplier debt. The values still come straight
+    // from the API (working_capital.*), each next to its own label - the
+    // view recomputes nothing.
+    fetchDashboardSummary.mockResolvedValueOnce({
+      ...summary,
+      working_capital: {
+        capital: '0.00',
+        treasury_available: '300000000.00',
+        customer_receivables: '0.00',
+        supplier_debt_total: '0.00',
+        transporter_debt_total: '0.00',
+        other_debts: '0.00',
+        supplier_reliquat_value: '20000000.00',
+        supplier_in_transit_value: '5000000.00',
+        supplier_company_stock_value: '3000000.00',
+        gross: '300000000.00',
+        total: '328000000.00',
+      },
+    })
+    const wrapper = mount(DashboardView, { global: { plugins: [makeRouter()] } })
+    await flushPromises()
+    await wrapper.find('[data-test="working-capital-toggle"]').trigger('click')
+
+    const rows = wrapper.findAll('dl > div').map((row) => row.text().replace(/\s+/g, ' '))
+    const rowFor = (label: string) => rows.find((row) => row.includes(label))
+    expect(rowFor('Payé : chez le fournisseur')).toContain('20 000 000 XOF')
+    expect(rowFor('Payé : en cours')).toContain('5 000 000 XOF')
+    expect(rowFor('Payé : stock entreprise')).toContain('3 000 000 XOF')
+
+    // Same order as the payment allocation: stock, en cours, reliquat.
+    const labelOrder = [
+      'Payé : stock entreprise',
+      'Payé : en cours',
+      'Payé : chez le fournisseur',
+    ].map((label) => rows.findIndex((row) => row.includes(label)))
+    expect(labelOrder).toEqual([...labelOrder].sort((a, b) => a - b))
+    expect(labelOrder.every((index) => index >= 0)).toBe(true)
+
+    expect(wrapper.text()).not.toContain('Stock fournisseur (reliquat non chargé)')
+    expect(wrapper.text()).not.toContain('Stock en cours (chargé, en route)')
+    expect(wrapper.text()).not.toContain('Stock entreprise (arrivé au dépôt)')
+    expect(wrapper.text()).toContain(
+      'Les trois lignes indiquent comment les paiements fournisseur sont répartis entre le stock entreprise, le carburant en cours et le carburant restant chez le fournisseur. Elles ne représentent pas des dettes supplémentaires.',
+    )
+  })
+
+  it('hides the fond de roulement detail by default and toggles it with the eye button', async () => {
+    // Client request (2026-09-24): an eye next to the total opens/closes the
+    // breakdown; closed by default so the card opens on the headline figure.
+    const wrapper = mount(DashboardView, { global: { plugins: [makeRouter()] } })
+    await flushPromises()
+
+    const card = wrapper.find('.working-capital-card')
+    const toggle = card.find('[data-test="working-capital-toggle"]')
+    expect(toggle.exists()).toBe(true)
+    expect(card.text()).toContain('20 800 000')
+    expect(card.find('[data-test="working-capital-detail"]').exists()).toBe(false)
+    expect(card.text()).not.toContain('Capital apporté')
+    expect(toggle.attributes('aria-expanded')).toBe('false')
+    expect(toggle.attributes('aria-label')).toBe('Afficher le détail')
+
+    await toggle.trigger('click')
+    expect(card.find('[data-test="working-capital-detail"]').exists()).toBe(true)
+    expect(card.text()).toContain('Capital apporté')
+    expect(card.text()).toContain('Dettes fournisseurs')
+    expect(toggle.attributes('aria-expanded')).toBe('true')
+    expect(toggle.attributes('aria-label')).toBe('Masquer le détail')
+
+    await toggle.trigger('click')
+    expect(card.find('[data-test="working-capital-detail"]').exists()).toBe(false)
+    expect(toggle.attributes('aria-expanded')).toBe('false')
   })
 
   it('keeps action work prominent, live trips compact, without period detail', async () => {

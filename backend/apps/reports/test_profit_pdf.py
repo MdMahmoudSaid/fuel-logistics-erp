@@ -3,7 +3,7 @@ from decimal import Decimal
 
 import pytest
 
-from apps.reports.services.profit_pdf import render_profit_report_pdf
+from apps.reports.services.profit_pdf import PROFIT_PDF_LABELS, render_profit_report_pdf
 
 ZERO = Decimal("0.00")
 
@@ -147,3 +147,49 @@ def test_render_profit_report_pdf_many_trips_do_not_crash():
         preview=_preview(), other_debts_breakdown=_other_debts_breakdown(), rows=rows, lang="fr",
     )
     assert pdf_bytes.startswith(b"%PDF")
+
+
+@pytest.mark.parametrize("lang", ["fr", "en"])
+def test_profit_pdf_pipeline_labels_describe_payment_allocation_not_extra_debts(lang):
+    """Client recette 2026-09-24: "Stock fournisseur (reliquat non charge)"
+    was read as a second supplier debt. The three lines are now labelled as
+    what they are - where supplier payments are allocated."""
+    labels = PROFIT_PDF_LABELS[lang]
+    expected = {
+        "fr": {
+            "supplierReliquat": "Paye : chez le fournisseur",
+            "supplierInTransit": "Paye : en cours",
+            "supplierCompanyStock": "Paye : stock entreprise",
+        },
+        "en": {
+            "supplierReliquat": "Paid: at the supplier",
+            "supplierInTransit": "Paid: in transit",
+            "supplierCompanyStock": "Paid: company stock",
+        },
+    }[lang]
+    for key, text in expected.items():
+        assert labels[key] == text
+    assert all("Stock fournisseur" not in v and "Supplier stock" not in v for v in labels.values() if isinstance(v, str))
+
+
+@pytest.mark.parametrize("lang", ["fr", "en"])
+def test_profit_pdf_lists_pipeline_lines_in_allocation_order(lang):
+    """Client request 2026-09-24: company stock, then en cours, then the
+    reliquat - the same order supplier payments are allocated in."""
+    import io
+
+    from pypdf import PdfReader
+
+    pdf_bytes = render_profit_report_pdf(
+        preview=_preview(),
+        other_debts_breakdown=_other_debts_breakdown(),
+        rows=[_margin_row()],
+        lang=lang,
+    )
+    text = "".join(page.extract_text() for page in PdfReader(io.BytesIO(pdf_bytes)).pages)
+    labels = PROFIT_PDF_LABELS[lang]
+    positions = [
+        text.index(labels[key])
+        for key in ("supplierCompanyStock", "supplierInTransit", "supplierReliquat")
+    ]
+    assert positions == sorted(positions)
