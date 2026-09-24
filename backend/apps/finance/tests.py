@@ -6617,3 +6617,92 @@ def test_cancel_unpaid_expense_is_rejected():
     response = client.post(f"/api/expenses/{expense.id}/cancel/")
 
     assert response.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# A payment can only be allocated to invoices of ITS OWN customer
+# (same rule as IndirectSettlementService; keeps the per-customer receivable
+# lines of the reports reconciled with get_customer_outstanding).
+# ---------------------------------------------------------------------------
+
+
+def _other_customers_invoice(suffix):
+    admin_user, customer, _own_invoice = _make_invoice_for_payment(f"{suffix}-OWN")
+    _other_admin, other_customer, other_invoice = _make_invoice_for_payment(f"{suffix}-OTHER")
+    assert other_customer.id != customer.id
+    return admin_user, customer, other_invoice
+
+
+@pytest.mark.django_db
+def test_allocate_payment_rejects_an_invoice_of_another_customer():
+    admin_user, customer, other_invoice = _other_customers_invoice("XCUST-SVC")
+    payment = CustomerPayment.objects.create(
+        customer=customer, amount=Decimal("1000000.00"), payment_date="2026-08-18",
+        method=CustomerPayment.Method.CASH, cash_account=CashAccount.objects.create(name="Cash XCUST-SVC"),
+        recorded_by=admin_user,
+    )
+    status_before = other_invoice.status
+
+    with pytest.raises(PaymentAllocationError, match=other_invoice.invoice_number):
+        PaymentAllocationService.allocate_payment(
+            payment.id, [{"invoice_id": other_invoice.id, "amount": Decimal("1000000.00")}]
+        )
+
+    other_invoice.refresh_from_db()
+    assert not PaymentAllocation.objects.filter(payment=payment).exists()
+    assert other_invoice.status == status_before
+
+
+@pytest.mark.django_db
+def test_customer_payment_api_rejects_an_invoice_of_another_customer_and_creates_nothing(
+    finance_client,
+):
+    _admin_user, customer, other_invoice = _other_customers_invoice("XCUST-API")
+    cash_account = CashAccount.objects.create(name="Cash XCUST-API")
+    payments_before = CustomerPayment.objects.count()
+    treasury_before = TreasuryTransaction.objects.count()
+
+    response = finance_client.post(
+        "/api/customer-payments/",
+        {
+            "customer": customer.id,
+            "amount": "1000000.00",
+            "payment_date": "2026-08-18",
+            "method": CustomerPayment.Method.CASH,
+            "cash_account": cash_account.id,
+            "allocations": json.dumps([{"invoice": other_invoice.id, "amount": "1000000.00"}]),
+            "proof": _proof_file(),
+        },
+        format="multipart",
+    )
+
+    assert response.status_code == 400
+    assert CustomerPayment.objects.count() == payments_before
+    assert TreasuryTransaction.objects.count() == treasury_before
+    assert not PaymentAllocation.objects.filter(invoice=other_invoice).exists()
+
+
+@pytest.mark.django_db
+def test_customer_payment_update_rejects_an_invoice_of_another_customer(finance_client):
+    _admin_user, customer, other_invoice = _other_customers_invoice("XCUST-PATCH")
+    bank_account = BankAccount.objects.create(name="Bank XCUST-PATCH")
+    created = finance_client.post(
+        "/api/customer-payments/",
+        {
+            "customer": customer.id,
+            "amount": "1000000.00",
+            "payment_date": "2026-08-18",
+            "method": CustomerPayment.Method.BANK_TRANSFER,
+            "destination": CustomerPayment.Destination.BANK,
+            "bank_account": bank_account.id,
+        },
+    )
+    assert created.status_code == 201, created.data
+
+    response = finance_client.patch(
+        f"/api/customer-payments/{created.data['id']}/",
+        {"allocations": json.dumps([{"invoice": other_invoice.id, "amount": "1000000.00"}])},
+    )
+
+    assert response.status_code == 400
+    assert not PaymentAllocation.objects.filter(payment_id=created.data["id"]).exists()
