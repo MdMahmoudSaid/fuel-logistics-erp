@@ -173,7 +173,9 @@ class TripViewSet(viewsets.ModelViewSet):
                 {"detail": str(exc)}, status=http_status.HTTP_400_BAD_REQUEST
             )
 
-        return Response(TripSerializer(trip, context={"request": request}).data)
+        data = TripSerializer(trip, context={"request": request}).data
+        data["traversed_statuses"] = trip.traversed_statuses
+        return Response(data)
 
     @action(detail=True, methods=["get"])
     def history(self, request, pk=None):
