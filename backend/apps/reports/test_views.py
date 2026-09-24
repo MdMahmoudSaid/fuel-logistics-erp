@@ -1434,11 +1434,17 @@ def _all_report_params(admin_user, suffix):
                 name=f"Assoc {suffix}", participation_percent=Decimal("100")
             ).id
         },
+        # Added 2026-09-23: no entity id needed.
+        "capital-report": {},
+        "general-expense-report": {},
+        "trip-fee-debt-report": {"fee_type": "customs"},
+        "general-debt-report": {},
+        "general-receivable-report": {},
     }
 
 
 @pytest.mark.django_db
-def test_report_endpoint_legacy_response_is_unchanged_for_all_17_types_and_document_is_additive():
+def test_report_endpoint_legacy_response_is_unchanged_for_every_type_and_document_is_additive():
     from apps.reports.serialization import decimals_to_str
     from apps.reports.views.reports import REPORT_REGISTRY
 
