@@ -43,6 +43,20 @@ export const REPORT_TYPES: ReportTypeOption[] = [
   { value: 'fuel-stock', label: 'Fuel stock', periodless: true },
   { value: 'loss-report', label: 'Loss report' },
   { value: 'margin-report', label: 'Margin report' },
+  { value: 'capital-report', label: 'Capital report' },
+  { value: 'general-expense-report', label: 'General expense report' },
+  {
+    value: 'trip-fee-debt-report',
+    label: 'Trip fee debt report',
+    periodless: true,
+    paramSelect: {
+      param: 'fee_type',
+      options: ['all', 'customs', 'transit', 'road_transit', 'border', 'loading'],
+      defaultValue: 'all',
+    },
+  },
+  { value: 'general-debt-report', label: 'General debt report', periodless: true },
+  { value: 'general-receivable-report', label: 'General receivable report', periodless: true },
   {
     value: 'bank-statement',
     label: 'Bank statement',

@@ -1521,6 +1521,22 @@
       "shareholder-statement": {
         "label": "Relevé actionnaire",
         "idLabel": "ID actionnaire"
+      },
+      "capital-report": {
+        "label": "Rapport de capital"
+      },
+      "general-expense-report": {
+        "label": "Dépenses générales"
+      },
+      "trip-fee-debt-report": {
+        "label": "Dettes de frais de trajet",
+        "paramLabel": "Type de frais"
+      },
+      "general-debt-report": {
+        "label": "Dettes générales"
+      },
+      "general-receivable-report": {
+        "label": "Créances clients (détail)"
       }
     },
     "fields": {
@@ -1577,6 +1593,14 @@
       "net_amount": "Montant net",
       "loading_date": "Date de chargement",
       "truck": "Camion"
+    },
+    "feeTypes": {
+      "all": "Tous",
+      "customs": "Douane",
+      "transit": "Transit",
+      "road_transit": "Transit routière",
+      "border": "Frontière",
+      "loading": "Chargement"
     }
   },
   "auditLog": {

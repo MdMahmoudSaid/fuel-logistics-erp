@@ -1517,6 +1517,22 @@
       "shareholder-statement": {
         "label": "Shareholder statement",
         "idLabel": "Shareholder ID"
+      },
+      "capital-report": {
+        "label": "Capital report"
+      },
+      "general-expense-report": {
+        "label": "General expenses"
+      },
+      "trip-fee-debt-report": {
+        "label": "Trip fee debts",
+        "paramLabel": "Fee type"
+      },
+      "general-debt-report": {
+        "label": "General debts"
+      },
+      "general-receivable-report": {
+        "label": "Customer receivables (detail)"
       }
     },
     "fields": {
@@ -1573,6 +1589,14 @@
       "net_amount": "Net amount",
       "loading_date": "Loading date",
       "truck": "Truck"
+    },
+    "feeTypes": {
+      "all": "All",
+      "customs": "Customs",
+      "transit": "Transit",
+      "road_transit": "Road transit",
+      "border": "Border",
+      "loading": "Loading"
     }
   },
   "auditLog": {

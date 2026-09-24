@@ -231,4 +231,71 @@ describe('ReportsView', () => {
       )
     })
   })
+
+  describe('capital, expense, debt and receivable reports', () => {
+    const NEW = [
+      ['capital-report', 'Rapport de capital', true],
+      ['general-expense-report', 'Dépenses générales', true],
+      ['trip-fee-debt-report', 'Dettes de frais de trajet', false],
+      ['general-debt-report', 'Dettes générales', false],
+      ['general-receivable-report', 'Créances clients (détail)', false],
+    ] as const
+
+    it.each(NEW)(
+      '%s is selectable with its translated label; the period filter matches its mode',
+      async (slug, label, hasPeriod) => {
+        setAuthPermissions({ reports: ['view'] })
+        const wrapper = mount(ReportsView)
+
+        expect(wrapper.find(`option[value="${slug}"]`).text()).toBe(label)
+        await wrapper.find('select').setValue(slug)
+
+        expect(wrapper.findComponent(DateRangeFilter).exists()).toBe(hasPeriod)
+      },
+    )
+
+    it('sends the fee type (default "all") with the preview and the PDF export, and resets it on type change', async () => {
+      setAuthPermissions({ reports: ['view', 'export'] })
+      const wrapper = mount(ReportsView)
+      await wrapper.find('select').setValue('trip-fee-debt-report')
+      const feeSelect = wrapper.find('[data-test="param-select"]')
+
+      expect(feeSelect.findAll('option').map((o) => o.text())).toEqual([
+        'Tous',
+        'Douane',
+        'Transit',
+        'Transit routière',
+        'Frontière',
+        'Chargement',
+      ])
+      await feeSelect.setValue('customs')
+      await wrapper
+        .findAll('button')
+        .find((b) => b.text() === 'Lancer le rapport')!
+        .trigger('click')
+      await flushPromises()
+      const exportButton = wrapper.findAll('button').find((b) => b.text() === 'Exporter PDF')
+      await exportButton!.trigger('click')
+      await flushPromises()
+
+      expect(fetchReport).toHaveBeenLastCalledWith(
+        'trip-fee-debt-report',
+        { fee_type: 'customs' },
+        expect.any(Object),
+      )
+      expect(downloadReportExport).toHaveBeenCalledWith(
+        'trip-fee-debt-report',
+        'pdf',
+        { fee_type: 'customs' },
+        'fr',
+      )
+
+      await wrapper.find('select').setValue('general-debt-report')
+      expect(wrapper.find('[data-test="param-select"]').exists()).toBe(false)
+      await wrapper.find('select').setValue('trip-fee-debt-report')
+      expect((wrapper.find('[data-test="param-select"]').element as HTMLSelectElement).value).toBe(
+        'all',
+      )
+    })
+  })
 })

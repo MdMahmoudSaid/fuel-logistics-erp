@@ -1517,6 +1517,22 @@
       "shareholder-statement": {
         "label": "كشف حساب المساهم",
         "idLabel": "معرّف المساهم"
+      },
+      "capital-report": {
+        "label": "تقرير رأس المال"
+      },
+      "general-expense-report": {
+        "label": "المصروفات العامة"
+      },
+      "trip-fee-debt-report": {
+        "label": "ديون رسوم الرحلات",
+        "paramLabel": "نوع الرسوم"
+      },
+      "general-debt-report": {
+        "label": "الديون العامة"
+      },
+      "general-receivable-report": {
+        "label": "مستحقات العملاء (تفصيلي)"
       }
     },
     "fields": {
@@ -1573,6 +1589,14 @@
       "net_amount": "المبلغ الصافي",
       "loading_date": "تاريخ التحميل",
       "truck": "الشاحنة"
+    },
+    "feeTypes": {
+      "all": "الكل",
+      "customs": "الجمارك",
+      "transit": "العبور",
+      "road_transit": "العبور البري",
+      "border": "الحدود",
+      "loading": "التحميل"
     }
   },
   "auditLog": {
