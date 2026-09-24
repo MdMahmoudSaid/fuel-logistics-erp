@@ -743,32 +743,55 @@ describe('TripDetail expenses section', () => {
     expect(wrapper.text()).toContain('2 925 000 XOF')
   })
 
-  it('hides "Add transport fee" once a payment already exists for the trip', async () => {
-    // Bug fix (found by chance, client feedback 2026-09-10): this button
-    // had no guard at all, letting an operator create a second
-    // TransportPayment for the same trip.
+  const COMMISSION_VALUE = '__transport_commission__'
+  const openAddExpense = async (wrapper: Awaited<ReturnType<typeof mountAt>>) => {
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text().includes('Ajouter un frais'))!
+      .trigger('click')
+    await flushPromises()
+  }
+
+  it('no longer shows a separate "Add transport fee" button', async () => {
     setUser({ operations: ['view'], finance: ['view', 'create'] })
-    transportPaymentsToReturn = [makeTransportPayment()]
-
     const wrapper = await mountAt()
-
-    expect(
-      wrapper
-        .findAll('button')
-        .find((b) => b.text() === '+ Ajouter des frais de transport (au litre)'),
-    ).toBeUndefined()
+    expect(wrapper.text()).not.toContain('Ajouter des frais de transport')
   })
 
-  it('still shows "Add transport fee" when the trip has no transport payment yet', async () => {
+  it('offers "Commission transporteur" in the add-expense category list and switches to the commission form', async () => {
     setUser({ operations: ['view'], finance: ['view', 'create'] })
-
     const wrapper = await mountAt()
+    await openAddExpense(wrapper)
 
-    expect(
-      wrapper
-        .findAll('button')
-        .find((b) => b.text() === '+ Ajouter des frais de transport (au litre)'),
-    ).toBeTruthy()
+    const option = wrapper.find(`#category option[value="${COMMISSION_VALUE}"]`)
+    expect(option.exists()).toBe(true)
+    expect(option.text()).toBe('Commission transporteur')
+
+    await wrapper.find('#category').setValue(COMMISSION_VALUE)
+    await flushPromises()
+
+    expect(wrapper.find('#unit_price_per_litre').exists()).toBe(true)
+    expect(wrapper.find('#category').exists()).toBe(false)
+  })
+
+  it('hides the commission option once a payment exists for the trip', async () => {
+    setUser({ operations: ['view'], finance: ['view', 'create'] })
+    transportPaymentsToReturn = [makeTransportPayment()]
+    const wrapper = await mountAt()
+    await openAddExpense(wrapper)
+
+    expect(wrapper.find(`#category option[value="${COMMISSION_VALUE}"]`).exists()).toBe(false)
+  })
+
+  it('hides the commission option for an internal (company fleet) transporter', async () => {
+    setUser({ operations: ['view'], finance: ['view', 'create'] })
+    tripResourceGet.mockResolvedValue(
+      makeTrip({ transporter_detail: { id: 2, name: 'Flotte propre', is_internal: true } }),
+    )
+    const wrapper = await mountAt()
+    await openAddExpense(wrapper)
+
+    expect(wrapper.find(`#category option[value="${COMMISSION_VALUE}"]`).exists()).toBe(false)
   })
 
   it('shows an empty state when the trip has no expenses', async () => {

@@ -79,6 +79,23 @@ const automaticExpense = ref<{
   category: ExpenseCategory
 } | null>(null)
 const canManageExpenses = computed(() => auth.can('finance', 'create'))
+// One settlement per trip, external transporters only (same rule as the
+// automatic popup at SENT_FOR_LOADING).
+const canAddCommission = computed(
+  () =>
+    canManageExpenses.value &&
+    !!trip.value?.transporter &&
+    !trip.value.transporter_detail?.is_internal &&
+    !transportPayments.value.length,
+)
+
+function onSelectCommission() {
+  showExpenseForm.value = false
+  automaticExpense.value = null
+  editingExpense.value = null
+  automaticTransportTitle.value = null
+  showTransportPaymentForm.value = true
+}
 // Phase 5: POST /api/expenses/{id}/cancel/ requires the "cancel" tier
 // (backend/apps/accounts/permissions.py ACTION_MAP falls back to the raw
 // action name "cancel", same tier already gating destroy/hard-delete
@@ -1012,18 +1029,6 @@ const cessionProofUrl = computed(
             >
               {{ t('trips.detail.addExpense') }}
             </Button>
-            <Button
-              v-if="
-                canManageExpenses &&
-                trip.transporter &&
-                !trip.transporter_detail?.is_internal &&
-                !transportPayments.length
-              "
-              variant="ghost"
-              @click=";((automaticTransportTitle = null), (showTransportPaymentForm = true))"
-            >
-              {{ t('trips.detail.addTransportFee') }}
-            </Button>
           </div>
         </div>
       </Card>
@@ -1149,6 +1154,8 @@ const cessionProofUrl = computed(
             :per-litre-quantity="trip.quantity_loaded"
             :editing-expense="editingExpense"
             :cancel-label="inFeeQueue ? t('trips.detail.skipFee') : undefined"
+            :commission-available="canAddCommission && !inFeeQueue"
+            @select-commission="onSelectCommission"
             @success="onExpenseSaved"
             @cancel="onExpenseCancel"
           />

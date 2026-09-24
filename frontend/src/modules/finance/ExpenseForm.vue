@@ -42,6 +42,7 @@ const props = defineProps<{
   presetAllocation?: { kind: AllocatableKind; objectId: number; label: string }
   initialCategory?: ExpenseCategory
   cancelLabel?: string
+  commissionAvailable?: boolean
   initialCalculationMethod?: ExpenseCalculationMethod
   perLitreQuantity?: string
   showTreasuryPayment?: boolean
@@ -54,9 +55,18 @@ const props = defineProps<{
   // new one.
   editingExpense?: Expense | null
 }>()
-const emit = defineEmits<{ success: [customerId: number | null]; cancel: [] }>()
+const emit = defineEmits<{
+  success: [customerId: number | null]
+  cancel: []
+  'select-commission': []
+}>()
 const { t } = useI18n()
 const categoryLabel = useExpenseCategoryLabel()
+
+// Sentinel category: the transporter commission is a TransportPayment (own
+// debt/deduction/correction lifecycle), not an Expense - picking it hands the
+// modal over to TransportPaymentForm (TripDetail.vue) instead of submitting here.
+const TRANSPORT_COMMISSION_VALUE = '__transport_commission__'
 
 interface ExpenseFormState {
   category: string
@@ -95,6 +105,13 @@ const form = ref<ExpenseFormState>({
   date: props.editingExpense?.date ?? new Date().toISOString().slice(0, 10),
   notes: props.editingExpense?.notes ?? '',
 })
+
+watch(
+  () => form.value.category,
+  (category) => {
+    if (category === TRANSPORT_COMMISSION_VALUE) emit('select-commission')
+  },
+)
 
 const categories = ref<ExpenseCategoryOption[]>([])
 const creatingCategory = ref(false)
@@ -367,6 +384,12 @@ async function onSubmit() {
           >
             <option v-for="c in categories" :key="c.code" :value="c.code">
               {{ categoryLabel(c) }}
+            </option>
+            <option
+              v-if="commissionAvailable && !editingExpense"
+              :value="TRANSPORT_COMMISSION_VALUE"
+            >
+              {{ t('finance.expense.transportCommission') }}
             </option>
           </select>
           <div v-if="!isTripAllocation" class="space-y-2">
