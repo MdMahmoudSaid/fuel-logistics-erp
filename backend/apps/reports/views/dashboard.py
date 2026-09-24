@@ -397,7 +397,7 @@ class DashboardViewSet(viewsets.ViewSet):
         working_capital = WorkingCapitalService.get_working_capital()
 
         # Only trips that have physically arrived at the depot count as stock -
-        # destination_type alone isn't enough: GOING_TO_COMPANY_STOCK/earlier
+        # destination_type alone isn't enough: earlier
         # pipeline statuses haven't arrived yet, and a trip un-assigned from a
         # customer keeps its old status (QUANTITY_CONTROL, DELIVERED, ...) - see
         # trips/serializers.py _normalize_destination_type.

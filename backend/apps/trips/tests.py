@@ -126,7 +126,6 @@ FULL_SEQUENCE_AFTER_ASSIGNED = [
     Trip.Status.IN_TRANSIT,
     Trip.Status.BORDER,
     Trip.Status.CUSTOMS,
-    Trip.Status.GOING_TO_CLIENT,
     Trip.Status.ARRIVED_AT_CLIENT,
     # Client correction (2026-09-04 recette): QUANTITY_CONTROL is no longer
     # a mandatory intermediate stop - a trip is delivered directly from
@@ -136,7 +135,6 @@ FULL_SEQUENCE_AFTER_ASSIGNED = [
 ]
 
 COMPANY_STOCK_SEQUENCE_AFTER_CUSTOMS = [
-    Trip.Status.GOING_TO_COMPANY_STOCK,
     Trip.Status.ARRIVED_AT_COMPANY_STOCK,
     Trip.Status.STOCKED,
 ]
@@ -284,7 +282,7 @@ def test_trip_serializer_cession_letter_truck_load_count_counts_this_truck_under
 def _advance_to_completed(trip, actor):
     for target in FULL_SEQUENCE_AFTER_ASSIGNED:
         if (
-            target == Trip.Status.GOING_TO_CLIENT
+            target == Trip.Status.ARRIVED_AT_CLIENT
             and not trip.client_id
             and not trip.customer_order_id
         ):
@@ -304,7 +302,7 @@ def _advance_to_arrived_at_client(trip, actor):
     # in between anymore).
     for target in FULL_SEQUENCE_AFTER_ASSIGNED[:-2]:
         if (
-            target == Trip.Status.GOING_TO_CLIENT
+            target == Trip.Status.ARRIVED_AT_CLIENT
             and not trip.client_id
             and not trip.customer_order_id
         ):
@@ -569,14 +567,13 @@ def test_workflow_blocks_client_statuses_without_customer_and_routes_to_company_
     trip.refresh_from_db()
 
     allowed = TripWorkflowService.get_allowed_targets(trip)
-    assert Trip.Status.GOING_TO_CLIENT not in allowed
     assert Trip.Status.ARRIVED_AT_CLIENT not in allowed
     assert Trip.Status.QUANTITY_CONTROL not in allowed
-    assert Trip.Status.GOING_TO_COMPANY_STOCK in allowed
+    assert Trip.Status.ARRIVED_AT_COMPANY_STOCK in allowed
 
     with pytest.raises(InvalidTripTransition):
         TripWorkflowService.transition_trip(
-            trip.id, Trip.Status.GOING_TO_CLIENT, fx["admin_user"]
+            trip.id, Trip.Status.ARRIVED_AT_CLIENT, fx["admin_user"]
         )
 
     for target in COMPANY_STOCK_SEQUENCE_AFTER_CUSTOMS:
@@ -688,8 +685,8 @@ def test_workflow_allows_client_statuses_after_customer_assignment():
     trip.refresh_from_db()
 
     allowed = TripWorkflowService.get_allowed_targets(trip)
-    assert Trip.Status.GOING_TO_CLIENT in allowed
-    assert Trip.Status.GOING_TO_COMPANY_STOCK not in allowed
+    assert Trip.Status.ARRIVED_AT_CLIENT in allowed
+    assert Trip.Status.ARRIVED_AT_COMPANY_STOCK not in allowed
 
 
 @pytest.mark.django_db
@@ -1043,7 +1040,6 @@ _FORWARD_SEQUENCE_STATUS_NAMES = [
     "IN_TRANSIT",
     "BORDER",
     "CUSTOMS",
-    "GOING_TO_CLIENT",
     "ARRIVED_AT_CLIENT",
 ]
 
@@ -3708,3 +3704,85 @@ def test_trip_serializer_delivery_control_detail_is_none_before_delivery():
 
     assert response.status_code == 200
     assert response.data["delivery_control_detail"] is None
+
+
+@pytest.mark.django_db
+def test_retired_going_statuses_are_gone_from_the_enum():
+    assert not hasattr(Trip.Status, "GOING_TO_CLIENT")
+    assert not hasattr(Trip.Status, "GOING_TO_COMPANY_STOCK")
+
+
+@pytest.mark.django_db
+def test_customs_leads_straight_to_arrived_at_client_or_company_stock():
+    fx = _setup_fixtures("RETIRED-FORK")
+    stock_trip = _make_trip(
+        fx, _make_truck("TRK-RETIRED-1"), "TRIP-RETIRED-001", status=Trip.Status.CUSTOMS
+    )
+    assert Trip.Status.ARRIVED_AT_COMPANY_STOCK in TripWorkflowService.get_allowed_targets(stock_trip)
+    assert Trip.Status.ARRIVED_AT_CLIENT not in TripWorkflowService.get_allowed_targets(stock_trip)
+
+    client_trip = _make_trip(
+        fx, _make_truck("TRK-RETIRED-2"), "TRIP-RETIRED-002", status=Trip.Status.CUSTOMS
+    )
+    client_trip.client = Customer.objects.create(name="Client retired fork")
+    client_trip.destination_type = Trip.DestinationType.CUSTOMER
+    client_trip.save()
+    allowed = TripWorkflowService.get_allowed_targets(client_trip)
+    assert Trip.Status.ARRIVED_AT_CLIENT in allowed
+    assert Trip.Status.ARRIVED_AT_COMPANY_STOCK not in allowed
+
+
+@pytest.mark.django_db
+def test_stocked_trip_with_client_goes_straight_to_arrived_at_client():
+    fx = _setup_fixtures("RETIRED-STOCKED")
+    trip = _make_trip(
+        fx, _make_truck("TRK-RETIRED-3"), "TRIP-RETIRED-003", status=Trip.Status.STOCKED
+    )
+    trip.client = Customer.objects.create(name="Client retired stocked")
+    trip.destination_type = Trip.DestinationType.CUSTOMER
+    trip.save()
+
+    TripWorkflowService.transition_trip(trip.id, Trip.Status.ARRIVED_AT_CLIENT, fx["admin_user"])
+    trip.refresh_from_db()
+    assert trip.status == Trip.Status.ARRIVED_AT_CLIENT
+
+
+@pytest.mark.django_db
+def test_migration_0010_moves_trips_in_retired_statuses_to_customs_and_keeps_history():
+    import importlib
+
+    from django.apps import apps as django_apps
+
+    migration = importlib.import_module("apps.trips.migrations.0010_retire_going_to_statuses")
+    fx = _setup_fixtures("RETIRED-MIG")
+    going_client = _make_trip(fx, _make_truck("TRK-MIG-1"), "TRIP-MIG-001", status=Trip.Status.CUSTOMS)
+    going_stock = _make_trip(fx, _make_truck("TRK-MIG-2"), "TRIP-MIG-002", status=Trip.Status.CUSTOMS)
+    untouched = _make_trip(fx, _make_truck("TRK-MIG-3"), "TRIP-MIG-003", status=Trip.Status.BORDER)
+    Trip.objects.filter(pk=going_client.pk).update(status="GOING_TO_CLIENT")
+    Trip.objects.filter(pk=going_stock.pk).update(status="GOING_TO_COMPANY_STOCK")
+    TripStatusHistory.objects.create(
+        trip=going_client, previous_status="CUSTOMS", new_status="GOING_TO_CLIENT",
+        changed_by=fx["admin_user"],
+    )
+
+    migration.remap_retired_statuses(django_apps, None)
+
+    going_client.refresh_from_db()
+    going_stock.refresh_from_db()
+    untouched.refresh_from_db()
+    assert going_client.status == Trip.Status.CUSTOMS
+    assert going_stock.status == Trip.Status.CUSTOMS
+    assert untouched.status == Trip.Status.BORDER
+    assert going_client.status_history.filter(new_status="GOING_TO_CLIENT").count() == 1
+
+
+@pytest.mark.django_db
+def test_resuming_a_legacy_trip_blocked_from_a_retired_status_targets_customs():
+    fx = _setup_fixtures("RETIRED-BLOCK")
+    trip = _make_trip(fx, _make_truck("TRK-RETIRED-4"), "TRIP-RETIRED-004", status=Trip.Status.BLOCKED)
+    TripStatusHistory.objects.create(
+        trip=trip, previous_status="GOING_TO_CLIENT", new_status=Trip.Status.BLOCKED,
+        changed_by=fx["admin_user"],
+    )
+
+    assert TripWorkflowService.get_allowed_targets(trip) == {Trip.Status.CUSTOMS}

@@ -30,13 +30,11 @@ class Trip(TimeStampedModel):
         IN_TRANSIT = "IN_TRANSIT", "In transit"
         BORDER = "BORDER", "Border"
         CUSTOMS = "CUSTOMS", "Customs"
-        GOING_TO_COMPANY_STOCK = "GOING_TO_COMPANY_STOCK", "Going to company stock"
         ARRIVED_AT_COMPANY_STOCK = (
             "ARRIVED_AT_COMPANY_STOCK",
             "Arrived at company stock",
         )
         STOCKED = "STOCKED", "Stocked"
-        GOING_TO_CLIENT = "GOING_TO_CLIENT", "Going to client"
         ARRIVED_AT_CLIENT = "ARRIVED_AT_CLIENT", "Arrived at client"
         QUANTITY_CONTROL = "QUANTITY_CONTROL", "Quantity control"
         DELIVERED = "DELIVERED", "Delivered"
@@ -62,9 +60,19 @@ class Trip(TimeStampedModel):
     # entreprise / stocke" - but a trip's fuel sitting in company stock is
     # not the same as the truck having actually completed a delivery. The
     # client's rule: a truck stays occupied through every active status
-    # (including STOCKED/GOING_TO_CLIENT/ARRIVED_AT_CLIENT/
+    # (including STOCKED/ARRIVED_AT_CLIENT/
     # QUANTITY_CONTROL) - only DELIVERED (or a terminal status) frees it.
     NON_OCCUPYING_STATUSES = TERMINAL_STATUSES | {Status.DELIVERED}
+
+    # Statuses retired 2026-09-24 (docs/superpowers/specs/2026-09-24-
+    # simplification-statuts-trajet-design.md). Trips sitting in one were moved
+    # to CUSTOMS by migration 0010; history rows (append-only) still carry the
+    # old names, so anything reading a *previous_status* back out of history
+    # must map it through this table before treating it as a live status.
+    RETIRED_STATUS_REMAP = {
+        "GOING_TO_CLIENT": "CUSTOMS",
+        "GOING_TO_COMPANY_STOCK": "CUSTOMS",
+    }
 
     class DestinationType(models.TextChoices):
         """Makes the "no client, no customer order" state a first-class,

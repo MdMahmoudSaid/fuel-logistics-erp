@@ -380,7 +380,6 @@ def test_scenario_complet_production_like(capsys):
         Trip.Status.IN_TRANSIT,
         Trip.Status.BORDER,
         Trip.Status.CUSTOMS,
-        Trip.Status.GOING_TO_CLIENT,
         Trip.Status.ARRIVED_AT_CLIENT,
         # Client correction (2026-09-04 recette): QUANTITY_CONTROL is no
         # longer a mandatory intermediate stop - a trip is delivered
@@ -653,7 +652,6 @@ def test_scenario_complet_production_like(capsys):
             Trip.Status.IN_TRANSIT,
             Trip.Status.BORDER,
             Trip.Status.CUSTOMS,
-            Trip.Status.GOING_TO_COMPANY_STOCK,
             Trip.Status.ARRIVED_AT_COMPANY_STOCK,
             Trip.Status.STOCKED,
         ],
@@ -662,11 +660,11 @@ def test_scenario_complet_production_like(capsys):
     report.check("14. Dashboard", "stock entreprise trajet present", "TRIP-TEST-STOCK stocked", 1, Trip.objects.filter(reference="TRIP-TEST-STOCK", destination_type=Trip.DestinationType.COMPANY_STOCK, status=Trip.Status.STOCKED).count())
     company_stock_qty = Trip.objects.filter(destination_type=Trip.DestinationType.COMPANY_STOCK, status__in=[Trip.Status.ARRIVED_AT_COMPANY_STOCK, Trip.Status.STOCKED]).aggregate(total=__import__("django.db.models").db.models.Sum("quantity_loaded"))["total"]
     report.check("14. Dashboard", "stock entreprise dashboard", "10 000 L", D("10000.00"), company_stock_qty)
-    report.check("14. Dashboard", "statuts client bloques sans client", "STOCKED allowed excludes GOING_TO_CLIENT avant client", False, Trip.Status.GOING_TO_CLIENT in TripWorkflowService.get_allowed_targets(stock_trip))
+    report.check("14. Dashboard", "statuts client bloques sans client", "STOCKED allowed excludes ARRIVED_AT_CLIENT avant client", False, Trip.Status.ARRIVED_AT_CLIENT in TripWorkflowService.get_allowed_targets(stock_trip))
     TripCostService.assign_customer_for_sale(stock_trip.id, customer.id, user)
     stock_trip.refresh_from_db()
     report.check("14. Dashboard", "sortie stock apres attribution", "destination CUSTOMER", Trip.DestinationType.CUSTOMER, stock_trip.destination_type)
-    report.check("14. Dashboard", "workflow client apres attribution", "GOING_TO_CLIENT permis", True, Trip.Status.GOING_TO_CLIENT in TripWorkflowService.get_allowed_targets(stock_trip))
+    report.check("14. Dashboard", "workflow client apres attribution", "ARRIVED_AT_CLIENT permis", True, Trip.Status.ARRIVED_AT_CLIENT in TripWorkflowService.get_allowed_targets(stock_trip))
 
     report.check("15. Grands livres", "compte client total facture", "invoice ledger debit", money(40365000), sum((row["debit"] or money(0)) for row in CustomerStatementQuery.run(customer_id=customer.id)))
     report.check("15. Grands livres", "compte client total encaisse", "payment ledger credit", money(40365000), sum((row["credit"] or money(0)) for row in CustomerStatementQuery.run(customer_id=customer.id)))
@@ -767,7 +765,6 @@ def test_scenario_complet_production_like(capsys):
         ),
         ShareholderLoanError,
     )
-    stock_trip = TripWorkflowService.transition_trip(stock_trip.id, Trip.Status.GOING_TO_CLIENT, user)
     stock_trip = TripWorkflowService.transition_trip(stock_trip.id, Trip.Status.ARRIVED_AT_CLIENT, user)
     # Client correction (2026-09-04 recette): QUANTITY_CONTROL is no longer
     # a mandatory intermediate stop before DELIVERED.

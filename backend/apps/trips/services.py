@@ -335,8 +335,7 @@ class TripWorkflowService:
         Trip.Status.ROAD_TRANSIT: Trip.Status.IN_TRANSIT,
         Trip.Status.IN_TRANSIT: Trip.Status.BORDER,
         Trip.Status.BORDER: Trip.Status.CUSTOMS,
-        Trip.Status.CUSTOMS: Trip.Status.GOING_TO_CLIENT,
-        Trip.Status.GOING_TO_CLIENT: Trip.Status.ARRIVED_AT_CLIENT,
+        Trip.Status.CUSTOMS: Trip.Status.ARRIVED_AT_CLIENT,
         # Client correction (2026-09-04 recette): quantity control is no
         # longer a mandatory gate before delivery - a trip is delivered
         # directly from ARRIVED_AT_CLIENT, defaulting to "full quantity
@@ -346,7 +345,6 @@ class TripWorkflowService:
         Trip.Status.ARRIVED_AT_CLIENT: Trip.Status.DELIVERED,
         Trip.Status.QUANTITY_CONTROL: Trip.Status.DELIVERED,
         Trip.Status.DELIVERED: Trip.Status.COMPLETED,
-        Trip.Status.GOING_TO_COMPANY_STOCK: Trip.Status.ARRIVED_AT_COMPANY_STOCK,
         Trip.Status.ARRIVED_AT_COMPANY_STOCK: Trip.Status.STOCKED,
     }
 
@@ -361,27 +359,28 @@ class TripWorkflowService:
     CANCELLABLE_FROM = set(FORWARD_TRANSITIONS.keys()) - {Trip.Status.DELIVERED}
 
     @classmethod
+    def _next_step(cls, trip: Trip, status):
+        """The single forward status after `status` for this trip, resolving
+        the client/stock fork: a trip with neither a client nor a customer
+        order leaves CUSTOMS for the company stock instead of a client."""
+        has_customer = bool(trip.client_id or trip.customer_order_id)
+        if status == Trip.Status.STOCKED:
+            return Trip.Status.ARRIVED_AT_CLIENT if has_customer else None
+        forward = cls.FORWARD_TRANSITIONS.get(status)
+        if forward == Trip.Status.ARRIVED_AT_CLIENT and not has_customer:
+            return Trip.Status.ARRIVED_AT_COMPANY_STOCK
+        return forward
+
+    @classmethod
     def get_allowed_targets(cls, trip: Trip) -> set:
         """Valid next statuses for `trip`, given its current status and (for
         BLOCKED) the status it was blocked from."""
         current_status = trip.status
         allowed = set()
 
-        forward = cls.FORWARD_TRANSITIONS.get(current_status)
+        forward = cls._next_step(trip, current_status)
         if forward:
-            if forward in {
-                Trip.Status.GOING_TO_CLIENT,
-                Trip.Status.ARRIVED_AT_CLIENT,
-                Trip.Status.QUANTITY_CONTROL,
-            } and not (trip.client_id or trip.customer_order_id):
-                allowed.add(Trip.Status.GOING_TO_COMPANY_STOCK)
-            else:
-                allowed.add(forward)
-
-        if current_status == Trip.Status.STOCKED and (
-            trip.client_id or trip.customer_order_id
-        ):
-            allowed.add(Trip.Status.GOING_TO_CLIENT)
+            allowed.add(forward)
 
         if current_status in cls.CANCELLABLE_FROM:
             allowed.add(Trip.Status.CANCELLED)
@@ -405,7 +404,10 @@ class TripWorkflowService:
             .order_by("-changed_at", "-id")
             .first()
         )
-        return last_block_entry.previous_status if last_block_entry else None
+        if not last_block_entry:
+            return None
+        previous = last_block_entry.previous_status
+        return Trip.RETIRED_STATUS_REMAP.get(previous, previous)
 
     @classmethod
     @transaction.atomic
