@@ -14,7 +14,7 @@ from decimal import Decimal
 from django.db import transaction
 from django.db.models import Sum
 
-from apps.sales.models import CustomerOrder, Invoice, InvoiceCorrection
+from apps.sales.models import CustomerOrder, Invoice, InvoiceCorrection, Sale
 
 ZERO = Decimal("0.00")
 
@@ -138,6 +138,25 @@ def _reject_non_billable_quantity(qty: Decimal, invoice_number: str) -> None:
         )
 
 
+def _pick_sale(invoice: Invoice, sale_id=None) -> Sale:
+    """The Sale a price/quantity edit targets: the invoice's only Sale, or
+    the one named by `sale_id` on a multi-trip invoice."""
+    sales = invoice.all_sales
+    if sale_id in (None, ""):
+        if len(sales) > 1:
+            raise ValueError(
+                f"La facture {invoice.invoice_number} regroupe plusieurs trajets ; "
+                "précisez la vente à modifier."
+            )
+        return sales[0]
+    for sale in sales:
+        if sale.pk == int(sale_id):
+            return sale
+    raise ValueError(
+        f"La vente {sale_id} n'appartient pas à la facture {invoice.invoice_number}."
+    )
+
+
 class InvoiceService:
     """Owns Invoice validation and post-validation corrections
     (docs/PHASE_4_PLAN.md Etape 5;
@@ -166,7 +185,26 @@ class InvoiceService:
 
     @staticmethod
     @transaction.atomic
-    def update_draft_pricing(invoice_id, unit_selling_price) -> Invoice:
+    def validate_invoices(invoice_ids, actor) -> list[Invoice]:
+        """Validate several DRAFT invoices of ONE customer in a single
+        transaction (all or nothing)."""
+        invoices = list(
+            Invoice.objects.select_for_update()
+            .select_related("sale")
+            .filter(pk__in=invoice_ids)
+            .order_by("id")
+        )
+        if len(invoices) != len(set(invoice_ids)):
+            raise InvoiceValidationError("Une ou plusieurs factures sont introuvables.")
+        if len({i.sale.customer_id for i in invoices}) > 1:
+            raise InvoiceValidationError(
+                "La validation en lot ne concerne que les factures d'un même client."
+            )
+        return [InvoiceService.validate_invoice(i.pk, actor) for i in invoices]
+
+    @staticmethod
+    @transaction.atomic
+    def update_draft_pricing(invoice_id, unit_selling_price, sale_id=None) -> Invoice:
         """Change a DRAFT invoice's initial selling price and recompute its
         total (feedback 2026-09-10: the initial price set on the trip's
         delivery control is sometimes wrong and needs fixing before the
@@ -185,16 +223,15 @@ class InvoiceService:
                 "the audited correction instead."
             )
 
-        sale = invoice.sale
+        sale = _pick_sale(invoice, sale_id)
         sale.unit_selling_price = Decimal(str(unit_selling_price))
         sale.save()  # recomputes subtotal via Sale.save()
-        invoice.total_amount = sale.subtotal
-        invoice.save(update_fields=["total_amount", "updated_at"])
+        invoice.recompute_total()
         return invoice
 
     @staticmethod
     @transaction.atomic
-    def correct_invoice(invoice_id, field, new_value, reason, actor) -> Invoice:
+    def correct_invoice(invoice_id, field, new_value, reason, actor, sale_id=None) -> Invoice:
         """Adjust a validated invoice's financial data under audit
         (docs/PHASE_4_PLAN.md Section 1.E). Only usable once VALIDATED - a
         DRAFT invoice's serializer should accept direct field edits instead,
@@ -207,22 +244,25 @@ class InvoiceService:
                 "it can be corrected; edit it directly while it is DRAFT."
             )
 
-        sale = invoice.sale
-
         if field == "unit_selling_price":
+            sale = _pick_sale(invoice, sale_id)
             previous_value = str(sale.unit_selling_price)
             sale.unit_selling_price = Decimal(str(new_value))
             sale.save()  # recomputes subtotal via Sale.save()
-            invoice.total_amount = sale.subtotal
-            invoice.save(update_fields=["total_amount", "updated_at"])
+            invoice.recompute_total()
         elif field == "delivered_quantity":
+            sale = _pick_sale(invoice, sale_id)
             _reject_non_billable_quantity(Decimal(str(new_value)), invoice.invoice_number)
             previous_value = str(sale.delivered_quantity)
             sale.delivered_quantity = Decimal(str(new_value))
             sale.save()  # recomputes subtotal via Sale.save()
-            invoice.total_amount = sale.subtotal
-            invoice.save(update_fields=["total_amount", "updated_at"])
+            invoice.recompute_total()
         elif field == "total_amount":
+            if len(invoice.all_sales) > 1:
+                raise ValueError(
+                    "Le total d'une facture regroupant plusieurs trajets se corrige "
+                    "par le prix ou la quantité d'un trajet."
+                )
             previous_value = str(invoice.total_amount)
             invoice.total_amount = Decimal(str(new_value))
             invoice.save(update_fields=["total_amount", "updated_at"])
@@ -243,7 +283,9 @@ class InvoiceService:
 
     @staticmethod
     @transaction.atomic
-    def adjust_delivered_quantity(invoice_id, new_quantity, *, reason, actor) -> Invoice:
+    def adjust_delivered_quantity(
+        invoice_id, new_quantity, *, reason, actor, sale_id=None
+    ) -> Invoice:
         """Set an invoice's billed quantity to `new_quantity` (the quantity
         the client actually received - spec 2026-09-07). This is the
         automated owner of a post-creation Sale.delivered_quantity mutation;
@@ -256,7 +298,7 @@ class InvoiceService:
         No-op if new_quantity already equals the current delivered_quantity.
         """
         invoice = Invoice.objects.select_for_update().get(pk=invoice_id)
-        sale = invoice.sale
+        sale = _pick_sale(invoice, sale_id)
         new_quantity = Decimal(str(new_quantity))
         _reject_non_billable_quantity(new_quantity, invoice.invoice_number)
 
@@ -279,8 +321,7 @@ class InvoiceService:
         previous_value = str(sale.delivered_quantity)
         sale.delivered_quantity = new_quantity
         sale.save()  # recomputes subtotal via Sale.save()
-        invoice.total_amount = sale.subtotal
-        invoice.save(update_fields=["total_amount", "updated_at"])
+        invoice.recompute_total()
 
         if invoice.status == Invoice.Status.VALIDATED:
             InvoiceCorrection.objects.create(

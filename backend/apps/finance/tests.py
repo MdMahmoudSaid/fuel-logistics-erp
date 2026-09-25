@@ -1,4 +1,5 @@
 import json
+from datetime import date
 from decimal import Decimal
 
 import pytest
@@ -37,6 +38,7 @@ from apps.finance.models import (
     TransportPayment,
     TreasuryTransaction,
 )
+from apps.finance.testing_helpers import seed_net_profit
 from apps.finance.services import (
     AdvanceConsumptionService,
     ControlledDebtPaymentError,
@@ -51,6 +53,7 @@ from apps.finance.services import (
     ShareholderLoanError,
     ShareholderLoanService,
     ShareholderParticipationError,
+    ExpensePostingService,
     ShareholderProfitPreviewService,
     ShareholderService,
     ShareholderWithdrawalError,
@@ -3735,13 +3738,12 @@ def _make_shareholders(percents, prefix="SH"):
 
 
 def _seed_distributable(amount=Decimal("10000000.00"), name="Seed Till"):
-    """Give the company enough treasury that validate_distribution's hard
-    amount block (2026-09-08 review, point 2) clears - for tests where the
-    amount guard is not what is under test.
-
-    distributable_result == treasury + receivables - capital -
-    already_distributed, so a CashAccount opening balance alone lifts it.
-    """
+    """Give validate_distribution's hard amount block (2026-09-08 review,
+    point 2) room to clear - for tests where the amount guard is not what is
+    under test. Since 2026-09-25 that guard compares against the period's NET
+    PROFIT (not the treasury), so this seeds a computed net profit; the
+    treasury account is still created for tests that then withdraw cash."""
+    seed_net_profit(amount)
     return CashAccount.objects.create(name=name, opening_balance=Decimal(str(amount)))
 
 
@@ -4549,13 +4551,13 @@ def test_cancel_distribution_rejects_draft_after_cancel_is_terminal():
 
 @pytest.mark.django_db
 def test_validate_distribution_rejects_amount_over_distributable_result():
-    """2026-09-08 review, point 2: the backend hard-blocks a validation
-    whose total_profit exceeds the amount actually still available for
-    distribution - the soft frontend warning must never be the only
+    """2026-09-08 review, point 2 (basis changed 2026-09-25): the backend
+    hard-blocks a validation whose total_profit exceeds the profit still left
+    to distribute - the soft frontend warning must never be the only
     guard."""
     _make_shareholders([Decimal("100")])
     actor = _make_admin_user("HARDCAP")
-    CashAccount.objects.create(name="Small Till", opening_balance=Decimal("50000.00"))
+    seed_net_profit(Decimal("50000.00"))
     distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",
@@ -4574,7 +4576,7 @@ def test_validate_distribution_rejects_amount_over_distributable_result():
 def test_validate_distribution_allows_amount_within_distributable_result():
     _make_shareholders([Decimal("100")])
     actor = _make_admin_user("HARDOK")
-    CashAccount.objects.create(name="Full Till", opening_balance=Decimal("500000.00"))
+    seed_net_profit(Decimal("500000.00"))
     distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",
@@ -4589,33 +4591,106 @@ def test_validate_distribution_allows_amount_within_distributable_result():
 
 
 @pytest.mark.django_db
-def test_validate_distribution_amount_check_is_recomputed_at_validation_time():
-    """2026-09-08 review, point 2: the check is redone at validation even
-    though the amount looked fine at creation - the financial situation
-    moved in between (here: a second distribution was validated and ate
-    the headroom)."""
+def test_validate_distribution_ignores_debts_and_capital():
+    """Client decision 2026-09-25: the distributable amount is the net profit
+    only - open debts / capital / an empty treasury must not block it."""
     _make_shareholders([Decimal("100")])
-    actor = _make_admin_user("HARDFRESH")
-    CashAccount.objects.create(name="Shared Till", opening_balance=Decimal("150000.00"))
-
-    first = ShareholderDistributionService.create_distribution(
-        period_start="2026-06-01",
-        period_end="2026-06-30",
-        total_profit=Decimal("100000.00"),
+    actor = _make_admin_user("NODEBTS")
+    seed_net_profit(Decimal("500000.00"))
+    # No cash/bank at all, a shareholder capital contribution of 10M booked
+    # nowhere: the old (treasury - debts - capital) figure would be negative.
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("500000.00"),
         actor=actor,
     )
-    second = ShareholderDistributionService.create_distribution(
+
+    ShareholderDistributionService.validate_distribution(distribution.id, actor)
+
+    distribution.refresh_from_db()
+    assert distribution.status == ShareholderProfitDistribution.Status.VALIDATED
+
+
+@pytest.mark.django_db
+def test_preview_distributable_is_total_net_profit_minus_validated_distributions():
+    """Client decision 2026-09-25: one "bénéfice à distribuer" figure -
+    all-time net profit minus every VALIDATED distribution - whatever period
+    the page filters on; it reaches zero once everything is distributed."""
+    _make_shareholders([Decimal("100")])
+    actor = _make_admin_user("PREVNET")
+    seed_net_profit(Decimal("300000.00"))
+    first = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",
         total_profit=Decimal("100000.00"),
         actor=actor,
     )
 
-    ShareholderDistributionService.validate_distribution(first.id, actor)
+    assert ShareholderProfitPreviewService.get_preview()["distributable_result"] == Decimal(
+        "300000.00"
+    )  # DRAFT: no effect
 
-    # 150000 treasury - 100000 already committed = 50000 left, < 100000.
+    ShareholderDistributionService.validate_distribution(first.id, actor)
+    for kwargs in ({}, {"date_from": date(2026, 8, 1), "date_to": date(2026, 8, 31)}):
+        preview = ShareholderProfitPreviewService.get_preview(**kwargs)
+        assert preview["already_validated_total"] == Decimal("100000.00")
+        assert preview["distributable_result"] == Decimal("200000.00")
+        # The debts/capital-based figure is still exposed, informational only.
+        assert "result_after_debts_and_capital" in preview
+
+    rest = ShareholderDistributionService.create_distribution(
+        period_start="2026-08-01",
+        period_end="2026-08-31",
+        total_profit=Decimal("200000.00"),
+        actor=actor,
+    )
+    ShareholderDistributionService.validate_distribution(rest.id, actor)
+    assert ShareholderProfitPreviewService.get_preview()["distributable_result"] == Decimal(
+        "0.00"
+    )
+
+
+@pytest.mark.django_db
+def test_draft_distribution_exposes_available_to_distribute():
+    _make_shareholders([Decimal("100")])
+    actor = _make_admin_user("AVAILFLD")
+    seed_net_profit(Decimal("300000.00"))
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=actor,
+    )
+    client = APIClient()
+    client.force_authenticate(actor)
+    data = client.get(f"/api/shareholder-distributions/{distribution.id}/").data
+    assert data["available_to_distribute"] == "300000.00"
+
+    ShareholderDistributionService.validate_distribution(distribution.id, actor)
+    data = client.get(f"/api/shareholder-distributions/{distribution.id}/").data
+    assert data["available_to_distribute"] is None
+
+
+@pytest.mark.django_db
+def test_validate_distribution_amount_check_is_recomputed_at_validation_time():
+    """2026-09-08 review, point 2: the check is redone at validation even
+    though the amount looked fine at creation - here the profit fell
+    between drafting and validating."""
+    _make_shareholders([Decimal("100")])
+    actor = _make_admin_user("HARDFRESH")
+    seed_net_profit(Decimal("150000.00"))
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=actor,
+    )
+    # Between drafting and validating the period's profit falls to 50 000.
+    seed_net_profit(Decimal("50000.00"))
+
     with pytest.raises(ShareholderDistributionError):
-        ShareholderDistributionService.validate_distribution(second.id, actor)
+        ShareholderDistributionService.validate_distribution(distribution.id, actor)
 
 
 @pytest.mark.django_db
@@ -5205,7 +5280,7 @@ def test_draft_profit_share_blocks_withdrawal_and_loan():
 
 
 @pytest.mark.django_db
-def test_get_preview_subtracts_already_distributed_from_distributable_result():
+def test_get_preview_subtracts_already_distributed_from_result_after_debts_and_capital():
     """Recette bug (2026-09-08): distributable_result never moved after
     creating a distribution, because it never subtracted what had already
     been committed to shareholders - the same real profit could be (and
@@ -5227,13 +5302,21 @@ def test_get_preview_subtracts_already_distributed_from_distributable_result():
     # A DRAFT proposal must not move the figure (2026-09-08 review).
     draft_preview = ShareholderProfitPreviewService.get_preview()
     assert draft_preview["already_distributed"] == Decimal("0.00")
-    assert draft_preview["distributable_result"] == before["distributable_result"]
+    assert (
+        draft_preview["result_after_debts_and_capital"]
+        == before["result_after_debts_and_capital"]
+    )
 
     ShareholderDistributionService.validate_distribution(distribution.id, actor)
 
     after = ShareholderProfitPreviewService.get_preview()
     assert after["already_distributed"] == Decimal("100000.00")
-    assert after["distributable_result"] == before["distributable_result"] - Decimal("100000.00")
+    # The informational debts/capital figure still nets the commitment out
+    # (2026-09-25: it no longer drives the distributable amount, whose
+    # default period now starts after the validated distribution).
+    assert after["result_after_debts_and_capital"] == before[
+        "result_after_debts_and_capital"
+    ] - Decimal("100000.00")
 
 
 @pytest.mark.django_db
@@ -6706,3 +6789,160 @@ def test_customer_payment_update_rejects_an_invoice_of_another_customer(finance_
 
     assert response.status_code == 400
     assert not PaymentAllocation.objects.filter(payment_id=created.data["id"]).exists()
+
+
+# --- General expense paid by customers (client request 2026-09-25) ---
+
+
+@pytest.mark.django_db
+def test_customer_paid_expense_reduces_receivable_and_excess_becomes_company_debt():
+    admin_user, customer, invoice = _make_invoice_for_payment(
+        "CPE-EXCESS", total_amount=Decimal("3000000.00")
+    )
+    treasury_before = TreasuryTransaction.objects.count()
+
+    results = IndirectSettlementService.record_customer_paid_expenses(
+        payers=[{"customer_id": customer.id, "amount": Decimal("5000000.00")}],
+        expense_data={"category": "rent", "date": "2026-08-18"},
+        actor=admin_user,
+    )
+
+    expense, payment, _ = results[0]
+    assert expense.status == Expense.Status.PAID
+    assert expense.paid_by_customer_directly is True
+    invoice.refresh_from_db()
+    assert invoice.status == Invoice.Status.PAID  # his 3M receivable is cleared
+    # 3M off his invoice + 2M unallocated credit = a 2M debt of the company
+    # towards him (negative outstanding).
+    assert PaymentAllocationService.get_customer_outstanding(customer) == Decimal("-2000000.00")
+    amounts = sorted(
+        (a.invoice_id is None, a.amount) for a in payment.allocations.all()
+    )
+    assert amounts == [(False, Decimal("3000000.00")), (True, Decimal("2000000.00"))]
+    assert TreasuryTransaction.objects.count() == treasury_before
+
+    # Cancelling gives the receivable back and restores the invoice status.
+    ExpensePostingService.cancel_paid_expense(expense, admin_user)
+    invoice.refresh_from_db()
+    assert invoice.status == Invoice.Status.VALIDATED
+    assert PaymentAllocationService.get_customer_outstanding(customer) == Decimal("3000000.00")
+
+
+@pytest.mark.django_db
+def test_customer_paid_expense_with_no_balance_is_a_pure_company_debt():
+    admin_user = _make_admin_user("CPE-ZERO")
+    customer = Customer.objects.create(name="Client sans solde")
+    assert PaymentAllocationService.get_customer_outstanding(customer) == Decimal("0.00")
+
+    IndirectSettlementService.record_customer_paid_expenses(
+        payers=[{"customer_id": customer.id, "amount": Decimal("1000000.00")}],
+        expense_data={"category": "rent", "date": "2026-08-18"},
+        actor=admin_user,
+    )
+
+    assert PaymentAllocationService.get_customer_outstanding(customer) == Decimal("-1000000.00")
+
+
+@pytest.mark.django_db
+def test_record_customer_paid_api_creates_one_expense_per_payer_all_or_nothing(finance_client):
+    _, c1, inv1 = _make_invoice_for_payment("CPE-API1", total_amount=Decimal("4000000.00"))
+    _, c2, _inv2 = _make_invoice_for_payment("CPE-API2", total_amount=Decimal("1000000.00"))
+    body = {
+        "category": "rent",
+        "date": "2026-08-18",
+        "notes": "Loyer",
+        "payers": [
+            {"customer": c1.id, "amount": "4000000.00"},
+            {"customer": c2.id, "amount": "500000.00"},
+        ],
+    }
+
+    # duplicate customer -> 400, nothing created
+    bad = finance_client.post(
+        "/api/expenses/record-customer-paid/",
+        {**body, "payers": [body["payers"][0], body["payers"][0]]},
+        format="json",
+    )
+    assert bad.status_code == 400
+    assert Expense.objects.filter(paid_by_customer_directly=True).count() == 0
+
+    ok = finance_client.post("/api/expenses/record-customer-paid/", body, format="json")
+    assert ok.status_code == 201, ok.data
+    assert len(ok.data["expenses"]) == 2
+    assert Expense.objects.filter(paid_by_customer_directly=True).count() == 2
+    inv1.refresh_from_db()
+    assert inv1.status == Invoice.Status.PAID
+    assert PaymentAllocationService.get_customer_outstanding(c2) == Decimal("500000.00")
+
+
+@pytest.mark.django_db
+def test_record_indirect_accepts_a_user_created_expense_category(finance_client):
+    """Bug (2026-09-25 recette): "Payée directement par le client" rejected
+    every category created by the user (only the built-in enum passed), so
+    saving showed a generic error."""
+    from apps.finance.models import ExpenseCategory
+
+    _, customer, _invoice = _make_invoice_for_payment("IND-CUSTCAT", total_amount=Decimal("100000.00"))
+    ExpenseCategory.objects.create(name="interen", code="interen")
+
+    response = finance_client.post(
+        "/api/expenses/record-indirect/",
+        {
+            "customer": customer.id,
+            "category": "interen",
+            "amount": "10000.00",
+            "date": "2026-09-25",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201, response.data
+    assert response.data["expense"]["category"] == "interen"
+
+    unknown = finance_client.post(
+        "/api/expenses/record-indirect/",
+        {"customer": customer.id, "category": "nope", "amount": "1.00", "date": "2026-09-25"},
+        format="json",
+    )
+    assert unknown.status_code == 400
+
+
+@pytest.mark.django_db
+def test_expense_api_exposes_who_paid_customer_bank_or_cash(finance_client):
+    from apps.finance.models import ExpenseCategory
+
+    ExpenseCategory.objects.get_or_create(code="rent", defaults={"name": "Rent"})
+    bank = BankAccount.objects.create(name="BOA Banque")
+    cash = CashAccount.objects.create(name="Caisse Centrale", opening_balance=Decimal("500000.00"))
+    bank_expense = finance_client.post(
+        "/api/expenses/",
+        {"category": "rent", "amount": "1000.00", "calculation_method": "MANUAL",
+         "date": "2026-09-25", "bank_account": bank.id},
+        format="json",
+    ).data
+    cash_expense = finance_client.post(
+        "/api/expenses/",
+        {"category": "rent", "amount": "2000.00", "calculation_method": "MANUAL",
+         "date": "2026-09-25", "cash_account": cash.id},
+        format="json",
+    ).data
+    unpaid = finance_client.post(
+        "/api/expenses/",
+        {"category": "rent", "amount": "3000.00", "calculation_method": "MANUAL",
+         "date": "2026-09-25"},
+        format="json",
+    ).data
+    customer = Customer.objects.create(name="Client Payeur")
+    finance_client.post(
+        "/api/expenses/record-customer-paid/",
+        {"category": "rent", "date": "2026-09-25",
+         "payers": [{"customer": customer.id, "amount": "4000.00"}]},
+        format="json",
+    )
+
+    rows = {row["id"]: row for row in finance_client.get("/api/expenses/").data["results"]}
+    assert (rows[bank_expense["id"]]["paid_via"], rows[bank_expense["id"]]["paid_via_name"]) == ("bank", "BOA Banque")
+    assert (rows[cash_expense["id"]]["paid_via"], rows[cash_expense["id"]]["paid_via_name"]) == ("cash", "Caisse Centrale")
+    assert rows[unpaid["id"]]["paid_via"] is None
+    by_customer = next(r for r in rows.values() if r["paid_by_customer_directly"])
+    assert (by_customer["paid_via"], by_customer["paid_via_name"]) == ("customer", "Client Payeur")

@@ -5,6 +5,8 @@
 from decimal import Decimal
 
 from django.db.models import F, Sum
+from django.http import HttpResponse
+from rest_framework import status as http_status
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -36,6 +38,10 @@ from apps.reports.queries.transporter_outstanding_report import (
 from apps.reports.serialization import decimals_to_str
 from apps.reports.services.profit import TripProfitService
 from apps.reports.services.stock import TheoreticalStockService
+from apps.reports.services.working_capital_pdf import (
+    WORKING_CAPITAL_LINES,
+    render_working_capital_pdf,
+)
 from apps.suppliers.models import Supplier
 from apps.transport.models import Transporter
 from apps.trips.models import Trip
@@ -68,6 +74,33 @@ class DashboardViewSet(viewsets.ViewSet):
 
     permission_classes = [HasModulePermission]
     module = "reports"
+
+    @action(detail=False, methods=["get"], url_path="working-capital-pdf")
+    def working_capital_pdf(self, request):
+        """PDF of the "Fond de roulement client" card with only the lines the
+        operator picked (client request 2026-09-25).
+
+        GET /api/dashboard/working-capital-pdf/?lines=total,treasury,...&lang=fr|en
+        `lines` omitted = every line.
+        """
+        raw = request.query_params.get("lines")
+        if raw is None:
+            lines = list(WORKING_CAPITAL_LINES)
+        else:
+            lines = [key for key in raw.split(",") if key in WORKING_CAPITAL_LINES]
+            if not lines:
+                return Response(
+                    {"detail": "Selectionnez au moins une ligne."},
+                    status=http_status.HTTP_400_BAD_REQUEST,
+                )
+        pdf_bytes = render_working_capital_pdf(
+            working_capital=WorkingCapitalService.get_working_capital(),
+            lines=lines,
+            lang=request.query_params.get("lang", "fr"),
+        )
+        response = HttpResponse(pdf_bytes, content_type="application/pdf")
+        response["Content-Disposition"] = 'attachment; filename="fond-de-roulement.pdf"'
+        return response
 
     @action(detail=False, methods=["get"])
     def summary(self, request):

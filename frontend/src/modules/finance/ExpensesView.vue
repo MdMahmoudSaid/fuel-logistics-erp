@@ -46,13 +46,7 @@ const actionError = ref('')
 const cancellingId = ref<number | null>(null)
 const deletingId = ref<number | null>(null)
 
-const monitoredDebtTypes = [
-  'customs',
-  'transit',
-  'road_transit',
-  'border',
-  'loading',
-] as const
+const monitoredDebtTypes = ['customs', 'transit', 'road_transit', 'border', 'loading'] as const
 
 const categoryNames = computed(() =>
   Object.fromEntries(categories.value.map((category) => [category.code, category.name])),
@@ -213,6 +207,9 @@ onMounted(load)
             <th class="px-2 py-1.5 text-center font-medium">
               {{ t('finance.expensesView.table.status') }}
             </th>
+            <th class="px-2 py-1.5 text-center font-medium">
+              {{ t('finance.expensesView.table.paidBy') }}
+            </th>
             <th class="px-2 py-1.5 text-end font-medium">
               {{ t('finance.expensesView.table.amount') }}
             </th>
@@ -234,6 +231,17 @@ onMounted(load)
             <td class="px-2 py-1.5 text-center">{{ expense.notes || '-' }}</td>
             <td class="px-2 py-1.5 text-center whitespace-nowrap">
               {{ t(`expenseStatus.${expense.status}`) }}
+            </td>
+            <td class="px-2 py-1.5 text-center" data-test="expense-paid-by">
+              <template v-if="expense.paid_via">
+                <span class="text-texte-2 text-xs">{{
+                  t(`finance.expensesView.paidVia.${expense.paid_via}`)
+                }}</span>
+                <span v-if="expense.paid_via_name" class="block font-medium">{{
+                  expense.paid_via_name
+                }}</span>
+              </template>
+              <span v-else class="text-texte-3">-</span>
             </td>
             <td class="px-2 py-1.5 text-end whitespace-nowrap">
               <MonoValue :value="formatMoney(expense.amount)" />
@@ -272,7 +280,7 @@ onMounted(load)
             </td>
           </tr>
           <tr v-if="filteredExpenses.length === 0">
-            <td colspan="6" class="text-texte-3 px-2 py-4 text-center">
+            <td colspan="7" class="text-texte-3 px-2 py-4 text-center">
               {{ t('finance.expensesView.listEmpty') }}
             </td>
           </tr>
@@ -295,7 +303,11 @@ onMounted(load)
           class="border-ligne rounded-lg border bg-white p-4"
         >
           <p class="text-texte-2 text-xs font-semibold uppercase">{{ debtLabel(type) }}</p>
-          <MonoValue class="mt-2 text-lg font-semibold" align="left" :value="formatMoney(debtRemaining(type))" />
+          <MonoValue
+            class="mt-2 text-lg font-semibold"
+            align="left"
+            :value="formatMoney(debtRemaining(type))"
+          />
           <p class="text-texte-3 mt-1 text-xs">
             {{ t('finance.expensesView.monitoringRows', debtBuckets[type].length) }}
           </p>

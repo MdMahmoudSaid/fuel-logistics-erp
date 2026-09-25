@@ -10,7 +10,7 @@ import { TRIP_PIPELINE_STATUSES } from './types'
 import type { Trip } from './types'
 import { useTripStatusLabel } from './tripStatusLabels'
 import { formatTruckPlates } from './formatTruckPlates'
-import { formatQuantity } from '@/utils/currency'
+import { formatQuantity, formatUnitMoney } from '@/utils/currency'
 
 const props = defineProps<{ trip: Trip }>()
 
@@ -71,6 +71,12 @@ const badgeVariant = computed(() => {
         </p>
       </template>
       <p v-else class="text-sm">—</p>
+    </div>
+
+    <div class="flex items-center justify-between gap-2" data-test="trip-card-unit-cost">
+      <p class="text-texte-2 text-xs">{{ t('trips.table.unitCost') }}</p>
+      <MonoValue v-if="trip.unit_cost" :value="formatUnitMoney(trip.unit_cost)" />
+      <span v-else class="text-sm">—</span>
     </div>
 
     <div class="flex items-end justify-between gap-2">

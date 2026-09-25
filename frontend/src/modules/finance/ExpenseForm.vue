@@ -15,6 +15,7 @@ import {
   fetchCustomerLedger,
   createExpenseCategory,
   recordIndirectExpense,
+  recordCustomerPaidExpenses,
 } from './api'
 import { EXPENSE_CATEGORIES } from './types'
 import { useExpenseCategoryLabel } from './expenseCategoryLabel'
@@ -224,7 +225,7 @@ const cashAccountResource = createResourceApi<AccountOption>('/cash-accounts/')
 const bankAccounts = ref<AccountOption[]>([])
 const cashAccounts = ref<AccountOption[]>([])
 const treasuryForm = ref({
-  accountKind: 'bank' as 'bank' | 'cash',
+  accountKind: 'bank' as 'bank' | 'cash' | 'customer',
   bankAccountId: '',
   cashAccountId: '',
 })
@@ -261,6 +262,63 @@ async function onCustomerChange() {
   )
 }
 
+// --- Paid by customers (general expenses, "Paiement trésorerie" > Client) ---
+// Client request 2026-09-25: a customer settles the company's expense. Each
+// payer's amount defaults to what he currently owes (his ledger balance) and
+// comes off that receivable; once he owes nothing the amount is a company
+// debt towards him. The expense total is the sum of the payers' amounts.
+interface CustomerPayer {
+  customerId: number
+  name: string
+  balance: number
+  amount: string
+}
+const customerMode = computed(
+  () => Boolean(props.showTreasuryPayment) && treasuryForm.value.accountKind === 'customer',
+)
+const payers = ref<CustomerPayer[]>([])
+const payerToAdd = ref('')
+const availablePayerCustomers = computed(() =>
+  customers.value.filter((c) => !payers.value.some((p) => p.customerId === c.id)),
+)
+
+async function onAddPayer() {
+  const id = Number(payerToAdd.value)
+  payerToAdd.value = ''
+  const customer = customers.value.find((c) => c.id === id)
+  if (!customer) return
+  const ledger = await fetchCustomerLedger(id)
+  const balance = Number(ledger.outstanding_balance)
+  payers.value.push({
+    customerId: id,
+    name: customer.name,
+    balance,
+    // "s'il a un solde, il diminue": pre-filled with what he owes; with no
+    // balance the operator types the amount he paid (it becomes a debt).
+    amount: balance > 0 ? balance.toFixed(2) : '',
+  })
+}
+function onRemovePayer(customerId: number) {
+  payers.value = payers.value.filter((p) => p.customerId !== customerId)
+}
+function payerDeducted(payer: CustomerPayer): number {
+  return Math.min(Math.max(payer.balance, 0), Number(payer.amount) || 0)
+}
+function payerDebt(payer: CustomerPayer): number {
+  return Math.max(0, (Number(payer.amount) || 0) - payerDeducted(payer))
+}
+const payersTotal = computed(() =>
+  payers.value.reduce((sum, payer) => sum + (Number(payer.amount) || 0), 0),
+)
+watch(
+  [customerMode, payersTotal],
+  () => {
+    if (customerMode.value)
+      form.value.amount = payersTotal.value ? payersTotal.value.toFixed(2) : ''
+  },
+  { flush: 'sync' },
+)
+
 const saving = ref(false)
 const error = ref('')
 // "Par litre" preview only - the backend (ExpenseSerializer._resolve_
@@ -295,6 +353,22 @@ async function onSubmit() {
     // never submit a trip calculation method or any allocation, no matter
     // what the (hidden) form/lines state happens to hold.
     const calculationMethod = isGeneralExpenseMode.value ? 'MANUAL' : form.value.calculation_method
+
+    if (customerMode.value) {
+      const filled = payers.value.filter((p) => Number(p.amount) > 0)
+      if (!filled.length) {
+        error.value = t('finance.expense.payersRequired')
+        return
+      }
+      await recordCustomerPaidExpenses({
+        category: form.value.category,
+        date: form.value.date,
+        notes: form.value.notes,
+        payers: filled.map((p) => ({ customer: p.customerId, amount: p.amount })),
+      })
+      emit('success', null)
+      return
+    }
 
     if (paidByCustomerDirectly.value) {
       await recordIndirectExpense({
@@ -353,8 +427,16 @@ async function onSubmit() {
     }
     emit('success', null)
   } catch (e) {
-    const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-    error.value = translateApiError(detail) || t('finance.expense.saveError')
+    const data = (e as { response?: { data?: Record<string, unknown> } })?.response?.data
+    const detail = typeof data?.detail === 'string' ? data.detail : undefined
+    // DRF field errors ({field: ["message"]}): show the first message rather
+    // than a generic "check the fields".
+    const firstFieldError = data
+      ? Object.values(data)
+          .flat()
+          .find((v): v is string => typeof v === 'string')
+      : undefined
+    error.value = translateApiError(detail) || firstFieldError || t('finance.expense.saveError')
   } finally {
     saving.value = false
   }
@@ -470,7 +552,8 @@ async function onSubmit() {
             type="number"
             step="0.01"
             min="0.01"
-            required
+            :required="!customerMode"
+            :readonly="customerMode"
             class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           />
         </div>
@@ -572,6 +655,7 @@ async function onSubmit() {
               >
                 <option value="bank">{{ t('finance.expense.bankAccount') }}</option>
                 <option value="cash">{{ t('finance.expense.cashAccount') }}</option>
+                <option value="customer">{{ t('finance.expense.paidByCustomersOption') }}</option>
               </select>
             </div>
             <div v-if="treasuryForm.accountKind === 'bank'" class="space-y-1.5">
@@ -589,8 +673,11 @@ async function onSubmit() {
                   {{ account.name }}
                 </option>
               </select>
+              <p v-if="!bankAccounts.length" class="text-critique text-xs">
+                {{ t('finance.expense.noBankAccount') }}
+              </p>
             </div>
-            <div v-else class="space-y-1.5">
+            <div v-else-if="treasuryForm.accountKind === 'cash'" class="space-y-1.5">
               <label class="text-texte-2 text-sm font-medium" for="expense_cash_account">
                 {{ t('finance.expense.cashAccount') }}
               </label>
@@ -605,6 +692,65 @@ async function onSubmit() {
                   {{ account.name }}
                 </option>
               </select>
+              <p v-if="!cashAccounts.length" class="text-critique text-xs">
+                {{ t('finance.expense.noCashAccount') }}
+              </p>
+            </div>
+          </div>
+
+          <div v-if="customerMode" class="space-y-3" data-test="customer-payers">
+            <p class="text-texte-2 text-sm">{{ t('finance.expense.paidByCustomersHint') }}</p>
+            <div class="space-y-1.5">
+              <label class="text-texte-2 text-sm font-medium" for="payer_to_add">
+                {{ t('finance.expense.addPayer') }}
+              </label>
+              <select
+                id="payer_to_add"
+                v-model="payerToAdd"
+                class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+                @change="onAddPayer"
+              >
+                <option value="">{{ t('finance.expense.selectCustomer') }}</option>
+                <option v-for="c in availablePayerCustomers" :key="c.id" :value="c.id">
+                  {{ c.name }}
+                </option>
+              </select>
+            </div>
+            <div
+              v-for="payer in payers"
+              :key="payer.customerId"
+              data-test="customer-payer-row"
+              class="border-ligne space-y-2 rounded-lg border bg-white p-3"
+            >
+              <div class="flex items-center justify-between gap-2">
+                <p class="text-texte font-medium">{{ payer.name }}</p>
+                <button
+                  type="button"
+                  class="text-critique text-sm"
+                  @click="onRemovePayer(payer.customerId)"
+                >
+                  {{ t('finance.expense.removePayer') }}
+                </button>
+              </div>
+              <p class="text-texte-2 text-sm">
+                {{ t('finance.expense.payerBalance') }}
+                <span class="font-medium">{{ formatMoney(Math.max(payer.balance, 0)) }}</span>
+              </p>
+              <input
+                v-model="payer.amount"
+                type="number"
+                step="0.01"
+                min="0.01"
+                :aria-label="t('finance.expense.payerAmount')"
+                :placeholder="t('finance.expense.payerAmount')"
+                class="border-ligne-forte h-11 w-full rounded-lg border bg-white px-3.5 text-sm"
+              />
+              <p v-if="payerDeducted(payer) > 0" class="text-livre text-xs">
+                {{ t('finance.expense.payerDeducted') }} {{ formatMoney(payerDeducted(payer)) }}
+              </p>
+              <p v-if="payerDebt(payer) > 0" class="text-critique text-xs" data-test="payer-debt">
+                {{ t('finance.expense.payerDebt') }} {{ formatMoney(payerDebt(payer)) }}
+              </p>
             </div>
           </div>
         </div>

@@ -343,6 +343,9 @@ async function onExportPdf() {
               align="left"
               :value="formatMoney(preview.distributable_result)"
             />
+            <p class="text-texte-3 mt-1 text-xs">
+              {{ t('finance.profit.distributableResultHelp') }}
+            </p>
           </div>
         </div>
       </section>

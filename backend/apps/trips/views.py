@@ -17,6 +17,7 @@ from apps.reports.services.profit import TripProfitService
 from .models import Trip
 from .serializers import (
     AssignCustomerRequestSerializer,
+    AssignCustomersRequestSerializer,
     ClientVerificationCorrectionRequestSerializer,
     ClientVerificationRequestSerializer,
     DeliveryControlRequestSerializer,
@@ -99,7 +100,7 @@ def _generate_next_reference(truck) -> str:
 
 
 class TripViewSet(viewsets.ModelViewSet):
-    queryset = Trip.objects.all()
+    queryset = Trip.objects.select_related("supplier_order")
     serializer_class = TripSerializer
     filterset_fields = [
         "truck",
@@ -252,6 +253,27 @@ class TripViewSet(viewsets.ModelViewSet):
             )
 
         return Response(TripSerializer(trip, context={"request": request}).data)
+
+    @action(detail=False, methods=["post"], url_path="assign-customers")
+    def assign_customers(self, request):
+        """Assign one customer to several trips billed on a single invoice.
+
+        POST /api/trips/assign-customers/  body: {customer, trips: [ids]}
+        """
+        input_serializer = AssignCustomersRequestSerializer(data=request.data)
+        input_serializer.is_valid(raise_exception=True)
+        data = input_serializer.validated_data
+        try:
+            trips = TripCostService.assign_customers_group_for_sale(
+                data["trips"], data["customer"].id, request.user
+            )
+        except ValueError as exc:
+            return Response(
+                {"detail": str(exc)}, status=http_status.HTTP_400_BAD_REQUEST
+            )
+        return Response(
+            TripSerializer(trips, many=True, context={"request": request}).data
+        )
 
     @action(detail=True, methods=["get"], url_path="suggested-selling-price")
     def suggested_selling_price(self, request, pk=None):

@@ -167,6 +167,7 @@ class InvoiceSerializer(serializers.ModelSerializer):
     """
 
     sale_detail = SaleSerializer(source="sale", read_only=True)
+    sales_detail = serializers.SerializerMethodField()
     corrections = InvoiceCorrectionSerializer(many=True, read_only=True)
     paid_amount = serializers.SerializerMethodField()
     outstanding_amount = serializers.SerializerMethodField()
@@ -179,6 +180,7 @@ class InvoiceSerializer(serializers.ModelSerializer):
             "invoice_number",
             "sale",
             "sale_detail",
+            "sales_detail",
             "status",
             "total_amount",
             "paid_amount",
@@ -194,6 +196,7 @@ class InvoiceSerializer(serializers.ModelSerializer):
             "invoice_number",
             "sale",
             "sale_detail",
+            "sales_detail",
             "status",
             "paid_amount",
             "outstanding_amount",
@@ -202,6 +205,11 @@ class InvoiceSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+    def get_sales_detail(self, obj) -> list[dict]:
+        """Every Sale billed on this invoice (one entry unless several
+        trips were grouped on it)."""
+        return SaleSerializer(obj.all_sales, many=True, context=self.context).data
 
     def get_paid_amount(self, obj) -> str:
         paid = obj.allocations.aggregate(total=Sum("amount"))["total"] or 0

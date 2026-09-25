@@ -13,14 +13,17 @@ import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { createResourceApi } from '@/api/resource'
 import { translateApiError } from '@/i18n/apiErrors'
-import { assignTripCustomer } from './api'
+import { assignTripCustomer, assignTripsCustomer } from './api'
 import type { CustomerBrief } from './types'
 import Button from '@/components/ui/Button.vue'
 import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 
+// Single trip (tripId + tripReference) or several trips billed on one
+// invoice (`trips`, from the Ventes "Attribuer un client" picker).
 const props = defineProps<{
-  tripId: number
-  tripReference: string
+  tripId?: number
+  tripReference?: string
+  trips?: { id: number; reference: string }[]
 }>()
 const emit = defineEmits<{ success: []; cancel: [] }>()
 const { t } = useI18n()
@@ -38,6 +41,15 @@ onMounted(async () => {
   customers.value = data.results
 })
 
+const selectedTrips = computed(
+  () =>
+    props.trips ??
+    (props.tripId !== undefined
+      ? [{ id: props.tripId, reference: props.tripReference ?? '' }]
+      : []),
+)
+const tripsLabel = computed(() => selectedTrips.value.map((trip) => trip.reference).join(', '))
+
 const saving = ref(false)
 const error = ref('')
 
@@ -46,7 +58,14 @@ async function onSubmit() {
   saving.value = true
   error.value = ''
   try {
-    await assignTripCustomer(props.tripId, Number(customerId.value))
+    if (selectedTrips.value.length > 1) {
+      await assignTripsCustomer(
+        selectedTrips.value.map((trip) => trip.id),
+        Number(customerId.value),
+      )
+    } else {
+      await assignTripCustomer(selectedTrips.value[0].id, Number(customerId.value))
+    }
     emit('success')
   } catch (e) {
     const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
@@ -71,7 +90,10 @@ async function onSubmit() {
 
       <div class="space-y-1.5">
         <span class="text-texte-2 text-sm font-medium">{{ t('trips.assignCustomer.trip') }}</span>
-        <p class="text-texte flex h-12 items-center">{{ tripReference }}</p>
+        <p class="text-texte flex min-h-12 items-center">{{ tripsLabel }}</p>
+        <p v-if="selectedTrips.length > 1" class="text-texte-3 text-xs">
+          {{ t('trips.assignCustomer.singleInvoiceHint') }}
+        </p>
       </div>
 
       <label class="block space-y-1.5">

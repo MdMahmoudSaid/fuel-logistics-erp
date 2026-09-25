@@ -213,6 +213,21 @@ export function recordIndirectExpense(payload: {
     .then((r) => r.data as { expense: Expense; payment: CustomerPayment; allocation_id: number })
 }
 
+// General expense paid by one or several customers on the company's behalf
+// (client request 2026-09-25): each payer's amount comes off what he owes,
+// or becomes a company debt towards him once he owes nothing - backend
+// IndirectSettlementService.record_customer_paid_expenses().
+export function recordCustomerPaidExpenses(payload: {
+  category: string
+  date: string
+  notes?: string
+  payers: { customer: number; amount: string }[]
+}): Promise<{ expenses: Expense[] }> {
+  return apiClient
+    .post('/expenses/record-customer-paid/', payload)
+    .then((r) => r.data as { expenses: Expense[] })
+}
+
 // backend/apps/finance/services.py ExpensePostingService.cancel_paid_expense()
 // is the sole authority on this flow (Phase 5) - this just posts the request.
 export function cancelExpense(expenseId: number): Promise<Expense> {

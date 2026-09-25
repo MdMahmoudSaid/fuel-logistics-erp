@@ -5,7 +5,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import DateRangeFilter from '@/components/DateRangeFilter.vue'
 import type { DateRangeValue } from '@/components/date-range'
-import { fetchDashboardSummary } from './api'
+import { fetchDashboardSummary, downloadWorkingCapitalPdf } from './api'
 import type { DashboardSummary } from './types'
 import { fetchReport } from '@/modules/reports/api'
 import { tripResource } from '@/modules/trips/api'
@@ -16,6 +16,8 @@ import type { CustomerPayment } from '@/modules/finance/types'
 import KpiTile from './KpiTile.vue'
 import MonoValue from '@/components/ui/MonoValue.vue'
 import Icon from '@/components/ui/Icon.vue'
+import Modal from '@/components/ui/Modal.vue'
+import Button from '@/components/ui/Button.vue'
 import type { IconName } from '@/components/ui/Icon.vue'
 import { formatMoney, formatMoneyParts, formatQuantityParts } from '@/utils/currency'
 import {
@@ -220,6 +222,43 @@ const treasuryCard = computed(() => {
 
 // Fond de roulement breakdown is collapsed by default (client request 2026-09-24).
 const workingCapitalOpen = ref(false)
+
+// PDF of the card with a custom choice of lines (client request 2026-09-25).
+// Keys match backend WORKING_CAPITAL_LINES; the labels are the card's own.
+const WC_PDF_LINES = [
+  { key: 'total', label: 'dashboard.final.workingCapital' },
+  { key: 'capital', label: 'dashboard.final.capitalContributed' },
+  { key: 'treasury', label: 'dashboard.final.availableTreasury' },
+  { key: 'receivables', label: 'dashboard.final.customerReceivables' },
+  { key: 'supplier_debt', label: 'dashboard.final.supplierDebtTotal' },
+  { key: 'transporter_debt', label: 'dashboard.final.transporterDebtTotal' },
+  { key: 'other_debts', label: 'dashboard.final.otherDebts' },
+  { key: 'supplier_company_stock', label: 'dashboard.final.supplierCompanyStockValue' },
+  { key: 'supplier_in_transit', label: 'dashboard.final.supplierInTransitValue' },
+  { key: 'supplier_reliquat', label: 'dashboard.final.supplierReliquatValue' },
+] as const
+const wcPdfOpen = ref(false)
+const wcPdfSelected = ref<string[]>(WC_PDF_LINES.map((line) => line.key))
+const wcPdfLoading = ref(false)
+const wcPdfError = ref('')
+
+function openWcPdf() {
+  wcPdfSelected.value = WC_PDF_LINES.map((line) => line.key)
+  wcPdfError.value = ''
+  wcPdfOpen.value = true
+}
+async function onDownloadWcPdf() {
+  wcPdfLoading.value = true
+  wcPdfError.value = ''
+  try {
+    await downloadWorkingCapitalPdf(wcPdfSelected.value, locale.value)
+    wcPdfOpen.value = false
+  } catch {
+    wcPdfError.value = t('dashboard.final.wcPdf.error')
+  } finally {
+    wcPdfLoading.value = false
+  }
+}
 
 const workingCapitalCard = computed(() => {
   if (!summary.value) return null
@@ -579,6 +618,16 @@ const compactEnRouteTrips = computed(() => enRouteTrips.value.slice(0, 5))
               >
                 <Icon :name="workingCapitalOpen ? 'eye-off' : 'eye'" :size="18" />
               </button>
+              <button
+                type="button"
+                data-test="working-capital-pdf"
+                class="text-texte-3 hover:text-texte hover:bg-sable focus-visible:ring-transit inline-flex size-8 shrink-0 items-center justify-center rounded-lg transition-colors focus-visible:ring-2 focus-visible:outline-none"
+                :aria-label="t('dashboard.final.wcPdf.open')"
+                :title="t('dashboard.final.wcPdf.open')"
+                @click="openWcPdf"
+              >
+                <Icon name="download" :size="18" />
+              </button>
             </div>
             <dl
               v-if="workingCapitalCard && workingCapitalOpen"
@@ -641,6 +690,39 @@ const compactEnRouteTrips = computed(() => enRouteTrips.value.slice(0, 5))
                 </dd>
               </div>
             </dl>
+            <Modal
+              v-if="wcPdfOpen"
+              :title="t('dashboard.final.wcPdf.title')"
+              @close="wcPdfOpen = false"
+            >
+              <div class="space-y-3" data-test="working-capital-pdf-modal">
+                <p class="text-texte-2 text-sm">{{ t('dashboard.final.wcPdf.hint') }}</p>
+                <label
+                  v-for="line in WC_PDF_LINES"
+                  :key="line.key"
+                  class="bg-sable flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm"
+                >
+                  <input v-model="wcPdfSelected" type="checkbox" :value="line.key" />
+                  <span class="text-texte">{{ t(line.label) }}</span>
+                </label>
+                <p v-if="wcPdfError" class="text-critique text-sm">{{ wcPdfError }}</p>
+                <div class="flex justify-end gap-2">
+                  <Button type="button" variant="ghost" @click="wcPdfOpen = false">
+                    {{ t('common.cancel') }}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    data-test="working-capital-pdf-download"
+                    :disabled="!wcPdfSelected.length"
+                    :loading="wcPdfLoading"
+                    @click="onDownloadWcPdf"
+                  >
+                    {{ t('dashboard.final.wcPdf.download') }}
+                  </Button>
+                </div>
+              </div>
+            </Modal>
           </section>
         </div>
       </section>

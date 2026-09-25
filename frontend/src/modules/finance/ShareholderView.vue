@@ -48,7 +48,8 @@ import { formatMoney } from '@/utils/currency'
 
 const { t } = useI18n()
 
-type ShareholderTab = 'summary' | 'associates' | 'distributions' | 'loans' | 'withdrawals' | 'ledger'
+type ShareholderTab =
+  'summary' | 'associates' | 'distributions' | 'loans' | 'withdrawals' | 'ledger'
 const activeTab = ref<ShareholderTab>('summary')
 const tabs: { key: ShareholderTab; labelKey: string }[] = [
   { key: 'summary', labelKey: 'finance.shareholder.tabs.summary' },
@@ -108,23 +109,25 @@ const preview = ref<ShareholderProfitPreview | null>(null)
 async function loadPreview() {
   try {
     preview.value = await fetchShareholderProfitPreview()
-    // Pre-fill (not lock) the distribution form's total_profit from the
-    // same engine, so a manager isn't typing a number from memory - still
-    // freely editable before submit.
-    // Business decision (2026-09-04, distribution basis change): the
-    // proposed default is distributable_result, not net_profit - net
-    // profit measures operating profitability, but the amount actually
-    // available to distribute must also account for open debts, capital
-    // already contributed, and available treasury/receivables. Same
-    // figure as the banner above and the per-shareholder indicative_share
-    // cards.
-    if (!distributionForm.value.total_profit && preview.value) {
-      distributionForm.value.total_profit = preview.value.distributable_result
+    // Pre-fill (not lock) the distribution form's total_profit with the
+    // profit still left to distribute - the single "bénéfice à distribuer"
+    // figure shown in the banner and on the Benefices page (client decision
+    // 2026-09-25: net profit after general expenses minus every validated
+    // distribution; debts and capital play no part). Still freely editable;
+    // refreshed while the field still holds the previous suggestion.
+    const proposed = preview.value.distributable_result
+    if (
+      !distributionForm.value.total_profit ||
+      distributionForm.value.total_profit === autoFilledTotal
+    ) {
+      distributionForm.value.total_profit = proposed
+      autoFilledTotal = proposed
     }
   } catch {
     preview.value = null
   }
 }
+let autoFilledTotal = ''
 
 // Client feedback (2026-09-16): a non-technical shareholder reading a
 // negative "reste disponible pour repartition" on their own card read it
@@ -132,9 +135,7 @@ async function loadPreview() {
 // real (possibly negative) distributable_result still pre-fills the
 // distribution form above and still drives the calculation; we simply
 // never show a negative amount or the word "dette" anywhere on screen.
-const isDistributableNegative = computed(
-  () => Number(preview.value?.distributable_result ?? 0) < 0,
-)
+const isDistributableNegative = computed(() => Number(preview.value?.distributable_result ?? 0) < 0)
 function clampPositive(value: string | number): number {
   return Math.max(0, Number(value))
 }
@@ -251,6 +252,7 @@ async function onCreateDistribution() {
   try {
     const created = await shareholderDistributionResource.create(distributionForm.value)
     distributionForm.value = { period_start: today(), period_end: today(), total_profit: '' }
+    autoFilledTotal = ''
     expandedDistributionId.value = created.id
     distributionSuccess.value = created
     await loadDistributions()
@@ -270,9 +272,9 @@ async function onCreateDistribution() {
 // disabled client-side too so an over-distribution is never a one-click
 // accident - but the backend check, not this, is the real guard.
 function distributionExceedsAvailable(distribution: ShareholderProfitDistribution): boolean {
-  if (!preview.value) return false
+  if (distribution.available_to_distribute == null) return false
   const entered = Number(distribution.total_profit)
-  const available = Number(preview.value.distributable_result)
+  const available = Number(distribution.available_to_distribute)
   return Number.isFinite(entered) && Number.isFinite(available) && entered > available
 }
 
@@ -401,9 +403,9 @@ const withdrawalAvailableBalance = computed(() => {
 // Only withdrawals that actually touched capital get a breakdown line -
 // a pure-profit withdrawal (the overwhelming majority) shows nothing
 // extra, matching the existing single-amount display.
-function withdrawalAllocationSummary(
-  w: { allocations: ShareholderWithdrawalAllocation[] },
-): string | null {
+function withdrawalAllocationSummary(w: {
+  allocations: ShareholderWithdrawalAllocation[]
+}): string | null {
   const capitalAllocations = w.allocations.filter((a) => a.contribution !== null)
   if (capitalAllocations.length === 0) return null
   const profitTotal = w.allocations
@@ -412,9 +414,13 @@ function withdrawalAllocationSummary(
   const capitalTotal = capitalAllocations.reduce((sum, a) => sum + Number(a.amount), 0)
   const parts: string[] = []
   if (profitTotal > 0) {
-    parts.push(`${formatMoney(String(profitTotal))} (${t('finance.shareholder.withdrawal.sourceProfitShare')})`)
+    parts.push(
+      `${formatMoney(String(profitTotal))} (${t('finance.shareholder.withdrawal.sourceProfitShare')})`,
+    )
   }
-  parts.push(`${formatMoney(String(capitalTotal))} (${t('finance.shareholder.withdrawal.sourceCapital')})`)
+  parts.push(
+    `${formatMoney(String(capitalTotal))} (${t('finance.shareholder.withdrawal.sourceCapital')})`,
+  )
   return parts.join(' + ')
 }
 
@@ -562,11 +568,10 @@ async function onWithdrawalShareholderChange() {
 
     <!-- Live profit preview: read-only, clearly marked as indicative - it
          never gates a withdrawal and is never a stored distribution.
-         Business decision (2026-09-04, distribution basis change): shows
-         distributable_result (after debts and capital), same basis as
-         row.indicative_share below and as the distribution form's
-         pre-filled default - net profit (rentability) stays visible only
-         on the page Benefices, as its own separate indicator. -->
+         Client decision (2026-09-25): shows distributable_result = the net
+         profit after general expenses (not the debts/capital-based figure),
+         same basis as row.indicative_share below and as the distribution
+         form's pre-filled default. -->
     <div v-if="preview" class="border-ecart bg-ecart-tint rounded-xl border p-4">
       <div class="flex flex-wrap items-center justify-between gap-2">
         <div class="flex items-center gap-2">
@@ -589,14 +594,14 @@ async function onWithdrawalShareholderChange() {
       <dl data-test="preview-breakdown" class="mt-3 space-y-1 text-sm">
         <div class="flex flex-wrap justify-between gap-2">
           <dt class="text-texte-2">{{ t('finance.shareholder.preview.periodProfit') }}</dt>
-          <dd><MonoValue class="inline" :value="formatMoney(preview.net_profit)" /></dd>
+          <dd><MonoValue class="inline" :value="formatMoney(preview.all_time_net_profit)" /></dd>
         </div>
         <div class="flex flex-wrap justify-between gap-2">
           <dt class="text-texte-2">
             {{ t('finance.shareholder.preview.alreadyValidatedEngagements') }}
           </dt>
           <dd data-test="preview-already-distributed">
-            <MonoValue class="inline" :value="formatMoney(preview.already_distributed)" />
+            <MonoValue class="inline" :value="formatMoney(preview.already_validated_total)" />
           </dd>
         </div>
         <div class="border-ligne flex flex-wrap justify-between gap-2 border-t pt-1 font-medium">
@@ -668,7 +673,9 @@ async function onWithdrawalShareholderChange() {
           >
             {{ t('finance.contributionForm.title') }}
           </Button>
-          <Button variant="primary" @click="openCreateShareholder">{{ t('masterData.add') }}</Button>
+          <Button variant="primary" @click="openCreateShareholder">{{
+            t('masterData.add')
+          }}</Button>
         </div>
       </template>
 
@@ -726,10 +733,7 @@ async function onWithdrawalShareholderChange() {
     </Card>
 
     <!-- Section 2: Profit distributions -->
-    <Card
-      v-if="activeTab === 'distributions'"
-      :title="t('finance.shareholder.distribution.title')"
-    >
+    <Card v-if="activeTab === 'distributions'" :title="t('finance.shareholder.distribution.title')">
       <AppAlert v-if="distributionError" :message="distributionError" />
       <div
         v-if="distributionSuccess"
@@ -770,7 +774,10 @@ async function onWithdrawalShareholderChange() {
         {{ t('finance.shareholder.distribution.noActiveShareholder') }}
       </p>
 
-      <form class="mb-5 grid grid-cols-1 md:grid-cols-4 gap-3" @submit.prevent="onCreateDistribution">
+      <form
+        class="mb-5 grid grid-cols-1 md:grid-cols-4 gap-3"
+        @submit.prevent="onCreateDistribution"
+      >
         <div class="space-y-1.5">
           <label class="text-texte-2 text-sm font-medium" for="period_start">
             {{ t('finance.shareholder.distribution.periodStart') }}
@@ -862,7 +869,11 @@ async function onWithdrawalShareholderChange() {
                 <td class="px-3 py-2.5">
                   <Badge
                     :variant="
-                      d.status === 'VALIDATED' ? 'livre' : d.status === 'CANCELLED' ? 'neutre' : 'transit'
+                      d.status === 'VALIDATED'
+                        ? 'livre'
+                        : d.status === 'CANCELLED'
+                          ? 'neutre'
+                          : 'transit'
                     "
                   >
                     {{ t(`finance.shareholder.distribution.statusValues.${d.status}`) }}
@@ -930,16 +941,16 @@ async function onWithdrawalShareholderChange() {
                       </tbody>
                     </table>
                   </div>
+                </td>
+              </tr>
+            </template>
+            <tr v-if="distributions.length === 0">
+              <td colspan="4" class="text-texte-3 px-3 py-8 text-center">
+                {{ t('masterData.noRecords') }}
               </td>
             </tr>
-          </template>
-          <tr v-if="distributions.length === 0">
-            <td colspan="4" class="text-texte-3 px-3 py-8 text-center">
-              {{ t('masterData.noRecords') }}
-            </td>
-          </tr>
-        </tbody>
-      </table>
+          </tbody>
+        </table>
       </div>
     </Card>
 
@@ -1079,10 +1090,7 @@ async function onWithdrawalShareholderChange() {
     </Card>
 
     <!-- Section 4: Shareholder withdrawals -->
-    <Card
-      v-if="activeTab === 'withdrawals'"
-      :title="t('finance.shareholder.withdrawal.title')"
-    >
+    <Card v-if="activeTab === 'withdrawals'" :title="t('finance.shareholder.withdrawal.title')">
       <AppAlert v-if="withdrawalError" :message="withdrawalError" />
 
       <form class="mb-5 grid grid-cols-1 md:grid-cols-4 gap-3" @submit.prevent="onCreateWithdrawal">
@@ -1189,7 +1197,9 @@ async function onWithdrawalShareholderChange() {
               <th class="px-3 py-2.5 font-medium">
                 {{ t('finance.shareholder.withdrawal.shareholder') }}
               </th>
-              <th class="px-3 py-2.5 font-medium">{{ t('finance.shareholder.withdrawal.date') }}</th>
+              <th class="px-3 py-2.5 font-medium">
+                {{ t('finance.shareholder.withdrawal.date') }}
+              </th>
               <th class="px-3 py-2.5 text-end font-medium">
                 {{ t('finance.shareholder.withdrawal.amount') }}
               </th>
@@ -1321,7 +1331,9 @@ async function onWithdrawalShareholderChange() {
             <table class="w-full text-start text-sm">
               <thead>
                 <tr class="border-ligne text-texte-2 border-b">
-                  <th class="px-2 py-1.5 font-medium">{{ t('finance.shareholder.capital.date') }}</th>
+                  <th class="px-2 py-1.5 font-medium">
+                    {{ t('finance.shareholder.capital.date') }}
+                  </th>
                   <th class="px-2 py-1.5 text-end font-medium">
                     {{ t('finance.shareholder.capital.amount') }}
                   </th>
@@ -1331,8 +1343,12 @@ async function onWithdrawalShareholderChange() {
                   <th class="px-2 py-1.5 font-medium">
                     {{ t('finance.shareholder.capital.reference') }}
                   </th>
-                  <th class="px-2 py-1.5 font-medium">{{ t('finance.shareholder.capital.notes') }}</th>
-                  <th class="px-2 py-1.5 font-medium">{{ t('finance.shareholder.capital.proof') }}</th>
+                  <th class="px-2 py-1.5 font-medium">
+                    {{ t('finance.shareholder.capital.notes') }}
+                  </th>
+                  <th class="px-2 py-1.5 font-medium">
+                    {{ t('finance.shareholder.capital.proof') }}
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -1379,7 +1395,11 @@ async function onWithdrawalShareholderChange() {
             <div class="overflow-x-auto">
               <table class="w-full text-start text-sm">
                 <tbody>
-                  <tr v-for="loan in ledger.loans_lent" :key="loan.id" class="border-ligne border-b">
+                  <tr
+                    v-for="loan in ledger.loans_lent"
+                    :key="loan.id"
+                    class="border-ligne border-b"
+                  >
                     <td class="px-2 py-1.5">{{ loan.borrower_name }}</td>
                     <td class="px-2 py-1.5 text-end">
                       <MonoValue :value="formatMoney(loan.remaining_amount)" />

@@ -838,20 +838,36 @@ def render_invoice_pdf(invoice, lang: str = "fr") -> bytes:
     (Sale.trip.truck) - same "the client wants to see which truck loaded
     this invoice" ask that also added Sale.truck_plates to the API."""
     labels = _labels(lang)
-    sale = invoice.sale
+    sales = invoice.all_sales
+    sale = sales[0]
     trip = sale.trip
     truck = trip.truck
+    # Multi-trip invoice: list every trip / truck, sum the quantities; a
+    # single unit price only makes sense when all lines share it.
+    prices = {x.unit_selling_price for x in sales}
 
     field_rows = [
         (labels["invoice_number"], invoice.invoice_number),
         (labels["client"], sale.customer.name),
-        (labels["product"], sale.product.name),
-        (labels["trip_reference"], trip.reference),
-        (labels["truck"], truck.internal_id),
-        (labels["plate"], f"{truck.tractor_registration} / {truck.tanker_registration}"),
-        (labels["quantity"], _format_quantity(trip.quantity_loaded)),
-        (labels["quantity_delivered"], _format_quantity(sale.delivered_quantity)),
-        (labels["unit_price"], _format_unit_money(sale.unit_selling_price)),
+        (labels["product"], ", ".join(dict.fromkeys(x.product.name for x in sales))),
+        (labels["trip_reference"], ", ".join(x.trip.reference for x in sales)),
+        (labels["truck"], ", ".join(x.trip.truck.internal_id for x in sales)),
+        (
+            labels["plate"],
+            " | ".join(
+                f"{x.trip.truck.tractor_registration} / {x.trip.truck.tanker_registration}"
+                for x in sales
+            ),
+        ),
+        (labels["quantity"], _format_quantity(sum(x.trip.quantity_loaded for x in sales))),
+        (
+            labels["quantity_delivered"],
+            _format_quantity(sum(x.delivered_quantity for x in sales)),
+        ),
+        (
+            labels["unit_price"],
+            _format_unit_money(sale.unit_selling_price) if len(prices) == 1 else "—",
+        ),
         (labels["total_amount"], _format_money(invoice.total_amount)),
         (labels["invoice_status"], invoice.status),
         (labels["issued_date"], invoice.issued_date),

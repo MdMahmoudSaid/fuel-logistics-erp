@@ -87,7 +87,7 @@ class GeneralReceivableReportQuery:
                     "line_type": "invoice",
                     "reference": invoice.invoice_number,
                     "date": invoice.issued_date,
-                    "trip_reference": invoice.sale.trip.reference,
+                    "trip_reference": ", ".join(x.trip.reference for x in invoice.all_sales),
                     "invoiced_amount": invoice.total_amount,
                     "received_amount": allocated,
                     "remaining_amount": invoice.total_amount - allocated,

@@ -260,6 +260,10 @@ export interface Expense {
   date: string
   status: ExpenseStatus
   paid_by_customer_directly: boolean
+  // Who paid it: a customer (on our behalf), a bank or a cash account; null
+  // while unpaid.
+  paid_via?: 'customer' | 'bank' | 'cash' | null
+  paid_via_name?: string | null
   notes: string
   allocations?: ExpenseAllocationInput[]
   allocations_detail: ExpenseAllocation[]
@@ -457,6 +461,9 @@ export interface ShareholderProfitDistribution {
   period_end: string
   total_profit: string
   status: ShareholderDistributionStatus
+  // DRAFT only: the profit still left to distribute (what "Valider" is
+  // checked against by the backend); null once validated/cancelled.
+  available_to_distribute?: string | null
   created_by: number | null
   created_by_detail: UserBrief | null
   validated_by: number | null
@@ -675,6 +682,12 @@ export interface ShareholderProfitPreview {
   // can show "deja reparti" / "reste a repartir" explicitly instead of a
   // figure that silently never moves.
   already_distributed: string
+  // 2026-09-25: distributable_result = all_time_net_profit -
+  // already_validated_total (every VALIDATED distribution), whatever period
+  // is previewed; result_after_debts_and_capital is kept for information only.
+  all_time_net_profit: string
+  already_validated_total: string
+  result_after_debts_and_capital: string
   distributable_result: string
   shareholders: ShareholderProfitPreviewShare[]
 }

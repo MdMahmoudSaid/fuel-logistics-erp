@@ -9,6 +9,7 @@
 # convenience, but TruckAvailabilityService is the actual source of truth
 # used for locking decisions.
 
+import uuid
 from decimal import Decimal
 
 from django.contrib.contenttypes.models import ContentType
@@ -259,8 +260,39 @@ class TripCostService:
 
         trip.client_id = customer_id
         trip.destination_type = Trip.DestinationType.CUSTOMER
-        trip.save(update_fields=["client", "destination_type", "updated_at"])
+        trip.invoice_group = ""
+        trip.save(
+            update_fields=["client", "destination_type", "invoice_group", "updated_at"]
+        )
         return trip
+
+
+    @staticmethod
+    @transaction.atomic
+    def assign_customers_group_for_sale(trip_ids, customer_id, actor) -> list:
+        """Assign one customer to several trips billed on ONE invoice
+        (client request 2026-09-25). Same rules as assign_customer_for_sale
+        for every trip; with 2+ trips they also share an `invoice_group`
+        token that DeliveryService uses to put their Sales on one invoice."""
+        trip_ids = list(dict.fromkeys(trip_ids))
+        trips = list(Trip.objects.select_for_update().filter(pk__in=trip_ids).order_by("id"))
+        if len(trips) != len(trip_ids):
+            raise ValueError("Un ou plusieurs trajets sont introuvables.")
+        for trip in trips:
+            if hasattr(trip, "sale"):
+                raise CustomerAlreadySoldError(
+                    f"Le trajet {trip.reference} a deja une vente enregistree ; "
+                    "impossible de modifier son client."
+                )
+        group = str(uuid.uuid4()) if len(trips) > 1 else ""
+        for trip in trips:
+            trip.client_id = customer_id
+            trip.destination_type = Trip.DestinationType.CUSTOMER
+            trip.invoice_group = group
+            trip.save(
+                update_fields=["client", "destination_type", "invoice_group", "updated_at"]
+            )
+        return trips
 
 
 class TripCancellationService:
@@ -500,6 +532,13 @@ class TripWorkflowService:
         if trip.customer_order_id:
             CustomerOrderService.recompute_status(trip.customer_order)
 
+        # A cancelled trip no longer holds back its group's invoice: if the
+        # other trips were all delivered already, bill them now.
+        if target_status == Trip.Status.CANCELLED and trip.invoice_group and trip.client_id:
+            DeliveryService.bill_group_if_complete(
+                trip.invoice_group, trip.client, issued_date=timezone.localdate()
+            )
+
         return trip
 
 
@@ -547,6 +586,65 @@ class DeliveryService:
         raise SellingPriceNotConfigured(
             "Aucun prix de vente configure pour ce produit/client - "
             "ajoutez une entree ProductSellingPriceHistory avant de confirmer la livraison."
+        )
+
+    @staticmethod
+    def _create_invoice(sale: Sale, issued_date, *, extra_sales=()) -> Invoice:
+        """Create the DRAFT invoice of `sale` (plus, for a multi-trip
+        invoice, the `extra_sales` grouped onto it)."""
+        for _ in range(_MAX_INVOICE_REFERENCE_ATTEMPTS):
+            invoice_number = generate_monthly_reference(
+                Invoice, "invoice_number", _INVOICE_REFERENCE_PREFIX
+            )
+            try:
+                with transaction.atomic():
+                    invoice = Invoice.objects.create(
+                        invoice_number=invoice_number,
+                        sale=sale,
+                        total_amount=sale.subtotal,
+                        issued_date=issued_date,
+                    )
+                break
+            except IntegrityError:
+                continue
+        else:
+            raise IntegrityError(
+                "Impossible de generer un numero de facture unique apres "
+                f"{_MAX_INVOICE_REFERENCE_ATTEMPTS} tentatives."
+            )
+        for extra in extra_sales:
+            extra.grouped_invoice = invoice
+            extra.save(update_fields=["grouped_invoice", "updated_at"])
+        if extra_sales:
+            invoice.recompute_total()
+        return invoice
+
+    @staticmethod
+    def bill_group_if_complete(invoice_group, customer, issued_date):
+        """Create the ONE invoice of a multi-trip group once no trip of the
+        group is still waiting for its delivery (a cancelled trip no longer
+        counts - see TripWorkflowService.transition_trip). Until then the
+        delivered trips' Sales simply wait, un-invoiced, so an invoice is
+        never created half-complete and grown afterwards."""
+        waiting = (
+            Trip.objects.filter(invoice_group=invoice_group, sale__isnull=True)
+            .exclude(status=Trip.Status.CANCELLED)
+            .exists()
+        )
+        if waiting:
+            return None
+        unbilled = list(
+            Sale.objects.filter(
+                trip__invoice_group=invoice_group,
+                customer=customer,
+                invoice__isnull=True,
+                grouped_invoice__isnull=True,
+            ).order_by("id")
+        )
+        if not unbilled:
+            return None
+        return DeliveryService._create_invoice(
+            unbilled[0], issued_date, extra_sales=unbilled[1:]
         )
 
     @staticmethod
@@ -671,26 +769,15 @@ class DeliveryService:
             unit_selling_price=unit_selling_price,
         )
 
-        for _ in range(_MAX_INVOICE_REFERENCE_ATTEMPTS):
-            invoice_number = generate_monthly_reference(
-                Invoice, "invoice_number", _INVOICE_REFERENCE_PREFIX
+        # Multi-trip invoice: a trip assigned as part of a group is NOT
+        # invoiced on its own - the group's single invoice is created only
+        # once every trip of the group has been delivered.
+        if trip.invoice_group:
+            DeliveryService.bill_group_if_complete(
+                trip.invoice_group, customer, issued_date=control_date
             )
-            try:
-                with transaction.atomic():
-                    Invoice.objects.create(
-                        invoice_number=invoice_number,
-                        sale=sale,
-                        total_amount=sale.subtotal,
-                        issued_date=control_date,
-                    )
-                break
-            except IntegrityError:
-                continue
         else:
-            raise IntegrityError(
-                "Impossible de generer un numero de facture unique apres "
-                f"{_MAX_INVOICE_REFERENCE_ATTEMPTS} tentatives."
-            )
+            DeliveryService._create_invoice(sale, control_date)
 
         return control
 
@@ -752,13 +839,14 @@ class DeliveryService:
         sale = getattr(trip, "sale", None)
         # The invoice guard is defensive-only: record_delivery always creates
         # the Invoice, so a Sale without one is not a supported state.
-        if sale is not None and getattr(sale, "invoice", None) is not None:
+        if sale is not None and sale.billing_invoice is not None:
             # Spec 2026-09-07: the client pays for what actually arrived.
             # Propagate the corrected quantity to the Sale + Invoice (DRAFT
             # -> direct, VALIDATED -> audited, PAID -> refused).
             InvoiceService.adjust_delivered_quantity(
-                sale.invoice.id,
+                sale.billing_invoice.id,
                 received_qty,
+                sale_id=sale.id,
                 reason=(
                     "Vérification client : quantité reçue corrigée de "
                     f"{sale.delivered_quantity} L à {received_qty} L"
@@ -846,10 +934,11 @@ class DeliveryService:
         )
 
         sale = getattr(trip, "sale", None)
-        if sale is not None and getattr(sale, "invoice", None) is not None:
+        if sale is not None and sale.billing_invoice is not None:
             InvoiceService.adjust_delivered_quantity(
-                sale.invoice.id,
+                sale.billing_invoice.id,
                 received_qty,
+                sale_id=sale.id,
                 reason=reason,
                 actor=actor,
             )

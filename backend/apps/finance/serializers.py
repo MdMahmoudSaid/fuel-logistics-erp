@@ -50,6 +50,7 @@ from .services import (
     ShareholderLoanError,
     ShareholderLoanService,
     ShareholderParticipationError,
+    ShareholderProfitPreviewService,
     ShareholderService,
     ShareholderWithdrawalError,
     ShareholderWithdrawalService,
@@ -720,6 +721,11 @@ class ExpenseSerializer(serializers.ModelSerializer):
     allocations_detail = ExpenseAllocationSerializer(source="allocations", many=True, read_only=True)
     allocations = ExpenseAllocationInputSerializer(many=True, write_only=True, required=False)
     category = serializers.CharField()
+    # Who/what paid this expense (client request 2026-09-25): a customer (paid
+    # on the company's behalf), a bank account or a cash account; None while
+    # unpaid.
+    paid_via = serializers.SerializerMethodField()
+    paid_via_name = serializers.SerializerMethodField()
     bank_account = serializers.PrimaryKeyRelatedField(
         queryset=BankAccount.objects.all(), write_only=True, required=False, allow_null=True
     )
@@ -731,13 +737,50 @@ class ExpenseSerializer(serializers.ModelSerializer):
         model = Expense
         fields = [
             "id", "category", "amount", "calculation_method", "date", "status",
-            "paid_by_customer_directly", "notes",
+            "paid_by_customer_directly", "paid_via", "paid_via_name", "notes",
             "allocations", "allocations_detail", "bank_account", "cash_account",
             "created_at", "updated_at",
         ]
         # paid_by_customer_directly/status=PAID for the indirect case is only
         # ever set by IndirectSettlementService, never a direct client write.
-        read_only_fields = ["id", "paid_by_customer_directly", "created_at", "updated_at"]
+        read_only_fields = [
+            "id", "paid_by_customer_directly", "paid_via", "paid_via_name",
+            "created_at", "updated_at",
+        ]
+
+    def _payer(self, obj) -> tuple[str | None, str | None]:
+        cached = getattr(obj, "_payer_cache", None)
+        if cached is not None:
+            return cached
+        result: tuple[str | None, str | None] = (None, None)
+        if obj.status in (Expense.Status.PAID, Expense.Status.PARTIALLY_PAID):
+            if obj.paid_by_customer_directly:
+                payment = obj.indirect_settlement_payment
+                result = ("customer", payment.customer.name if payment else None)
+            else:
+                transaction_row = (
+                    TreasuryTransaction.objects.filter(
+                        source_content_type=ContentType.objects.get_for_model(Expense),
+                        source_object_id=obj.pk,
+                        type=TreasuryTransaction.Type.MONEY_OUT,
+                    )
+                    .select_related("bank_account", "cash_account")
+                    .order_by("id")
+                    .first()
+                )
+                if transaction_row is not None:
+                    if transaction_row.bank_account_id:
+                        result = ("bank", transaction_row.bank_account.name)
+                    elif transaction_row.cash_account_id:
+                        result = ("cash", transaction_row.cash_account.name)
+        obj._payer_cache = result
+        return result
+
+    def get_paid_via(self, obj) -> str | None:
+        return self._payer(obj)[0]
+
+    def get_paid_via_name(self, obj) -> str | None:
+        return self._payer(obj)[1]
 
     def validate_category(self, value):
         if not ExpenseCategory.objects.filter(code=value, is_active=True).exists():
@@ -872,7 +915,9 @@ class IndirectSettlementRequestSerializer(serializers.Serializer):
 
     customer = serializers.IntegerField()
     invoice = serializers.IntegerField(required=False, allow_null=True, default=None)
-    category = serializers.ChoiceField(choices=Expense.Category.choices)
+    # A CharField validated against ExpenseCategory (like ExpenseSerializer),
+    # not the built-in enum: user-created categories must work too.
+    category = serializers.CharField()
     amount = serializers.DecimalField(max_digits=16, decimal_places=2, min_value=Decimal("0.01"))
     calculation_method = serializers.ChoiceField(
         choices=Expense.CalculationMethod.choices, default=Expense.CalculationMethod.MANUAL
@@ -880,6 +925,33 @@ class IndirectSettlementRequestSerializer(serializers.Serializer):
     date = serializers.DateField()
     reference = serializers.CharField(required=False, allow_blank=True, default="")
     notes = serializers.CharField(required=False, allow_blank=True, default="")
+
+    def validate_category(self, value):
+        if not ExpenseCategory.objects.filter(code=value, is_active=True).exists():
+            raise serializers.ValidationError("Categorie de depense invalide ou inactive.")
+        return value
+
+
+class CustomerPaidExpensesRequestSerializer(serializers.Serializer):
+    """Input for POST /api/expenses/record-customer-paid/ - one general
+    expense paid by one or several customers (each `payers[].amount` comes
+    off what that customer owes, or becomes a company debt to him)."""
+
+    class PayerSerializer(serializers.Serializer):
+        customer = serializers.IntegerField()
+        amount = serializers.DecimalField(
+            max_digits=16, decimal_places=2, min_value=Decimal("0.01")
+        )
+
+    category = serializers.CharField()
+    date = serializers.DateField()
+    notes = serializers.CharField(required=False, allow_blank=True, default="")
+    payers = PayerSerializer(many=True, allow_empty=False)
+
+    def validate_category(self, value):
+        if not ExpenseCategory.objects.filter(code=value, is_active=True).exists():
+            raise serializers.ValidationError("Categorie de depense invalide ou inactive.")
+        return value
 
 
 class TreasuryTransactionSerializer(serializers.ModelSerializer):
@@ -1103,18 +1175,29 @@ class ShareholderProfitDistributionSerializer(serializers.ModelSerializer):
     validated_by_detail = UserSerializer(source="validated_by", read_only=True)
     cancelled_by_detail = UserSerializer(source="cancelled_by", read_only=True)
     shares = ShareholderProfitShareSerializer(many=True, read_only=True)
+    # DRAFT only: the profit still left to distribute, i.e. what validation
+    # will compare total_profit against, so the UI can disable "Valider"
+    # with the same figure the backend guard uses.
+    available_to_distribute = serializers.SerializerMethodField()
+
+    def get_available_to_distribute(self, obj) -> str | None:
+        if obj.status != ShareholderProfitDistribution.Status.DRAFT:
+            return None
+        preview = ShareholderProfitPreviewService.get_preview()
+        return f"{preview['distributable_result']:.2f}"
 
     class Meta:
         model = ShareholderProfitDistribution
         fields = [
             "id", "period_start", "period_end", "total_profit", "status",
+            "available_to_distribute",
             "created_by", "created_by_detail", "validated_by", "validated_by_detail",
             "validated_at", "cancelled_by", "cancelled_by_detail", "cancelled_at",
             "shares", "created_at", "updated_at",
         ]
         read_only_fields = [
-            "id", "status", "created_by", "validated_by", "validated_at",
-            "cancelled_by", "cancelled_at", "created_at", "updated_at",
+            "id", "status", "available_to_distribute", "created_by", "validated_by",
+            "validated_at", "cancelled_by", "cancelled_at", "created_at", "updated_at",
         ]
 
     def create(self, validated_data):

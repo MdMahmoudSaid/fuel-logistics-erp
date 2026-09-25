@@ -20,6 +20,13 @@ export function validateInvoice(invoiceId: number): Promise<Invoice> {
   return apiClient.post<Invoice>(`/invoices/${invoiceId}/validate/`).then((r) => r.data)
 }
 
+// Validate several DRAFT invoices of one customer at once (all or nothing).
+export function validateInvoices(invoiceIds: number[]): Promise<Invoice[]> {
+  return apiClient
+    .post<Invoice[]>('/invoices/bulk-validate/', { invoices: invoiceIds })
+    .then((r) => r.data)
+}
+
 // Backend/apps/sales/services.py InvoiceService.update_draft_pricing() -
 // edits a DRAFT invoice's initial selling price directly (no audit row,
 // unlike correctInvoice() below which is VALIDATED-only) and recomputes
@@ -27,10 +34,12 @@ export function validateInvoice(invoiceId: number): Promise<Invoice> {
 export function updateInvoicePrice(
   invoiceId: number,
   unitSellingPrice: string,
+  saleId?: number,
 ): Promise<Invoice> {
   return apiClient
     .post<Invoice>(`/invoices/${invoiceId}/update-price/`, {
       unit_selling_price: unitSellingPrice,
+      sale: saleId,
     })
     .then((r) => r.data)
 }
@@ -62,12 +71,14 @@ export function correctInvoice(
   field: string,
   newValue: string,
   reason: string,
+  saleId?: number,
 ): Promise<Invoice> {
   return apiClient
     .post<Invoice>(`/invoices/${invoiceId}/correct/`, {
       field,
       new_value: newValue,
       reason,
+      sale: saleId,
     })
     .then((r) => r.data)
 }

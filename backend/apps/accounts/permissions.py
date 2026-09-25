@@ -24,6 +24,7 @@ ACTION_MAP = {
     "suggested_selling_price": "view",
     # Dashboard's single custom read action (docs/PHASE_6_PLAN.md Etape 5).
     "summary": "view",
+    "working_capital_pdf": "view",
     "payable_debts": "view",
     "party_balances": "view",
     # Bug fix (found 2026-09-06): missing from this map entirely, so it
@@ -75,9 +76,11 @@ ACTION_MAP = {
     # Assigning a direct customer to a trip is routine operations work,
     # same "edit" tier as a trip status transition/delivery confirmation.
     "assign_customer": "edit",
+    "assign_customers": "edit",
     # Invoice validation freezes financial data - gate it behind "validate"
     # (Role.ACTIONS), same tier as SupplierOrder/CessionLetter confirmation.
     "validate": "validate",
+    "bulk_validate": "validate",
     # A correction only ever applies to an already-VALIDATED invoice, so it
     # requires the same "validate" tier rather than plain "edit".
     "correct": "validate",
@@ -90,6 +93,7 @@ ACTION_MAP = {
     # standpoint (docs/PHASE_5_PLAN.md Etape 6/8).
     "transfer": "create",
     "record_indirect": "create",
+    "record_customer_paid": "create",
     "record_debt_payment": "create",
     # Recording a ShareholderLoan repayment (Task 7, client modifications
     # plan, lost-update race fix) mutates an existing loan row exactly like

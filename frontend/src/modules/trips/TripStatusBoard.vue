@@ -15,7 +15,7 @@ import Button from '@/components/ui/Button.vue'
 import TripCard from './TripCard.vue'
 import { useTripStatusLabel } from './tripStatusLabels'
 import { formatTruckPlates } from './formatTruckPlates'
-import { formatQuantity } from '@/utils/currency'
+import { formatQuantity, formatUnitMoney } from '@/utils/currency'
 
 const router = useRouter()
 const route = useRoute()
@@ -185,6 +185,7 @@ function nextAction(trip: Trip) {
               <th class="px-3 py-2.5 font-medium">{{ t('trips.table.client') }}</th>
               <th class="px-3 py-2.5 font-medium">Produit</th>
               <th class="px-3 py-2.5 text-right font-medium">{{ t('trips.table.quantity') }}</th>
+              <th class="px-3 py-2.5 text-right font-medium">{{ t('trips.table.unitCost') }}</th>
               <th class="px-3 py-2.5 font-medium">{{ t('trips.table.status') }}</th>
               <th class="px-3 py-2.5 font-medium">Prochaine action</th>
             </tr>
@@ -224,13 +225,17 @@ function nextAction(trip: Trip) {
               <td class="px-3 py-2.5 text-right">
                 <MonoValue :value="formatQuantity(trip.quantity_loaded)" />
               </td>
+              <td class="px-3 py-2.5 text-right" data-test="trip-unit-cost">
+                <MonoValue v-if="trip.unit_cost" :value="formatUnitMoney(trip.unit_cost)" />
+                <span v-else>—</span>
+              </td>
               <td class="px-3 py-2.5">
                 <Badge :variant="badgeVariant(trip.status)">{{ statusLabel(trip.status) }}</Badge>
               </td>
               <td class="px-3 py-2.5">{{ nextAction(trip) }}</td>
             </tr>
             <tr v-if="!filteredTrips.length">
-              <td colspan="10" class="text-texte-3 px-3 py-8 text-center">
+              <td colspan="11" class="text-texte-3 px-3 py-8 text-center">
                 {{ t('trips.noTripsForFilter') }}
               </td>
             </tr>

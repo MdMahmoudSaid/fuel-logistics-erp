@@ -87,6 +87,17 @@ class Sale(AuditableModel, TimeStampedModel):
     product = models.ForeignKey(
         "core.Product", on_delete=models.PROTECT, related_name="sales"
     )
+    # Multi-trip invoice: a Sale normally owns its own Invoice (`invoice`, the
+    # OneToOne from Invoice.sale); when several trips of the same customer
+    # are grouped on one invoice, the first Sale owns it and the others
+    # point at it here.
+    grouped_invoice = models.ForeignKey(
+        "sales.Invoice",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="extra_sales",
+    )
     delivered_quantity = models.DecimalField(
         max_digits=14, decimal_places=2, editable=False
     )
@@ -109,6 +120,11 @@ class Sale(AuditableModel, TimeStampedModel):
 
     def __str__(self) -> str:
         return f"Sale for {self.trip.reference} ({self.delivered_quantity} L)"
+
+    @property
+    def billing_invoice(self):
+        """The invoice this sale is billed on (its own, or the group's)."""
+        return getattr(self, "invoice", None) or self.grouped_invoice
 
     def save(self, *args, **kwargs):
         self.subtotal = (self.delivered_quantity * self.unit_selling_price).quantize(
@@ -200,6 +216,16 @@ class Invoice(AuditableModel, TimeStampedModel):
 
     def is_locked_for_deletion(self) -> bool:
         return self.status != self.Status.DRAFT
+
+    @property
+    def all_sales(self) -> list:
+        """Every Sale billed on this invoice: the primary one first, then
+        the trips grouped onto it."""
+        return [self.sale, *self.extra_sales.select_related("trip").order_by("id")]
+
+    def recompute_total(self) -> None:
+        self.total_amount = sum((s.subtotal for s in self.all_sales), Decimal("0.00"))
+        self.save(update_fields=["total_amount", "updated_at"])
 
 
 class InvoiceCorrection(TimeStampedModel):

@@ -42,6 +42,9 @@ const editForm = ref({ issued_date: '' })
 // (with the total recomputed automatically), not as a raw total_amount
 // anymore - see onSavePrice()/priceTotalPreview below.
 const priceForm = ref('')
+// Multi-trip invoice: one editable unit price per trip line.
+const linePrices = ref<Record<number, string>>({})
+const isGrouped = computed(() => (invoice.value?.sales_detail?.length ?? 0) > 1)
 const previewUrl = ref<string | null>(null)
 const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp']
 
@@ -57,6 +60,9 @@ async function load() {
     invoice.value = await invoiceResource.get!(invoiceId.value)
     editForm.value = { issued_date: invoice.value.issued_date }
     priceForm.value = invoice.value.sale_detail?.unit_selling_price ?? ''
+    linePrices.value = Object.fromEntries(
+      (invoice.value.sales_detail ?? []).map((sale) => [sale.id, sale.unit_selling_price]),
+    )
   } catch {
     error.value = t('sales.invoiceDetail.loadError')
   } finally {
@@ -87,6 +93,21 @@ async function onSavePrice() {
   savePriceError.value = ''
   try {
     invoice.value = await updateInvoicePrice(invoiceId.value, priceForm.value)
+  } catch (e) {
+    const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+    savePriceError.value = translateApiError(detail) || t('sales.invoiceDetail.savePriceError')
+  } finally {
+    savingPrice.value = false
+  }
+}
+
+async function onSaveLinePrice(saleId: number) {
+  const price = linePrices.value[saleId]
+  if (!price) return
+  savingPrice.value = true
+  savePriceError.value = ''
+  try {
+    invoice.value = await updateInvoicePrice(invoiceId.value, price, saleId)
   } catch (e) {
     const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
     savePriceError.value = translateApiError(detail) || t('sales.invoiceDetail.savePriceError')
@@ -148,13 +169,19 @@ const correctionForm = ref({
   field: CORRECTABLE_INVOICE_FIELDS[0] as string,
   new_value: '',
   reason: '',
+  sale: '',
 })
 const correcting = ref(false)
 const correctionError = ref('')
 
 function openCorrectionForm() {
   showCorrectionForm.value = true
-  correctionForm.value = { field: CORRECTABLE_INVOICE_FIELDS[0], new_value: '', reason: '' }
+  correctionForm.value = {
+    field: CORRECTABLE_INVOICE_FIELDS[0],
+    new_value: '',
+    reason: '',
+    sale: String(invoice.value?.sales_detail?.[0]?.id ?? ''),
+  }
 }
 
 async function onSubmitCorrection() {
@@ -166,6 +193,9 @@ async function onSubmitCorrection() {
       correctionForm.value.field,
       correctionForm.value.new_value,
       correctionForm.value.reason,
+      isGrouped.value && correctionForm.value.field !== 'total_amount'
+        ? Number(correctionForm.value.sale)
+        : undefined,
     )
     showCorrectionForm.value = false
   } catch (e) {
@@ -203,7 +233,9 @@ function formatDateTime(value: string) {
           :disabled="exportingPdf"
           @click="onExportPdf"
         >
-          {{ exportingPdf ? t('sales.invoiceDetail.exporting') : t('sales.invoiceDetail.exportPdf') }}
+          {{
+            exportingPdf ? t('sales.invoiceDetail.exporting') : t('sales.invoiceDetail.exportPdf')
+          }}
         </Button>
         <Button variant="ghost" @click="router.push({ name: 'invoices' })">
           {{ t('sales.invoiceDetail.backToInvoices') }}
@@ -259,13 +291,13 @@ function formatDateTime(value: string) {
               </RouterLink>
             </p>
           </div>
-          <div>
+          <div v-if="!isGrouped">
             <span class="text-texte-2">{{ t('sales.invoiceDetail.product') }}</span>
             <p class="text-texte font-medium">
               {{ invoice.sale_detail?.product_detail?.name }}
             </p>
           </div>
-          <div>
+          <div v-if="!isGrouped">
             <span class="text-texte-2">{{ t('sales.invoiceDetail.deliveredQuantity') }}</span>
             <p>
               <MonoValue
@@ -275,7 +307,7 @@ function formatDateTime(value: string) {
               />
             </p>
           </div>
-          <div>
+          <div v-if="!isGrouped">
             <span class="text-texte-2">{{ t('sales.invoiceDetail.loadedQuantity') }}</span>
             <p>
               <MonoValue
@@ -285,7 +317,7 @@ function formatDateTime(value: string) {
               />
             </p>
           </div>
-          <div>
+          <div v-if="!isGrouped">
             <span class="text-texte-2">{{ t('sales.invoiceDetail.unitSellingPrice') }}</span>
             <p>
               <MonoValue
@@ -296,7 +328,7 @@ function formatDateTime(value: string) {
               />
             </p>
           </div>
-          <div>
+          <div v-if="!isGrouped">
             <span class="text-texte-2">{{ t('sales.invoiceDetail.trip') }}</span>
             <RouterLink
               class="text-texte font-medium underline decoration-dotted"
@@ -305,7 +337,7 @@ function formatDateTime(value: string) {
               {{ invoice.sale_detail?.trip_reference }}
             </RouterLink>
           </div>
-          <div>
+          <div v-if="!isGrouped">
             <span class="text-texte-2">{{ t('sales.invoiceDetail.truckPlates') }}</span>
             <p class="text-texte font-medium">
               {{ invoice.sale_detail?.truck_plates }}
@@ -313,8 +345,76 @@ function formatDateTime(value: string) {
           </div>
         </div>
 
+        <div v-if="isGrouped" class="space-y-2">
+          <AppAlert v-if="savePriceError" :message="savePriceError" />
+          <p class="text-texte-2 font-medium">{{ t('sales.invoiceDetail.trips') }}</p>
+          <div class="border-ligne overflow-x-auto rounded-lg border">
+            <table class="w-full text-start text-sm">
+              <thead>
+                <tr class="border-ligne text-texte-2 border-b">
+                  <th class="px-2 py-1.5 font-medium">{{ t('sales.invoiceDetail.trip') }}</th>
+                  <th class="px-2 py-1.5 font-medium">{{ t('sales.invoiceDetail.product') }}</th>
+                  <th class="px-2 py-1.5 text-right font-medium">
+                    {{ t('sales.invoiceDetail.deliveredQuantity') }}
+                  </th>
+                  <th class="px-2 py-1.5 text-right font-medium">
+                    {{ t('sales.invoiceDetail.unitSellingPrice') }}
+                  </th>
+                  <th class="px-2 py-1.5 text-right font-medium">
+                    {{ t('sales.saleList.table.subtotal') }}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="line in invoice.sales_detail"
+                  :key="line.id"
+                  class="border-ligne border-b last:border-0"
+                >
+                  <td class="px-2 py-1.5">
+                    <RouterLink
+                      class="underline decoration-dotted"
+                      :to="{ name: 'trip-detail', params: { id: line.trip } }"
+                    >
+                      {{ line.trip_reference }}
+                    </RouterLink>
+                    <span class="text-texte-3 block text-xs">{{ line.truck_plates }}</span>
+                  </td>
+                  <td class="px-2 py-1.5">{{ line.product_detail?.name }}</td>
+                  <td class="px-2 py-1.5 text-right">
+                    <MonoValue :value="formatQuantity(line.delivered_quantity)" />
+                  </td>
+                  <td class="px-2 py-1.5 text-right">
+                    <div v-if="isDraft && canEdit" class="flex items-center justify-end gap-1">
+                      <input
+                        v-model="linePrices[line.id]"
+                        type="number"
+                        step="0.0001"
+                        min="0"
+                        class="border-ligne-forte h-9 w-28 rounded-lg border bg-white px-2 text-sm"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        :disabled="savingPrice || !linePrices[line.id]"
+                        @click="onSaveLinePrice(line.id)"
+                      >
+                        {{ t('sales.invoiceDetail.saveLinePrice') }}
+                      </Button>
+                    </div>
+                    <MonoValue v-else :value="line.unit_selling_price" :unit="line.currency" />
+                  </td>
+                  <td class="px-2 py-1.5 text-right">
+                    <MonoValue :value="formatMoney(line.subtotal)" />
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
         <template v-if="isDraft && canEdit">
-          <div class="border-ligne space-y-3 rounded-lg border bg-sable p-3">
+          <div v-if="!isGrouped" class="border-ligne space-y-3 rounded-lg border bg-sable p-3">
             <AppAlert v-if="savePriceError" :message="savePriceError" />
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div class="space-y-1">
@@ -342,9 +442,7 @@ function formatDateTime(value: string) {
             <div class="flex justify-end">
               <Button id="save-price" :disabled="savingPrice || !priceForm" @click="onSavePrice">
                 {{
-                  savingPrice
-                    ? t('sales.invoiceDetail.saving')
-                    : t('sales.invoiceDetail.savePrice')
+                  savingPrice ? t('sales.invoiceDetail.saving') : t('sales.invoiceDetail.savePrice')
                 }}
               </Button>
             </div>
@@ -400,6 +498,24 @@ function formatDateTime(value: string) {
               >
                 <option v-for="f in CORRECTABLE_INVOICE_FIELDS" :key="f" :value="f">
                   {{ t(`sales.invoiceDetail.correctionFields.${f}`) }}
+                </option>
+              </select>
+            </div>
+            <div v-if="isGrouped && correctionForm.field !== 'total_amount'" class="space-y-1">
+              <label class="text-texte-2 text-sm font-medium" for="correction_sale">{{
+                t('sales.invoiceDetail.trip')
+              }}</label>
+              <select
+                id="correction_sale"
+                v-model="correctionForm.sale"
+                class="border-ligne-forte h-11 w-full rounded-lg border bg-white px-3 text-sm"
+              >
+                <option
+                  v-for="line in invoice.sales_detail"
+                  :key="line.id"
+                  :value="String(line.id)"
+                >
+                  {{ line.trip_reference }}
                 </option>
               </select>
             </div>
@@ -468,12 +584,18 @@ function formatDateTime(value: string) {
                 <th class="px-2 py-1.5 font-medium">{{ t('sales.invoiceDetail.paymentDate') }}</th>
                 <th class="px-2 py-1.5 font-medium">{{ t('sales.invoiceDetail.method') }}</th>
                 <th class="px-2 py-1.5 font-medium">{{ t('sales.invoiceDetail.reference') }}</th>
-                <th class="px-2 py-1.5 text-end font-medium">{{ t('sales.invoiceDetail.amount') }}</th>
+                <th class="px-2 py-1.5 text-end font-medium">
+                  {{ t('sales.invoiceDetail.amount') }}
+                </th>
                 <th class="px-2 py-1.5 font-medium">{{ t('sales.invoiceDetail.proof') }}</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="payment in invoice.payments" :key="payment.id" class="border-ligne border-b last:border-0">
+              <tr
+                v-for="payment in invoice.payments"
+                :key="payment.id"
+                class="border-ligne border-b last:border-0"
+              >
                 <td class="px-2 py-1.5">{{ payment.payment_date }}</td>
                 <td class="px-2 py-1.5">{{ t(`paymentMethod.${payment.method}`) }}</td>
                 <td class="px-2 py-1.5">{{ payment.reference || '—' }}</td>

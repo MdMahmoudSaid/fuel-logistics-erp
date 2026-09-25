@@ -5,6 +5,8 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
+
+from apps.finance.testing_helpers import seed_net_profit
 from django.contrib.contenttypes.models import ContentType
 from django.core.files.uploadedfile import SimpleUploadedFile
 
@@ -501,18 +503,17 @@ def test_shareholder_profit_preview_indicative_share_uses_distributable_result()
     assert preview["net_profit"] != preview["operational_profit"]
     assert preview["net_profit"] != Decimal("0.00")  # fixture sanity: the trip is profitable
 
-    # No treasury/receivables/capital seeded -> gross = 0, capital = 0 ->
-    # distributable_result = 0, independent of the (nonzero) trip margin.
-    assert preview["distributable_result"] == Decimal("0.00")
+    # Client decision 2026-09-25: the distributable amount IS the net
+    # profit after general expenses. The debts/capital-based figure stays
+    # exposed separately (no treasury/receivables/capital seeded -> 0) and
+    # no longer drives it.
+    assert preview["distributable_result"] == expected_net_profit
+    assert preview["result_after_debts_and_capital"] == Decimal("0.00")
 
     share = next(
         s for s in preview["shareholders"] if s["shareholder_id"] == shareholder.id
     )
-    assert share["indicative_share"] == Decimal("0.00")
-    # The reverted (net_profit-based) and operational-based bases would
-    # both have given a large nonzero figure instead.
-    assert share["indicative_share"] != expected_net_profit.quantize(Decimal("0.01"))
-    assert share["indicative_share"] != operational_profit.quantize(Decimal("0.01"))
+    assert share["indicative_share"] == expected_net_profit.quantize(Decimal("0.01"))
 
 
 @pytest.mark.django_db
@@ -529,7 +530,10 @@ def test_shareholder_profit_preview_excludes_inactive_shareholders():
 
 
 @pytest.mark.django_db
-def test_shareholder_profit_preview_defaults_to_period_after_last_validated_distribution():
+def test_shareholder_profit_preview_default_is_all_time_minus_validated_distributions():
+    """Client request 2026-09-25: with no period, the preview covers every
+    trip and subtracts every validated distribution, so what is left to
+    distribute falls to zero once everything has been distributed."""
     admin_user = _make_admin("PREVIEWPERIOD")
     fx_old = _make_full_trip("PREVIEWPERIODOLD", admin_user)
     fx_old["trip"].loading_date = "2026-07-10"
@@ -538,26 +542,38 @@ def test_shareholder_profit_preview_defaults_to_period_after_last_validated_dist
     fx_new["trip"].loading_date = "2026-08-15"
     fx_new["trip"].save(update_fields=["loading_date"])
     Shareholder.objects.create(name="Preview Period", participation_percent=Decimal("100"))
-    CashAccount.objects.create(name="Preview Period Till", opening_balance=Decimal("1000.00"))
+
+    from apps.reports.services.profit import TripProfitService
+
+    old_margin = TripProfitService.get_cost_breakdown(fx_old["trip"])["margin"]
+    new_margin = TripProfitService.get_cost_breakdown(fx_new["trip"])["margin"]
 
     distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-07-01",
         period_end="2026-07-31",
-        total_profit=Decimal("1.00"),
+        total_profit=old_margin,
         actor=admin_user,
     )
     ShareholderDistributionService.validate_distribution(distribution.id, admin_user)
 
     preview = ShareholderProfitPreviewService.get_preview()
 
-    from apps.reports.services.profit import TripProfitService
+    assert preview["period_start"] is None
+    assert preview["current_profit"] == old_margin + new_margin
+    assert preview["already_validated_total"] == old_margin
+    assert preview["distributable_result"] == new_margin
 
-    expected_total = TripProfitService.get_cost_breakdown(fx_new["trip"])["margin"]
-    assert preview["current_profit"] == expected_total
-
-    from datetime import date
-
-    assert preview["period_start"] == date(2026, 8, 1)
+    # Distributing the rest empties it.
+    rest = ShareholderDistributionService.create_distribution(
+        period_start="2026-08-01",
+        period_end="2026-08-31",
+        total_profit=new_margin,
+        actor=admin_user,
+    )
+    ShareholderDistributionService.validate_distribution(rest.id, admin_user)
+    assert ShareholderProfitPreviewService.get_preview()["distributable_result"] == Decimal(
+        "0.00"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -687,7 +703,7 @@ def test_distributable_result_cancels_debts_added_into_total():
         + wc["other_debts"] + wc["supplier_reliquat_value"]
         + wc["supplier_in_transit_value"] + wc["supplier_company_stock_value"]
     )
-    assert preview["distributable_result"] == Decimal("0.00")
+    assert preview["result_after_debts_and_capital"] == Decimal("0.00")
 
 
 @pytest.mark.django_db
@@ -742,8 +758,8 @@ def test_distributable_result_formula_term_by_term():
         - wc["other_debts"] - wc["supplier_reliquat_value"] - wc["capital"]
         - wc["supplier_in_transit_value"] - wc["supplier_company_stock_value"]
     )
-    assert preview["distributable_result"] == expected
-    assert preview["distributable_result"] == Decimal("-2500000.00")
+    assert preview["result_after_debts_and_capital"] == expected
+    assert preview["result_after_debts_and_capital"] == Decimal("-2500000.00")
     # net_profit itself must stay exactly what it was before capital ever
     # entered the picture - distributable_result never feeds it back.
     assert preview["net_profit"] == preview["operational_profit"]
@@ -1018,6 +1034,7 @@ def test_treasury_statement_excludes_transfer_legs_but_keeps_correct_balance():
 @pytest.mark.django_db
 def test_shareholder_statement_lists_profit_shares_withdrawals_and_loans():
     admin_user = _make_admin("SHRSTMT")
+    seed_net_profit()
     shareholder = Shareholder.objects.create(name="Assoc SHRSTMT", participation_percent=Decimal("100"))
     other = Shareholder.objects.create(name="Assoc SHRSTMT2", participation_percent=Decimal("0"))
     cash_account = CashAccount.objects.create(
@@ -1060,6 +1077,7 @@ def test_shareholder_statement_lists_profit_shares_withdrawals_and_loans():
 @pytest.mark.django_db
 def test_shareholder_statement_includes_capital_contribution_and_stays_balanced():
     admin_user = _make_admin("SHRSTMTCAP")
+    seed_net_profit()
     shareholder = Shareholder.objects.create(name="Assoc SHRSTMTCAP", participation_percent=Decimal("100"))
     bank = BankAccount.objects.create(name="Bank SHRSTMTCAP", opening_balance=Decimal("0.00"))
     cash_account = CashAccount.objects.create(
@@ -1090,6 +1108,7 @@ def test_shareholder_statement_includes_capital_contribution_and_stays_balanced(
 @pytest.mark.django_db
 def test_shareholder_statement_excludes_cancelled_distribution_shares():
     admin_user = _make_admin("SHRSTMTCANCEL")
+    seed_net_profit()
     shareholder = Shareholder.objects.create(
         name="Assoc SHRSTMTCANCEL", participation_percent=Decimal("100")
     )
@@ -1117,6 +1136,7 @@ def test_shareholder_statement_excludes_draft_distribution_shares():
     """2026-09-08 review, point 1: a DRAFT distribution's share is a
     preview only - it must not appear in the grand livre associe."""
     admin_user = _make_admin("SHRSTMTDRAFT")
+    seed_net_profit()
     shareholder = Shareholder.objects.create(
         name="Assoc SHRSTMTDRAFT", participation_percent=Decimal("100")
     )

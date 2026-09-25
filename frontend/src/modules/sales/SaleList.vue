@@ -73,15 +73,21 @@ const canAssignCustomer = computed(() => auth.can('operations', 'edit'))
 const showAssignModal = ref(false)
 const eligibleTrips = ref<Trip[]>([])
 const loadingEligibleTrips = ref(false)
-const selectedTrip = ref<Trip | null>(null)
+// Several trips can be ticked to be billed on ONE invoice (client request
+// 2026-09-25); `confirmedTrips` is the selection once the user continues.
+const selectedTripIds = ref<number[]>([])
+const confirmedTrips = ref<Trip[] | null>(null)
 
-// Same "Stock entreprise" definition as TripStatusBoard.vue's company-stock
-// tab (physically arrived, matches the dashboard total) - narrowed here to
-// trips that don't already have a client, since that's the only thing this
-// picker is for.
+// "Stock entreprise" (physically arrived, matches the dashboard total) plus
+// trips still in customs: a customer can already be assigned from CUSTOMS
+// (client request 2026-09-25). Narrowed to trips without a client, since
+// that's the only thing this picker is for.
+const ASSIGNABLE_STATUSES = ['CUSTOMS', 'ARRIVED_AT_COMPANY_STOCK', 'STOCKED']
+
 async function openAssignModal() {
   showAssignModal.value = true
-  selectedTrip.value = null
+  selectedTripIds.value = []
+  confirmedTrips.value = null
   loadingEligibleTrips.value = true
   try {
     const data = await tripResource.list()
@@ -89,7 +95,7 @@ async function openAssignModal() {
       (trip) =>
         trip.destination_type === 'COMPANY_STOCK' &&
         !trip.client &&
-        (trip.status === 'ARRIVED_AT_COMPANY_STOCK' || trip.status === 'STOCKED'),
+        ASSIGNABLE_STATUSES.includes(trip.status),
     )
   } finally {
     loadingEligibleTrips.value = false
@@ -98,13 +104,20 @@ async function openAssignModal() {
 
 function closeAssignModal() {
   showAssignModal.value = false
-  selectedTrip.value = null
+  selectedTripIds.value = []
+  confirmedTrips.value = null
+}
+
+function continueAssign() {
+  confirmedTrips.value = eligibleTrips.value.filter((trip) =>
+    selectedTripIds.value.includes(trip.id),
+  )
 }
 
 function onCustomerAssigned() {
-  const tripId = selectedTrip.value?.id
+  const trips = confirmedTrips.value ?? []
   closeAssignModal()
-  if (tripId) router.push({ name: 'trip-detail', params: { id: tripId } })
+  if (trips.length === 1) router.push({ name: 'trip-detail', params: { id: trips[0].id } })
 }
 </script>
 
@@ -200,11 +213,10 @@ function onCustomerAssigned() {
       @close="closeAssignModal"
     >
       <AssignCustomerForm
-        v-if="selectedTrip"
-        :trip-id="selectedTrip.id"
-        :trip-reference="selectedTrip.reference"
+        v-if="confirmedTrips"
+        :trips="confirmedTrips"
         @success="onCustomerAssigned"
-        @cancel="selectedTrip = null"
+        @cancel="confirmedTrips = null"
       />
       <div v-else class="space-y-3">
         <p class="text-texte-2 text-sm">{{ t('trips.assignCustomer.pickTripHint') }}</p>
@@ -213,23 +225,39 @@ function onCustomerAssigned() {
           {{ t('trips.assignCustomer.noEligibleTrips') }}
         </div>
         <div v-else class="border-ligne max-h-96 divide-y overflow-y-auto rounded-lg border">
-          <button
+          <label
             v-for="trip in eligibleTrips"
             :key="trip.id"
-            type="button"
             data-test="eligible-trip-row"
-            class="hover:bg-sable flex w-full items-center justify-between gap-3 px-3 py-2.5 text-start text-sm"
-            @click="selectedTrip = trip"
+            class="hover:bg-sable flex w-full cursor-pointer items-center gap-3 px-3 py-2.5 text-start text-sm"
           >
-            <span>
+            <input v-model="selectedTripIds" type="checkbox" :value="trip.id" />
+            <span class="flex-1">
               <span class="text-texte font-medium">{{ trip.reference }}</span>
               <span class="text-texte-2"> · {{ formatTruckPlates(trip.truck_detail) }}</span>
+              <span class="text-texte-3 block text-xs">
+                {{ t(`trips.status.${trip.status}`) }}
+              </span>
             </span>
             <span class="text-texte-2">
               {{ trip.product_detail?.name }} ·
               <MonoValue :value="formatQuantity(trip.quantity_loaded)" />
             </span>
-          </button>
+          </label>
+        </div>
+        <p v-if="selectedTripIds.length > 1" class="text-texte-3 text-xs">
+          {{ t('trips.assignCustomer.singleInvoiceHint') }}
+        </p>
+        <div class="flex justify-end">
+          <Button
+            type="button"
+            variant="primary"
+            data-test="continue-assign"
+            :disabled="!selectedTripIds.length"
+            @click="continueAssign"
+          >
+            {{ t('trips.assignCustomer.continue', { count: selectedTripIds.length }) }}
+          </Button>
         </div>
       </div>
     </Modal>

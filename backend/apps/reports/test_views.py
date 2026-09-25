@@ -6,6 +6,8 @@ import io
 from decimal import Decimal
 
 import pytest
+
+from apps.finance.testing_helpers import seed_net_profit
 from django.contrib.contenttypes.models import ContentType
 from django.core.files.uploadedfile import SimpleUploadedFile
 from openpyxl import load_workbook
@@ -263,6 +265,7 @@ def test_dashboard_summary_includes_shareholders_summary_section():
     remaining undistributed, open loans - the Benefices page stays the
     detailed source."""
     admin_user = _make_admin("DASHSH")
+    seed_net_profit()
     a = Shareholder.objects.create(name="Dash A", participation_percent=Decimal("100"))
     CashAccount.objects.create(name="Dash A Till", opening_balance=Decimal("1000000.00"))
     distribution = ShareholderDistributionService.create_distribution(
@@ -303,6 +306,7 @@ def test_dashboard_summary_includes_shareholders_summary_section():
 @pytest.mark.django_db
 def test_dashboard_summary_remaining_to_pay_shareholders_excludes_cancelled():
     admin_user = _make_admin("DASHCANCEL")
+    seed_net_profit()
     Shareholder.objects.create(name="Dash Cancel", participation_percent=Decimal("100"))
     CashAccount.objects.create(name="Dash Cancel Till", opening_balance=Decimal("1000000.00"))
     distribution = ShareholderDistributionService.create_distribution(
@@ -350,18 +354,14 @@ def test_dashboard_summary_shareholders_section_includes_distributable_result():
     wc = response.data["working_capital"]
     assert "total_capital_contributed" not in summary
     assert "profit_after_capital" not in summary
-    # No treasury/receivables were seeded, only the 400,000 capital and
-    # _make_full_trip's open, unpaid supplier debt (added into total, then
-    # subtracted back out) - distributable_result = gross(0) - 400,000
-    # capital, derived rather than hardcoded since the exact debt amount
-    # isn't this test's concern.
-    expected = (
-        Decimal(wc["total"]) - Decimal(wc["supplier_debt_total"])
-        - Decimal(wc["transporter_debt_total"]) - Decimal(wc["other_debts"])
-        - Decimal(wc["supplier_reliquat_value"]) - Decimal(wc["capital"])
-        - Decimal(wc["supplier_in_transit_value"]) - Decimal(wc["supplier_company_stock_value"])
-    )
+    # Client decision 2026-09-25: the dashboard exposes the same
+    # distributable_result as the Benefices page - the net profit after
+    # general expenses of the default period, never a second formula.
+    from apps.finance.services import ShareholderProfitPreviewService
+
+    expected = ShareholderProfitPreviewService.get_preview()["net_profit"]
     assert Decimal(summary["distributable_result"]) == expected
+    assert wc["capital"] is not None
     # Fixture sanity: there really is a sold trip driving current_profit.
     assert fx["sale"] is not None
 
@@ -1556,3 +1556,38 @@ def test_report_endpoint_unknown_treasury_account_is_a_404_not_a_500(report_type
     with_document = client.get(f"/api/reports/{report_type}/", {param: 999999, "document": "1"})
 
     assert legacy.status_code == with_document.status_code == 404
+
+
+@pytest.mark.django_db
+def test_dashboard_working_capital_pdf_prints_only_the_selected_lines():
+    from apps.reports.services.working_capital_pdf import render_working_capital_pdf
+
+    admin_user = _make_admin("WCPDF")
+    client = APIClient()
+    client.force_authenticate(admin_user)
+
+    response = client.get(
+        "/api/dashboard/working-capital-pdf/?lines=total,treasury,receivables&lang=fr"
+    )
+    assert response.status_code == 200
+    assert response["Content-Type"] == "application/pdf"
+    assert response.content.startswith(b"%PDF")
+
+    everything = client.get("/api/dashboard/working-capital-pdf/")
+    assert everything.status_code == 200
+    # fewer lines -> a different (smaller) document; unknown keys ignored
+    assert client.get("/api/dashboard/working-capital-pdf/?lines=nope").status_code == 400
+    assert client.get("/api/dashboard/working-capital-pdf/?lines=").status_code == 400
+
+    # The renderer only prints what it is given.
+    wc = {
+        key: Decimal("1000.00")
+        for key in (
+            "total", "capital", "treasury_available", "customer_receivables",
+            "supplier_debt_total", "transporter_debt_total", "other_debts",
+            "supplier_company_stock_value", "supplier_in_transit_value",
+            "supplier_reliquat_value",
+        )
+    }
+    for lang in ("fr", "en", "ar"):
+        assert render_working_capital_pdf(working_capital=wc, lines=["total"], lang=lang).startswith(b"%PDF")

@@ -69,6 +69,14 @@ export function assignTripCustomer(tripId: number, customerId: number): Promise<
     .then((r) => r.data)
 }
 
+// One customer for several trips billed on a single invoice
+// (POST /trips/assign-customers/).
+export function assignTripsCustomer(tripIds: number[], customerId: number): Promise<Trip[]> {
+  return apiClient
+    .post<Trip[]>('/trips/assign-customers/', { customer: customerId, trips: tripIds })
+    .then((r) => r.data)
+}
+
 export interface DeliveryControlPayload {
   // Client modifications (2026-09-04 recette corrections): now optional -
   // DeliveryControlForm.vue never sends it any more, so the backend

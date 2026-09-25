@@ -168,7 +168,14 @@
       "transit": "العبور: {amount}",
       "roadTransit": "العبور البري: {amount}",
       "other": "أخرى: {amount}",
-      "otherFees": "رسوم أخرى: {amount}"
+      "otherFees": "رسوم أخرى: {amount}",
+      "wcPdf": {
+        "open": "تنزيل بصيغة PDF",
+        "title": "تنزيل البطاقة بصيغة PDF",
+        "hint": "حدد الأسطر التي تريد إدراجها في ملف PDF.",
+        "download": "تنزيل",
+        "error": "تعذر إنشاء ملف PDF."
+      }
     },
     "pipeline": {
       "supplierReliquat": "الوقود المتبقي لدى المورد",
@@ -313,7 +320,8 @@
       "cessionLetterLoadCount": "{count} تحميل (تحميلات) لهذه الشاحنة",
       "client": "العميل",
       "quantity": "الكمية",
-      "status": "الحالة"
+      "status": "الحالة",
+      "unitCost": "سعر التكلفة"
     },
     "status": {
       "ASSIGNED": "مُسنَد",
@@ -431,7 +439,9 @@
       "save": "تعيين",
       "saveError": "تعذر تعيين هذا العميل — تحقق من الحقول وصلاحياتك.",
       "pickTripHint": "اختر رحلة في مخزون الشركة لتعيينها لعميل. ستتابع بعدها دورتها العادية (التسليم، مراقبة الجودة، الفوترة).",
-      "noEligibleTrips": "لا توجد حاليًا رحلة في مخزون الشركة بدون عميل."
+      "noEligibleTrips": "لا توجد حاليًا رحلة في مخزون الشركة بدون عميل.",
+      "singleInvoiceHint": "ستتم فوترة هذه الرحلات في فاتورة واحدة (تُنشأ عند أول تسليم).",
+      "continue": "متابعة ({count})"
     },
     "newForm": {
       "title": "رحلة جديدة (تحميل)",
@@ -635,7 +645,18 @@
       "remove": "إزالة",
       "saving": "جارٍ الحفظ…",
       "save": "حفظ المصروف",
-      "saveError": "تعذر حفظ هذا المصروف — تحقق من الحقول."
+      "saveError": "تعذر حفظ هذا المصروف — تحقق من الحقول.",
+      "paidByCustomersOption": "العميل/العملاء (دفع من العميل)",
+      "paidByCustomersHint": "يسدد العميل المصروف نيابةً عنا: يُخصم المبلغ مما يدين به لنا. وإن لم يكن مدينًا يصبح المبلغ دينًا على الشركة تجاهه. دون أي حركة بنكية أو نقدية.",
+      "addPayer": "إضافة عميل",
+      "removePayer": "إزالة",
+      "payerBalance": "رصيد العميل (ما يدين به لنا):",
+      "payerAmount": "المبلغ المدفوع من هذا العميل",
+      "payerDeducted": "المخصوم من دينه:",
+      "payerDebt": "دين الشركة تجاه هذا العميل:",
+      "payersRequired": "اختر عميلًا واحدًا على الأقل مع مبلغ.",
+      "noBankAccount": "لا يوجد حساب بنكي — أنشئ واحدًا في «الحسابات البنكية».",
+      "noCashAccount": "لا يوجد صندوق — أنشئ واحدًا في «الصناديق»."
     },
     "expenseCategoryForm": {
       "createNew": "+ إنشاء فئة جديدة",
@@ -660,7 +681,8 @@
         "notes": "ملاحظات",
         "status": "الحالة",
         "amount": "المبلغ",
-        "actions": "الإجراءات"
+        "actions": "الإجراءات",
+        "paidBy": "دُفع بواسطة"
       },
       "editExpense": "تعديل",
       "deleteExpense": "حذف",
@@ -673,6 +695,11 @@
         "roadTransit": "العبور البري",
         "border": "الحدود",
         "loading": "التحميل"
+      },
+      "paidVia": {
+        "customer": "عميل",
+        "bank": "بنك",
+        "cash": "صندوق"
       }
     },
     "transportPayment": {
@@ -986,7 +1013,7 @@
         "periodEnd": "نهاية الفترة",
         "totalProfit": "إجمالي الربح",
         "noActiveShareholder": "لا يوجد مساهم/شريك نشط: أضف واحدًا في تبويب «الشركاء» قبل إنشاء توزيع.",
-        "exceedsDistributableResultWarning": "المبلغ المدخل يتجاوز النتيجة القابلة للتوزيع المحسوبة.",
+        "exceedsDistributableResultWarning": "المبلغ المدخل يتجاوز صافي ربح الفترة.",
         "create": "إنشاء التوزيع",
         "period": "الفترة",
         "status": "الحالة",
@@ -1067,12 +1094,12 @@
       },
       "preview": {
         "badge": "إرشادي",
-        "notice": "المبلغ المتبقي المتاح للتوزيع (بعد الديون ورأس المال)",
-        "summaryLabel": "النتيجة المقترحة للتوزيع",
-        "periodProfit": "ربح الفترة",
-        "alreadyValidatedEngagements": "التزامات مصادق عليها بالفعل تجاه الشركاء (كل الفترات)",
-        "remainingDistributable": "المتبقي المتاح للتوزيع",
-        "noneAvailable": "لا يوجد مبلغ متاح للتوزيع حاليًا (لا تزال هناك ديون أو رأس مال يجب تغطيته)."
+        "notice": "الربح المتبقي للتوزيع (صافي الربح بعد المصاريف العامة، بعد خصم التوزيعات المعتمدة)",
+        "summaryLabel": "الربح المقترح للتوزيع",
+        "periodProfit": "صافي الربح بعد المصاريف العامة",
+        "alreadyValidatedEngagements": "التوزيعات المعتمدة مسبقًا",
+        "remainingDistributable": "الربح المتبقي للتوزيع",
+        "noneAvailable": "لا يوجد مبلغ متاح حاليًا (لا يوجد صافي ربح في الفترة)."
       }
     },
     "profit": {
@@ -1096,7 +1123,7 @@
       "capitalContributed": "رأس المال المُقدَّم",
       "companyAbsorbedLoss": "الخسارة المتحملة من الشركة",
       "alreadyDistributed": "تم توزيعه بالفعل (غير مسحوب)",
-      "distributableResult": "النتيجة القابلة للتوزيع بعد الديون ورأس المال",
+      "distributableResult": "الربح المتبقي للتوزيع",
       "tripsCount": "عدد الرحلات المحتسبة",
       "revenue": "رقم الأعمال",
       "costDisclaimer": "هذه المبالغ تفصّل التكاليف المستخدمة في حساب الربح التشغيلي للرحلات. لا تمثل الديون المفتوحة.",
@@ -1123,7 +1150,8 @@
         "unitSellingPrice": "سعر البيع/لتر",
         "unitProfit": "الربح/لتر",
         "totalProfit": "إجمالي الربح"
-      }
+      },
+      "distributableResultHelp": "جميع الرحلات وكل الفترات، بعد خصم التوزيعات المعتمدة."
     }
   },
   "truckStatus": {
@@ -1363,7 +1391,12 @@
         "status": "الحالة"
       },
       "noInvoices": "لا توجد فواتير.",
-      "loadError": "تعذر تحميل الفواتير."
+      "loadError": "تعذر تحميل الفواتير.",
+      "bulkValidate": "اعتماد المحدد ({count})",
+      "bulkValidating": "جارٍ الاعتماد…",
+      "bulkValidateError": "تعذر اعتماد المحدد.",
+      "selectAll": "تحديد الكل",
+      "selectionHint": "التحديد مقتصر على مسودات عميل واحد."
     },
     "invoiceDetail": {
       "title": "الفاتورة {number}",
@@ -1415,7 +1448,10 @@
       "proof": "الإثبات",
       "viewProof": "عرض الإثبات",
       "downloadProof": "تنزيل الإثبات",
-      "noPayments": "لا توجد دفعات مخصصة."
+      "noPayments": "لا توجد دفعات مخصصة.",
+      "trips": "رحلات الفاتورة",
+      "sale": "الرحلة",
+      "saveLinePrice": "حفظ"
     },
     "saleList": {
       "title": "المبيعات",

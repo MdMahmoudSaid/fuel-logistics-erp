@@ -143,8 +143,8 @@ class CustomerViewSet(viewsets.ModelViewSet):
             {
                 "invoice_number": invoice.invoice_number,
                 "issued_date": invoice.issued_date,
-                "quantity_loaded": invoice.sale.trip.quantity_loaded,
-                "delivered_quantity": invoice.sale.delivered_quantity,
+                "quantity_loaded": sum((x.trip.quantity_loaded for x in invoice.all_sales), Decimal("0.00")),
+                "delivered_quantity": sum((x.delivered_quantity for x in invoice.all_sales), Decimal("0.00")),
                 "total_amount": invoice.total_amount,
                 "outstanding": PaymentAllocationService.get_invoice_outstanding(invoice),
                 "status": invoice.status,

@@ -168,7 +168,14 @@
       "transit": "Transit : {amount}",
       "roadTransit": "Transit routière : {amount}",
       "other": "Autres : {amount}",
-      "otherFees": "Autres frais : {amount}"
+      "otherFees": "Autres frais : {amount}",
+      "wcPdf": {
+        "open": "Télécharger en PDF",
+        "title": "Télécharger la carte en PDF",
+        "hint": "Cochez les lignes à inclure dans le PDF.",
+        "download": "Télécharger",
+        "error": "Impossible de générer le PDF."
+      }
     },
     "pipeline": {
       "supplierReliquat": "Carburant restant chez le fournisseur",
@@ -314,7 +321,8 @@
       "cessionLetterLoadCount": "{count} chargement(s) de ce camion",
       "client": "Client",
       "quantity": "Quantité",
-      "status": "Statut"
+      "status": "Statut",
+      "unitCost": "Prix de revient"
     },
     "status": {
       "ASSIGNED": "Affecté",
@@ -432,7 +440,9 @@
       "save": "Attribuer",
       "saveError": "Impossible d'attribuer ce client — vérifiez les champs et vos droits.",
       "pickTripHint": "Choisissez un trajet en stock entreprise à attribuer à un client. Il continuera ensuite son cycle normal (livraison, contrôle qualité, facturation).",
-      "noEligibleTrips": "Aucun trajet en stock entreprise sans client pour le moment."
+      "noEligibleTrips": "Aucun trajet en stock entreprise sans client pour le moment.",
+      "singleInvoiceHint": "Ces trajets seront facturés sur une seule facture (créée à la première livraison).",
+      "continue": "Continuer ({count})"
     },
     "newForm": {
       "title": "Nouveau trajet (chargement)",
@@ -637,7 +647,18 @@
       "remove": "Retirer",
       "saving": "Enregistrement…",
       "save": "Enregistrer la dépense",
-      "saveError": "Impossible d'enregistrer cette dépense — vérifiez les champs."
+      "saveError": "Impossible d'enregistrer cette dépense — vérifiez les champs.",
+      "paidByCustomersOption": "Client(s) (paiement par le client)",
+      "paidByCustomersHint": "Le client règle la dépense à notre place : le montant vient en déduction de ce qu'il nous doit. S'il ne doit rien, le montant devient une dette de l'entreprise envers lui. Aucun mouvement de banque ou de caisse.",
+      "addPayer": "Ajouter un client",
+      "removePayer": "Retirer",
+      "payerBalance": "Solde client (ce qu'il nous doit) :",
+      "payerAmount": "Montant payé par ce client",
+      "payerDeducted": "Déduit de sa créance :",
+      "payerDebt": "Dette de l'entreprise envers ce client :",
+      "payersRequired": "Sélectionnez au moins un client avec un montant.",
+      "noBankAccount": "Aucun compte bancaire — créez-en un dans « Comptes bancaires ».",
+      "noCashAccount": "Aucun compte de caisse — créez-en un dans « Comptes de caisse »."
     },
     "expenseCategoryForm": {
       "createNew": "+ Créer une nouvelle catégorie",
@@ -662,7 +683,8 @@
         "notes": "Notes",
         "status": "Statut",
         "amount": "Montant",
-        "actions": "Actions"
+        "actions": "Actions",
+        "paidBy": "Payé par"
       },
       "editExpense": "Modifier",
       "deleteExpense": "Supprimer",
@@ -675,6 +697,11 @@
         "roadTransit": "Transit routière",
         "border": "Frontière",
         "loading": "Chargement"
+      },
+      "paidVia": {
+        "customer": "Client",
+        "bank": "Banque",
+        "cash": "Caisse"
       }
     },
     "transportPayment": {
@@ -988,7 +1015,7 @@
         "periodEnd": "Fin de période",
         "totalProfit": "Bénéfice total",
         "noActiveShareholder": "Aucun actionnaire/associé actif : ajoutez-en un dans l'onglet « Associés » avant de créer une répartition.",
-        "exceedsDistributableResultWarning": "Le montant saisi dépasse le résultat distribuable calculé.",
+        "exceedsDistributableResultWarning": "Le montant saisi dépasse le bénéfice net de la période.",
         "create": "Créer la répartition",
         "period": "Période",
         "status": "Statut",
@@ -1069,12 +1096,12 @@
       },
       "preview": {
         "badge": "Indicatif",
-        "notice": "Reste disponible pour répartition (après dettes et capital)",
-        "summaryLabel": "Résultat distribuable proposé",
-        "periodProfit": "Bénéfice de la période",
-        "alreadyValidatedEngagements": "Engagements déjà validés envers les associés (toutes périodes)",
-        "remainingDistributable": "Reste disponible pour répartition",
-        "noneAvailable": "Aucun montant disponible pour le moment (des dettes ou du capital restent à couvrir)."
+        "notice": "Bénéfice à distribuer (bénéfice net après dépenses générales, moins les répartitions validées)",
+        "summaryLabel": "Bénéfice à distribuer proposé",
+        "periodProfit": "Bénéfice net après dépenses générales",
+        "alreadyValidatedEngagements": "Répartitions déjà validées",
+        "remainingDistributable": "Bénéfice à distribuer",
+        "noneAvailable": "Aucun montant disponible pour le moment (aucun bénéfice net sur la période)."
       }
     },
     "profit": {
@@ -1098,7 +1125,7 @@
       "capitalContributed": "Capital apporté",
       "companyAbsorbedLoss": "Perte supportée par l'entreprise",
       "alreadyDistributed": "Déjà réparti (non retiré)",
-      "distributableResult": "Résultat distribuable après dettes et capital",
+      "distributableResult": "Bénéfice à distribuer",
       "tripsCount": "Trajets pris en compte",
       "revenue": "Chiffre d'affaires",
       "costDisclaimer": "Ces montants détaillent les coûts utilisés dans le calcul du bénéfice opérationnel des trajets. Ils ne représentent pas les dettes ouvertes.",
@@ -1125,7 +1152,8 @@
         "unitSellingPrice": "Prix de vente/L",
         "unitProfit": "Bénéfice/L",
         "totalProfit": "Bénéfice total"
-      }
+      },
+      "distributableResultHelp": "Tous les trajets, toutes périodes, moins les répartitions déjà validées."
     }
   },
   "truckStatus": {
@@ -1367,7 +1395,12 @@
         "status": "Statut"
       },
       "noInvoices": "Aucune facture.",
-      "loadError": "Impossible de charger les factures."
+      "loadError": "Impossible de charger les factures.",
+      "bulkValidate": "Valider la sélection ({count})",
+      "bulkValidating": "Validation…",
+      "bulkValidateError": "Impossible de valider la sélection.",
+      "selectAll": "Tout sélectionner",
+      "selectionHint": "Sélection limitée aux brouillons d'un même client."
     },
     "invoiceDetail": {
       "title": "Facture {number}",
@@ -1419,7 +1452,10 @@
       "proof": "Justificatif",
       "viewProof": "Voir justificatif",
       "downloadProof": "Télécharger le justificatif",
-      "noPayments": "Aucun paiement imputé."
+      "noPayments": "Aucun paiement imputé.",
+      "trips": "Trajets de la facture",
+      "sale": "Trajet",
+      "saveLinePrice": "Enregistrer"
     },
     "saleList": {
       "title": "Ventes",

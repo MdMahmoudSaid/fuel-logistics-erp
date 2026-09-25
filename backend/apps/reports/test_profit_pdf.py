@@ -31,6 +31,8 @@ def _preview(**overrides) -> dict:
             "total": Decimal("467180000.00"),
         },
         "already_distributed": Decimal("0.00"),
+        "already_validated_in_period": Decimal("0.00"),
+        "result_after_debts_and_capital": Decimal("385937000.00"),
         "distributable_result": Decimal("385937000.00"),
         "shareholders": [],
     }
@@ -133,7 +135,7 @@ def test_render_profit_report_pdf_handles_negative_distributable_result():
     # Losses/large debts can push distributable_result negative - the
     # money formatter must handle a negative Decimal without crashing.
     pdf_bytes = render_profit_report_pdf(
-        preview=_preview(distributable_result=Decimal("-1500000.00")),
+        preview=_preview(result_after_debts_and_capital=Decimal("-1500000.00")),
         other_debts_breakdown=_other_debts_breakdown(),
         rows=[_margin_row(current_margin=Decimal("-200000.00"), unit_profit=Decimal("-4.44"))],
         lang="fr",

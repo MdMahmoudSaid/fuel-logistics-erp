@@ -3900,3 +3900,200 @@ def test_api_status_skip_returns_traversed_statuses_and_refuses_form_only_target
 
     refused = client.post(f"/api/trips/{trip.id}/status/", {"new_status": "DELIVERED"})
     assert refused.status_code == 400
+
+
+# --- Multi-trip invoice (client request 2026-09-25) ---
+
+
+def _deliver(fx, trip, price="700.0000", qty=None):
+    return DeliveryService.record_delivery(
+        trip_id=trip.id,
+        received_qty=qty,
+        control_date="2026-08-18",
+        method=DeliveryControl.Method.MANUAL_GAUGE,
+        controller=fx["admin_user"],
+        unit_selling_price=Decimal(price),
+    )
+
+
+@pytest.mark.django_db
+def test_grouped_trips_are_billed_on_a_single_invoice():
+    fx = _fixtures_with_customer("GRP-ONE-INV")
+    t1 = _deliverable_trip(fx, "TRIP-GRP-1")
+    t2 = _deliverable_trip(fx, "TRIP-GRP-2", quantity=Decimal("30000.00"))
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+
+    resp = client.post(
+        "/api/trips/assign-customers/",
+        {"customer": fx["customer"].id, "trips": [t1.id, t2.id]},
+        format="json",
+    )
+    assert resp.status_code == 200, resp.data
+    t1.refresh_from_db()
+    t2.refresh_from_db()
+    assert t1.invoice_group and t1.invoice_group == t2.invoice_group
+
+    _deliver(fx, t1)
+    # Nothing is invoiced while a trip of the group is still undelivered.
+    assert Invoice.objects.count() == 0
+    assert Sale.objects.filter(trip=t1).exists()
+    _deliver(fx, t2, price="800.0000")
+
+    assert Invoice.objects.count() == 1
+    invoice = Invoice.objects.get()
+    assert invoice.sale.trip_id == t1.id
+    assert [s.trip_id for s in invoice.all_sales] == [t1.id, t2.id]
+    assert invoice.total_amount == Decimal("45000.00") * Decimal("700") + Decimal(
+        "30000.00"
+    ) * Decimal("800")
+
+    data = client.get(f"/api/invoices/{invoice.id}/").data
+    assert len(data["sales_detail"]) == 2
+
+    # Price edit on a grouped invoice needs the target sale.
+    r = client.post(
+        f"/api/invoices/{invoice.id}/update-price/",
+        {"unit_selling_price": "900"},
+        format="json",
+    )
+    assert r.status_code == 400
+    r = client.post(
+        f"/api/invoices/{invoice.id}/update-price/",
+        {"unit_selling_price": "900", "sale": t2.sale.id},
+        format="json",
+    )
+    assert r.status_code == 200, r.data
+    invoice.refresh_from_db()
+    assert invoice.total_amount == Decimal("45000.00") * 700 + Decimal("30000.00") * 900
+
+    # Client verification of the grouped (2nd) trip adjusts the shared invoice.
+    DeliveryService.record_client_verification(
+        t2.id, Decimal("29000.00"), date(2026, 8, 19), fx["admin_user"]
+    )
+    invoice.refresh_from_db()
+    assert invoice.total_amount == Decimal("45000.00") * 700 + Decimal("29000.00") * 900
+
+
+@pytest.mark.django_db
+def test_group_invoice_waits_for_every_trip_and_is_never_created_partial():
+    fx = _fixtures_with_customer("GRP-WAIT")
+    trips = [_deliverable_trip(fx, f"TRIP-GRPW-{i}") for i in range(3)]
+    TripCostService.assign_customers_group_for_sale(
+        [t.id for t in trips], fx["customer"].id, fx["admin_user"]
+    )
+
+    _deliver(fx, trips[0])
+    _deliver(fx, trips[1])
+    assert Invoice.objects.count() == 0  # third trip still undelivered
+
+    _deliver(fx, trips[2])
+    assert Invoice.objects.count() == 1
+    invoice = Invoice.objects.get()
+    assert len(invoice.all_sales) == 3
+    assert invoice.status == Invoice.Status.DRAFT
+    assert invoice.total_amount == Decimal("45000.00") * 700 * 3
+
+
+@pytest.mark.django_db
+def test_cancelling_the_last_waiting_trip_bills_the_delivered_ones():
+    fx = _fixtures_with_customer("GRP-CANCEL")
+    t1 = _deliverable_trip(fx, "TRIP-GRPC-1")
+    t2 = _deliverable_trip(fx, "TRIP-GRPC-2")
+    TripCostService.assign_customers_group_for_sale(
+        [t1.id, t2.id], fx["customer"].id, fx["admin_user"]
+    )
+    _deliver(fx, t1)
+    assert Invoice.objects.count() == 0
+
+    TripWorkflowService.transition_trip(t2.id, Trip.Status.CANCELLED, fx["admin_user"])
+
+    assert Invoice.objects.count() == 1
+    invoice = Invoice.objects.get()
+    assert [s.trip_id for s in invoice.all_sales] == [t1.id]
+    assert invoice.total_amount == Decimal("45000.00") * 700
+
+
+@pytest.mark.django_db
+def test_ungrouped_trip_is_still_invoiced_immediately():
+    fx = _fixtures_with_customer("GRP-SINGLE")
+    t1 = _deliverable_trip(fx, "TRIP-GRPSG-1")
+    _deliver(fx, t1)
+    assert Invoice.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_assign_customers_rejects_trip_with_existing_sale():
+    fx = _fixtures_with_customer("GRP-SOLD")
+    t1 = _deliverable_trip(fx, "TRIP-GRPS-1")
+    t2 = _deliverable_trip(fx, "TRIP-GRPS-2")
+    _deliver(fx, t1)
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+    resp = client.post(
+        "/api/trips/assign-customers/",
+        {"customer": fx["customer"].id, "trips": [t1.id, t2.id]},
+        format="json",
+    )
+    assert resp.status_code == 400
+    t2.refresh_from_db()
+    assert t2.invoice_group == ""
+
+
+@pytest.mark.django_db
+def test_bulk_validate_invoices_same_customer_and_rejects_mixed_customers():
+    fx = _fixtures_with_customer("BULK-VAL")
+    t1 = _deliverable_trip(fx, "TRIP-BV-1")
+    t2 = _deliverable_trip(fx, "TRIP-BV-2")
+    _deliver(fx, t1)
+    _deliver(fx, t2)
+    other = Customer.objects.create(name="Autre client")
+    t3 = _deliverable_trip(fx, "TRIP-BV-3")
+    t3.client = other
+    t3.save(update_fields=["client"])
+    _deliver(fx, t3)
+    ids = list(Invoice.objects.filter(sale__customer=fx["customer"]).values_list("id", flat=True))
+    other_id = Invoice.objects.get(sale__customer=other).id
+
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+    bad = client.post("/api/invoices/bulk-validate/", {"invoices": ids + [other_id]}, format="json")
+    assert bad.status_code == 400
+    assert Invoice.objects.filter(status=Invoice.Status.VALIDATED).count() == 0
+
+    ok = client.post("/api/invoices/bulk-validate/", {"invoices": ids}, format="json")
+    assert ok.status_code == 200, ok.data
+    assert Invoice.objects.filter(status=Invoice.Status.VALIDATED).count() == 2
+
+    again = client.post("/api/invoices/bulk-validate/", {"invoices": ids}, format="json")
+    assert again.status_code == 400
+
+
+@pytest.mark.django_db
+def test_trip_api_exposes_unit_cost_starting_at_supplier_price_then_growing_with_expenses():
+    fx = _setup_fixtures("API-UNITCOST")
+    fx["supplier_order"].unit_price = Decimal("600.0000")
+    fx["supplier_order"].save(update_fields=["unit_price"])
+    trip = _make_trip(fx, _make_truck("TRK-API-UC"), "TRIP-API-UC-001", quantity=Decimal("40000.00"))
+    client = APIClient()
+    client.force_authenticate(fx["admin_user"])
+
+    # Before any fee: the supplier's purchase price per litre.
+    assert client.get(f"/api/trips/{trip.id}/").data["unit_cost"] == "600.0000"
+
+    expense = Expense.objects.create(
+        category=Expense.Category.CUSTOMS,
+        amount=Decimal("1200000.00"),
+        calculation_method=Expense.CalculationMethod.MANUAL,
+        date="2026-08-18",
+    )
+    ExpenseAllocation.objects.create(
+        expense=expense,
+        content_type=ContentType.objects.get_for_model(Trip),
+        object_id=trip.id,
+        allocated_amount=Decimal("1200000.00"),
+    )
+
+    # 1 200 000 / 40 000 L = +30 per litre, live on the very next read.
+    listed = client.get("/api/trips/").data["results"]
+    assert next(t for t in listed if t["id"] == trip.id)["unit_cost"] == "630.0000"

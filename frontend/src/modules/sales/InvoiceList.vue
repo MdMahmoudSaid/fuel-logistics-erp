@@ -6,7 +6,9 @@ import AppAlert from '@/components/ui/AppAlert.vue'
 import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { invoiceResource } from './api'
+import { invoiceResource, validateInvoices } from './api'
+import { translateApiError } from '@/i18n/apiErrors'
+import { useAuthStore } from '@/stores/auth'
 import { formatMoney } from '@/utils/currency'
 import type { Invoice, InvoiceStatus } from './types'
 import Badge from '@/components/ui/Badge.vue'
@@ -24,6 +26,71 @@ const loading = ref(false)
 const error = ref('')
 const statusFilter = ref<InvoiceStatus | ''>('')
 const showPaymentModal = ref(false)
+const auth = useAuthStore()
+const canValidate = computed(() => auth.can('sales', 'validate'))
+
+// Bulk validation: DRAFT invoices of ONE customer, ticked from the list.
+const customerFilter = ref('')
+const selectedIds = ref<number[]>([])
+const bulkValidating = ref(false)
+const bulkError = ref('')
+
+const customerOptions = computed(() => {
+  const seen = new Map<number, string>()
+  for (const invoice of invoices.value) {
+    const customer = invoice.sale_detail?.customer_detail
+    if (customer) seen.set(customer.id, customer.name)
+  }
+  return [...seen.entries()].map(([id, name]) => ({ id, name }))
+})
+const visibleInvoices = computed(() =>
+  customerFilter.value
+    ? invoices.value.filter(
+        (invoice) => String(invoice.sale_detail?.customer_detail?.id) === customerFilter.value,
+      )
+    : invoices.value,
+)
+const selectedCustomerId = computed(
+  () =>
+    invoices.value.find((invoice) => invoice.id === selectedIds.value[0])?.sale_detail
+      ?.customer_detail?.id ?? null,
+)
+function canSelect(invoice: Invoice) {
+  return (
+    invoice.status === 'DRAFT' &&
+    (selectedCustomerId.value === null ||
+      invoice.sale_detail?.customer_detail?.id === selectedCustomerId.value)
+  )
+}
+const selectableVisible = computed(() =>
+  visibleInvoices.value.filter((invoice) => invoice.status === 'DRAFT'),
+)
+const allVisibleSelected = computed(
+  () =>
+    !!customerFilter.value &&
+    selectableVisible.value.length > 0 &&
+    selectableVisible.value.every((invoice) => selectedIds.value.includes(invoice.id)),
+)
+function toggleAllVisible() {
+  selectedIds.value = allVisibleSelected.value ? [] : selectableVisible.value.map((i) => i.id)
+}
+function onCustomerFilterChange() {
+  selectedIds.value = []
+}
+async function onBulkValidate() {
+  bulkValidating.value = true
+  bulkError.value = ''
+  try {
+    await validateInvoices(selectedIds.value)
+    selectedIds.value = []
+    await loadInvoices()
+  } catch (e) {
+    const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+    bulkError.value = translateApiError(detail) || t('sales.invoiceList.bulkValidateError')
+  } finally {
+    bulkValidating.value = false
+  }
+}
 const paymentCustomerId = ref<number | null>(null)
 
 const invoiceSummary = computed(() => {
@@ -91,9 +158,23 @@ function badgeVariant(status: string) {
       <h1 class="font-display text-2xl leading-none font-semibold uppercase">
         {{ t('sales.invoiceList.title') }}
       </h1>
-      <Button variant="primary" @click="openPaymentModal">
-        {{ t('sales.invoiceList.newPayment') }}
-      </Button>
+      <div class="flex gap-2">
+        <Button
+          v-if="canValidate && selectedIds.length"
+          data-test="bulk-validate"
+          :disabled="bulkValidating"
+          @click="onBulkValidate"
+        >
+          {{
+            bulkValidating
+              ? t('sales.invoiceList.bulkValidating')
+              : t('sales.invoiceList.bulkValidate', { count: selectedIds.length })
+          }}
+        </Button>
+        <Button variant="primary" @click="openPaymentModal">
+          {{ t('sales.invoiceList.newPayment') }}
+        </Button>
+      </div>
     </div>
 
     <div class="flex flex-wrap gap-3">
@@ -108,6 +189,16 @@ function badgeVariant(status: string) {
         <option value="PARTIALLY_PAID">{{ t('invoiceStatus.PARTIALLY_PAID') }}</option>
         <option value="PAID">{{ t('invoiceStatus.PAID') }}</option>
         <option value="CANCELLED">{{ t('invoiceStatus.CANCELLED') }}</option>
+      </select>
+      <select
+        v-model="customerFilter"
+        class="border-ligne-forte h-11 rounded-lg border bg-white px-3 text-sm"
+        @change="onCustomerFilterChange"
+      >
+        <option value="">{{ t('sales.saleList.allCustomers') }}</option>
+        <option v-for="c in customerOptions" :key="c.id" :value="String(c.id)">
+          {{ c.name }}
+        </option>
       </select>
     </div>
 
@@ -135,12 +226,24 @@ function badgeVariant(status: string) {
     </div>
 
     <AppAlert v-if="error" :message="error" />
+    <AppAlert v-if="bulkError" :message="bulkError" />
 
     <div class="border-ligne overflow-x-auto rounded-xl border bg-white">
       <table class="w-full text-left text-sm">
         <thead>
           <tr class="border-ligne text-texte-2 border-b">
-            <th class="px-3 py-2.5 font-medium">{{ t('sales.invoiceList.table.invoiceNumber') }}</th>
+            <th v-if="canValidate" class="w-10 px-3 py-2.5">
+              <input
+                type="checkbox"
+                :checked="allVisibleSelected"
+                :disabled="!customerFilter || !selectableVisible.length"
+                :title="t('sales.invoiceList.selectionHint')"
+                @change="toggleAllVisible"
+              />
+            </th>
+            <th class="px-3 py-2.5 font-medium">
+              {{ t('sales.invoiceList.table.invoiceNumber') }}
+            </th>
             <th class="px-3 py-2.5 font-medium">{{ t('sales.invoiceList.table.customer') }}</th>
             <th class="px-3 py-2.5 text-right font-medium">
               {{ t('sales.invoiceList.table.total') }}
@@ -154,11 +257,20 @@ function badgeVariant(status: string) {
         </thead>
         <tbody>
           <tr
-            v-for="invoice in invoices"
+            v-for="invoice in visibleInvoices"
             :key="invoice.id"
             class="border-ligne hover:bg-sable cursor-pointer border-b last:border-0"
             @click="goToDetail(invoice)"
           >
+            <td v-if="canValidate" class="px-3 py-2.5" @click.stop>
+              <input
+                v-model="selectedIds"
+                type="checkbox"
+                :value="invoice.id"
+                :disabled="!canSelect(invoice)"
+                :title="t('sales.invoiceList.selectionHint')"
+              />
+            </td>
             <td class="px-3 py-2.5"><MonoValue :value="invoice.invoice_number" align="left" /></td>
             <td class="px-3 py-2.5">{{ invoice.sale_detail?.customer_detail?.name }}</td>
             <td class="px-3 py-2.5 text-right">
@@ -178,8 +290,8 @@ function badgeVariant(status: string) {
             </td>
             <td class="px-3 py-2.5">Détail / paiement</td>
           </tr>
-          <tr v-if="!loading && invoices.length === 0">
-            <td colspan="8" class="text-texte-3 px-3 py-8 text-center">
+          <tr v-if="!loading && visibleInvoices.length === 0">
+            <td :colspan="canValidate ? 9 : 8" class="text-texte-3 px-3 py-8 text-center">
               {{ t('sales.invoiceList.noInvoices') }}
             </td>
           </tr>

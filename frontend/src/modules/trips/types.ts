@@ -158,6 +158,9 @@ export interface Trip {
   product: number
   product_detail: ProductBrief | null
   quantity_loaded: string
+  // Prix de revient / L: supplier purchase price, then + transport commission
+  // and trip expenses as they are added (live, backend TripCostService).
+  unit_cost?: string
   client: number | null
   client_detail: CustomerBrief | null
   customer_order: number | null

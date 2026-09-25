@@ -168,7 +168,14 @@
       "transit": "Transit: {amount}",
       "roadTransit": "Road transit: {amount}",
       "other": "Other: {amount}",
-      "otherFees": "Other fees: {amount}"
+      "otherFees": "Other fees: {amount}",
+      "wcPdf": {
+        "open": "Download as PDF",
+        "title": "Download the card as PDF",
+        "hint": "Tick the lines to include in the PDF.",
+        "download": "Download",
+        "error": "Could not generate the PDF."
+      }
     },
     "pipeline": {
       "supplierReliquat": "Fuel still at the supplier",
@@ -313,7 +320,8 @@
       "cessionLetterLoadCount": "{count} load(s) by this truck",
       "client": "Client",
       "quantity": "Quantity",
-      "status": "Status"
+      "status": "Status",
+      "unitCost": "Cost price"
     },
     "status": {
       "ASSIGNED": "Assigned",
@@ -431,7 +439,9 @@
       "save": "Assign",
       "saveError": "Could not assign this customer — check the fields and your permissions.",
       "pickTripHint": "Pick a company-stock trip to assign to a customer. It will then continue its normal cycle (delivery, quality control, invoicing).",
-      "noEligibleTrips": "No company-stock trip without a customer right now."
+      "noEligibleTrips": "No company-stock trip without a customer right now.",
+      "singleInvoiceHint": "These trips will be billed on a single invoice (created at the first delivery).",
+      "continue": "Continue ({count})"
     },
     "newForm": {
       "title": "New Trip (Loading)",
@@ -635,7 +645,18 @@
       "remove": "Remove",
       "saving": "Saving…",
       "save": "Save expense",
-      "saveError": "Could not save this expense — check the fields."
+      "saveError": "Could not save this expense — check the fields.",
+      "paidByCustomersOption": "Customer(s) (paid by the customer)",
+      "paidByCustomersHint": "The customer settles the expense on our behalf: the amount comes off what he owes us. If he owes nothing, it becomes a company debt towards him. No bank or cash movement.",
+      "addPayer": "Add a customer",
+      "removePayer": "Remove",
+      "payerBalance": "Customer balance (what he owes us):",
+      "payerAmount": "Amount paid by this customer",
+      "payerDeducted": "Deducted from his receivable:",
+      "payerDebt": "Company debt towards this customer:",
+      "payersRequired": "Select at least one customer with an amount.",
+      "noBankAccount": "No bank account — create one in \"Bank accounts\".",
+      "noCashAccount": "No cash account — create one in \"Cash accounts\"."
     },
     "expenseCategoryForm": {
       "createNew": "+ Create a new category",
@@ -660,7 +681,8 @@
         "notes": "Notes",
         "status": "Status",
         "amount": "Amount",
-        "actions": "Actions"
+        "actions": "Actions",
+        "paidBy": "Paid by"
       },
       "editExpense": "Edit",
       "deleteExpense": "Delete",
@@ -673,6 +695,11 @@
         "roadTransit": "Road transit",
         "border": "Border",
         "loading": "Loading"
+      },
+      "paidVia": {
+        "customer": "Customer",
+        "bank": "Bank",
+        "cash": "Cash"
       }
     },
     "transportPayment": {
@@ -986,7 +1013,7 @@
         "periodEnd": "Period end",
         "totalProfit": "Total profit",
         "noActiveShareholder": "No active shareholder/associate: add one in the \"Associates\" tab before creating a distribution.",
-        "exceedsDistributableResultWarning": "The entered amount exceeds the calculated distributable result.",
+        "exceedsDistributableResultWarning": "The entered amount exceeds the net profit of the period.",
         "create": "Create distribution",
         "period": "Period",
         "status": "Status",
@@ -1067,12 +1094,12 @@
       },
       "preview": {
         "badge": "Indicative",
-        "notice": "Amount still available for distribution (after debts and capital)",
-        "summaryLabel": "Suggested distributable result",
-        "periodProfit": "Profit for the period",
-        "alreadyValidatedEngagements": "Engagements already validated to shareholders (all periods)",
-        "remainingDistributable": "Still available for distribution",
-        "noneAvailable": "Nothing available for distribution right now (open debts or capital still need to be covered)."
+        "notice": "Profit left to distribute (net profit after general expenses, minus validated distributions)",
+        "summaryLabel": "Proposed profit to distribute",
+        "periodProfit": "Net profit after general expenses",
+        "alreadyValidatedEngagements": "Distributions already validated",
+        "remainingDistributable": "Profit left to distribute",
+        "noneAvailable": "Nothing available for now (no net profit on the period)."
       }
     },
     "profit": {
@@ -1096,7 +1123,7 @@
       "capitalContributed": "Capital contributed",
       "companyAbsorbedLoss": "Loss absorbed by the company",
       "alreadyDistributed": "Already distributed (not withdrawn)",
-      "distributableResult": "Distributable result after debts and capital",
+      "distributableResult": "Profit left to distribute",
       "tripsCount": "Trips counted",
       "revenue": "Revenue",
       "costDisclaimer": "These amounts detail the costs used in the trip operational profit calculation. They do not represent open debts.",
@@ -1123,7 +1150,8 @@
         "unitSellingPrice": "Selling price/L",
         "unitProfit": "Profit/L",
         "totalProfit": "Total profit"
-      }
+      },
+      "distributableResultHelp": "All trips, all periods, minus distributions already validated."
     }
   },
   "truckStatus": {
@@ -1363,7 +1391,12 @@
         "status": "Status"
       },
       "noInvoices": "No invoices yet.",
-      "loadError": "Could not load invoices."
+      "loadError": "Could not load invoices.",
+      "bulkValidate": "Validate selection ({count})",
+      "bulkValidating": "Validating…",
+      "bulkValidateError": "Could not validate the selection.",
+      "selectAll": "Select all",
+      "selectionHint": "Selection is limited to one customer's drafts."
     },
     "invoiceDetail": {
       "title": "Invoice {number}",
@@ -1415,7 +1448,10 @@
       "proof": "Proof",
       "viewProof": "View proof",
       "downloadProof": "Download proof",
-      "noPayments": "No allocated payments."
+      "noPayments": "No allocated payments.",
+      "trips": "Invoice trips",
+      "sale": "Trip",
+      "saveLinePrice": "Save"
     },
     "saleList": {
       "title": "Sales",

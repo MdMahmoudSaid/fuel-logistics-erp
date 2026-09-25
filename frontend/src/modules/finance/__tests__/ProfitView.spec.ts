@@ -33,6 +33,7 @@ describe('ProfitView', () => {
       operational_profit: '900000.00',
       general_expenses_paid: '150000.00',
       net_profit: '750000.00',
+      all_time_net_profit: '750000.00',
       total_company_absorbed_loss: '0.00',
       working_capital: {
         capital: '100000.00',
@@ -51,8 +52,10 @@ describe('ProfitView', () => {
       },
       // No distributions committed in this fixture's scenario.
       already_distributed: '0.00',
+      already_validated_total: '0.00',
       // distributable_result = total (1100000) - debts (350000) - capital (100000) = 650000
-      distributable_result: '650000.00',
+      result_after_debts_and_capital: '650000.00',
+      distributable_result: '750000.00',
       shareholders: [],
     })
     fetchReport.mockResolvedValue({
@@ -150,11 +153,11 @@ describe('ProfitView', () => {
 
     const distributableResultCard = wrapper.find('[data-test="profit-distributable-result-card"]')
     expect(distributableResultCard.exists()).toBe(true)
-    expect(distributableResultCard.text()).toContain(
-      'Résultat distribuable après dettes et capital',
-    )
-    expect(distributableResultCard.text()).toContain('650 000 XOF')
-  })
+    // 2026-09-25: this card is the profit still left to distribute (net
+    // profit minus validated distributions), not the debts/capital figure.
+    expect(distributableResultCard.text()).toContain('Bénéfice à distribuer')
+    expect(distributableResultCard.text()).toContain('750 000 XOF')
+      })
 
   // Final whole-branch review (2026-09-08, Fix 2a): distributable_result
   // now silently nets out already_distributed (money already committed to
@@ -169,6 +172,7 @@ describe('ProfitView', () => {
       operational_profit: '900000.00',
       general_expenses_paid: '150000.00',
       net_profit: '750000.00',
+      all_time_net_profit: '750000.00',
       total_company_absorbed_loss: '0.00',
       working_capital: {
         capital: '100000.00',
@@ -184,7 +188,9 @@ describe('ProfitView', () => {
         total: '1100000.00',
       },
       already_distributed: '75000.00',
-      distributable_result: '575000.00',
+      already_validated_total: '0.00',
+      result_after_debts_and_capital: '575000.00',
+      distributable_result: '750000.00',
       shareholders: [],
     })
 

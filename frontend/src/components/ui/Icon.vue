@@ -32,6 +32,7 @@ export type IconName =
   | 'more-horizontal'
   | 'eye'
   | 'eye-off'
+  | 'download'
 
 withDefaults(defineProps<{ name: IconName; size?: number }>(), { size: 20 })
 </script>
@@ -162,6 +163,11 @@ withDefaults(defineProps<{ name: IconName; size?: number }>(), { size: 20 })
       <path d="M6.6 6.6C3.8 8.4 2 12 2 12s3.5 7 10 7c1.7 0 3.2-.5 4.5-1.2" />
       <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
       <path d="M3 3l18 18" />
+    </g>
+    <g v-else-if="name === 'download'">
+      <path d="M12 4v11" />
+      <path d="M7.5 11 12 15.5 16.5 11" />
+      <path d="M4 19h16" />
     </g>
     <g v-else-if="name === 'more-horizontal'">
       <circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none" />

@@ -87,7 +87,7 @@ class SaleViewSet(viewsets.ModelViewSet):
 class InvoiceViewSet(viewsets.ModelViewSet):
     queryset = (
         Invoice.objects.select_related("sale", "sale__customer")
-        .prefetch_related("corrections")
+        .prefetch_related("corrections", "extra_sales")
         .all()
     )
     serializer_class = InvoiceSerializer
@@ -145,10 +145,32 @@ class InvoiceViewSet(viewsets.ModelViewSet):
                 status=http_status.HTTP_400_BAD_REQUEST,
             )
         try:
-            invoice = InvoiceService.update_draft_pricing(invoice.id, unit_selling_price)
+            invoice = InvoiceService.update_draft_pricing(
+                invoice.id, unit_selling_price, request.data.get("sale")
+            )
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=http_status.HTTP_400_BAD_REQUEST)
         return Response(InvoiceSerializer(invoice, context={"request": request}).data)
+
+    @action(detail=False, methods=["post"], url_path="bulk-validate")
+    def bulk_validate(self, request):
+        """Validate several DRAFT invoices of one customer at once.
+
+        POST /api/invoices/bulk-validate/  body: {invoices: [ids]}
+        """
+        ids = request.data.get("invoices")
+        if not isinstance(ids, list) or not ids:
+            return Response(
+                {"detail": "invoices (liste d'identifiants) est requis."},
+                status=http_status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            invoices = InvoiceService.validate_invoices([int(i) for i in ids], request.user)
+        except (ValueError, TypeError) as exc:
+            return Response({"detail": str(exc)}, status=http_status.HTTP_400_BAD_REQUEST)
+        return Response(
+            InvoiceSerializer(invoices, many=True, context={"request": request}).data
+        )
 
     @action(detail=True, methods=["post"])
     def validate(self, request, pk=None):
@@ -181,7 +203,8 @@ class InvoiceViewSet(viewsets.ModelViewSet):
 
         try:
             invoice = InvoiceService.correct_invoice(
-                invoice.id, field, new_value, reason, request.user
+                invoice.id, field, new_value, reason, request.user,
+                sale_id=request.data.get("sale"),
             )
         except ValueError as exc:
             # Covers InvoiceNotValidated / UnsupportedCorrectionField (both

@@ -110,6 +110,7 @@ describe('ShareholderView', () => {
       operational_profit: '850000.00',
       general_expenses_paid: '100000.00',
       net_profit: '750000.00',
+      all_time_net_profit: '750000.00',
       working_capital: {
         capital: '250000.00',
         treasury_available: '600000.00',
@@ -124,6 +125,8 @@ describe('ShareholderView', () => {
         total: '750000.00',
       },
       already_distributed: '0.00',
+      already_validated_total: '0.00',
+      result_after_debts_and_capital: '0.00',
       distributable_result: '500000.00',
       shareholders: [
         {
@@ -194,7 +197,7 @@ describe('ShareholderView', () => {
     expect(banner!.text()).toContain('400 000 XOF')
     // net_profit appears, but only against its own label.
     const breakdown = wrapper.find('[data-test="preview-breakdown"]')
-    expect(breakdown.text()).toContain('Bénéfice de la période')
+    expect(breakdown.text()).toContain('Bénéfice net après dépenses générales')
     expect(breakdown.text()).toContain('750 000 XOF')
   })
 
@@ -210,6 +213,7 @@ describe('ShareholderView', () => {
       operational_profit: '850000.00',
       general_expenses_paid: '100000.00',
       net_profit: '750000.00',
+      all_time_net_profit: '750000.00',
       working_capital: {
         capital: '250000.00',
         treasury_available: '600000.00',
@@ -224,6 +228,8 @@ describe('ShareholderView', () => {
         total: '750000.00',
       },
       already_distributed: '100000.00',
+      already_validated_total: '100000.00',
+      result_after_debts_and_capital: '0.00',
       distributable_result: '400000.00',
       shareholders: [
         {
@@ -251,9 +257,9 @@ describe('ShareholderView', () => {
 
     const breakdown = wrapper.find('[data-test="preview-breakdown"]')
     expect(breakdown.exists()).toBe(true)
-    expect(breakdown.text()).toContain('Bénéfice de la période')
-    expect(breakdown.text()).toContain('Engagements déjà validés envers les associés')
-    expect(breakdown.text()).toContain('Reste disponible pour répartition')
+    expect(breakdown.text()).toContain('Bénéfice net après dépenses générales')
+    expect(breakdown.text()).toContain('Répartitions déjà validées')
+    expect(breakdown.text()).toContain('Bénéfice à distribuer')
     // default preview mock: net_profit 750 000, already_distributed 0,
     // distributable_result 500 000
     expect(breakdown.text()).toContain('750 000 XOF')
@@ -359,7 +365,7 @@ describe('ShareholderView', () => {
 
     expect(wrapper.find('[data-test="distribution-exceeds-warning"]').exists()).toBe(false)
     expect(wrapper.text()).not.toContain(
-      'Le montant saisi dépasse le résultat distribuable calculé.',
+      'Le montant saisi dépasse le bénéfice net de la période.',
     )
 
     // 500000 is the distributable_result - entering more than that must
@@ -372,7 +378,7 @@ describe('ShareholderView', () => {
     const warning = wrapper.find('[data-test="distribution-exceeds-warning"]')
     expect(warning.exists()).toBe(true)
     expect(warning.text()).toContain(
-      'Le montant saisi dépasse le résultat distribuable calculé.',
+      'Le montant saisi dépasse le bénéfice net de la période.',
     )
     // Submission must still be possible - the warning does not block it.
     expect(wrapper.find('button[type="submit"]').attributes('disabled')).toBeUndefined()
@@ -467,6 +473,7 @@ describe('ShareholderView', () => {
       operational_profit: '0.00',
       general_expenses_paid: '0.00',
       net_profit: '0.00',
+      all_time_net_profit: '0.00',
       working_capital: {
         capital: '32800000.00',
         treasury_available: '0.00',
@@ -481,6 +488,8 @@ describe('ShareholderView', () => {
         total: '532800000.00',
       },
       already_distributed: '0.00',
+      already_validated_total: '0.00',
+      result_after_debts_and_capital: '0.00',
       distributable_result: '-32800000.00',
       shareholders: [
         {
@@ -627,7 +636,7 @@ describe('ShareholderView', () => {
 
     expect(english.text()).toContain('Summary')
     expect(english.text()).toContain('Associates')
-    expect(english.text()).toContain('Suggested distributable result')
+    expect(english.text()).toContain('Proposed profit to distribute')
     expect(english.text()).not.toContain('Résumé')
     expect(english.text()).not.toContain('Résultat distribuable proposé')
 
@@ -638,7 +647,7 @@ describe('ShareholderView', () => {
 
     expect(arabic.text()).toContain('ملخص')
     expect(arabic.text()).toContain('الشركاء')
-    expect(arabic.text()).toContain('النتيجة المقترحة للتوزيع')
+    expect(arabic.text()).toContain('الربح المقترح للتوزيع')
     expect(arabic.text()).not.toContain('Résumé')
     expect(arabic.text()).not.toContain('Résultat distribuable proposé')
   })
@@ -822,6 +831,7 @@ describe('ShareholderView', () => {
           period_end: '2026-07-31',
           total_profit: '900000.00',
           status: 'DRAFT',
+          available_to_distribute: '500000.00',
           shares: [],
         },
       ],
@@ -855,6 +865,7 @@ describe('ShareholderView', () => {
           period_end: '2026-07-31',
           total_profit: '100000.00',
           status: 'DRAFT',
+          available_to_distribute: '500000.00',
           shares: [],
         },
       ],

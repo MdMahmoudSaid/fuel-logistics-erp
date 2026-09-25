@@ -160,7 +160,9 @@ class PaymentAllocationService:
         elif outstanding < invoice.total_amount:
             target = Invoice.Status.PARTIALLY_PAID
         else:
-            target = invoice.status
+            # Nothing (left) paid: also the way back once every allocation
+            # was reversed (e.g. a cancelled customer-paid expense).
+            target = Invoice.Status.VALIDATED
 
         if target != invoice.status:
             invoice.status = target
@@ -175,7 +177,9 @@ class IndirectSettlementService:
 
     @staticmethod
     @transaction.atomic
-    def record_indirect_payment(customer_id, expense_data: dict, actor, invoice_id=None):
+    def record_indirect_payment(
+        customer_id, expense_data: dict, actor, invoice_id=None, auto_allocate=False
+    ):
         from apps.customers.models import Customer
 
         customer = Customer.objects.select_for_update().get(pk=customer_id)
@@ -214,16 +218,83 @@ class IndirectSettlementService:
             recorded_by=actor,
         )
 
-        allocation = PaymentAllocation.objects.create(
-            payment=payment, invoice=invoice, amount=expense.amount
-        )
-        if invoice is not None:
-            PaymentAllocationService._sync_invoice_status(invoice)
+        if auto_allocate:
+            allocation = IndirectSettlementService._allocate_oldest_first(
+                payment, customer, expense.amount
+            )
+        else:
+            allocation = PaymentAllocation.objects.create(
+                payment=payment, invoice=invoice, amount=expense.amount
+            )
+            if invoice is not None:
+                PaymentAllocationService._sync_invoice_status(invoice)
 
         expense.indirect_settlement_payment = payment
         expense.save(update_fields=["indirect_settlement_payment", "updated_at"])
 
         return expense, payment, allocation
+
+
+    @staticmethod
+    def _allocate_oldest_first(payment, customer, amount):
+        """The client's payment first reduces what he owes: his open
+        (validated / partially paid) invoices, oldest first; whatever is
+        left once he owes nothing more stays an unallocated credit - i.e. a
+        debt of the company towards him. Returns the first allocation."""
+        open_invoices = (
+            Invoice.objects.select_for_update()
+            .filter(
+                sale__customer=customer,
+                status__in=(Invoice.Status.VALIDATED, Invoice.Status.PARTIALLY_PAID),
+            )
+            .order_by("issued_date", "id")
+        )
+        remaining = amount
+        allocations = []
+        for invoice in open_invoices:
+            if remaining <= ZERO:
+                break
+            outstanding = PaymentAllocationService.get_invoice_outstanding(invoice)
+            if outstanding <= ZERO:
+                continue
+            portion = min(outstanding, remaining)
+            allocations.append(
+                PaymentAllocation.objects.create(payment=payment, invoice=invoice, amount=portion)
+            )
+            PaymentAllocationService._sync_invoice_status(invoice)
+            remaining -= portion
+        if remaining > ZERO:
+            allocations.append(
+                PaymentAllocation.objects.create(payment=payment, invoice=None, amount=remaining)
+            )
+        return allocations[0]
+
+    @staticmethod
+    @transaction.atomic
+    def record_customer_paid_expenses(payers: list[dict], expense_data: dict, actor) -> list:
+        """One general expense paid by one or several customers on the
+        company's behalf (client request 2026-09-25): each payer's amount is
+        deducted from what he owes; with no balance left, the amount becomes
+        a company debt towards him. One Expense per payer (each reversible
+        on its own), all or nothing. `payers`: [{"customer_id", "amount"}]."""
+        if not payers:
+            raise ValueError("Selectionnez au moins un client.")
+        if len({p["customer_id"] for p in payers}) != len(payers):
+            raise ValueError("Un client ne peut apparaitre qu'une seule fois.")
+        results = []
+        for payer in payers:
+            amount = Decimal(str(payer["amount"]))
+            if amount <= ZERO:
+                raise ValueError("Le montant paye par chaque client doit etre positif.")
+            results.append(
+                IndirectSettlementService.record_indirect_payment(
+                    customer_id=payer["customer_id"],
+                    expense_data={**expense_data, "amount": amount},
+                    actor=actor,
+                    auto_allocate=True,
+                )
+            )
+        return results
 
 
 class ExpenseCancellationError(ValueError):
@@ -259,15 +330,16 @@ class ExpensePostingService:
             # draft) - every balance/ledger consumer excludes it instead.
             payment = expense.indirect_settlement_payment
             if payment is not None and not payment.is_reversed:
-                invoice = (
+                invoice_ids = list(
                     payment.allocations.exclude(invoice__isnull=True)
                     .values_list("invoice", flat=True)
-                    .first()
+                    .distinct()
                 )
                 payment.is_reversed = True
                 payment.save(update_fields=["is_reversed", "updated_at"])
-                if invoice is not None:
-                    PaymentAllocationService._sync_invoice_status(Invoice.objects.get(pk=invoice))
+                # A customer-paid expense can span several invoices.
+                for invoice_id in invoice_ids:
+                    PaymentAllocationService._sync_invoice_status(Invoice.objects.get(pk=invoice_id))
         else:
             # PARTIALLY_PAID means only part of expense.amount actually left
             # treasury - reverse that real, summed amount, not expense.amount.
@@ -1876,11 +1948,11 @@ class ShareholderDistributionService:
         financial situation can move between drafting and validating.
         Validation is refused if total_profit exceeds the amount still
         available for distribution (ShareholderProfitPreviewService.
-        get_preview()["distributable_result"], which already nets out every
-        VALIDATED distribution's still-unwithdrawn engagement but not this
-        DRAFT one). A pre-existing over-engagement can legitimately leave
-        that figure negative so the anomaly stays visible - this never
-        clamps it - but no new validation may push past it.
+        get_preview()["distributable_result"]: since 2026-09-25 the total net
+        profit after general expenses minus every VALIDATED distribution -
+        never the debts/capital-based figure). That figure can legitimately
+        be negative so the anomaly stays visible - this never clamps it - but
+        no new validation may push past it.
         """
         ShareholderDistributionService._lock_mutations()
         distribution = ShareholderProfitDistribution.objects.select_for_update().get(
@@ -2707,17 +2779,11 @@ class ShareholderProfitPreviewService:
 
     @staticmethod
     def get_preview(date_from=None, date_to=None) -> dict:
-        if date_from is None and date_to is None:
-            last_validated = (
-                ShareholderProfitDistribution.objects.filter(
-                    status=ShareholderProfitDistribution.Status.VALIDATED
-                )
-                .order_by("-period_end")
-                .first()
-            )
-            if last_validated is not None:
-                date_from = last_validated.period_end + timedelta(days=1)
-
+        # No period given -> all-time: the net profit of every trip minus
+        # every validated distribution, i.e. "what is left to distribute".
+        # It falls to zero once everything has been distributed (client
+        # request 2026-09-25), instead of only looking at the days after the
+        # last distribution's period.
         rows = MarginReportQuery.run(date_from=date_from, date_to=date_to)
         current_profit = sum((row["current_margin"] for row in rows), ZERO)
         operational_profit = current_profit
@@ -2779,7 +2845,12 @@ class ShareholderProfitPreviewService:
             .aggregate(total=Sum(F("amount_due") - F("amount_withdrawn")))["total"]
             or ZERO
         )
-        distributable_result = (
+        # Informational only since the 2026-09-25 client decision: the
+        # amount that can be distributed to shareholders is the NET PROFIT
+        # (after general expenses) of the period, not this figure. It stays
+        # computed - unchanged - so the Benefices page can still show how
+        # the treasury stands after debts and capital.
+        result_after_debts_and_capital = (
             working_capital["total"]
             - working_capital["supplier_debt_total"]
             - working_capital["transporter_debt_total"]
@@ -2791,18 +2862,33 @@ class ShareholderProfitPreviewService:
             - already_distributed
         )
 
-        # Business decision (2026-09-04, distribution basis change): a
-        # shareholder's indicative share is now based on distributable_result,
-        # not net_profit - net_profit measures operating profitability, but
-        # the amount actually available to distribute must also account for
-        # open debts, capital already contributed, and available treasury/
-        # receivables (see distributable_result above). net_profit stays
-        # computed and returned unchanged (still the "is the business
-        # profitable" figure), it just no longer feeds this share. Still
-        # never feeds ShareholderProfitDistribution directly - only the
-        # distribution form's suggested default (frontend) does that, and
-        # the distribution itself always uses whatever total_profit the
-        # user actually submits.
+        # Client decision (2026-09-25): "bénéfice à distribuer" is ONE figure,
+        # independent of debts and capital and of the period filter: every
+        # trip's net profit after general expenses (all time) minus every
+        # VALIDATED distribution. It falls to zero once everything has been
+        # distributed. (DRAFT is a preview with no effect; CANCELLED grants
+        # nothing.) The period-scoped net_profit above stays what the
+        # profitability cards show.
+        if date_from is None and date_to is None:
+            all_time_net_profit = net_profit
+        else:
+            all_time_general_expenses = (
+                Expense.objects.filter(allocations__isnull=True, status=Expense.Status.PAID)
+                .aggregate(total=Sum("amount"))["total"]
+                or ZERO
+            )
+            all_time_net_profit = (
+                sum((row["current_margin"] for row in MarginReportQuery.run()), ZERO)
+                - all_time_general_expenses
+            )
+        already_validated_total = (
+            ShareholderProfitDistribution.objects.filter(
+                status=ShareholderProfitDistribution.Status.VALIDATED
+            ).aggregate(total=Sum("total_profit"))["total"]
+            or ZERO
+        )
+        distributable_result = all_time_net_profit - already_validated_total
+
         shareholders = [
             {
                 "shareholder_id": shareholder.id,
@@ -2825,6 +2911,9 @@ class ShareholderProfitPreviewService:
             "total_company_absorbed_loss": total_company_absorbed_loss,
             "working_capital": working_capital,
             "already_distributed": already_distributed,
+            "all_time_net_profit": all_time_net_profit,
+            "already_validated_total": already_validated_total,
+            "result_after_debts_and_capital": result_after_debts_and_capital,
             "distributable_result": distributable_result,
             "shareholders": shareholders,
         }

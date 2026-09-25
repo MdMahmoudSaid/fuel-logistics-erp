@@ -16,6 +16,7 @@ import io
 from decimal import ROUND_HALF_UP, Decimal
 
 from reportlab.lib import colors
+from reportlab.lib.enums import TA_RIGHT
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
@@ -55,7 +56,7 @@ PROFIT_PDF_LABELS = {
         "totalWorkingCapital": "= Fond de roulement total",
         "capital": "Capital apporte",
         "alreadyDistributed": "Deja reparti (non retire)",
-        "distributableResult": "= Resultat distribuable apres dettes et capital",
+        "distributableResult": "= Benefice a distribuer",
         "tripDetail": "Detail des couts par trajet",
         "table": {
             "trip_reference": "Reference",
@@ -100,7 +101,7 @@ PROFIT_PDF_LABELS = {
         "totalWorkingCapital": "= Total working capital",
         "capital": "Capital contributed",
         "alreadyDistributed": "Already distributed (not withdrawn)",
-        "distributableResult": "= Distributable result after debts and capital",
+        "distributableResult": "= Profit left to distribute",
         "tripDetail": "Trip cost detail",
         "table": {
             "trip_reference": "Reference",
@@ -157,8 +158,8 @@ _DETAIL_TABLE_STYLE = TableStyle(
         # shortened to "Perte" for the same reason - the table's own title
         # already says these are per-trip costs, so the abbreviation loses
         # no information.
-        ("LEFTPADDING", (0, 0), (-1, -1), 2),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+        ("LEFTPADDING", (0, 0), (-1, -1), 3),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 3),
         ("ALIGN", (3, 1), (-1, -1), "RIGHT"),
     ]
 )
@@ -341,7 +342,19 @@ def render_profit_report_pdf(
     if rows:
         table_labels = labels["table"]
         fields = list(table_labels.keys())
-        header = [table_labels[f] for f in fields]
+        text_fields = {"trip_reference", "client", "product"}
+        header_left = ParagraphStyle(
+            "detailHeaderLeft", parent=styles["Normal"], fontName="Helvetica-Bold",
+            fontSize=7, leading=8, textColor=colors.white,
+        )
+        header_right = ParagraphStyle("detailHeaderRight", parent=header_left, alignment=TA_RIGHT)
+        header = [
+            Paragraph(
+                _safe_paragraph_text(table_labels[f]),
+                header_left if f in text_fields else header_right,
+            )
+            for f in fields
+        ]
         formatters = {
             "quantity_loaded": _format_quantity,
             "quantity_invoiced": _format_quantity,
@@ -356,27 +369,24 @@ def render_profit_report_pdf(
         def _cell(field, row):
             if field in formatters:
                 return formatters[field](row.get(field))
-            if field == "client":
+            if field in ("client", "trip_reference"):
                 return Paragraph(_safe_paragraph_text(row.get(field, "")), cell_style)
             return str(row.get(field, ""))
 
         detail_data = [header] + [[_cell(field, row) for field in fields] for row in rows]
         elements.append(Paragraph(_safe_paragraph_text(labels["tripDetail"]), heading_style))
         elements.append(Spacer(1, 2 * mm))
-        # Explicit widths (sum ~234mm, fits the ~267mm landscape page with
-        # margins) - left unset, reportlab sizes each column to its widest
-        # cell and the 12-column table overflowed off the page edge.
-        # Rebalanced (2026-09-06): the 3 per-litre columns grew from
-        # "500,00 XOF/L" to "500,0000 XOF/L" (4-decimal precision fix) and
-        # started overflowing into their neighbours at the old 18mm - widened
-        # those 3, narrowed the quantity/loss columns (short, fixed-format
-        # content: "45 000 L", "130 L") and client (wraps via Paragraph
-        # anyway) to keep the same overall sum.
+        # Explicit widths summing to 264mm - the ~267mm usable width of the
+        # landscape page, so the table fills it edge to edge instead of
+        # floating narrower and centred (2026-09-25: "Reference" at the old
+        # 18mm was narrower than "TRIP-04-04-000001" at 7pt and ran into the
+        # Client column). The numeric columns hold at most "1 000,0000 XOF/L"
+        # / "31 500 000 XOF" (~21mm at 7pt), so 24mm leaves breathing room.
         detail_col_widths = [
-            18 * mm, 22 * mm, 14 * mm, 16 * mm, 16 * mm, 14 * mm,
-            20 * mm, 22 * mm, 24 * mm, 22 * mm, 22 * mm, 24 * mm,
+            28 * mm, 30 * mm, 16 * mm, 18 * mm, 18 * mm, 14 * mm,
+            20 * mm, 24 * mm, 24 * mm, 24 * mm, 24 * mm, 24 * mm,
         ]
-        detail_table = Table(detail_data, repeatRows=1, colWidths=detail_col_widths)
+        detail_table = Table(detail_data, repeatRows=1, colWidths=detail_col_widths, hAlign="LEFT")
         detail_table.setStyle(_DETAIL_TABLE_STYLE)
         elements.append(detail_table)
 

@@ -14,6 +14,7 @@ from apps.finance.models import (
     ShareholderWithdrawal,
     ShareholderWithdrawalAllocation,
 )
+from apps.finance.testing_helpers import seed_net_profit
 from apps.finance.services import (
     ShareholderDistributionService,
     ShareholderLedgerService,
@@ -33,11 +34,10 @@ def _make_shareholder(suffix, percent=Decimal("100.00")):
 
 
 def _seed_distributable(amount=Decimal("10000000.00"), name="Seed Till"):
-    """Same helper as apps/finance/tests.py:_seed_distributable - copied
-    rather than imported across test modules (tests.py is a test file, not
-    a shared fixtures module). Gives the company enough treasury that
-    validate_distribution's hard amount block (2026-09-08 review) clears,
-    for tests where that guard is not what is under test."""
+    """Same helper as apps/finance/tests.py:_seed_distributable - seeds a
+    computed net profit (validate_distribution's amount guard, 2026-09-25)
+    plus the treasury the withdrawals then draw on."""
+    seed_net_profit(amount)
     return CashAccount.objects.create(name=name, opening_balance=Decimal(str(amount)))
 
 

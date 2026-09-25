@@ -142,6 +142,10 @@ class Trip(TimeStampedModel):
         choices=DestinationType.choices,
         default=DestinationType.COMPANY_STOCK,
     )
+    # Set by TripCostService.assign_customers_group_for_sale(): trips that
+    # share a non-empty value are billed on ONE invoice (DeliveryService
+    # attaches each later delivery's Sale to the group's DRAFT invoice).
+    invoice_group = models.CharField(max_length=36, blank=True, default="", db_index=True)
     loading_date = models.DateField()
     bl_reference = models.CharField(max_length=100)
     status = models.CharField(

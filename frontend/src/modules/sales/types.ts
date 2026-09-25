@@ -119,6 +119,8 @@ export interface Invoice {
   invoice_number: string
   sale: number
   sale_detail: Sale | null
+  // Every trip billed on this invoice (1 entry unless trips were grouped).
+  sales_detail?: Sale[]
   status: InvoiceStatus
   total_amount: string
   paid_amount: string

@@ -19,7 +19,7 @@ from apps.trips.models import (
     Trip,
     TripStatusHistory,
 )
-from apps.trips.services import TruckAvailabilityService
+from apps.trips.services import TripCostService, TruckAvailabilityService
 
 # Dedicated logger for the force-override audit trail (docs/PHASE_3_PLAN.md
 # Etape 5: "Si force, generer un log d'audit"). apps.audit has no AuditLog
@@ -61,6 +61,10 @@ class TripSerializer(serializers.ModelSerializer):
     created_by_detail = UserSerializer(source="created_by", read_only=True)
     cession_letter_detail = CessionLetterSerializer(source="cession_letter", read_only=True)
     cession_letter_truck_load_count = serializers.SerializerMethodField()
+    # Prix de revient / L (client request 2026-09-25): starts at the
+    # supplier's purchase price and grows as transport commission and trip
+    # expenses are added - computed live, never stored.
+    unit_cost = serializers.SerializerMethodField()
     # Feedback (2026-09-10): the client-verification correction workflow
     # needs the DeliveryControl's authoritative current received_quantity
     # and its audit trail (verification_corrections) - the frontend's
@@ -95,6 +99,7 @@ class TripSerializer(serializers.ModelSerializer):
             "cession_letter",
             "cession_letter_detail",
             "cession_letter_truck_load_count",
+            "unit_cost",
             "delivery_control_detail",
             "product",
             "product_detail",
@@ -140,6 +145,10 @@ class TripSerializer(serializers.ModelSerializer):
         self._normalize_destination_type(data)
 
         return data
+
+    def get_unit_cost(self, obj) -> str:
+        unit_cost = TripCostService.calculate_trip_cost_basis(obj)["unit_cost"]
+        return f"{unit_cost:.4f}"
 
     def get_cession_letter_truck_load_count(self, obj) -> int:
         """How many times this trip's truck has been loaded under this
@@ -464,3 +473,13 @@ class AssignCustomerRequestSerializer(serializers.Serializer):
     """
 
     customer = serializers.PrimaryKeyRelatedField(queryset=Customer.objects.all())
+
+
+class AssignCustomersRequestSerializer(serializers.Serializer):
+    """Input for POST /api/trips/assign-customers/ (several trips, one
+    customer, one invoice)."""
+
+    customer = serializers.PrimaryKeyRelatedField(queryset=Customer.objects.all())
+    trips = serializers.ListField(
+        child=serializers.IntegerField(), allow_empty=False
+    )

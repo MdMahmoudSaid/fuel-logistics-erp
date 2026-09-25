@@ -163,7 +163,8 @@ describe('SaleList', () => {
     await openButton!.trigger('click')
     await flushPromises()
 
-    await wrapper.find('[data-test="eligible-trip-row"]').trigger('click')
+    await wrapper.find('[data-test="eligible-trip-row"] input[type="checkbox"]').setValue(true)
+    await wrapper.find('[data-test="continue-assign"]').trigger('click')
     await flushPromises()
 
     expect(wrapper.text()).toContain('TRIP-021')

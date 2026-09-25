@@ -12,6 +12,7 @@ from rest_framework.exceptions import MethodNotAllowed, ValidationError
 from rest_framework.response import Response
 
 from apps.accounts.permissions import HasModulePermission
+from apps.customers.models import Customer
 from apps.reports.date_range import resolve_date_range
 from apps.reports.serialization import decimals_to_str
 from apps.reports.services.ledger_pdf import (
@@ -49,6 +50,7 @@ from .serializers import (
     CustomerPaymentSerializer,
     ExpenseCategorySerializer,
     ExpenseSerializer,
+    CustomerPaidExpensesRequestSerializer,
     IndirectSettlementRequestSerializer,
     ShareholderContributionSerializer,
     ShareholderLoanSerializer,
@@ -344,7 +346,7 @@ class TransportPaymentViewSet(viewsets.ModelViewSet):
 
 
 class ExpenseViewSet(viewsets.ModelViewSet):
-    queryset = Expense.objects.prefetch_related("allocations").all()
+    queryset = Expense.objects.select_related("indirect_settlement_payment__customer").prefetch_related("allocations").all()
     serializer_class = ExpenseSerializer
     filterset_fields = ["category", "status", "paid_by_customer_directly"]
     permission_classes = [HasModulePermission]
@@ -429,6 +431,45 @@ class ExpenseViewSet(viewsets.ModelViewSet):
                 "expense": ExpenseSerializer(expense, context={"request": request}).data,
                 "payment": CustomerPaymentSerializer(payment, context={"request": request}).data,
                 "allocation_id": allocation.id,
+            },
+            status=http_status.HTTP_201_CREATED,
+        )
+
+
+    @action(detail=False, methods=["post"], url_path="record-customer-paid")
+    def record_customer_paid(self, request):
+        """General expense paid by one or several customers on the company's
+        behalf: each amount reduces what the customer owes (oldest invoices
+        first) or, once he owes nothing, becomes a company debt towards him.
+        Never moves company treasury.
+
+        POST /api/expenses/record-customer-paid/
+        body: {category, date, notes, payers: [{customer, amount}]}
+        """
+        serializer = CustomerPaidExpensesRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        try:
+            results = IndirectSettlementService.record_customer_paid_expenses(
+                payers=[
+                    {"customer_id": p["customer"], "amount": p["amount"]} for p in data["payers"]
+                ],
+                expense_data={
+                    "category": data["category"],
+                    "date": data["date"],
+                    "notes": data["notes"],
+                },
+                actor=request.user,
+            )
+        except (ValueError, Customer.DoesNotExist) as exc:
+            return Response({"detail": str(exc)}, status=http_status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                "expenses": ExpenseSerializer(
+                    [expense for expense, _payment, _allocation in results],
+                    many=True,
+                    context={"request": request},
+                ).data
             },
             status=http_status.HTTP_201_CREATED,
         )
