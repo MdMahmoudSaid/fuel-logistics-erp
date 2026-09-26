@@ -11,7 +11,7 @@ import type { Expense, TransportPayment } from '@/modules/finance/types'
 // popup instead of window.confirm() - see useConfirmDialog. Defaults to
 // "confirmed"; tests exercising the decline path override with
 // mockResolvedValueOnce(false).
-const confirmDialogMock = vi.fn(async () => true)
+const confirmDialogMock = vi.fn(async (_message: string) => true)
 vi.mock('@/composables/useConfirmDialog', () => ({
   confirmDialog: (message: string) => confirmDialogMock(message),
 }))

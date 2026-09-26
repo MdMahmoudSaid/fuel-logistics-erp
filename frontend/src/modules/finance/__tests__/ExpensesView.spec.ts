@@ -4,7 +4,7 @@ import ExpensesView from '../ExpensesView.vue'
 
 // Bug fix (2026-09-18): destructive actions now go through the app's own
 // popup instead of window.confirm() - see useConfirmDialog.
-const confirmDialogMock = vi.fn(async () => true)
+const confirmDialogMock = vi.fn(async (_message: string) => true)
 vi.mock('@/composables/useConfirmDialog', () => ({
   confirmDialog: (message: string) => confirmDialogMock(message),
 }))
