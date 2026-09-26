@@ -32,6 +32,7 @@ const shareholderDistributionResourceCreate = vi.fn(
 )
 const shareholderDistributionResourceList = vi.fn()
 const cancelShareholderDistribution = vi.fn()
+const validateShareholderDistribution = vi.fn()
 
 function emptyList() {
   return { count: 0, next: null, previous: null, results: [] as Record<string, unknown>[] }
@@ -79,7 +80,7 @@ vi.mock('../api', () => ({
   fetchShareholderLedger: (...args: unknown[]) => fetchShareholderLedger(...args),
   fetchShareholderProfitPreview: (...args: unknown[]) => fetchShareholderProfitPreview(...args),
   fetchShareholderBalancesSummary: (...args: unknown[]) => fetchShareholderBalancesSummary(...args),
-  validateShareholderDistribution: vi.fn(),
+  validateShareholderDistribution: (...args: unknown[]) => validateShareholderDistribution(...args),
   cancelShareholderDistribution: (...args: unknown[]) => cancelShareholderDistribution(...args),
   recordShareholderLoanRepayment: vi.fn(),
   createShareholderContribution: vi.fn(),
@@ -197,7 +198,7 @@ describe('ShareholderView', () => {
     expect(banner!.text()).toContain('400 000 XOF')
     // net_profit appears, but only against its own label.
     const breakdown = wrapper.find('[data-test="preview-breakdown"]')
-    expect(breakdown.text()).toContain('Bénéfice net après dépenses générales')
+    expect(breakdown.text()).toContain('Bénéfice net global après dépenses générales')
     expect(breakdown.text()).toContain('750 000 XOF')
   })
 
@@ -257,7 +258,7 @@ describe('ShareholderView', () => {
 
     const breakdown = wrapper.find('[data-test="preview-breakdown"]')
     expect(breakdown.exists()).toBe(true)
-    expect(breakdown.text()).toContain('Bénéfice net après dépenses générales')
+    expect(breakdown.text()).toContain('Bénéfice net global après dépenses générales')
     expect(breakdown.text()).toContain('Répartitions déjà validées')
     expect(breakdown.text()).toContain('Bénéfice à distribuer')
     // default preview mock: net_profit 750 000, already_distributed 0,
@@ -306,6 +307,54 @@ describe('ShareholderView', () => {
     expect(success.text()).toContain('500 000 XOF')
     expect(success.text()).toContain('Ahmed')
     expect(success.text()).toContain('400 000 XOF')
+    expect(success.text()).toContain('Valider')
+  })
+
+  it('keeps the draft validation action visible in the mobile distribution card', async () => {
+    shareholderDistributionResourceList.mockResolvedValue({
+      count: 1,
+      next: null,
+      previous: null,
+      results: [
+        {
+          id: 77,
+          period_start: '2026-09-01',
+          period_end: '2026-09-30',
+          total_profit: '500000.00',
+          status: 'DRAFT',
+          available_to_distribute: '500000.00',
+          shares: [
+            {
+              id: 88,
+              shareholder_detail: { id: 1, name: 'Ahmed' },
+              percent_snapshot: '100.00',
+              amount_due: '500000.00',
+              amount_withdrawn: '0.00',
+              remaining_due: '500000.00',
+            },
+          ],
+        },
+      ],
+    })
+    validateShareholderDistribution.mockResolvedValue({})
+
+    const wrapper = mount(ShareholderView)
+    await flushPromises()
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Répartition des bénéfices')!
+      .trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="distribution-validation-help"]').text()).toContain('Valider')
+    const mobileCard = wrapper.find('[data-test="mobile-distribution-77"]')
+    expect(mobileCard.exists()).toBe(true)
+    expect(mobileCard.text()).toContain('Brouillon')
+    expect(mobileCard.text()).toContain('Ahmed')
+
+    await mobileCard.find('[data-test="mobile-validate-distribution-77"]').trigger('click')
+    await flushPromises()
+    expect(validateShareholderDistribution).toHaveBeenCalledWith(77)
   })
 
   // Business decision (2026-09-04, distribution basis change): the
@@ -364,9 +413,7 @@ describe('ShareholderView', () => {
     await flushPromises()
 
     expect(wrapper.find('[data-test="distribution-exceeds-warning"]').exists()).toBe(false)
-    expect(wrapper.text()).not.toContain(
-      'Le montant saisi dépasse le bénéfice net de la période.',
-    )
+    expect(wrapper.text()).not.toContain('Le montant saisi dépasse le bénéfice net de la période.')
 
     // 500000 is the distributable_result - entering more than that must
     // trigger the warning (600000 also exceeds it, matching the fixture's
@@ -377,9 +424,7 @@ describe('ShareholderView', () => {
 
     const warning = wrapper.find('[data-test="distribution-exceeds-warning"]')
     expect(warning.exists()).toBe(true)
-    expect(warning.text()).toContain(
-      'Le montant saisi dépasse le bénéfice net de la période.',
-    )
+    expect(warning.text()).toContain('Le montant saisi dépasse le bénéfice net de la période.')
     // Submission must still be possible - the warning does not block it.
     expect(wrapper.find('button[type="submit"]').attributes('disabled')).toBeUndefined()
   })
@@ -414,7 +459,10 @@ describe('ShareholderView', () => {
     const wrapper = mount(ShareholderView)
     await flushPromises()
 
-    await wrapper.findAll('button').find((b) => b.text() === 'Grand livre')!.trigger('click')
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Grand livre')!
+      .trigger('click')
     await flushPromises()
 
     await wrapper.find('#ledger_shareholder').setValue('1')
@@ -439,7 +487,7 @@ describe('ShareholderView', () => {
     expect(wrapper.text()).toContain('615 000 XOF')
   })
 
-  it('drills into a shareholder\'s Grand livre by clicking their name in the balances card', async () => {
+  it("drills into a shareholder's Grand livre by clicking their name in the balances card", async () => {
     // Client feedback (2026-09-16, second pass): a separate "Voir le grand
     // livre" button was replaced by making the shareholder's own name the
     // underlined clickable link, for a simpler, less cluttered card.
@@ -510,7 +558,10 @@ describe('ShareholderView', () => {
 
     // The Resume cards: floored to 0 with an explanatory note, never a
     // negative amount or the word "dette" anywhere on them.
-    await wrapper.findAll('button').find((b) => b.text() === 'Résumé')!.trigger('click')
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Résumé')!
+      .trigger('click')
     await flushPromises()
     const summarySection = wrapper.get('[class*="grid"][class*="md:grid-cols-2"]')
     expect(summarySection.text()).not.toContain('-26 240 000')
@@ -528,19 +579,25 @@ describe('ShareholderView', () => {
     const wrapper = mount(ShareholderView)
     await flushPromises()
 
-    await wrapper.findAll('button').find((b) => b.text() === 'Associés')!.trigger('click')
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Associés')!
+      .trigger('click')
     await flushPromises()
 
     expect(wrapper.text()).toContain('Contribution')
     expect(wrapper.text()).toContain('1 000 000 XOF')
 
-    await wrapper.findAll('button').find((b) => b.text() === 'Ajouter')!.trigger('click')
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Ajouter')!
+      .trigger('click')
     await flushPromises()
 
     expect(wrapper.find('#contribution').exists()).toBe(false)
   })
 
-  it('shows the shareholder\'s available balance as soon as they are picked in Retraits, without visiting Grand livre first', async () => {
+  it("shows the shareholder's available balance as soon as they are picked in Retraits, without visiting Grand livre first", async () => {
     // Bug fix (2026-09-13 audit) still applies to the hint: picking a
     // shareholder directly in Retraits must load their ledger without
     // needing a prior visit to Grand livre.
@@ -563,7 +620,10 @@ describe('ShareholderView', () => {
     const wrapper = mount(ShareholderView)
     await flushPromises()
 
-    await wrapper.findAll('button').find((b) => b.text() === 'Retraits')!.trigger('click')
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Retraits')!
+      .trigger('click')
     await flushPromises()
 
     await wrapper.find('#wd_shareholder').setValue('1')
@@ -583,7 +643,12 @@ describe('ShareholderView', () => {
         {
           id: 1,
           shareholder: 1,
-          shareholder_detail: { id: 1, name: 'Ahmed', participation_percent: '100.00', contribution: '0.00' },
+          shareholder_detail: {
+            id: 1,
+            name: 'Ahmed',
+            participation_percent: '100.00',
+            contribution: '0.00',
+          },
           allocations: [
             { profit_share: 10, contribution: null, amount: '500000.00' },
             { profit_share: null, contribution: 20, amount: '200000.00' },
@@ -601,7 +666,12 @@ describe('ShareholderView', () => {
         {
           id: 2,
           shareholder: 1,
-          shareholder_detail: { id: 1, name: 'Ahmed', participation_percent: '100.00', contribution: '0.00' },
+          shareholder_detail: {
+            id: 1,
+            name: 'Ahmed',
+            participation_percent: '100.00',
+            contribution: '0.00',
+          },
           allocations: [{ profit_share: 11, contribution: null, amount: '60000.00' }],
           amount: '60000.00',
           date: '2026-08-02',
@@ -619,7 +689,10 @@ describe('ShareholderView', () => {
     const wrapper = mount(ShareholderView)
     await flushPromises()
 
-    await wrapper.findAll('button').find((b) => b.text() === 'Retraits')!.trigger('click')
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Retraits')!
+      .trigger('click')
     await flushPromises()
 
     expect(wrapper.text()).toContain('700 000 XOF')
@@ -656,7 +729,10 @@ describe('ShareholderView', () => {
     const wrapper = mount(ShareholderView)
     await flushPromises()
 
-    await wrapper.findAll('button').find((b) => b.text() === 'Associés')!.trigger('click')
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Associés')!
+      .trigger('click')
     await flushPromises()
 
     expect(wrapper.text()).toContain('Capital apporté')
@@ -668,7 +744,10 @@ describe('ShareholderView', () => {
     await flushPromises()
     shareholderResourceList.mockClear()
 
-    await wrapper.findAll('button').find((b) => b.text() === 'Associés')!.trigger('click')
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Associés')!
+      .trigger('click')
     await flushPromises()
     await wrapper.find('[data-testid="new-contribution-button"]').trigger('click')
     await flushPromises()
@@ -709,10 +788,16 @@ describe('ShareholderView', () => {
     const wrapper = mount(ShareholderView)
     await flushPromises()
 
-    await wrapper.findAll('button').find((b) => b.text() === 'Grand livre')!.trigger('click')
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Grand livre')!
+      .trigger('click')
     await flushPromises()
     await wrapper.find('#ledger_shareholder').setValue('1')
-    await wrapper.findAll('button').find((b) => b.text() === 'Afficher')!.trigger('click')
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Afficher')!
+      .trigger('click')
     await flushPromises()
 
     expect(shareholderContributionResourceList).toHaveBeenCalledWith({ shareholder: 1 })
@@ -845,9 +930,7 @@ describe('ShareholderView', () => {
       .trigger('click')
     await flushPromises()
 
-    const validateButton = wrapper
-      .findAll('button')
-      .find((b) => b.text() === 'Valider')
+    const validateButton = wrapper.findAll('button').find((b) => b.text() === 'Valider')
     expect(validateButton).toBeTruthy()
     expect(validateButton!.attributes('disabled')).toBeDefined()
     expect(wrapper.find('[data-test="validate-blocked-9"]').exists()).toBe(true)
@@ -879,9 +962,7 @@ describe('ShareholderView', () => {
       .trigger('click')
     await flushPromises()
 
-    const validateButton = wrapper
-      .findAll('button')
-      .find((b) => b.text() === 'Valider')
+    const validateButton = wrapper.findAll('button').find((b) => b.text() === 'Valider')
     expect(validateButton).toBeTruthy()
     expect(validateButton!.attributes('disabled')).toBeUndefined()
     expect(wrapper.find('[data-test="validate-blocked-10"]').exists()).toBe(false)

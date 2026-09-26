@@ -624,6 +624,41 @@ def test_net_profit_subtracts_general_expense_paid_in_period():
 
 
 @pytest.mark.django_db
+def test_new_general_expense_after_full_distribution_makes_available_profit_negative():
+    """Closing one profit cycle must not let a later expense disappear.
+
+    Once the full net profit has been validated and credited to shareholders,
+    a new paid general expense with no new trip profit belongs to the next
+    cycle. The global profit history remains intact, while the amount still
+    available for distribution becomes the real negative value.
+    """
+    admin_user = _make_admin("POSTDISTEXP")
+    fx = _make_full_trip("POSTDISTEXP", admin_user)
+    Shareholder.objects.create(
+        name="Post distribution shareholder",
+        participation_percent=Decimal("100.00"),
+    )
+
+    from apps.reports.services.profit import TripProfitService
+
+    earned_profit = TripProfitService.get_cost_breakdown(fx["trip"])["margin"]
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-08-01",
+        period_end="2026-08-31",
+        total_profit=earned_profit,
+        actor=admin_user,
+    )
+    ShareholderDistributionService.validate_distribution(distribution.id, admin_user)
+
+    _general_expense(Decimal("125000.00"), "POSTDISTEXP", "2026-09-01")
+    preview = ShareholderProfitPreviewService.get_preview()
+
+    assert preview["all_time_net_profit"] == earned_profit - Decimal("125000.00")
+    assert preview["already_validated_total"] == earned_profit
+    assert preview["distributable_result"] == Decimal("-125000.00")
+
+
+@pytest.mark.django_db
 def test_general_expense_outside_period_is_not_counted():
     admin_user = _make_admin("NETOUTPERIOD")
     _make_full_trip("NETOUTPERIOD", admin_user)

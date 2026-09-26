@@ -1015,6 +1015,7 @@
         "noActiveShareholder": "No active shareholder/associate: add one in the \"Associates\" tab before creating a distribution.",
         "exceedsDistributableResultWarning": "The entered amount exceeds the net profit of the period.",
         "create": "Create distribution",
+        "validateHelp": "Create distribution prepares a draft. Then press Validate to credit shareholder balances and remove the amount from profit left to distribute.",
         "period": "Period",
         "status": "Status",
         "statusValues": {
@@ -1032,7 +1033,7 @@
         "amountDue": "Amount due",
         "remainingDue": "Remaining due",
         "saveError": "Could not create this distribution — check the fields.",
-        "createdSuccess": "Distribution created for period {start} — {end}: {amount} split among shareholders."
+        "createdSuccess": "Draft distribution created for period {start} — {end}: {amount}. Press Validate now to credit the shareholders."
       },
       "loan": {
         "title": "Advances between associates",
@@ -1096,7 +1097,7 @@
         "badge": "Indicative",
         "notice": "Profit left to distribute (net profit after general expenses, minus validated distributions)",
         "summaryLabel": "Proposed profit to distribute",
-        "periodProfit": "Net profit after general expenses",
+        "periodProfit": "Global net profit after general expenses",
         "alreadyValidatedEngagements": "Distributions already validated",
         "remainingDistributable": "Profit left to distribute",
         "noneAvailable": "Nothing available for now (no net profit on the period)."

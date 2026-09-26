@@ -773,6 +773,12 @@ async function onWithdrawalShareholderChange() {
       >
         {{ t('finance.shareholder.distribution.noActiveShareholder') }}
       </p>
+      <p
+        data-test="distribution-validation-help"
+        class="border-transit bg-transit-tint text-texte mb-3 rounded-lg border p-3 text-sm"
+      >
+        {{ t('finance.shareholder.distribution.validateHelp') }}
+      </p>
 
       <form
         class="mb-5 grid grid-cols-1 md:grid-cols-4 gap-3"
@@ -840,7 +846,80 @@ async function onWithdrawalShareholderChange() {
         </div>
       </form>
 
-      <div class="overflow-x-auto">
+      <!-- Mobile: actions must remain visible without horizontally scrolling
+           the table. Creating only prepares a DRAFT; Valider is the action
+           that credits shareholder balances and consumes distributable
+           profit, so hiding it off-screen made a correct two-step workflow
+           look broken to the client. -->
+      <div data-test="mobile-distribution-list" class="space-y-3 sm:hidden">
+        <article
+          v-for="d in distributions"
+          :key="`mobile-${d.id}`"
+          :data-test="`mobile-distribution-${d.id}`"
+          class="border-ligne rounded-lg border bg-white p-3"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="text-texte-2 text-xs font-medium uppercase">
+                {{ t('finance.shareholder.distribution.period') }}
+              </p>
+              <p class="text-texte mt-1 text-sm">{{ d.period_start }} — {{ d.period_end }}</p>
+            </div>
+            <Badge
+              :variant="
+                d.status === 'VALIDATED' ? 'livre' : d.status === 'CANCELLED' ? 'neutre' : 'transit'
+              "
+            >
+              {{ t(`finance.shareholder.distribution.statusValues.${d.status}`) }}
+            </Badge>
+          </div>
+          <p class="text-texte-2 mt-3 text-xs font-medium uppercase">
+            {{ t('finance.shareholder.distribution.totalProfit') }}
+          </p>
+          <MonoValue
+            class="text-texte mt-1 text-lg font-semibold"
+            align="left"
+            :value="formatMoney(d.total_profit)"
+          />
+          <p
+            v-if="d.status === 'DRAFT' && distributionExceedsAvailable(d)"
+            :data-test="`mobile-validate-blocked-${d.id}`"
+            class="text-critique mt-2 text-xs"
+          >
+            {{ t('finance.shareholder.distribution.validateBlockedHint') }}
+          </p>
+          <div v-if="d.status !== 'CANCELLED'" class="mt-3 grid grid-cols-2 gap-2">
+            <Button
+              v-if="d.status === 'DRAFT'"
+              :data-test="`mobile-validate-distribution-${d.id}`"
+              variant="primary"
+              :disabled="distributionExceedsAvailable(d)"
+              @click="onValidateDistribution(d)"
+            >
+              {{ t('finance.shareholder.distribution.validate') }}
+            </Button>
+            <Button
+              :data-test="`mobile-cancel-distribution-${d.id}`"
+              variant="danger"
+              @click="onCancelDistribution(d)"
+            >
+              {{ t('finance.shareholder.distribution.cancel') }}
+            </Button>
+          </div>
+          <dl v-if="d.shares.length" class="border-ligne mt-3 space-y-1 border-t pt-3 text-sm">
+            <div
+              v-for="share in d.shares"
+              :key="share.id"
+              class="flex items-center justify-between gap-3"
+            >
+              <dt>{{ share.shareholder_detail?.name }} ({{ share.percent_snapshot }}%)</dt>
+              <dd><MonoValue class="inline" :value="formatMoney(share.amount_due)" /></dd>
+            </div>
+          </dl>
+        </article>
+      </div>
+
+      <div class="hidden overflow-x-auto sm:block">
         <table class="w-full text-start text-sm">
           <thead>
             <tr class="border-ligne text-texte-2 border-b">

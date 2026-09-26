@@ -1017,6 +1017,7 @@
         "noActiveShareholder": "Aucun actionnaire/associé actif : ajoutez-en un dans l'onglet « Associés » avant de créer une répartition.",
         "exceedsDistributableResultWarning": "Le montant saisi dépasse le bénéfice net de la période.",
         "create": "Créer la répartition",
+        "validateHelp": "« Créer la répartition » prépare un brouillon. Appuyez ensuite sur « Valider » pour créditer les soldes des associés et retirer le montant du bénéfice à distribuer.",
         "period": "Période",
         "status": "Statut",
         "statusValues": {
@@ -1034,7 +1035,7 @@
         "amountDue": "Montant dû",
         "remainingDue": "Reste à percevoir",
         "saveError": "Impossible de créer cette répartition — vérifiez les champs.",
-        "createdSuccess": "Répartition créée pour la période {start} — {end} : {amount} répartis entre les associés."
+        "createdSuccess": "Répartition créée en brouillon pour la période {start} — {end} : {amount}. Appuyez maintenant sur « Valider » pour créditer les associés."
       },
       "loan": {
         "title": "Avances entre associés",
@@ -1098,7 +1099,7 @@
         "badge": "Indicatif",
         "notice": "Bénéfice à distribuer (bénéfice net après dépenses générales, moins les répartitions validées)",
         "summaryLabel": "Bénéfice à distribuer proposé",
-        "periodProfit": "Bénéfice net après dépenses générales",
+        "periodProfit": "Bénéfice net global après dépenses générales",
         "alreadyValidatedEngagements": "Répartitions déjà validées",
         "remainingDistributable": "Bénéfice à distribuer",
         "noneAvailable": "Aucun montant disponible pour le moment (aucun bénéfice net sur la période)."
