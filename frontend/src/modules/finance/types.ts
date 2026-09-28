@@ -304,13 +304,7 @@ export interface TreasuryTransaction {
 }
 
 export type DebtPaymentType =
-  | 'supplier'
-  | 'transporter'
-  | 'customs'
-  | 'transit'
-  | 'road_transit'
-  | 'border'
-  | 'loading'
+  'supplier' | 'transporter' | 'customs' | 'transit' | 'road_transit' | 'border' | 'loading'
 
 export interface PayableDebt {
   id: number
@@ -473,6 +467,32 @@ export interface ShareholderProfitDistribution {
   cancelled_by_detail: UserBrief | null
   cancelled_at: string | null
   shares: ShareholderProfitShare[]
+  created_at: string
+  updated_at: string
+}
+
+export type ShareholderProfitPeriodStatus = 'OPEN' | 'CLOSED'
+
+export interface ShareholderProfitPeriod {
+  id: number
+  start_date: string
+  end_date: string | null
+  status: ShareholderProfitPeriodStatus
+  net_profit: string | null
+  live_net_profit: string | null
+  preview_end_date: string | null
+  distribution: number | null
+  distribution_detail: ShareholderProfitDistribution | null
+  opened_by: number
+  opened_by_detail: UserBrief | null
+  closed_by: number | null
+  closed_by_detail: UserBrief | null
+  closed_at: string | null
+  reopened_by: number | null
+  reopened_by_detail: UserBrief | null
+  reopened_at: string | null
+  reopen_reason: string
+  reopen_count: number
   created_at: string
   updated_at: string
 }

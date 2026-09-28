@@ -7,6 +7,7 @@ from django.db.models.functions import Coalesce
 from django.http import HttpResponse
 from rest_framework import status as http_status
 from rest_framework import viewsets
+from rest_framework import serializers
 from rest_framework.decorators import action
 from rest_framework.exceptions import MethodNotAllowed, ValidationError
 from rest_framework.response import Response
@@ -36,6 +37,7 @@ from .models import (
     ShareholderContribution,
     ShareholderLoan,
     ShareholderProfitDistribution,
+    ShareholderProfitPeriod,
     ShareholderWithdrawal,
     SupplierAdvance,
     SupplierPayment,
@@ -55,6 +57,7 @@ from .serializers import (
     ShareholderContributionSerializer,
     ShareholderLoanSerializer,
     ShareholderProfitDistributionSerializer,
+    ShareholderProfitPeriodSerializer,
     ShareholderSerializer,
     ShareholderWithdrawalSerializer,
     SupplierAdvanceSerializer,
@@ -77,6 +80,8 @@ from .services import (
     ShareholderLoanError,
     ShareholderLoanService,
     ShareholderProfitPreviewService,
+    ShareholderProfitPeriodError,
+    ShareholderProfitPeriodService,
     SupplierPaymentCancellationError,
     SupplierPaymentCancellationService,
     TransportPaymentCancellationError,
@@ -762,6 +767,49 @@ class ShareholderProfitDistributionViewSet(viewsets.ModelViewSet):
         return Response(
             ShareholderProfitDistributionSerializer(distribution, context={"request": request}).data
         )
+
+
+class ShareholderProfitPeriodViewSet(viewsets.ModelViewSet):
+    queryset = ShareholderProfitPeriod.objects.select_related(
+        "opened_by", "closed_by", "reopened_by", "distribution"
+    ).prefetch_related("distribution__shares__shareholder").all()
+    serializer_class = ShareholderProfitPeriodSerializer
+    filterset_fields = ["status"]
+    permission_classes = [HasModulePermission]
+    module = "shareholders"
+
+    def destroy(self, request, *args, **kwargs):
+        raise MethodNotAllowed("DELETE", detail=_NO_HARD_DELETE_DETAIL)
+
+    @action(detail=True, methods=["post"])
+    def close(self, request, pk=None):
+        class CloseInput(serializers.Serializer):
+            end_date = serializers.DateField()
+
+        payload = CloseInput(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            period = ShareholderProfitPeriodService.close_period(
+                self.get_object().id, payload.validated_data["end_date"], request.user
+            )
+        except (ShareholderProfitPeriodError, ShareholderDistributionError) as exc:
+            return Response({"detail": str(exc)}, status=http_status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(period).data)
+
+    @action(detail=True, methods=["post"])
+    def reopen(self, request, pk=None):
+        class ReopenInput(serializers.Serializer):
+            reason = serializers.CharField(min_length=5, max_length=1000)
+
+        payload = ReopenInput(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            period = ShareholderProfitPeriodService.reopen_period(
+                self.get_object().id, payload.validated_data["reason"], request.user
+            )
+        except (ShareholderProfitPeriodError, ShareholderDistributionError) as exc:
+            return Response({"detail": str(exc)}, status=http_status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(period).data)
 
 
 class ShareholderLoanViewSet(viewsets.ModelViewSet):

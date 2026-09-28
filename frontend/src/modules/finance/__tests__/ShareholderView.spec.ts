@@ -33,6 +33,10 @@ const shareholderDistributionResourceCreate = vi.fn(
 const shareholderDistributionResourceList = vi.fn()
 const cancelShareholderDistribution = vi.fn()
 const validateShareholderDistribution = vi.fn()
+const shareholderPeriodResourceList = vi.fn()
+const shareholderPeriodResourceCreate = vi.fn()
+const closeShareholderProfitPeriod = vi.fn()
+const reopenShareholderProfitPeriod = vi.fn()
 
 function emptyList() {
   return { count: 0, next: null, previous: null, results: [] as Record<string, unknown>[] }
@@ -74,6 +78,10 @@ vi.mock('../api', () => ({
     list: (...args: unknown[]) => shareholderDistributionResourceList(...args),
     create: (payload: Record<string, unknown>) => shareholderDistributionResourceCreate(payload),
   },
+  shareholderProfitPeriodResource: {
+    list: (...args: unknown[]) => shareholderPeriodResourceList(...args),
+    create: (...args: unknown[]) => shareholderPeriodResourceCreate(...args),
+  },
   shareholderContributionResource: {
     list: (...args: unknown[]) => shareholderContributionResourceList(...args),
   },
@@ -82,6 +90,8 @@ vi.mock('../api', () => ({
   fetchShareholderBalancesSummary: (...args: unknown[]) => fetchShareholderBalancesSummary(...args),
   validateShareholderDistribution: (...args: unknown[]) => validateShareholderDistribution(...args),
   cancelShareholderDistribution: (...args: unknown[]) => cancelShareholderDistribution(...args),
+  closeShareholderProfitPeriod: (...args: unknown[]) => closeShareholderProfitPeriod(...args),
+  reopenShareholderProfitPeriod: (...args: unknown[]) => reopenShareholderProfitPeriod(...args),
   recordShareholderLoanRepayment: vi.fn(),
   createShareholderContribution: vi.fn(),
 }))
@@ -98,6 +108,7 @@ describe('ShareholderView', () => {
     shareholderContributionResourceList.mockResolvedValue(emptyList())
     shareholderWithdrawalResourceList.mockResolvedValue(emptyList())
     shareholderDistributionResourceList.mockResolvedValue(emptyList())
+    shareholderPeriodResourceList.mockResolvedValue(emptyList())
     fetchShareholderProfitPreview.mockResolvedValue({
       period_start: '2026-08-01',
       period_end: null,
@@ -268,28 +279,8 @@ describe('ShareholderView', () => {
     expect(wrapper.find('[data-test="preview-already-distributed"]').text()).toContain('0 XOF')
   })
 
-  // Bug report (2026-09-08): creating a distribution gave no visible
-  // confirmation at all, only a silently auto-expanded row easy to miss.
-  it('shows a visible success confirmation with the per-shareholder breakdown after creating a distribution', async () => {
-    shareholderDistributionResourceCreate.mockResolvedValue({
-      id: 42,
-      period_start: '2026-08-01',
-      period_end: '2026-08-31',
-      total_profit: '500000.00',
-      status: 'DRAFT',
-      shares: [
-        {
-          id: 1,
-          distribution: 42,
-          shareholder: 1,
-          shareholder_detail: { id: 1, name: 'Ahmed' },
-          percent_snapshot: '80.00',
-          amount_due: '400000.00',
-          amount_withdrawn: '0.00',
-          remaining_due: '400000.00',
-        },
-      ],
-    })
+  it('starts a user-defined profit period', async () => {
+    shareholderPeriodResourceCreate.mockResolvedValue({})
     const wrapper = mount(ShareholderView)
     await flushPromises()
 
@@ -297,73 +288,29 @@ describe('ShareholderView', () => {
       .findAll('button')
       .find((b) => b.text() === 'Répartition des bénéfices')!
       .trigger('click')
-    await flushPromises()
-    await wrapper.find('form').trigger('submit.prevent')
+    await wrapper.find('#open_period_start').setValue('2026-06-01')
+    await wrapper.find('[data-test="start-profit-period"] form').trigger('submit.prevent')
     await flushPromises()
 
-    const success = wrapper.find('[data-test="distribution-success"]')
-    expect(success.exists()).toBe(true)
-    expect(success.text()).toContain('2026-08-01')
-    expect(success.text()).toContain('500 000 XOF')
-    expect(success.text()).toContain('Ahmed')
-    expect(success.text()).toContain('400 000 XOF')
-    expect(success.text()).toContain('Valider')
+    expect(shareholderPeriodResourceCreate).toHaveBeenCalledWith({ start_date: '2026-06-01' })
   })
 
-  it('keeps the draft validation action visible in the mobile distribution card', async () => {
-    shareholderDistributionResourceList.mockResolvedValue({
+  it('closes the open period and requests automatic distribution', async () => {
+    shareholderPeriodResourceList.mockResolvedValue({
+      ...emptyList(),
       count: 1,
-      next: null,
-      previous: null,
       results: [
         {
-          id: 77,
-          period_start: '2026-09-01',
-          period_end: '2026-09-30',
-          total_profit: '500000.00',
-          status: 'DRAFT',
-          available_to_distribute: '500000.00',
-          shares: [
-            {
-              id: 88,
-              shareholder_detail: { id: 1, name: 'Ahmed' },
-              percent_snapshot: '100.00',
-              amount_due: '500000.00',
-              amount_withdrawn: '0.00',
-              remaining_due: '500000.00',
-            },
-          ],
+          id: 9,
+          start_date: '2026-06-01',
+          end_date: null,
+          status: 'OPEN',
+          live_net_profit: '500000.00',
+          distribution: null,
         },
       ],
     })
-    validateShareholderDistribution.mockResolvedValue({})
-
-    const wrapper = mount(ShareholderView)
-    await flushPromises()
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === 'Répartition des bénéfices')!
-      .trigger('click')
-    await flushPromises()
-
-    expect(wrapper.find('[data-test="distribution-validation-help"]').text()).toContain('Valider')
-    const mobileCard = wrapper.find('[data-test="mobile-distribution-77"]')
-    expect(mobileCard.exists()).toBe(true)
-    expect(mobileCard.text()).toContain('Brouillon')
-    expect(mobileCard.text()).toContain('Ahmed')
-
-    await mobileCard.find('[data-test="mobile-validate-distribution-77"]').trigger('click')
-    await flushPromises()
-    expect(validateShareholderDistribution).toHaveBeenCalledWith(77)
-  })
-
-  // Business decision (2026-09-04, distribution basis change): the
-  // "Repartition des benefices" tab's "Benefice total" field used to
-  // default to preview.net_profit (750 000) - it must now default to
-  // preview.distributable_result (500 000), matching the banner and
-  // per-shareholder cards above. Net profit stays displayed separately
-  // elsewhere (page Benefices) - it must never resurface here.
-  it('pre-fills the distribution form total_profit with distributable_result, not net or operational profit', async () => {
+    closeShareholderProfitPeriod.mockResolvedValue({})
     const wrapper = mount(ShareholderView)
     await flushPromises()
 
@@ -371,15 +318,29 @@ describe('ShareholderView', () => {
       .findAll('button')
       .find((b) => b.text() === 'Répartition des bénéfices')!
       .trigger('click')
+    await wrapper.find('#close_period_end').setValue('2026-09-15')
+    await wrapper.find('[data-test="open-profit-period"] form').trigger('submit.prevent')
     await flushPromises()
 
-    const totalProfitInput = wrapper.find('#total_profit').element as HTMLInputElement
-    expect(totalProfitInput.value).toBe('500000.00')
-    expect(totalProfitInput.value).not.toBe('750000.00')
-    expect(totalProfitInput.value).not.toBe('850000.00')
+    expect(closeShareholderProfitPeriod).toHaveBeenCalledWith(9, '2026-09-15')
   })
 
-  it('creates a distribution using the distributable_result default when submitted unchanged', async () => {
+  it('requires a reason before reopening the latest closed period', async () => {
+    shareholderPeriodResourceList.mockResolvedValue({
+      ...emptyList(),
+      count: 1,
+      results: [
+        {
+          id: 10,
+          start_date: '2026-06-01',
+          end_date: '2026-09-15',
+          status: 'CLOSED',
+          net_profit: '500000.00',
+          distribution: 4,
+        },
+      ],
+    })
+    reopenShareholderProfitPeriod.mockResolvedValue({})
     const wrapper = mount(ShareholderView)
     await flushPromises()
 
@@ -387,72 +348,17 @@ describe('ShareholderView', () => {
       .findAll('button')
       .find((b) => b.text() === 'Répartition des bénéfices')!
       .trigger('click')
+    const button = wrapper.find('[data-test="reopen-profit-period"]')
+    expect(button.attributes('disabled')).toBeDefined()
+    await wrapper.find('#reopen_reason').setValue('Correction vente oubliée')
     await flushPromises()
-
-    await wrapper.find('form').trigger('submit.prevent')
-    await flushPromises()
-
-    expect(shareholderDistributionResourceCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ total_profit: '500000.00' }),
-    )
-  })
-
-  // The field stays a freely editable estimate (a manager can still type
-  // any number - blocking submission outright would break the existing
-  // workflow for distributions predating full trip/expense data), but a
-  // highly visible warning now surfaces when it exceeds the distributable
-  // result, instead of silently allowing it.
-  it('shows a highly visible warning when the entered total_profit exceeds the distributable result', async () => {
-    const wrapper = mount(ShareholderView)
-    await flushPromises()
-
     await wrapper
-      .findAll('button')
-      .find((b) => b.text() === 'Répartition des bénéfices')!
-      .trigger('click')
+      .findAll('form')
+      .find((form) => form.find('#reopen_reason').exists())!
+      .trigger('submit')
     await flushPromises()
 
-    expect(wrapper.find('[data-test="distribution-exceeds-warning"]').exists()).toBe(false)
-    expect(wrapper.text()).not.toContain('Le montant saisi dépasse le bénéfice net de la période.')
-
-    // 500000 is the distributable_result - entering more than that must
-    // trigger the warning (600000 also exceeds it, matching the fixture's
-    // net_profit-adjacent scale to make sure this isn't accidentally still
-    // comparing against net_profit).
-    await wrapper.find('#total_profit').setValue('600000')
-    await flushPromises()
-
-    const warning = wrapper.find('[data-test="distribution-exceeds-warning"]')
-    expect(warning.exists()).toBe(true)
-    expect(warning.text()).toContain('Le montant saisi dépasse le bénéfice net de la période.')
-    // Submission must still be possible - the warning does not block it.
-    expect(wrapper.find('button[type="submit"]').attributes('disabled')).toBeUndefined()
-  })
-
-  // Recette bug (2026-09-06): a manager was able to create AND validate a
-  // profit distribution while the Shareholder list was completely empty -
-  // the money was "distributed" to nobody. The form must refuse this
-  // outright: a visible warning, a disabled submit button, and no API call
-  // even if triggered directly.
-  it('disables distribution creation and warns when there is no active shareholder', async () => {
-    shareholderResourceList.mockResolvedValue(emptyList())
-    const wrapper = mount(ShareholderView)
-    await flushPromises()
-
-    await wrapper
-      .findAll('button')
-      .find((b) => b.text() === 'Répartition des bénéfices')!
-      .trigger('click')
-    await flushPromises()
-
-    expect(wrapper.find('[data-test="distribution-no-active-shareholder"]').exists()).toBe(true)
-    const submitButton = wrapper.find('button[type="submit"]')
-    expect(submitButton.attributes('disabled')).toBeDefined()
-
-    await wrapper.find('form').trigger('submit.prevent')
-    await flushPromises()
-
-    expect(shareholderDistributionResourceCreate).not.toHaveBeenCalled()
+    expect(reopenShareholderProfitPeriod).toHaveBeenCalledWith(10, 'Correction vente oubliée')
   })
 
   it("loads a shareholder's ledger and shows the combined available_balance", async () => {

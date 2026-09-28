@@ -10,6 +10,7 @@ from .views import (
     ShareholderContributionViewSet,
     ShareholderLoanViewSet,
     ShareholderProfitDistributionViewSet,
+    ShareholderProfitPeriodViewSet,
     ShareholderViewSet,
     ShareholderWithdrawalViewSet,
     SupplierAdvanceViewSet,
@@ -36,6 +37,7 @@ router.register("shareholders", ShareholderViewSet, basename="shareholder")
 router.register(
     "shareholder-distributions", ShareholderProfitDistributionViewSet, basename="shareholderdistribution"
 )
+router.register("shareholder-periods", ShareholderProfitPeriodViewSet, basename="shareholderprofitperiod")
 router.register("shareholder-loans", ShareholderLoanViewSet, basename="shareholderloan")
 router.register("shareholder-withdrawals", ShareholderWithdrawalViewSet, basename="shareholderwithdrawal")
 router.register(

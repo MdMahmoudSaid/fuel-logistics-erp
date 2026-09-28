@@ -5,6 +5,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
 from django.db.models import Sum
 from django.utils.text import slugify
+from django.utils import timezone
 from rest_framework import serializers
 
 from apps.accounts.serializers import UserSerializer
@@ -28,6 +29,7 @@ from .models import (
     ShareholderContribution,
     ShareholderLoan,
     ShareholderProfitDistribution,
+    ShareholderProfitPeriod,
     ShareholderProfitShare,
     ShareholderWithdrawal,
     ShareholderWithdrawalAllocation,
@@ -51,6 +53,8 @@ from .services import (
     ShareholderLoanService,
     ShareholderParticipationError,
     ShareholderProfitPreviewService,
+    ShareholderProfitPeriodError,
+    ShareholderProfitPeriodService,
     ShareholderService,
     ShareholderWithdrawalError,
     ShareholderWithdrawalService,
@@ -1215,6 +1219,57 @@ class ShareholderProfitDistributionSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         raise serializers.ValidationError(
             "Une distribution ne peut pas etre modifiee ; utilisez l'action 'valider' ou 'annuler'."
+        )
+
+
+class ShareholderProfitPeriodSerializer(serializers.ModelSerializer):
+    opened_by_detail = UserSerializer(source="opened_by", read_only=True)
+    closed_by_detail = UserSerializer(source="closed_by", read_only=True)
+    reopened_by_detail = UserSerializer(source="reopened_by", read_only=True)
+    distribution_detail = ShareholderProfitDistributionSerializer(
+        source="distribution", read_only=True
+    )
+    live_net_profit = serializers.SerializerMethodField()
+    preview_end_date = serializers.SerializerMethodField()
+
+    def get_live_net_profit(self, obj):
+        if obj.status != ShareholderProfitPeriod.Status.OPEN:
+            return None
+        preview = ShareholderProfitPreviewService.get_preview(
+            date_from=obj.start_date, date_to=timezone.localdate()
+        )
+        return f"{preview['net_profit']:.2f}"
+
+    def get_preview_end_date(self, obj):
+        return str(timezone.localdate()) if obj.status == ShareholderProfitPeriod.Status.OPEN else None
+
+    class Meta:
+        model = ShareholderProfitPeriod
+        fields = [
+            "id", "start_date", "end_date", "status", "net_profit", "live_net_profit",
+            "preview_end_date", "distribution", "distribution_detail", "opened_by",
+            "opened_by_detail", "closed_by", "closed_by_detail", "closed_at",
+            "reopened_by", "reopened_by_detail", "reopened_at", "reopen_reason",
+            "reopen_count", "created_at", "updated_at",
+        ]
+        read_only_fields = [
+            "id", "end_date", "status", "net_profit", "live_net_profit",
+            "preview_end_date", "distribution", "opened_by", "closed_by", "closed_at",
+            "reopened_by", "reopened_at", "reopen_reason", "reopen_count", "created_at",
+            "updated_at",
+        ]
+
+    def create(self, validated_data):
+        try:
+            return ShareholderProfitPeriodService.open_period(
+                validated_data["start_date"], self.context["request"].user
+            )
+        except ShareholderProfitPeriodError as exc:
+            raise serializers.ValidationError(str(exc))
+
+    def update(self, instance, validated_data):
+        raise serializers.ValidationError(
+            "Utilisez les actions cloturer ou rouvrir pour modifier une periode."
         )
 
 

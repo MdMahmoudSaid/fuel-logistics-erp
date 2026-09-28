@@ -52,6 +52,10 @@ ACTION_MAP = {
     "create": "create",
     "update": "edit",
     "partial_update": "edit",
+    # Closing/reopening a profit period changes the accounting state and is
+    # therefore restricted to roles that may validate shareholder records.
+    "close": "validate",
+    "reopen": "validate",
     # Trip status transitions (docs/PHASE_3_PLAN.md Etape 6) are routine
     # day-to-day operations work, not a "validate" business action - map to
     # "edit" so the Operations role (which has edit but not validate on the

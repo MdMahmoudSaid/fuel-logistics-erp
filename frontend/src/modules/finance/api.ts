@@ -17,6 +17,7 @@ import type {
   ShareholderLedger,
   ShareholderLoan,
   ShareholderProfitDistribution,
+  ShareholderProfitPeriod,
   ShareholderProfitPreview,
   ShareholderWithdrawal,
   SupplierAdvance,
@@ -398,6 +399,28 @@ export const shareholderContributionResource = createResourceApi<ShareholderCont
 export const shareholderDistributionResource = createResourceApi<ShareholderProfitDistribution>(
   '/shareholder-distributions/',
 )
+export const shareholderProfitPeriodResource =
+  createResourceApi<ShareholderProfitPeriod>('/shareholder-periods/')
+
+export function closeShareholderProfitPeriod(
+  periodId: number,
+  endDate: string,
+): Promise<ShareholderProfitPeriod> {
+  return apiClient
+    .post<ShareholderProfitPeriod>(`/shareholder-periods/${periodId}/close/`, {
+      end_date: endDate,
+    })
+    .then((r) => r.data)
+}
+
+export function reopenShareholderProfitPeriod(
+  periodId: number,
+  reason: string,
+): Promise<ShareholderProfitPeriod> {
+  return apiClient
+    .post<ShareholderProfitPeriod>(`/shareholder-periods/${periodId}/reopen/`, { reason })
+    .then((r) => r.data)
+}
 
 export function createShareholderContribution(payload: {
   shareholder: number
@@ -432,9 +455,7 @@ export function fetchShareholderLedger(shareholderId: number): Promise<Sharehold
 // livre tab's "solde disponible"), summed - distinct from the indicative
 // profit-preview figures below.
 export function fetchShareholderBalancesSummary(): Promise<ShareholderBalancesSummary> {
-  return apiClient
-    .get<ShareholderBalancesSummary>('/shareholders/balances/')
-    .then((r) => r.data)
+  return apiClient.get<ShareholderBalancesSummary>('/shareholders/balances/').then((r) => r.data)
 }
 
 // backend/apps/finance/services.py ShareholderProfitPreviewService.get_preview()

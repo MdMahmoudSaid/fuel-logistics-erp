@@ -1035,6 +1035,26 @@
         "saveError": "Could not create this distribution — check the fields.",
         "createdSuccess": "Draft distribution created for period {start} — {end}: {amount}. Press Validate now to credit the shareholders."
       },
+      "period": {
+        "open": "OPEN",
+        "inProgress": "In progress",
+        "openHelp": "All operations remain in this period until you decide to close it.",
+        "liveProfit": "Current net profit for the period",
+        "startTitle": "Start a new period",
+        "startHelp": "Choose the start date freely. A period may last three months, four months or longer.",
+        "start": "Start period",
+        "closeAndDistribute": "Close and distribute profit",
+        "closeConfirm": "Close this period? Net profit will be distributed automatically and the period will be locked.",
+        "closeError": "Could not close this period.",
+        "openError": "Could not start this period.",
+        "reopen": "Reopen period",
+        "reopenHelp": "When a correction is essential, only the latest closed period can be reopened. A reason is required and retained in the audit trail.",
+        "reopenError": "Could not reopen this period.",
+        "reason": "Reason for reopening",
+        "history": "Period history",
+        "lastReopen": "Latest reopening reason",
+        "statusValues": { "OPEN": "Open", "CLOSED": "Closed" }
+      },
       "loan": {
         "title": "Advances between associates",
         "lender": "Lender",

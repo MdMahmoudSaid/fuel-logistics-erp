@@ -1037,6 +1037,26 @@
         "saveError": "Impossible de créer cette répartition — vérifiez les champs.",
         "createdSuccess": "Répartition créée en brouillon pour la période {start} — {end} : {amount}. Appuyez maintenant sur « Valider » pour créditer les associés."
       },
+      "period": {
+        "open": "OUVERTE",
+        "inProgress": "En cours",
+        "openHelp": "Toutes les opérations restent dans cette période jusqu’à ce que vous décidiez de la clôturer.",
+        "liveProfit": "Bénéfice net actuel de la période",
+        "startTitle": "Démarrer une nouvelle période",
+        "startHelp": "Choisissez librement la date de début. La période peut durer trois mois, quatre mois ou davantage.",
+        "start": "Démarrer la période",
+        "closeAndDistribute": "Clôturer et répartir les bénéfices",
+        "closeConfirm": "Clôturer cette période ? Le bénéfice net sera réparti automatiquement entre les associés et la période sera verrouillée.",
+        "closeError": "Impossible de clôturer cette période.",
+        "openError": "Impossible de démarrer cette période.",
+        "reopen": "Rouvrir la période",
+        "reopenHelp": "Si une correction est indispensable, seule la dernière période clôturée peut être rouverte. Le motif est obligatoire et conservé dans l’audit.",
+        "reopenError": "Impossible de rouvrir cette période.",
+        "reason": "Motif de la réouverture",
+        "history": "Historique des périodes",
+        "lastReopen": "Dernier motif de réouverture",
+        "statusValues": { "OPEN": "Ouverte", "CLOSED": "Clôturée" }
+      },
       "loan": {
         "title": "Avances entre associés",
         "lender": "Prêteur",

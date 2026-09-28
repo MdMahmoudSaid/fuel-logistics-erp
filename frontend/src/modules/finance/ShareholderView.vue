@@ -14,16 +14,19 @@ import { confirmDialog } from '@/composables/useConfirmDialog'
 import { createResourceApi } from '@/api/resource'
 import {
   cancelShareholderDistribution,
+  closeShareholderProfitPeriod,
   fetchShareholderBalancesSummary,
   fetchShareholderLedger,
   fetchShareholderProfitPreview,
   recordShareholderLoanRepayment,
   shareholderContributionResource,
   shareholderDistributionResource,
+  shareholderProfitPeriodResource,
   shareholderLoanResource,
   shareholderResource,
   shareholderWithdrawalResource,
   validateShareholderDistribution,
+  reopenShareholderProfitPeriod,
 } from './api'
 import type {
   Shareholder,
@@ -32,6 +35,7 @@ import type {
   ShareholderLedger,
   ShareholderLoan,
   ShareholderProfitDistribution,
+  ShareholderProfitPeriod,
   ShareholderProfitPreview,
   ShareholderWithdrawal,
   ShareholderWithdrawalAllocation,
@@ -91,6 +95,7 @@ onMounted(async () => {
     bankAccountResource.list().then((r) => (bankAccounts.value = r.results)),
     cashAccountResource.list().then((r) => (cashAccounts.value = r.results)),
     loadDistributions(),
+    loadPeriods(),
     loadLoans(),
     loadWithdrawals(),
     loadPreview(),
@@ -109,25 +114,10 @@ const preview = ref<ShareholderProfitPreview | null>(null)
 async function loadPreview() {
   try {
     preview.value = await fetchShareholderProfitPreview()
-    // Pre-fill (not lock) the distribution form's total_profit with the
-    // profit still left to distribute - the single "bénéfice à distribuer"
-    // figure shown in the banner and on the Benefices page (client decision
-    // 2026-09-25: net profit after general expenses minus every validated
-    // distribution; debts and capital play no part). Still freely editable;
-    // refreshed while the field still holds the previous suggestion.
-    const proposed = preview.value.distributable_result
-    if (
-      !distributionForm.value.total_profit ||
-      distributionForm.value.total_profit === autoFilledTotal
-    ) {
-      distributionForm.value.total_profit = proposed
-      autoFilledTotal = proposed
-    }
   } catch {
     preview.value = null
   }
 }
-let autoFilledTotal = ''
 
 // Client feedback (2026-09-16): a non-technical shareholder reading a
 // negative "reste disponible pour repartition" on their own card read it
@@ -213,58 +203,78 @@ async function onShareholderSubmit() {
 
 // --- Section 2: Profit distributions ---------------------------------------
 
-const distributions = ref<ShareholderProfitDistribution[]>([])
-const distributionForm = ref({ period_start: today(), period_end: today(), total_profit: '' })
-const distributionError = ref('')
-const distributionSuccess = ref<ShareholderProfitDistribution | null>(null)
-const savingDistribution = ref(false)
-const expandedDistributionId = ref<number | null>(null)
+const periods = ref<ShareholderProfitPeriod[]>([])
+const periodStart = ref(today())
+const periodEnd = ref(today())
+const reopenReason = ref('')
+const periodBusy = ref(false)
+const periodError = ref('')
+const activePeriod = computed(
+  () => periods.value.find((period) => period.status === 'OPEN') ?? null,
+)
+const latestClosedPeriod = computed(
+  () => periods.value.find((period) => period.status === 'CLOSED') ?? null,
+)
+const periodDistributionIds = computed(
+  () =>
+    new Set(periods.value.flatMap((period) => (period.distribution ? [period.distribution] : []))),
+)
 
-// Bug fix (2026-09-03 recette manuelle) + business decision (2026-09-04,
-// distribution basis change): a manager can still freely type any
-// total_profit (the field stays an editable estimate, not locked to the
-// live engine - existing distributions predate any real trip/expense data
-// and rely on that, and blocking submission outright would break that
-// workflow), but a highly visible warning now surfaces when the entered
-// amount exceeds distributable_result (not net_profit anymore) shown in
-// the banner above, so an over-distribution is a deliberate, visible
-// choice rather than an accident.
-const distributionExceedsDistributableResult = computed(() => {
-  if (!preview.value) return false
-  const entered = Number(distributionForm.value.total_profit)
-  const available = Number(preview.value.distributable_result)
-  return Number.isFinite(entered) && entered > available
-})
+async function loadPeriods() {
+  const data = await shareholderProfitPeriodResource.list()
+  periods.value = [...data.results]
+}
+
+async function onOpenPeriod() {
+  periodBusy.value = true
+  periodError.value = ''
+  try {
+    await shareholderProfitPeriodResource.create({ start_date: periodStart.value })
+    await Promise.all([loadPeriods(), loadPreview()])
+  } catch (e) {
+    periodError.value = extractErrorMessage(e, t('finance.shareholder.period.openError'))
+  } finally {
+    periodBusy.value = false
+  }
+}
+
+async function onClosePeriod() {
+  if (!activePeriod.value) return
+  if (!(await confirmDialog(t('finance.shareholder.period.closeConfirm')))) return
+  periodBusy.value = true
+  periodError.value = ''
+  try {
+    await closeShareholderProfitPeriod(activePeriod.value.id, periodEnd.value)
+    await Promise.all([loadPeriods(), loadDistributions(), loadPreview(), loadBalancesSummary()])
+  } catch (e) {
+    periodError.value = extractErrorMessage(e, t('finance.shareholder.period.closeError'))
+  } finally {
+    periodBusy.value = false
+  }
+}
+
+async function onReopenPeriod() {
+  if (!latestClosedPeriod.value || reopenReason.value.trim().length < 5) return
+  periodBusy.value = true
+  periodError.value = ''
+  try {
+    await reopenShareholderProfitPeriod(latestClosedPeriod.value.id, reopenReason.value)
+    reopenReason.value = ''
+    await Promise.all([loadPeriods(), loadDistributions(), loadPreview(), loadBalancesSummary()])
+  } catch (e) {
+    periodError.value = extractErrorMessage(e, t('finance.shareholder.period.reopenError'))
+  } finally {
+    periodBusy.value = false
+  }
+}
+
+const distributions = ref<ShareholderProfitDistribution[]>([])
+const distributionError = ref('')
+const expandedDistributionId = ref<number | null>(null)
 
 async function loadDistributions() {
   const data = await shareholderDistributionResource.list()
   distributions.value = [...data.results]
-}
-
-async function onCreateDistribution() {
-  if (activeShareholders.value.length === 0) {
-    distributionError.value = t('finance.shareholder.distribution.noActiveShareholder')
-    return
-  }
-  savingDistribution.value = true
-  distributionError.value = ''
-  distributionSuccess.value = null
-  try {
-    const created = await shareholderDistributionResource.create(distributionForm.value)
-    distributionForm.value = { period_start: today(), period_end: today(), total_profit: '' }
-    autoFilledTotal = ''
-    expandedDistributionId.value = created.id
-    distributionSuccess.value = created
-    await loadDistributions()
-    await loadPreview()
-  } catch (e) {
-    distributionError.value = extractErrorMessage(
-      e,
-      t('finance.shareholder.distribution.saveError'),
-    )
-  } finally {
-    savingDistribution.value = false
-  }
 }
 
 // 2026-09-08 review, point 2: the backend hard-blocks a validation whose
@@ -735,116 +745,146 @@ async function onWithdrawalShareholderChange() {
     <!-- Section 2: Profit distributions -->
     <Card v-if="activeTab === 'distributions'" :title="t('finance.shareholder.distribution.title')">
       <AppAlert v-if="distributionError" :message="distributionError" />
-      <div
-        v-if="distributionSuccess"
-        data-test="distribution-success"
-        class="border-livre bg-livre-tint text-livre-texte mb-3 rounded-lg border p-3 text-sm"
-      >
-        <div class="flex items-start justify-between gap-2">
-          <p class="font-medium">
-            {{
-              t('finance.shareholder.distribution.createdSuccess', {
-                start: distributionSuccess.period_start,
-                end: distributionSuccess.period_end,
-                amount: formatMoney(distributionSuccess.total_profit),
-              })
-            }}
-          </p>
-          <button
-            type="button"
-            class="text-livre-texte/70 hover:text-livre-texte shrink-0 text-lg leading-none"
-            :aria-label="t('common.close')"
-            @click="distributionSuccess = null"
-          >
-            &times;
-          </button>
-        </div>
-        <ul class="mt-1.5 space-y-0.5">
-          <li v-for="share in distributionSuccess.shares" :key="share.id">
-            {{ share.shareholder_detail?.name }}:
-            <MonoValue class="inline" :value="formatMoney(share.amount_due)" />
-          </li>
-        </ul>
-      </div>
+      <AppAlert v-if="periodError" :message="periodError" />
       <p
-        v-if="activeShareholders.length === 0"
+        v-if="activePeriod && activeShareholders.length === 0"
         data-test="distribution-no-active-shareholder"
         class="border-critique bg-critique-tint text-critique mb-3 rounded-lg border p-2.5 text-sm font-medium"
       >
         {{ t('finance.shareholder.distribution.noActiveShareholder') }}
       </p>
-      <p
-        data-test="distribution-validation-help"
-        class="border-transit bg-transit-tint text-texte mb-3 rounded-lg border p-3 text-sm"
+      <section
+        v-if="activePeriod"
+        data-test="open-profit-period"
+        class="border-transit bg-transit-tint mb-5 rounded-xl border p-4"
       >
-        {{ t('finance.shareholder.distribution.validateHelp') }}
-      </p>
-
-      <form
-        class="mb-5 grid grid-cols-1 md:grid-cols-4 gap-3"
-        @submit.prevent="onCreateDistribution"
-      >
-        <div class="space-y-1.5">
-          <label class="text-texte-2 text-sm font-medium" for="period_start">
-            {{ t('finance.shareholder.distribution.periodStart') }}
-          </label>
-          <input
-            id="period_start"
-            v-model="distributionForm.period_start"
-            type="date"
-            required
-            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-          />
-        </div>
-        <div class="space-y-1.5">
-          <label class="text-texte-2 text-sm font-medium" for="period_end">
-            {{ t('finance.shareholder.distribution.periodEnd') }}
-          </label>
-          <input
-            id="period_end"
-            v-model="distributionForm.period_end"
-            type="date"
-            required
-            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-          />
-        </div>
-        <div class="space-y-1.5">
-          <label class="text-texte-2 text-sm font-medium" for="total_profit">
-            {{ t('finance.shareholder.distribution.totalProfit') }}
-          </label>
-          <input
-            id="total_profit"
-            v-model="distributionForm.total_profit"
-            type="number"
-            step="0.01"
-            min="0.01"
-            required
-            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-          />
-          <p v-if="preview" class="text-texte-3 text-xs">
-            {{ t('finance.shareholder.preview.summaryLabel') }}:
-            <MonoValue class="inline" :value="formatMoney(preview.distributable_result)" />
-          </p>
-          <div
-            v-if="distributionExceedsDistributableResult"
-            data-test="distribution-exceeds-warning"
-            class="border-critique bg-critique-tint text-critique rounded-lg border p-2 text-xs font-medium"
-          >
-            {{ t('finance.shareholder.distribution.exceedsDistributableResultWarning') }}
+        <div class="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <div class="flex items-center gap-2">
+              <Badge variant="transit">{{ t('finance.shareholder.period.open') }}</Badge
+              ><strong
+                >{{ activePeriod.start_date }} —
+                {{ t('finance.shareholder.period.inProgress') }}</strong
+              >
+            </div>
+            <p class="text-texte-2 mt-2 text-sm">{{ t('finance.shareholder.period.openHelp') }}</p>
+          </div>
+          <div class="text-end">
+            <p class="text-texte-2 text-xs">{{ t('finance.shareholder.period.liveProfit') }}</p>
+            <MonoValue
+              class="text-xl font-semibold"
+              :value="formatMoney(activePeriod.live_net_profit ?? 0)"
+            />
           </div>
         </div>
-        <div class="flex items-end">
+        <form class="mt-4 flex flex-wrap items-end gap-3" @submit.prevent="onClosePeriod">
+          <div class="space-y-1.5">
+            <label class="text-texte-2 text-sm font-medium" for="close_period_end">{{
+              t('finance.shareholder.distribution.periodEnd')
+            }}</label
+            ><input
+              id="close_period_end"
+              v-model="periodEnd"
+              type="date"
+              :min="activePeriod.start_date"
+              :max="today()"
+              required
+              class="border-ligne-forte h-12 rounded-lg border bg-white px-3.5"
+            />
+          </div>
           <Button
+            data-test="close-profit-period"
             type="submit"
             variant="primary"
-            class="w-full"
-            :loading="savingDistribution"
+            :loading="periodBusy"
             :disabled="activeShareholders.length === 0"
+            >{{ t('finance.shareholder.period.closeAndDistribute') }}</Button
           >
-            {{ t('finance.shareholder.distribution.create') }}
-          </Button>
+        </form>
+      </section>
+
+      <section
+        v-else
+        data-test="start-profit-period"
+        class="border-ligne mb-5 rounded-xl border bg-white p-4"
+      >
+        <h3 class="font-semibold">{{ t('finance.shareholder.period.startTitle') }}</h3>
+        <p class="text-texte-2 mt-1 text-sm">{{ t('finance.shareholder.period.startHelp') }}</p>
+        <form class="mt-4 flex flex-wrap items-end gap-3" @submit.prevent="onOpenPeriod">
+          <div class="space-y-1.5">
+            <label class="text-texte-2 text-sm font-medium" for="open_period_start">{{
+              t('finance.shareholder.distribution.periodStart')
+            }}</label
+            ><input
+              id="open_period_start"
+              v-model="periodStart"
+              type="date"
+              :max="today()"
+              required
+              class="border-ligne-forte h-12 rounded-lg border bg-white px-3.5"
+            />
+          </div>
+          <Button type="submit" variant="primary" :loading="periodBusy">{{
+            t('finance.shareholder.period.start')
+          }}</Button>
+        </form>
+        <div v-if="latestClosedPeriod" class="border-ligne mt-5 border-t pt-4">
+          <p class="text-texte-2 text-sm">{{ t('finance.shareholder.period.reopenHelp') }}</p>
+          <form class="mt-2 flex flex-wrap items-end gap-3" @submit.prevent="onReopenPeriod">
+            <div class="min-w-64 flex-1 space-y-1.5">
+              <label class="text-texte-2 text-sm font-medium" for="reopen_reason">{{
+                t('finance.shareholder.period.reason')
+              }}</label
+              ><textarea
+                id="reopen_reason"
+                v-model="reopenReason"
+                minlength="5"
+                required
+                class="border-ligne-forte min-h-20 w-full rounded-lg border bg-white px-3.5 py-2"
+              />
+            </div>
+            <Button
+              data-test="reopen-profit-period"
+              type="submit"
+              variant="danger"
+              :loading="periodBusy"
+              :disabled="reopenReason.trim().length < 5"
+              >{{ t('finance.shareholder.period.reopen') }}</Button
+            >
+          </form>
         </div>
-      </form>
+      </section>
+
+      <div v-if="periods.length" class="mb-5">
+        <h3 class="mb-2 font-semibold">{{ t('finance.shareholder.period.history') }}</h3>
+        <div class="space-y-2">
+          <div
+            v-for="period in periods"
+            :key="period.id"
+            class="border-ligne flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-white p-3"
+          >
+            <div>
+              <strong
+                >{{ period.start_date }} —
+                {{ period.end_date ?? t('finance.shareholder.period.inProgress') }}</strong
+              >
+              <p v-if="period.reopen_reason" class="text-texte-2 text-xs">
+                {{ t('finance.shareholder.period.lastReopen') }}: {{ period.reopen_reason }}
+              </p>
+            </div>
+            <div class="text-end">
+              <Badge :variant="period.status === 'CLOSED' ? 'livre' : 'transit'">{{
+                t(`finance.shareholder.period.statusValues.${period.status}`)
+              }}</Badge
+              ><MonoValue
+                v-if="period.net_profit != null"
+                class="mt-1"
+                :value="formatMoney(period.net_profit)"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
 
       <!-- Mobile: actions must remain visible without horizontally scrolling
            the table. Creating only prepares a DRAFT; Valider is the action
@@ -888,7 +928,12 @@ async function onWithdrawalShareholderChange() {
           >
             {{ t('finance.shareholder.distribution.validateBlockedHint') }}
           </p>
-          <div v-if="d.status !== 'CANCELLED'" class="mt-3 grid grid-cols-2 gap-2">
+          <div
+            v-if="
+              d.status === 'DRAFT' || (d.status !== 'CANCELLED' && !periodDistributionIds.has(d.id))
+            "
+            class="mt-3 grid grid-cols-2 gap-2"
+          >
             <Button
               v-if="d.status === 'DRAFT'"
               :data-test="`mobile-validate-distribution-${d.id}`"
@@ -899,6 +944,7 @@ async function onWithdrawalShareholderChange() {
               {{ t('finance.shareholder.distribution.validate') }}
             </Button>
             <Button
+              v-if="!periodDistributionIds.has(d.id)"
               :data-test="`mobile-cancel-distribution-${d.id}`"
               variant="danger"
               @click="onCancelDistribution(d)"
@@ -975,7 +1021,7 @@ async function onWithdrawalShareholderChange() {
                     {{ t('finance.shareholder.distribution.validate') }}
                   </Button>
                   <Button
-                    v-if="d.status !== 'CANCELLED'"
+                    v-if="d.status !== 'CANCELLED' && !periodDistributionIds.has(d.id)"
                     :data-test="`cancel-distribution-${d.id}`"
                     variant="danger"
                     @click.stop="onCancelDistribution(d)"

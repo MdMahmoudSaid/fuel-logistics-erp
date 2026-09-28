@@ -27,6 +27,7 @@ from apps.finance.models import (
     ShareholderContribution,
     ShareholderLoan,
     ShareholderProfitDistribution,
+    ShareholderProfitPeriod,
     ShareholderProfitShare,
     ShareholderWithdrawal,
     ShareholderWithdrawalAllocation,
@@ -1831,7 +1832,7 @@ class ShareholderDistributionService:
     @staticmethod
     @transaction.atomic
     def create_distribution(
-        period_start, period_end, total_profit, actor
+        period_start, period_end, total_profit, actor, period_managed=False
     ) -> ShareholderProfitDistribution:
         """Create a DRAFT distribution and immediately snapshot every
         active shareholder's current participation_percent into a
@@ -1853,6 +1854,11 @@ class ShareholderDistributionService:
           distributing nothing to nobody (recette bug, 2026-09-06).
         """
         ShareholderDistributionService._lock_mutations()
+
+        if ShareholderProfitPeriod.objects.exists() and not period_managed:
+            raise ShareholderDistributionError(
+                "La repartition est creee automatiquement lors de la cloture de la periode."
+            )
 
         if isinstance(period_start, str):
             period_start = date.fromisoformat(period_start)
@@ -2041,6 +2047,136 @@ class ShareholderDistributionService:
             user=actor,
         )
         return distribution
+
+
+class ShareholderProfitPeriodError(ValueError):
+    """Raised when a flexible accounting-period transition is invalid."""
+
+
+class ShareholderProfitPeriodService:
+    """Starts, closes and reopens user-defined profit periods atomically."""
+
+    _MUTATION_LOCK_KEY = 738_5290_12
+
+    @staticmethod
+    def _lock_mutations() -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT pg_advisory_xact_lock(%s)",
+                [ShareholderProfitPeriodService._MUTATION_LOCK_KEY],
+            )
+
+    @staticmethod
+    @transaction.atomic
+    def open_period(start_date, actor) -> ShareholderProfitPeriod:
+        ShareholderProfitPeriodService._lock_mutations()
+        if isinstance(start_date, str):
+            start_date = date.fromisoformat(start_date)
+        if start_date > timezone.localdate():
+            raise ShareholderProfitPeriodError("La date de debut ne peut pas etre future.")
+        if ShareholderProfitPeriod.objects.filter(status=ShareholderProfitPeriod.Status.OPEN).exists():
+            raise ShareholderProfitPeriodError("Une periode est deja ouverte.")
+        latest = ShareholderProfitPeriod.objects.filter(
+            status=ShareholderProfitPeriod.Status.CLOSED
+        ).order_by("-end_date", "-id").first()
+        if latest and start_date <= latest.end_date:
+            raise ShareholderProfitPeriodError(
+                f"La nouvelle periode doit commencer apres le {latest.end_date}."
+            )
+        period = ShareholderProfitPeriod(start_date=start_date, opened_by=actor)
+        period.save(user=actor)
+        return period
+
+    @staticmethod
+    @transaction.atomic
+    def close_period(period_id, end_date, actor) -> ShareholderProfitPeriod:
+        ShareholderProfitPeriodService._lock_mutations()
+        period = ShareholderProfitPeriod.objects.select_for_update().get(pk=period_id)
+        if period.status != ShareholderProfitPeriod.Status.OPEN:
+            raise ShareholderProfitPeriodError("Cette periode est deja cloturee.")
+        if isinstance(end_date, str):
+            end_date = date.fromisoformat(end_date)
+        if end_date < period.start_date:
+            raise ShareholderProfitPeriodError("La fin de periode doit suivre son debut.")
+        if end_date > timezone.localdate():
+            raise ShareholderProfitPeriodError("La date de fin ne peut pas etre future.")
+
+        preview = ShareholderProfitPreviewService.get_preview(
+            date_from=period.start_date, date_to=end_date
+        )
+        net_profit = Decimal(preview["net_profit"]).quantize(Decimal("0.01"))
+        distribution = None
+        if net_profit > ZERO:
+            distribution = ShareholderDistributionService.create_distribution(
+                period_start=period.start_date,
+                period_end=end_date,
+                total_profit=net_profit,
+                actor=actor,
+                period_managed=True,
+            )
+            distribution = ShareholderDistributionService.validate_distribution(
+                distribution.id, actor
+            )
+
+        period.end_date = end_date
+        period.status = ShareholderProfitPeriod.Status.CLOSED
+        period.net_profit = net_profit
+        period.distribution = distribution
+        period.closed_by = actor
+        period.closed_at = timezone.now()
+        period.save(
+            update_fields=[
+                "end_date", "status", "net_profit", "distribution", "closed_by",
+                "closed_at", "updated_at",
+            ],
+            user=actor,
+        )
+        return period
+
+    @staticmethod
+    @transaction.atomic
+    def reopen_period(period_id, reason, actor) -> ShareholderProfitPeriod:
+        ShareholderProfitPeriodService._lock_mutations()
+        reason = str(reason or "").strip()
+        if len(reason) < 5:
+            raise ShareholderProfitPeriodError(
+                "Expliquez pourquoi cette periode doit etre rouverte."
+            )
+        period = ShareholderProfitPeriod.objects.select_for_update().get(pk=period_id)
+        if period.status != ShareholderProfitPeriod.Status.CLOSED:
+            raise ShareholderProfitPeriodError("Cette periode est deja ouverte.")
+        if ShareholderProfitPeriod.objects.filter(status=ShareholderProfitPeriod.Status.OPEN).exists():
+            raise ShareholderProfitPeriodError(
+                "Fermez d'abord la periode actuellement ouverte."
+            )
+        later_exists = ShareholderProfitPeriod.objects.filter(
+            status=ShareholderProfitPeriod.Status.CLOSED,
+            start_date__gt=period.start_date,
+        ).exists()
+        if later_exists:
+            raise ShareholderProfitPeriodError(
+                "Seule la derniere periode cloturee peut etre rouverte."
+            )
+        if period.distribution_id:
+            ShareholderDistributionService.cancel_distribution(period.distribution_id, actor)
+
+        period.status = ShareholderProfitPeriod.Status.OPEN
+        period.end_date = None
+        period.net_profit = None
+        period.distribution = None
+        period.reopened_by = actor
+        period.reopened_at = timezone.now()
+        period.reopen_reason = reason
+        period.reopen_count += 1
+        period.save(
+            update_fields=[
+                "status", "end_date", "net_profit", "distribution", "reopened_by",
+                "reopened_at", "reopen_reason", "reopen_count", "updated_at",
+            ],
+            user=actor,
+            reason=reason,
+        )
+        return period
 
 
 class ShareholderWithdrawalError(ValueError):

@@ -6,7 +6,7 @@ from django.contrib.postgres.constraints import ExclusionConstraint
 from django.contrib.postgres.fields import DateRangeField, RangeOperators
 from django.db import models
 
-from apps.audit.mixins import AuditableModel
+from apps.audit.mixins import AuditableModel, assert_profit_period_dates_unlocked
 from apps.core.models import TimeStampedModel
 
 CURRENCY_CHOICES = [("XOF", "XOF")]
@@ -774,6 +774,23 @@ class ExpenseAllocation(TimeStampedModel):
     def __str__(self) -> str:
         return f"{self.expense_id}: {self.allocated_amount} -> {self.content_object}"
 
+    def _assert_period_unlocked(self):
+        dates = [self.expense.date]
+        if self.pk:
+            previous_date = type(self).objects.filter(pk=self.pk).values_list(
+                "expense__date", flat=True
+            ).first()
+            dates.append(previous_date)
+        assert_profit_period_dates_unlocked(dates)
+
+    def save(self, *args, **kwargs):
+        self._assert_period_unlocked()
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        self._assert_period_unlocked()
+        return super().delete(*args, **kwargs)
+
 
 class TreasuryTransaction(AuditableModel, TimeStampedModel):
     """One movement of company cash/bank money (docs/PHASE_5_PLAN.md Etape 5;
@@ -879,6 +896,72 @@ class Shareholder(TimeStampedModel):
 
     def __str__(self) -> str:
         return self.name
+
+
+class ShareholderProfitPeriod(AuditableModel, TimeStampedModel):
+    """A business-controlled profit period with no fixed calendar length.
+
+    Exactly one period may be OPEN. Closing snapshots its real net profit,
+    creates and validates the shareholder distribution atomically, and locks
+    dated financial writes in that interval. The latest period may be
+    reopened only with an audit reason and only while none of its profit
+    shares has been withdrawn.
+    """
+
+    class Status(models.TextChoices):
+        OPEN = "OPEN", "Open"
+        CLOSED = "CLOSED", "Closed"
+
+    start_date = models.DateField()
+    end_date = models.DateField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.OPEN)
+    net_profit = models.DecimalField(max_digits=16, decimal_places=2, null=True, blank=True)
+    distribution = models.ForeignKey(
+        "finance.ShareholderProfitDistribution",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="closed_periods",
+    )
+    opened_by = models.ForeignKey(
+        "accounts.User", on_delete=models.PROTECT, related_name="profit_periods_opened"
+    )
+    closed_by = models.ForeignKey(
+        "accounts.User", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="profit_periods_closed",
+    )
+    closed_at = models.DateTimeField(null=True, blank=True)
+    reopened_by = models.ForeignKey(
+        "accounts.User", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="profit_periods_reopened",
+    )
+    reopened_at = models.DateTimeField(null=True, blank=True)
+    reopen_reason = models.TextField(blank=True)
+    reopen_count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["-start_date", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["status"], condition=models.Q(status="OPEN"),
+                name="finance_one_open_profit_period",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(status="OPEN", end_date__isnull=True)
+                    | models.Q(status="CLOSED", end_date__isnull=False)
+                ),
+                name="finance_profit_period_status_dates",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(end_date__isnull=True) | models.Q(end_date__gte=models.F("start_date")),
+                name="finance_profit_period_date_order",
+            ),
+        ]
+        indexes = [models.Index(fields=["status", "start_date"], name="finance_profitperiod_state_idx")]
+
+    def __str__(self) -> str:
+        return f"Profit period {self.start_date} - {self.end_date or 'open'}"
 
 
 class ShareholderProfitDistribution(AuditableModel, TimeStampedModel):
