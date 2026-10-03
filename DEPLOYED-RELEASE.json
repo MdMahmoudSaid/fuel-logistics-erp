@@ -1,6 +1,6 @@
 {
-  "commit": "d6b4899726559259c5f775a87e519e659e6d0f98",
-  "deployed_at": "20260913T073803Z",
-  "method": "Manual redeploy via docker compose (audit follow-up: server/GitHub git sync, withdrawal picker fix, PWA update fix)",
-  "rollback": "/home/bouye/releases/fuel-697afc7"
+  "commit": "codex/flexible-profit-periods@security-20261003",
+  "deployed_at": "20261003T163234Z",
+  "method": "Audited security release: dependency remediation, browser hardening headers, full automated test and production build verification",
+  "rollback": "/home/bouye/rollback/fuel-security-20261003"
 }

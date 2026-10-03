@@ -30,7 +30,7 @@ services:
       context: ./backend
       args:
         REQUIREMENTS_FILE: requirements/prod.txt
-    image: bessma/fuel-backend:d6b4899
+    image: bessma/fuel-backend:security-20261003
     env_file:
     - /etc/bessma/fuel-app.env
     command:
@@ -62,7 +62,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile.production
-    image: bessma/fuel-frontend:d6b4899
+    image: bessma/fuel-frontend:security-20261003
     ports:
     - 127.0.0.1:5174:8080
     volumes:
@@ -81,6 +81,14 @@ services:
       traefik.http.routers.hasel.entrypoints: websecure
       traefik.http.routers.hasel.tls: 'true'
       traefik.http.routers.hasel.tls.certresolver: letsencrypt
+      traefik.http.routers.hasel.middlewares: hasel-security-headers
+      traefik.http.middlewares.hasel-security-headers.headers.stsSeconds: '604800'
+      traefik.http.middlewares.hasel-security-headers.headers.stsIncludeSubdomains: 'true'
+      traefik.http.middlewares.hasel-security-headers.headers.contentTypeNosniff: 'true'
+      traefik.http.middlewares.hasel-security-headers.headers.frameDeny: 'true'
+      traefik.http.middlewares.hasel-security-headers.headers.referrerPolicy: same-origin
+      traefik.http.middlewares.hasel-security-headers.headers.permissionsPolicy: camera=(), microphone=(), geolocation=()
+      traefik.http.middlewares.hasel-security-headers.headers.contentSecurityPolicy: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
       traefik.http.services.hasel.loadbalancer.server.port: '8080'
   migrate:
     restart: 'no'
@@ -93,7 +101,7 @@ services:
       context: ./backend
       args:
         REQUIREMENTS_FILE: requirements/prod.txt
-    image: bessma/fuel-backend:d6b4899
+    image: bessma/fuel-backend:security-20261003
     env_file:
     - /etc/bessma/fuel-migrate.env
     command:
