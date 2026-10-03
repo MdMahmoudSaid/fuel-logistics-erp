@@ -40,7 +40,7 @@ services:
       --bind 0.0.0.0:8000 --workers 2 --threads 2 --timeout 60 --access-logfile -
       --error-logfile -
     volumes:
-    - ./backend/media:/app/media
+    - /home/bouye/apps/fuel-logistics-erp/backend/media:/app/media
     networks:
     - private
     mem_limit: 768m
@@ -66,7 +66,7 @@ services:
     ports:
     - 127.0.0.1:5174:8080
     volumes:
-    - ./backend/media:/media:ro
+    - /home/bouye/apps/fuel-logistics-erp/backend/media:/media:ro
     networks:
     - private
     - traefik-public
@@ -110,7 +110,7 @@ services:
     - migrate
     - --noinput
     volumes:
-    - ./backend/media:/app/media
+    - /home/bouye/apps/fuel-logistics-erp/backend/media:/app/media
     networks:
     - private
     mem_limit: 768m
