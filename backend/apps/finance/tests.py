@@ -2729,6 +2729,98 @@ def test_allocate_payment_rejects_total_exceeding_payment_amount():
 
 
 @pytest.mark.django_db
+def test_allocate_available_credit_converts_explicit_credit_and_pays_invoice():
+    admin_user, customer, invoice = _make_invoice_for_payment(
+        "EXISTING-CREDIT", total_amount=Decimal("45000000.00")
+    )
+    payment = CustomerPayment.objects.create(
+        customer=customer,
+        amount=Decimal("45000000.00"),
+        payment_date="2026-09-27",
+        method=CustomerPayment.Method.CASH,
+        cash_account=CashAccount.objects.create(name="Cash existing credit"),
+        recorded_by=admin_user,
+    )
+    credit = PaymentAllocation.objects.create(
+        payment=payment, invoice=None, amount=Decimal("45000000.00")
+    )
+
+    PaymentAllocationService.allocate_available_credit(
+        payment.id, [{"invoice": invoice.id, "amount": Decimal("45000000.00")}]
+    )
+
+    credit.refresh_from_db()
+    invoice.refresh_from_db()
+    assert credit.invoice_id == invoice.id
+    assert invoice.status == Invoice.Status.PAID
+    assert PaymentAllocationService.get_payment_unallocated_amount(payment) == Decimal("0.00")
+
+
+@pytest.mark.django_db
+def test_allocate_existing_payment_api_splits_implicit_credit_without_posting_treasury_again(
+    finance_client,
+):
+    admin_user, customer, invoice_a = _make_invoice_for_payment(
+        "EXISTING-SPLIT-A", total_amount=Decimal("198450000.00")
+    )
+    _admin_b, _customer_b, invoice_b = _make_invoice_for_payment(
+        "EXISTING-SPLIT-B", total_amount=Decimal("66150000.00"), customer=customer
+    )
+    payment = CustomerPayment.objects.create(
+        customer=customer,
+        amount=Decimal("264600000.00"),
+        payment_date="2026-10-03",
+        method=CustomerPayment.Method.CASH,
+        cash_account=CashAccount.objects.create(name="Cash implicit credit"),
+        recorded_by=admin_user,
+    )
+    treasury_count = TreasuryTransaction.objects.count()
+
+    response = finance_client.post(
+        f"/api/customer-payments/{payment.id}/allocate/",
+        {
+            "allocations": [
+                {"invoice": invoice_a.id, "amount": "198450000.00"},
+                {"invoice": invoice_b.id, "amount": "66150000.00"},
+            ]
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200, response.data
+    assert response.data["unallocated_amount"] == "0.00"
+    invoice_a.refresh_from_db()
+    invoice_b.refresh_from_db()
+    assert invoice_a.status == Invoice.Status.PAID
+    assert invoice_b.status == Invoice.Status.PAID
+    assert TreasuryTransaction.objects.count() == treasury_count
+
+
+@pytest.mark.django_db
+def test_allocate_available_credit_rejects_overallocation_without_partial_changes():
+    admin_user, customer, invoice = _make_invoice_for_payment(
+        "EXISTING-OVER", total_amount=Decimal("6000000.00")
+    )
+    payment = CustomerPayment.objects.create(
+        customer=customer,
+        amount=Decimal("5000000.00"),
+        payment_date="2026-10-03",
+        method=CustomerPayment.Method.CASH,
+        cash_account=CashAccount.objects.create(name="Cash over allocation"),
+        recorded_by=admin_user,
+    )
+
+    with pytest.raises(PaymentAllocationError, match="credit disponible"):
+        PaymentAllocationService.allocate_available_credit(
+            payment.id, [{"invoice": invoice.id, "amount": Decimal("6000000.00")}]
+        )
+
+    invoice.refresh_from_db()
+    assert invoice.status == Invoice.Status.VALIDATED
+    assert not PaymentAllocation.objects.filter(payment=payment).exists()
+
+
+@pytest.mark.django_db
 def test_acceptance_indirect_customer_payment_reduces_debt_without_treasury_row():
     """5M expense paid directly by a customer owing 50M -> debt reduced to
     45M and zero TreasuryTransaction rows created (guide Section 1.6/§25)."""

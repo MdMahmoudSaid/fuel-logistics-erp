@@ -806,6 +806,7 @@
       "outstandingBalance": "Solde impayé",
       "openInvoices": "Factures ouvertes",
       "lastPayment": "Dernier paiement",
+      "validatedUnpaid": "Validée — non payée",
       "invoices": "Factures",
       "table": {
         "invoice": "Facture",
@@ -825,7 +826,20 @@
         "indirect": "Indirect",
         "reference": "Référence",
         "amount": "Montant",
+        "unallocated": "Crédit non affecté",
         "proof": "Justificatif"
+      },
+      "allocation": {
+        "action": "Affecter",
+        "title": "Affecter un encaissement existant",
+        "availableCredit": "Crédit disponible sur cet encaissement",
+        "explanation": "Cette opération affecte l'encaissement aux factures sans enregistrer une nouvelle entrée de trésorerie.",
+        "amountToApply": "Montant à affecter",
+        "total": "Total affecté",
+        "apply": "Affecter aux factures",
+        "exceedsCredit": "Le total dépasse le crédit disponible.",
+        "noOpenInvoices": "Aucune facture validée impayée ne peut recevoir ce crédit.",
+        "saveError": "Impossible d'affecter cet encaissement."
       },
       "noPayments": "Aucun paiement.",
       "downloadProof": "Télécharger le justificatif"

@@ -72,6 +72,8 @@ export interface CustomerPayment {
   recorded_by_detail: UserBrief | null
   allocations?: InvoiceAllocationInput[]
   allocations_detail: PaymentAllocation[]
+  unallocated_amount: string
+  is_reversed: boolean
   proof_url: string | null
   created_at: string
   updated_at: string

@@ -804,6 +804,7 @@
       "outstandingBalance": "الرصيد المستحق",
       "openInvoices": "الفواتير المفتوحة",
       "lastPayment": "آخر دفعة",
+      "validatedUnpaid": "مصادق عليها — غير مدفوعة",
       "invoices": "الفواتير",
       "table": {
         "invoice": "الفاتورة",
@@ -823,7 +824,20 @@
         "indirect": "غير مباشر",
         "reference": "المرجع",
         "amount": "المبلغ",
+        "unallocated": "رصيد غير مخصص",
         "proof": "الإثبات"
+      },
+      "allocation": {
+        "action": "تخصيص",
+        "title": "تخصيص دفعة موجودة",
+        "availableCredit": "الرصيد المتاح في هذه الدفعة",
+        "explanation": "تُخصص هذه العملية الدفعة للفواتير دون تسجيل حركة خزينة جديدة.",
+        "amountToApply": "المبلغ المراد تخصيصه",
+        "total": "إجمالي المخصص",
+        "apply": "تخصيص للفواتير",
+        "exceedsCredit": "الإجمالي يتجاوز الرصيد المتاح.",
+        "noOpenInvoices": "لا توجد فاتورة مصادق عليها وغير مدفوعة يمكن تخصيص هذا الرصيد لها.",
+        "saveError": "تعذر تخصيص هذه الدفعة."
       },
       "noPayments": "لا توجد دفعات.",
       "downloadProof": "تنزيل الإثبات"

@@ -88,6 +88,29 @@ class PaymentAllocationService:
         return total_invoiced - total_received
 
     @staticmethod
+    def get_payment_unallocated_amount(payment: CustomerPayment) -> Decimal:
+        """Return the part of a receipt that is still customer credit.
+
+        Older receipts may represent that credit either explicitly with a
+        ``PaymentAllocation(invoice=None)`` row or implicitly by having no
+        allocation rows at all.  Both forms are valid historical data and
+        must be available to the later-allocation workflow.
+        """
+        prefetched = getattr(payment, "_prefetched_objects_cache", {}).get("allocations")
+        if prefetched is not None:
+            allocated_to_invoices = sum(
+                (allocation.amount for allocation in prefetched if allocation.invoice_id), ZERO
+            )
+        else:
+            allocated_to_invoices = (
+                payment.allocations.filter(invoice__isnull=False).aggregate(total=Sum("amount"))[
+                    "total"
+                ]
+                or ZERO
+            )
+        return payment.amount - allocated_to_invoices
+
+    @staticmethod
     @transaction.atomic
     def allocate_payment(payment_id, invoice_allocations: list[dict]) -> list[PaymentAllocation]:
         """Create one PaymentAllocation per item in `invoice_allocations`
@@ -142,6 +165,125 @@ class PaymentAllocationService:
                 PaymentAllocationService._sync_invoice_status(invoice)
 
         return created
+
+    @staticmethod
+    @transaction.atomic
+    def allocate_available_credit(
+        payment_id, invoice_allocations: list[dict]
+    ) -> list[PaymentAllocation]:
+        """Apply an existing receipt's unallocated credit to invoices.
+
+        This is deliberately separate from ``allocate_payment``.  Historical
+        data stores credit in two equivalent ways: as an explicit NULL-invoice
+        allocation or as the unallocated remainder of the receipt.  This
+        method consumes either representation without changing the receipt or
+        posting treasury a second time.  Payment and invoice row locks make
+        retries/concurrent submissions safe from over-allocation.
+        """
+        payment = CustomerPayment.objects.select_for_update().get(pk=payment_id)
+        if payment.is_reversed:
+            raise PaymentAllocationError("Un paiement annule ne peut pas etre affecte.")
+        if not invoice_allocations:
+            raise PaymentAllocationError("Ajoutez au moins une facture a affecter.")
+
+        requested_lines: list[tuple[int, Decimal]] = []
+        requested_total = ZERO
+        seen_invoice_ids: set[int] = set()
+        for item in invoice_allocations:
+            invoice_id = item.get("invoice_id") or item.get("invoice")
+            if not invoice_id:
+                raise PaymentAllocationError("Une facture est requise pour chaque affectation.")
+            if invoice_id in seen_invoice_ids:
+                raise PaymentAllocationError("Une facture ne peut apparaitre qu'une seule fois.")
+            seen_invoice_ids.add(invoice_id)
+
+            amount = Decimal(str(item["amount"]))
+            if amount <= ZERO:
+                raise PaymentAllocationError("Le montant affecte doit etre strictement positif.")
+            requested_lines.append((invoice_id, amount))
+            requested_total += amount
+
+        # Always acquire invoice locks in PK order.  Two receipts allocated
+        # concurrently to the same pair of invoices can therefore never take
+        # the locks in opposite order and deadlock.
+        invoices_by_id = {
+            invoice.id: invoice
+            for invoice in Invoice.objects.select_for_update()
+            .filter(pk__in=seen_invoice_ids)
+            .order_by("pk")
+        }
+        if len(invoices_by_id) != len(seen_invoice_ids):
+            raise PaymentAllocationError("Une des factures selectionnees est introuvable.")
+
+        normalized: list[tuple[Invoice, Decimal]] = []
+        for invoice_id, amount in requested_lines:
+            invoice = invoices_by_id[invoice_id]
+            if invoice.sale.customer_id != payment.customer_id:
+                raise PaymentAllocationError(
+                    f"La facture {invoice.invoice_number} n'appartient pas au client de ce paiement."
+                )
+            if invoice.status not in (
+                Invoice.Status.VALIDATED,
+                Invoice.Status.PARTIALLY_PAID,
+            ):
+                raise PaymentAllocationError(
+                    f"La facture {invoice.invoice_number} n'est pas ouverte au paiement."
+                )
+            outstanding = PaymentAllocationService.get_invoice_outstanding(invoice)
+            if amount > outstanding:
+                raise PaymentAllocationError(
+                    f"Le montant alloue ({amount}) depasse l'encours de la facture "
+                    f"{invoice.invoice_number} ({outstanding})."
+                )
+            normalized.append((invoice, amount))
+
+        available = PaymentAllocationService.get_payment_unallocated_amount(payment)
+        if requested_total > available:
+            raise PaymentAllocationError(
+                f"Le montant a affecter ({requested_total}) depasse le credit disponible "
+                f"sur ce paiement ({available})."
+            )
+
+        credit_rows = list(
+            payment.allocations.select_for_update()
+            .filter(invoice__isnull=True)
+            .order_by("created_at", "id")
+        )
+        created_or_updated: list[PaymentAllocation] = []
+        credit_index = 0
+
+        for invoice, requested_amount in normalized:
+            remaining = requested_amount
+            while remaining > ZERO and credit_index < len(credit_rows):
+                credit = credit_rows[credit_index]
+                consumed = min(credit.amount, remaining)
+                if consumed == credit.amount:
+                    credit.invoice = invoice
+                    credit.save(update_fields=["invoice", "updated_at"])
+                    created_or_updated.append(credit)
+                    credit_index += 1
+                else:
+                    credit.amount -= consumed
+                    credit.save(update_fields=["amount", "updated_at"])
+                    created_or_updated.append(
+                        PaymentAllocation.objects.create(
+                            payment=payment, invoice=invoice, amount=consumed
+                        )
+                    )
+                remaining -= consumed
+
+            # Any amount left here comes from the receipt's implicit
+            # unallocated remainder (payment.amount minus allocation rows).
+            if remaining > ZERO:
+                created_or_updated.append(
+                    PaymentAllocation.objects.create(
+                        payment=payment, invoice=invoice, amount=remaining
+                    )
+                )
+
+            PaymentAllocationService._sync_invoice_status(invoice)
+
+        return created_or_updated
 
     @staticmethod
     def _sync_invoice_status(invoice: Invoice) -> None:

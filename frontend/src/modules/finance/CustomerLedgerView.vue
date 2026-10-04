@@ -10,7 +10,8 @@ import { fetchCustomerLedger, exportLedgerPdf, exportCustomerPaymentPdf } from '
 import { exportInvoicePdf } from '@/modules/sales/api'
 import Modal from '@/components/ui/Modal.vue'
 import PaymentAllocationForm from './PaymentAllocationForm.vue'
-import type { CustomerLedger } from './types'
+import ExistingPaymentAllocationForm from './ExistingPaymentAllocationForm.vue'
+import type { CustomerLedger, CustomerPayment } from './types'
 import { formatMoney, formatQuantity } from '@/utils/currency'
 import AppLogo from '@/components/AppLogo.vue'
 import Badge from '@/components/ui/Badge.vue'
@@ -31,6 +32,7 @@ const exportingInvoiceId = ref<number | null>(null)
 
 const customerId = computed(() => Number(route.params.id))
 const showPaymentModal = ref(false)
+const paymentToAllocate = ref<CustomerPayment | null>(null)
 const previewUrl = ref<string | null>(null)
 const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp']
 
@@ -53,6 +55,11 @@ async function load() {
 
 function onPaymentSuccess() {
   showPaymentModal.value = false
+  load()
+}
+
+function onExistingAllocationSuccess() {
+  paymentToAllocate.value = null
   load()
 }
 
@@ -118,6 +125,13 @@ function badgeVariant(status: string) {
   if (status === 'CANCELLED') return 'critique' as const
   if (status === 'PARTIALLY_PAID') return 'ecart' as const
   return 'neutre' as const
+}
+
+function invoiceStatusLabel(status: string, outstanding: string) {
+  if (status === 'VALIDATED' && Number(outstanding) > 0) {
+    return t('finance.customerLedger.validatedUnpaid')
+  }
+  return t(`invoiceStatus.${status}`)
 }
 </script>
 
@@ -238,9 +252,7 @@ function badgeVariant(status: string) {
                 <td class="px-2 py-1.5 text-right">
                   <MonoValue
                     :value="
-                      invoice.sale_detail
-                        ? formatQuantity(invoice.sale_detail.quantity_loaded)
-                        : ''
+                      invoice.sale_detail ? formatQuantity(invoice.sale_detail.quantity_loaded) : ''
                     "
                   />
                 </td>
@@ -262,7 +274,7 @@ function badgeVariant(status: string) {
                 </td>
                 <td class="px-2 py-1.5">
                   <Badge :variant="badgeVariant(invoice.status)">
-                    {{ t(`invoiceStatus.${invoice.status}`) }}
+                    {{ invoiceStatusLabel(invoice.status, invoice.outstanding) }}
                   </Badge>
                 </td>
                 <td class="px-2 py-1.5 text-right">
@@ -307,6 +319,9 @@ function badgeVariant(status: string) {
                 <th class="px-2 py-1.5 font-medium text-right">
                   {{ t('finance.customerLedger.paymentsTable.amount') }}
                 </th>
+                <th class="px-2 py-1.5 font-medium text-right">
+                  {{ t('finance.customerLedger.paymentsTable.unallocated') }}
+                </th>
                 <th class="px-2 py-1.5 font-medium">Justificatif</th>
                 <th class="px-2 py-1.5 font-medium"></th>
               </tr>
@@ -326,6 +341,9 @@ function badgeVariant(status: string) {
                 <td class="text-texte px-2 py-1.5 text-right font-medium">
                   <MonoValue :value="formatMoney(payment.amount)" />
                 </td>
+                <td class="px-2 py-1.5 text-right">
+                  <MonoValue :value="formatMoney(payment.unallocated_amount)" />
+                </td>
                 <td class="px-2 py-1.5">
                   <button
                     v-if="payment.proof_url"
@@ -338,19 +356,30 @@ function badgeVariant(status: string) {
                   <span v-else class="text-texte-3">—</span>
                 </td>
                 <td class="px-2 py-1.5 text-right">
-                  <button
-                    type="button"
-                    data-test="customer-payment-pdf"
-                    class="text-bitume underline disabled:opacity-50"
-                    :disabled="exportingPaymentId === payment.id"
-                    @click="exportPaymentPdf(payment.id)"
-                  >
-                    {{ t('finance.partyLedger.pdf') }}
-                  </button>
+                  <div class="flex justify-end gap-3">
+                    <button
+                      v-if="Number(payment.unallocated_amount) > 0 && !payment.is_reversed"
+                      type="button"
+                      data-test="allocate-existing-payment"
+                      class="text-bitume font-medium underline"
+                      @click="paymentToAllocate = payment"
+                    >
+                      {{ t('finance.customerLedger.allocation.action') }}
+                    </button>
+                    <button
+                      type="button"
+                      data-test="customer-payment-pdf"
+                      class="text-bitume underline disabled:opacity-50"
+                      :disabled="exportingPaymentId === payment.id"
+                      @click="exportPaymentPdf(payment.id)"
+                    >
+                      {{ t('finance.partyLedger.pdf') }}
+                    </button>
+                  </div>
                 </td>
               </tr>
               <tr v-if="ledger.payments.length === 0">
-                <td colspan="7" class="text-texte-3 px-2 py-4 text-center">
+                <td colspan="8" class="text-texte-3 px-2 py-4 text-center">
                   {{ t('finance.customerLedger.noPayments') }}
                 </td>
               </tr>
@@ -370,6 +399,20 @@ function badgeVariant(status: string) {
         :initial-customer-id="customerId"
         @success="onPaymentSuccess"
         @cancel="showPaymentModal = false"
+      />
+    </Modal>
+
+    <Modal
+      v-if="paymentToAllocate && ledger"
+      :title="t('finance.customerLedger.allocation.title')"
+      max-width="max-w-3xl"
+      @close="paymentToAllocate = null"
+    >
+      <ExistingPaymentAllocationForm
+        :payment="paymentToAllocate"
+        :invoices="ledger.invoices"
+        @success="onExistingAllocationSuccess"
+        @cancel="paymentToAllocate = null"
       />
     </Modal>
 

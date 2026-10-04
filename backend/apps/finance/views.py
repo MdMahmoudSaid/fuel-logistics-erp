@@ -50,6 +50,7 @@ from .serializers import (
     CashAccountSerializer,
     ControlledDebtPaymentRequestSerializer,
     CustomerPaymentSerializer,
+    ExistingCreditAllocationRequestSerializer,
     ExpenseCategorySerializer,
     ExpenseSerializer,
     CustomerPaidExpensesRequestSerializer,
@@ -74,6 +75,7 @@ from .services import (
     ExpensePostingService,
     IndirectSettlementService,
     PaymentAllocationError,
+    PaymentAllocationService,
     ShareholderDistributionError,
     ShareholderDistributionService,
     ShareholderLedgerService,
@@ -158,6 +160,25 @@ class CustomerPaymentViewSet(viewsets.ModelViewSet):
         response = HttpResponse(pdf_bytes, content_type="application/pdf")
         response["Content-Disposition"] = f'attachment; filename="paiement-client-{payment.id}.pdf"'
         return response
+
+    @action(detail=True, methods=["post"], url_path="allocate")
+    def allocate(self, request, pk=None):
+        """Apply an existing receipt's available credit to open invoices.
+
+        This changes invoice allocation/status only.  It never edits the
+        original receipt and never creates another treasury transaction.
+        """
+        payment = self.get_object()
+        request_serializer = ExistingCreditAllocationRequestSerializer(data=request.data)
+        request_serializer.is_valid(raise_exception=True)
+        try:
+            PaymentAllocationService.allocate_available_credit(
+                payment.id, request_serializer.validated_data["allocations"]
+            )
+        except PaymentAllocationError as exc:
+            return Response({"detail": str(exc)}, status=http_status.HTTP_400_BAD_REQUEST)
+        payment.refresh_from_db()
+        return Response(CustomerPaymentSerializer(payment, context={"request": request}).data)
 
 
 class SupplierPaymentViewSet(viewsets.ModelViewSet):

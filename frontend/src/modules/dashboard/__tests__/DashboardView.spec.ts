@@ -264,6 +264,8 @@ const payments: CustomerPayment[] = [
     recorded_by: null,
     recorded_by_detail: null,
     allocations_detail: [],
+    unallocated_amount: '500000.00',
+    is_reversed: false,
     proof_url: null,
     created_at: todayIso,
     updated_at: todayIso,

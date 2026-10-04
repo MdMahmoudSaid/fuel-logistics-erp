@@ -804,6 +804,7 @@
       "outstandingBalance": "Outstanding balance",
       "openInvoices": "Open invoices",
       "lastPayment": "Last payment",
+      "validatedUnpaid": "Validated — unpaid",
       "invoices": "Invoices",
       "table": {
         "invoice": "Invoice",
@@ -823,7 +824,20 @@
         "indirect": "Indirect",
         "reference": "Reference",
         "amount": "Amount",
+        "unallocated": "Unallocated credit",
         "proof": "Proof"
+      },
+      "allocation": {
+        "action": "Apply",
+        "title": "Apply an existing receipt",
+        "availableCredit": "Available credit on this receipt",
+        "explanation": "This applies the receipt to invoices without recording another treasury entry.",
+        "amountToApply": "Amount to apply",
+        "total": "Total applied",
+        "apply": "Apply to invoices",
+        "exceedsCredit": "The total exceeds the available credit.",
+        "noOpenInvoices": "There is no validated unpaid invoice that can receive this credit.",
+        "saveError": "Could not apply this receipt."
       },
       "noPayments": "No payments yet.",
       "downloadProof": "Download proof"

@@ -107,6 +107,17 @@ class InvoiceAllocationInputSerializer(serializers.Serializer):
     amount = serializers.DecimalField(max_digits=16, decimal_places=2, min_value=Decimal("0.01"))
 
 
+class ExistingCreditAllocationInputSerializer(serializers.Serializer):
+    """One invoice line for applying an already-recorded customer receipt."""
+
+    invoice = serializers.IntegerField(min_value=1)
+    amount = serializers.DecimalField(max_digits=16, decimal_places=2, min_value=Decimal("0.01"))
+
+
+class ExistingCreditAllocationRequestSerializer(serializers.Serializer):
+    allocations = ExistingCreditAllocationInputSerializer(many=True, allow_empty=False)
+
+
 class CustomerPaymentSerializer(serializers.ModelSerializer):
     """docs/PHASE_5_PLAN.md Etape 7.
 
@@ -122,6 +133,7 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
     recorded_by_detail = UserSerializer(source="recorded_by", read_only=True)
     allocations_detail = PaymentAllocationSerializer(source="allocations", many=True, read_only=True)
     allocations = InvoiceAllocationInputSerializer(many=True, write_only=True, required=False)
+    unallocated_amount = serializers.SerializerMethodField()
     proof_url = serializers.SerializerMethodField()
     proof = serializers.FileField(write_only=True, required=False, allow_null=True)
 
@@ -150,9 +162,13 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
             "bank_account", "cash_account", "reference", "is_indirect", "destination", "note",
             "recorded_by", "recorded_by_detail",
             "allocations", "allocations_detail", "proof", "proof_url",
+            "unallocated_amount", "is_reversed",
             "created_at", "updated_at",
         ]
-        read_only_fields = ["id", "recorded_by", "created_at", "updated_at"]
+        read_only_fields = ["id", "recorded_by", "unallocated_amount", "is_reversed", "created_at", "updated_at"]
+
+    def get_unallocated_amount(self, obj) -> str:
+        return f"{PaymentAllocationService.get_payment_unallocated_amount(obj):.2f}"
 
     def get_proof_url(self, obj) -> str | None:
         content_type = ContentType.objects.get_for_model(CustomerPayment)

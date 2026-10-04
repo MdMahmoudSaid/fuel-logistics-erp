@@ -59,6 +59,15 @@ export function fetchCustomerLedger(customerId: number): Promise<CustomerLedger>
   return apiClient.get<CustomerLedger>(`/customers/${customerId}/ledger/`).then((r) => r.data)
 }
 
+export function allocateExistingCustomerPayment(
+  paymentId: number,
+  allocations: { invoice: number; amount: string }[],
+): Promise<CustomerPayment> {
+  return apiClient
+    .post<CustomerPayment>(`/customer-payments/${paymentId}/allocate/`, { allocations })
+    .then((r) => r.data)
+}
+
 // Task 10/11 PDF exports - dedicated `/ledger/pdf/` actions rather than
 // `?format=pdf`: DRF's DefaultContentNegotiation reserves the `format`
 // query param for its own renderer selection (backend/apps/suppliers/

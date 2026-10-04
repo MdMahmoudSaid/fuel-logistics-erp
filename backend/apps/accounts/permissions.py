@@ -99,6 +99,10 @@ ACTION_MAP = {
     "record_indirect": "create",
     "record_customer_paid": "create",
     "record_debt_payment": "create",
+    # Applying an already-recorded customer receipt changes only its invoice
+    # allocation (and the derived invoice payment status).  It does not create
+    # a new receipt or treasury movement, so it belongs to the edit tier.
+    "allocate": "edit",
     # Recording a ShareholderLoan repayment (Task 7, client modifications
     # plan, lost-update race fix) mutates an existing loan row exactly like
     # a plain PATCH would have - same "edit" tier as `update`/

@@ -6,6 +6,7 @@ const fetchCustomerLedger = vi.fn()
 const exportLedgerPdf = vi.fn()
 const exportCustomerPaymentPdf = vi.fn()
 const exportInvoicePdf = vi.fn()
+const allocateExistingCustomerPayment = vi.fn()
 const push = vi.fn()
 
 vi.mock('vue-router', () => ({
@@ -17,6 +18,7 @@ vi.mock('../api', () => ({
   fetchCustomerLedger: (...args: unknown[]) => fetchCustomerLedger(...args),
   exportLedgerPdf: (...args: unknown[]) => exportLedgerPdf(...args),
   exportCustomerPaymentPdf: (...args: unknown[]) => exportCustomerPaymentPdf(...args),
+  allocateExistingCustomerPayment: (...args: unknown[]) => allocateExistingCustomerPayment(...args),
 }))
 
 vi.mock('@/modules/sales/api', () => ({
@@ -47,6 +49,8 @@ describe('CustomerLedgerView', () => {
           recorded_by: 1,
           recorded_by_detail: null,
           allocations_detail: [],
+          unallocated_amount: '0.00',
+          is_reversed: false,
           proof_url: '/media/documents/recu.jpg',
           created_at: '',
           updated_at: '',
@@ -61,7 +65,9 @@ describe('CustomerLedgerView', () => {
 
     expect(wrapper.find('a[target="_blank"]').exists()).toBe(false)
 
-    const proofButton = wrapper.findAll('button').find((button) => button.text() === 'Voir justificatif')
+    const proofButton = wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Voir justificatif')
     expect(proofButton).toBeTruthy()
     await proofButton!.trigger('click')
     await flushPromises()
@@ -173,5 +179,68 @@ describe('CustomerLedgerView', () => {
     // Clicking the PDF button must not also navigate to the invoice detail
     // page (the whole row is otherwise clickable for that).
     expect(push).not.toHaveBeenCalled()
+  })
+
+  it('clearly labels validated unpaid invoices and applies existing credit FIFO', async () => {
+    fetchCustomerLedger.mockResolvedValue({
+      customer: { id: 1, name: 'Client X', company_name: '' },
+      outstanding_balance: '100.00',
+      invoices: [
+        {
+          id: 10,
+          invoice_number: 'INV-010',
+          status: 'VALIDATED',
+          total_amount: '60.00',
+          issued_date: '2026-09-01',
+          outstanding: '60.00',
+        },
+        {
+          id: 11,
+          invoice_number: 'INV-011',
+          status: 'VALIDATED',
+          total_amount: '40.00',
+          issued_date: '2026-09-02',
+          outstanding: '40.00',
+        },
+      ],
+      payments: [
+        {
+          id: 7,
+          customer: 1,
+          amount: '75.00',
+          payment_date: '2026-09-03',
+          method: 'CASH',
+          reference: '',
+          is_indirect: false,
+          destination: 'CASH',
+          allocations_detail: [],
+          unallocated_amount: '75.00',
+          is_reversed: false,
+          proof_url: null,
+        },
+      ],
+    })
+    allocateExistingCustomerPayment.mockResolvedValue({})
+
+    const wrapper = mount(CustomerLedgerView)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Validée — non payée')
+    await wrapper.find('[data-test="allocate-existing-payment"]').trigger('click')
+    await flushPromises()
+
+    expect(
+      (wrapper.find('[data-test="allocation-amount-10"]').element as HTMLInputElement).value,
+    ).toBe('60.00')
+    expect(
+      (wrapper.find('[data-test="allocation-amount-11"]').element as HTMLInputElement).value,
+    ).toBe('15.00')
+    await wrapper.find('[data-test="submit-existing-allocation"]').trigger('submit')
+    await flushPromises()
+
+    expect(allocateExistingCustomerPayment).toHaveBeenCalledWith(7, [
+      { invoice: 10, amount: '60.00' },
+      { invoice: 11, amount: '15.00' },
+    ])
   })
 })
