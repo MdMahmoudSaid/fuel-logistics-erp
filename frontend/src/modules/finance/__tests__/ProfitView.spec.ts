@@ -127,6 +127,66 @@ describe('ProfitView', () => {
     expect(wrapper.text()).toContain('2 250 000 XOF')
   })
 
+  // Client report (2026-10-04): the operational-profit card (fed by
+  // fetchReport) used to render as soon as the trip rows arrived, while
+  // the general-expenses/net-profit cards next to it (fed by
+  // fetchShareholderProfitPreview, a separate slower call) stayed blank
+  // for a few hundred milliseconds - a visible flash of broken-looking
+  // cards in the same row. The whole Rentabilite section must wait for
+  // both calls together.
+  it('does not render the Rentabilite cards until both the trip rows and the profit preview have resolved', async () => {
+    let resolvePreview!: (value: unknown) => void
+    fetchShareholderProfitPreview.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvePreview = resolve
+        }),
+    )
+
+    const wrapper = mount(ProfitView)
+    await flushPromises()
+    await flushPromises()
+
+    // fetchReport has already resolved (it would show "2 250 000 XOF" if
+    // rendered), but the preview is still pending - the page must still be
+    // showing its loading state, not a half-populated grid.
+    expect(wrapper.find('[data-test="profit-operational-card"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain(i18n.global.t('common.loading'))
+
+    resolvePreview({
+      period_start: '2026-08-01',
+      period_end: null,
+      current_profit: '900000.00',
+      operational_profit: '900000.00',
+      general_expenses_paid: '150000.00',
+      net_profit: '750000.00',
+      all_time_net_profit: '750000.00',
+      total_company_absorbed_loss: '0.00',
+      working_capital: {
+        capital: '100000.00',
+        treasury_available: '400000.00',
+        customer_receivables: '350000.00',
+        supplier_debt_total: '200000.00',
+        transporter_debt_total: '100000.00',
+        other_debts: '50000.00',
+        supplier_reliquat_value: '0.00',
+        supplier_in_transit_value: '0.00',
+        supplier_company_stock_value: '0.00',
+        gross: '750000.00',
+        total: '1100000.00',
+      },
+      already_distributed: '0.00',
+      already_validated_total: '0.00',
+      result_after_debts_and_capital: '650000.00',
+      distributable_result: '750000.00',
+      shareholders: [],
+    })
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="profit-operational-card"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('2 250 000 XOF')
+  })
+
   // UI reorg (2026-09-04): Section "Distribution" shows brut, dettes
   // ouvertes, capital apporte (replacing the old "Fond de roulement
   // client" total card - still available on the Dashboard), and resultat

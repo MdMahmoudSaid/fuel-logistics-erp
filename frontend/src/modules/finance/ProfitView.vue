@@ -51,7 +51,13 @@ interface MarginRow {
 
 const dateRange = ref<DateRangeValue>({})
 const rows = ref<MarginRow[]>([])
-const loading = ref(false)
+const loadingRows = ref(false)
+const loadingPreview = ref(false)
+// loadRows() and loadPreview() run in parallel but resolve at different
+// speeds - gating the page on loadingRows alone let the operational-profit
+// card (fed by rows) render before the preview arrived, flashing the
+// general-expenses/net-profit cards next to it blank for a moment.
+const loading = computed(() => loadingRows.value || loadingPreview.value)
 const error = ref('')
 const preview = ref<ShareholderProfitPreview | null>(null)
 
@@ -109,7 +115,7 @@ const periodProfitTone = computed(() =>
 )
 
 async function loadRows() {
-  loading.value = true
+  loadingRows.value = true
   error.value = ''
   try {
     const params: Record<string, string | undefined> = { ...dateRange.value }
@@ -119,15 +125,18 @@ async function loadRows() {
     error.value = t('finance.profit.loadError')
     rows.value = []
   } finally {
-    loading.value = false
+    loadingRows.value = false
   }
 }
 
 async function loadPreview(params: Record<string, string | undefined>) {
+  loadingPreview.value = true
   try {
     preview.value = await fetchShareholderProfitPreview(params)
   } catch {
     preview.value = null
+  } finally {
+    loadingPreview.value = false
   }
 }
 
