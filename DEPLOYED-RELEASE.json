@@ -1,6 +1,6 @@
 {
-  "commit": "codex/flexible-profit-periods@security-20261003",
-  "deployed_at": "20261003T163234Z",
-  "method": "Audited security release: dependency remediation, browser hardening headers, full automated test and production build verification",
-  "rollback": "/home/bouye/rollback/fuel-security-20261003"
+  "commit": "codex/production-customer-credit@customer-credit-20261004",
+  "deployed_at": "20261004",
+  "method": "Audited customer-credit allocation release preserving the hardened production configuration and flexible profit periods",
+  "rollback": "/home/bouye/apps/.releases/fuel-security-c4ed455"
 }
