@@ -367,6 +367,38 @@ def test_dashboard_summary_shareholders_section_includes_distributable_result():
 
 
 @pytest.mark.django_db
+def test_dashboard_summary_period_net_profit_falls_after_distribution_is_validated():
+    """Client decision (2026-10-04): the dashboard's "Bénéfice net après
+    dépenses générales" card must fall as distributions are validated and
+    reach zero once everything is distributed - same contract as the
+    Bénéfices page - instead of duplicating the old period-only formula
+    independently of what has already been distributed."""
+    admin_user = _make_admin("DASHNETFALL")
+    _make_full_trip("DASHNETFALL", admin_user)
+    Shareholder.objects.create(name="Dash Net", participation_percent=Decimal("100"))
+
+    client = APIClient()
+    client.force_authenticate(admin_user)
+
+    from apps.finance.services import ShareholderDistributionService, ShareholderProfitPreviewService
+
+    before = ShareholderProfitPreviewService.get_preview()["net_profit"]
+    assert before > Decimal("0.00")
+
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-01-01",
+        period_end="2026-12-31",
+        total_profit=before,
+        actor=admin_user,
+    )
+    ShareholderDistributionService.validate_distribution(distribution.id, admin_user)
+
+    response = client.get("/api/dashboard/summary/")
+    assert response.status_code == 200, response.data
+    assert Decimal(response.data["financial_summary"]["period_net_profit"]) == Decimal("0.00")
+
+
+@pytest.mark.django_db
 def test_dashboard_summary_requires_reports_permission():
     role = _make_role_without_reports("DASH")
     user = User.objects.create_user(phone="+2220000013", pin="1234", role=role)

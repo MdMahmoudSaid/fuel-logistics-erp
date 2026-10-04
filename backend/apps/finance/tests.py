@@ -4652,6 +4652,28 @@ def test_preview_distributable_is_total_net_profit_minus_validated_distributions
 
 
 @pytest.mark.django_db
+def test_preview_net_profit_matches_distributable_result_after_validation():
+    """Client decision 2026-10-04: "bénéfice net après dépenses générales"
+    must fall as distributions are validated and reach zero once everything
+    is distributed, same as distributable_result, instead of staying at the
+    period's raw net profit regardless of what has already been given out."""
+    _make_shareholders([Decimal("100")])
+    actor = _make_admin_user("NETMATCH")
+    seed_net_profit(Decimal("300000.00"))
+    distribution = ShareholderDistributionService.create_distribution(
+        period_start="2026-07-01",
+        period_end="2026-07-31",
+        total_profit=Decimal("100000.00"),
+        actor=actor,
+    )
+    ShareholderDistributionService.validate_distribution(distribution.id, actor)
+
+    for kwargs in ({}, {"date_from": date(2026, 8, 1), "date_to": date(2026, 8, 31)}):
+        preview = ShareholderProfitPreviewService.get_preview(**kwargs)
+        assert preview["net_profit"] == preview["distributable_result"] == Decimal("200000.00")
+
+
+@pytest.mark.django_db
 def test_draft_distribution_exposes_available_to_distribute():
     _make_shareholders([Decimal("100")])
     actor = _make_admin_user("AVAILFLD")
