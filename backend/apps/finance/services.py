@@ -2867,8 +2867,10 @@ class ShareholderProfitPreviewService:
         # trip's net profit after general expenses (all time) minus every
         # VALIDATED distribution. It falls to zero once everything has been
         # distributed. (DRAFT is a preview with no effect; CANCELLED grants
-        # nothing.) The period-scoped net_profit above stays what the
-        # profitability cards show.
+        # nothing.) The period-scoped net_profit computed above is only an
+        # internal input to all_time_net_profit below - it is no longer what
+        # gets returned as "net_profit" (see override right before the return,
+        # client decision 2026-10-04).
         if date_from is None and date_to is None:
             all_time_net_profit = net_profit
         else:
@@ -2888,6 +2890,15 @@ class ShareholderProfitPreviewService:
             or ZERO
         )
         distributable_result = all_time_net_profit - already_validated_total
+
+        # Client decision (2026-10-04): "bénéfice net après dépenses
+        # générales" must behave like "bénéfice à distribuer" - it falls to
+        # zero once everything has been distributed and rises again as new
+        # profit accrues, on the Bénéfices page AND the dashboard - instead
+        # of always showing the selected period's raw net profit regardless
+        # of distributions already validated. The period-scoped value
+        # computed above only served to derive all_time_net_profit.
+        net_profit = distributable_result
 
         shareholders = [
             {

@@ -598,6 +598,11 @@ def _general_expense(amount, suffix, date_, status=Expense.Status.PAID):
 
 @pytest.mark.django_db
 def test_net_profit_equals_operational_profit_without_general_expenses():
+    """Client decision (2026-10-04): net_profit is now the all-time,
+    distribution-aware figure (same contract as distributable_result), not
+    the period-scoped one - here it still equals operational_profit only
+    because this trip is the only data in the whole database, so the
+    all-time and period-scoped figures coincide."""
     admin_user = _make_admin("NETNOEXP")
     _make_full_trip("NETNOEXP", admin_user)
 
@@ -611,6 +616,9 @@ def test_net_profit_equals_operational_profit_without_general_expenses():
 
 @pytest.mark.django_db
 def test_net_profit_subtracts_general_expense_paid_in_period():
+    """Same coincidence as above: the expense is the only one in the
+    database and falls inside the queried period, so all-time net_profit
+    still matches period operational_profit minus that expense."""
     admin_user = _make_admin("NETWITHEXP")
     _make_full_trip("NETWITHEXP", admin_user)
     _general_expense(Decimal("150000.00"), "NETWITHEXP", "2026-08-20")
@@ -624,7 +632,11 @@ def test_net_profit_subtracts_general_expense_paid_in_period():
 
 
 @pytest.mark.django_db
-def test_general_expense_outside_period_is_not_counted():
+def test_net_profit_is_all_time_and_counts_expenses_outside_the_queried_period():
+    """Unlike general_expenses_paid (period-scoped), net_profit is the
+    all-time undistributed figure, so a general expense dated outside the
+    queried period still reduces it - the queried period only changes
+    general_expenses_paid/operational_profit, not net_profit."""
     admin_user = _make_admin("NETOUTPERIOD")
     _make_full_trip("NETOUTPERIOD", admin_user)
     _general_expense(Decimal("150000.00"), "NETOUTPERIOD", "2026-07-01")
@@ -634,7 +646,8 @@ def test_general_expense_outside_period_is_not_counted():
     )
 
     assert preview["general_expenses_paid"] == Decimal("0.00")
-    assert preview["net_profit"] == preview["operational_profit"]
+    assert preview["net_profit"] == preview["operational_profit"] - Decimal("150000.00")
+    assert preview["net_profit"] == preview["distributable_result"]
 
 
 @pytest.mark.django_db

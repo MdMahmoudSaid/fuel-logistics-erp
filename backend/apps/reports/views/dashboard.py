@@ -342,14 +342,15 @@ class DashboardViewSet(viewsets.ViewSet):
             # headline figure, see period_net_profit below). Kept for any
             # other consumer; page Benefices remains the place to see it.
             "period_accounting_profit": profit["total_margin"],
-            # Dashboard recette fix (2026-09-04): the dashboard's headline
-            # profit card must be net profit (operational minus general
-            # expenses actually paid), not the raw operational figure -
-            # same formula as ShareholderProfitPreviewService.get_preview()'s
-            # net_profit, computed independently here since this section is
-            # deliberately period-scoped (date_from/date_to) while that
-            # service defaults to "since last validated distribution".
-            "period_net_profit": profit["total_margin"] - period_paid_expenses_total,
+            # Client decision (2026-10-04): the dashboard's headline profit
+            # card must fall as distributions are validated and reach zero
+            # once everything is distributed, same as the Bénéfices page -
+            # so it reuses profit_preview["net_profit"] (already fetched
+            # above, all-time and distribution-aware) instead of
+            # recomputing a period-only formula that ignored distributions.
+            # Keeps the "period_net_profit" key name for API compatibility,
+            # though the value is no longer period-scoped.
+            "period_net_profit": profit_preview["net_profit"],
             "current_treasury_balance": treasury_balance,
         }
 
