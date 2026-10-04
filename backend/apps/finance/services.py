@@ -309,7 +309,10 @@ class PaymentAllocationService:
 
         if target != invoice.status:
             invoice.status = target
-            invoice.save(update_fields=["status", "updated_at"])
+            invoice.save(
+                update_fields=["status", "updated_at"],
+                allow_closed_period_payment_status_sync=True,
+            )
 
 
 class IndirectSettlementService:

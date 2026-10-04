@@ -114,8 +114,14 @@ class AuditableModel(models.Model):
                     dates.append(previous.sale.trip.loading_date)
         assert_profit_period_dates_unlocked(dates)
 
-    def save(self, *args, user=None, reason=None, **kwargs):
-        self._assert_profit_period_unlocked()
+    def save(
+        self, *args, user=None, reason=None, _skip_profit_period_lock=False, **kwargs
+    ):
+        # Private escape hatch used only after a model-specific method has
+        # proved that a write cannot alter profit.  Callers must not expose
+        # this flag through serializers or generic model APIs.
+        if not _skip_profit_period_lock:
+            self._assert_profit_period_unlocked()
         is_create = self.pk is None
         previous_snapshot = None
         if not is_create:
