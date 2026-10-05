@@ -152,12 +152,12 @@ describe('ReportsView', () => {
     await exportButton!.trigger('click')
     await flushPromises()
 
-    // DateRangeFilter emits its default preset ("month") on mount, so that's
+    // DateRangeFilter emits its default preset ("period") on mount, so that's
     // already folded into the params by the time "Run report" is clicked.
     expect(downloadReportExport).toHaveBeenCalledWith(
       'trip-report',
       'pdf',
-      { preset: 'month', range: 'month' },
+      { preset: 'period', range: 'period' },
       'fr',
     )
   })
@@ -226,7 +226,7 @@ describe('ReportsView', () => {
       expect(wrapper.findComponent(DateRangeFilter).exists()).toBe(true)
       expect(fetchReport).toHaveBeenLastCalledWith(
         'trip-report',
-        { preset: 'month', range: 'month' },
+        { preset: 'period', range: 'period' },
         expect.any(Object),
       )
     })

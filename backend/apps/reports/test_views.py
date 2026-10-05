@@ -51,6 +51,19 @@ def _make_role_without_reports(suffix):
     return Role.objects.create(name=f"NoReports-{suffix}", permissions={"operations": ["view"]})
 
 
+def _sold_on(trip, day):
+    """Date a test sale on `day` - since 2026-10-05 a trip's profit/revenue
+    belongs to its SALE date, so tests that place a trip in a date range
+    move its sale there too."""
+    from datetime import date as _date, datetime as _datetime, time as _time
+
+    from django.utils import timezone as _tz
+
+    Sale.objects.filter(trip=trip).update(
+        created_at=_tz.make_aware(_datetime.combine(_date.fromisoformat(str(day)), _time(12)))
+    )
+
+
 def _make_full_trip(suffix, admin_user, status=Trip.Status.DELIVERED, with_sale=True):
     product = Product.objects.get(code="gasoil")
     supplier = Supplier.objects.create(name=f"Supplier {suffix}", country="Senegal")
@@ -102,6 +115,7 @@ def _make_full_trip(suffix, admin_user, status=Trip.Status.DELIVERED, with_sale=
             delivered_quantity=Decimal("44850.00"),
             unit_selling_price=Decimal("650.0000"),
         )
+        _sold_on(trip, trip.loading_date)
     return {"trip": trip, "truck": truck, "customer": customer, "sale": sale, "supplier_order": supplier_order}
 
 
@@ -145,10 +159,12 @@ def test_dashboard_summary_period_cards_accept_start_date_end_date_aliases():
     jan = _make_full_trip("DASHPERA", admin_user)
     jan["trip"].loading_date = "2026-01-10"
     jan["trip"].save(update_fields=["loading_date"])
+    _sold_on(jan["trip"], "2026-01-10")
 
     sep = _make_full_trip("DASHPERB", admin_user)
     sep["trip"].loading_date = "2026-09-01"
     sep["trip"].save(update_fields=["loading_date"])
+    _sold_on(sep["trip"], "2026-09-01")
 
     cash = CashAccount.objects.create(name="Dash Period Cash")
     CustomerPayment.objects.create(
@@ -942,9 +958,11 @@ def test_margin_report_endpoint_filters_rows_with_start_date_end_date_aliases():
     jan = _make_full_trip("MARGVWA", admin_user)
     jan["trip"].loading_date = "2026-01-10"
     jan["trip"].save(update_fields=["loading_date"])
+    _sold_on(jan["trip"], "2026-01-10")
     sep = _make_full_trip("MARGVWB", admin_user)
     sep["trip"].loading_date = "2026-09-01"
     sep["trip"].save(update_fields=["loading_date"])
+    _sold_on(sep["trip"], "2026-09-01")
 
     client = APIClient()
     client.force_authenticate(admin_user)
@@ -1524,7 +1542,11 @@ def test_report_endpoint_keeps_the_fields_read_by_trip_detail_dashboard_and_prof
     assert {"trip_reference", "unit_profit", "current_margin", "real_total_cost"} <= set(margin.data["fields"])
     assert margin.data["fields"] == MARGIN_FIELDS and set(margin.data) == {"report_type", "fields", "rows"}
     assert any(row["trip_reference"] == fx["trip"].reference for row in margin.data["rows"])
-    assert all(set(row) == set(MARGIN_FIELDS) for row in margin.data["rows"])
+    # Rows also carry keys outside FIELDS (never exported): trip_id,
+    # is_adjustment, revenue, supplier_cost (spec 2026-10-05-periodes-
+    # independantes) - FIELDS itself is unchanged.
+    extra = {"trip_id", "is_adjustment", "revenue", "supplier_cost"}
+    assert all(set(row) == set(MARGIN_FIELDS) | extra for row in margin.data["rows"])
 
 
 @pytest.mark.django_db

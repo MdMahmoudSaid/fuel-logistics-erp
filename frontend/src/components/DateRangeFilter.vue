@@ -10,6 +10,7 @@ import type { DateRangeValue } from './date-range'
 const { t } = useI18n()
 
 const PRESETS = [
+  { value: 'period', labelKey: 'dateRange.period' },
   { value: 'today', labelKey: 'dateRange.today' },
   { value: 'week', labelKey: 'dateRange.week' },
   { value: 'month', labelKey: 'dateRange.month' },
@@ -18,7 +19,10 @@ const PRESETS = [
 
 const emit = defineEmits<{ change: [DateRangeValue] }>()
 
-const selected = ref<string>('month')
+// Client decision (2026-10-04): "la periode en cours" (the open
+// ShareholderProfitPeriod) is the default lens for every "de la periode"
+// card - today/week/month/custom remain available as explicit overrides.
+const selected = ref<string>('period')
 const from = ref('')
 const to = ref('')
 

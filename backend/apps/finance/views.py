@@ -14,7 +14,7 @@ from rest_framework.response import Response
 
 from apps.accounts.permissions import HasModulePermission
 from apps.customers.models import Customer
-from apps.reports.date_range import resolve_date_range
+from apps.reports.date_range import is_current_period, resolve_date_range
 from apps.reports.serialization import decimals_to_str
 from apps.reports.services.ledger_pdf import (
     render_customer_payment_pdf,
@@ -261,10 +261,20 @@ class TransporterAdvanceViewSet(viewsets.ModelViewSet):
 
 
 class TransportPaymentViewSet(viewsets.ModelViewSet):
-    queryset = TransportPayment.objects.select_related(
-        "trip", "transporter", "advance_applied"
-    ).all()
+    queryset = (
+        TransportPayment.objects.select_related("trip", "transporter", "advance_applied")
+        .prefetch_related("trip__transport_deductions")
+        .all()
+    )
     serializer_class = TransportPaymentSerializer
+
+    def paginate_queryset(self, queryset):
+        from .commission import prime_commission_history
+
+        page = super().paginate_queryset(queryset)
+        if page is not None:
+            prime_commission_history(page)
+        return page
     filterset_fields = ["trip", "transporter", "status"]
     permission_classes = [HasModulePermission]
     module = "finance"
@@ -710,7 +720,9 @@ class ShareholderViewSet(viewsets.ModelViewSet):
         """
         date_from, date_to = resolve_date_range(request.query_params)
         preview = ShareholderProfitPreviewService.get_preview(
-            date_from=date_from, date_to=date_to
+            date_from=date_from,
+            date_to=date_to,
+            since_last_closure=is_current_period(request.query_params),
         )
         return Response(decimals_to_str(preview))
 
@@ -726,11 +738,14 @@ class ShareholderViewSet(viewsets.ModelViewSet):
         GET /api/shareholders/profit-preview/pdf/?from=&to=&lang=
         """
         date_from, date_to = resolve_date_range(request.query_params)
+        since_last_closure = is_current_period(request.query_params)
         preview = ShareholderProfitPreviewService.get_preview(
-            date_from=date_from, date_to=date_to
+            date_from=date_from, date_to=date_to, since_last_closure=since_last_closure
         )
         other_debts_breakdown = WorkingCapitalService.get_other_debts_breakdown()
-        rows = MarginReportQuery.run(date_from=date_from, date_to=date_to)
+        rows = MarginReportQuery.run(
+            date_from=date_from, date_to=date_to, since_last_closure=since_last_closure
+        )
         lang = request.query_params.get("lang", "fr")
         pdf_bytes = render_profit_report_pdf(
             preview=preview,

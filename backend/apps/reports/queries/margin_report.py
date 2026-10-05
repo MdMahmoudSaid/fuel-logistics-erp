@@ -10,11 +10,13 @@
 
 from decimal import Decimal
 
+from apps.core.request_cache import memoize_per_request
 from apps.finance.models import Expense
 from apps.reports.services.profit import TripProfitService
 from apps.trips.models import Trip
 
 ZERO = Decimal("0.00")
+CENT = Decimal("0.01")
 
 FIELDS = [
     "trip_reference",
@@ -67,17 +69,28 @@ class MarginReportQuery:
     FIELDS = FIELDS
 
     @classmethod
-    def run(cls, *, date_from=None, date_to=None) -> list[dict]:
+    @memoize_per_request
+    def run(cls, *, date_from=None, date_to=None, since_last_closure=False) -> list[dict]:
+        """`since_last_closure=True` ("Periode en cours") ignores the dates
+        and returns the open period's rows: trips sold since the last
+        closure, plus adjustment rows for older trips that changed since.
+        Otherwise a trip belongs to the range of its SALE date (client
+        decision 2026-10-05), never of its loading date."""
         trips = (
             Trip.objects.filter(sale__isnull=False)
-            .select_related("sale", "sale__customer", "product", "supplier_order")
+            .select_related(
+                "sale", "sale__customer", "product", "supplier_order", "delivery_control"
+            )
             .order_by("-loading_date", "-id")
         )
-        if date_from:
-            trips = trips.filter(loading_date__gte=date_from)
-        if date_to:
-            trips = trips.filter(loading_date__lte=date_to)
+        if not since_last_closure:
+            if date_from:
+                trips = trips.filter(sale__created_at__date__gte=date_from)
+            if date_to:
+                trips = trips.filter(sale__created_at__date__lte=date_to)
 
+        trips = list(trips)
+        TripProfitService.prime_trips(trips)
         rows = []
         for trip in trips:
             breakdown = TripProfitService.get_cost_breakdown(trip)
@@ -92,6 +105,18 @@ class MarginReportQuery:
             )
             rows.append(
                 {
+                    # Extra keys outside FIELDS (not exported): trip_id keys
+                    # the closure snapshot, revenue/supplier_cost let the
+                    # Benefices page sum adjustment rows correctly, and
+                    # is_adjustment flags a since-closure delta row.
+                    "trip_id": trip.id,
+                    "is_adjustment": False,
+                    "revenue": (
+                        breakdown["quantity_invoiced"] * trip.sale.unit_selling_price
+                    ).quantize(CENT),
+                    "supplier_cost": (
+                        breakdown["quantity_loaded"] * trip.supplier_order.unit_price
+                    ).quantize(CENT),
                     "trip_reference": trip.reference,
                     "client": trip.sale.customer.name,
                     "product": trip.product.name,
@@ -127,4 +152,8 @@ class MarginReportQuery:
                     "current_margin": breakdown["margin"],
                 }
             )
+        if since_last_closure:
+            from apps.finance.profit_periods import rows_since_last_closure
+
+            return rows_since_last_closure(rows)
         return rows

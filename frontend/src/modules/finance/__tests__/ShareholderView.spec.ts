@@ -325,40 +325,90 @@ describe('ShareholderView', () => {
     expect(closeShareholderProfitPeriod).toHaveBeenCalledWith(9, '2026-09-15')
   })
 
-  it('requires a reason before reopening the latest closed period', async () => {
+  const closedPeriod = {
+    id: 10,
+    start_date: '2026-06-01',
+    end_date: '2026-09-15',
+    status: 'CLOSED',
+    net_profit: '500000.00',
+    distribution: 4,
+  }
+
+  async function openDistributionTab(periods: object[]) {
     shareholderPeriodResourceList.mockResolvedValue({
       ...emptyList(),
-      count: 1,
-      results: [
-        {
-          id: 10,
-          start_date: '2026-06-01',
-          end_date: '2026-09-15',
-          status: 'CLOSED',
-          net_profit: '500000.00',
-          distribution: 4,
-        },
-      ],
+      count: periods.length,
+      results: periods,
     })
-    reopenShareholderProfitPeriod.mockResolvedValue({})
     const wrapper = mount(ShareholderView)
     await flushPromises()
-
     await wrapper
       .findAll('button')
       .find((b) => b.text() === 'Répartition des bénéfices')!
       .trigger('click')
-    const button = wrapper.find('[data-test="reopen-profit-period"]')
-    expect(button.attributes('disabled')).toBeDefined()
+    return wrapper
+  }
+
+  it('reopens the latest closed period from a popup that requires a reason', async () => {
+    reopenShareholderProfitPeriod.mockClear()
+    reopenShareholderProfitPeriod.mockResolvedValue({})
+    const wrapper = await openDistributionTab([closedPeriod])
+
+    expect(wrapper.find('#reopen_reason').exists()).toBe(false)
+    await wrapper.find('[data-test="open-reopen-dialog"]').trigger('click')
+    const dialog = wrapper.find('[data-test="reopen-period-dialog"]')
+    expect(dialog.exists()).toBe(true)
+    expect(dialog.text()).toContain('2026-06-01 — 2026-09-15')
+    expect(wrapper.find('[data-test="reopen-profit-period"]').attributes('disabled')).toBeDefined()
     await wrapper.find('#reopen_reason').setValue('Correction vente oubliée')
-    await flushPromises()
-    await wrapper
-      .findAll('form')
-      .find((form) => form.find('#reopen_reason').exists())!
-      .trigger('submit')
+    await dialog.find('form').trigger('submit')
     await flushPromises()
 
     expect(reopenShareholderProfitPeriod).toHaveBeenCalledWith(10, 'Correction vente oubliée')
+    expect(wrapper.find('[data-test="reopen-period-dialog"]').exists()).toBe(false)
+  })
+
+  it('shows the reopen button only on the latest closed period, warning about the open successor', async () => {
+    reopenShareholderProfitPeriod.mockClear()
+    reopenShareholderProfitPeriod.mockResolvedValue({})
+    confirmDialogMock.mockClear()
+    const wrapper = await openDistributionTab([
+      {
+        id: 11,
+        start_date: '2026-09-16',
+        end_date: null,
+        status: 'OPEN',
+        live_net_profit: '0.00',
+        distribution: null,
+      },
+      closedPeriod,
+      { ...closedPeriod, id: 9, start_date: '2026-05-01', end_date: '2026-05-31' },
+    ])
+
+    const buttons = wrapper.findAll('[data-test="open-reopen-dialog"]')
+    expect(buttons).toHaveLength(1)
+    await buttons[0].trigger('click')
+    const dialog = wrapper.find('[data-test="reopen-period-dialog"]')
+    expect(dialog.text()).toContain('2026-06-01 — 2026-09-15')
+    expect(dialog.text()).toContain('2026-09-16')
+    await wrapper.find('#reopen_reason').setValue('Frais oublié sur un trajet')
+    await dialog.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(confirmDialogMock).not.toHaveBeenCalled()
+    expect(reopenShareholderProfitPeriod).toHaveBeenCalledWith(10, 'Frais oublié sur un trajet')
+  })
+
+  it('closes the reopen popup without reopening when cancelled', async () => {
+    reopenShareholderProfitPeriod.mockClear()
+    const wrapper = await openDistributionTab([closedPeriod])
+
+    await wrapper.find('[data-test="open-reopen-dialog"]').trigger('click')
+    await wrapper.find('#reopen_reason').setValue('Correction vente oubliée')
+    await wrapper.find('[data-test="cancel-reopen-period"]').trigger('click')
+
+    expect(wrapper.find('[data-test="reopen-period-dialog"]').exists()).toBe(false)
+    expect(reopenShareholderProfitPeriod).not.toHaveBeenCalled()
   })
 
   it("loads a shareholder's ledger and shows the combined available_balance", async () => {

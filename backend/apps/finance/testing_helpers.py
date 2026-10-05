@@ -14,5 +14,6 @@ def seed_net_profit(amount=Decimal("10000000.00")):
     row = {
         "current_margin": Decimal(str(amount)),
         "company_absorbed_loss_amount": Decimal("0.00"),
+        "revenue": Decimal("0.00"),
     }
     mock.patch.object(MarginReportQuery, "run", return_value=[row]).start()

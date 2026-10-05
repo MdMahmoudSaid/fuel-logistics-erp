@@ -10,6 +10,7 @@
 
 from decimal import Decimal
 
+from apps.core.request_cache import memoize_per_request
 from apps.finance.services import ControlledDebtPaymentService
 from apps.purchasing.models import SupplierOrder
 from apps.suppliers.models import Supplier
@@ -22,6 +23,7 @@ class SupplierOutstandingReportQuery:
     FIELDS = FIELDS
 
     @classmethod
+    @memoize_per_request
     def run(cls, *, date_from=None, date_to=None) -> list[dict]:
         # "As of today" report: the period params are accepted and ignored
         # (the Reports page hides the period filter for it; a direct call with

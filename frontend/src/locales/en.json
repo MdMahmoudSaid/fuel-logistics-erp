@@ -85,6 +85,7 @@
     "hidePassword": "Hide PIN"
   },
   "dateRange": {
+    "period": "Current period",
     "today": "Today",
     "yesterday": "Yesterday",
     "week": "This week",
@@ -1064,6 +1065,9 @@
         "reopen": "Reopen period",
         "reopenHelp": "When a correction is essential, only the latest closed period can be reopened. A reason is required and retained in the audit trail.",
         "reopenError": "Could not reopen this period.",
+        "reopenTitle": "Reopen the latest closed period",
+        "reopenConfirm": "Reopen period {period}? Its distribution to shareholders will be cancelled (balances go back to their value before the distribution).",
+        "reopenConfirmWithSuccessor": "Reopen period {period}? Its distribution to shareholders will be cancelled (balances go back to their value before the distribution) and the open period starting {successor} will be removed: everything done since then will count in the reopened period.",
         "reason": "Reason for reopening",
         "history": "Period history",
         "lastReopen": "Latest reopening reason",
@@ -1186,6 +1190,10 @@
         "unitProfit": "Profit/L",
         "totalProfit": "Total profit"
       },
+      "adjustment": "Adjustment",
+      "adjustmentHelp": "Trip from an already closed period, changed since: only the difference counts here.",
+      "carriedOver": "Carried over from previous period",
+      "distributionsSinceClosure": "Distributions since closing",
       "distributableResultHelp": "All trips, all periods, minus distributions already validated."
     }
   },

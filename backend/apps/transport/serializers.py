@@ -28,6 +28,18 @@ def _get_default_internal_transporter() -> Transporter:
     return transporter
 
 
+class TransporterBriefSerializer(serializers.ModelSerializer):
+    """A transporter embedded in another record: identity only (see
+    CustomerBriefSerializer)."""
+
+    class Meta:
+        model = Transporter
+        fields = [
+            "id", "name", "company_name", "phone", "address",
+            "is_active", "is_internal", "created_at", "updated_at",
+        ]
+        read_only_fields = fields
+
 class TransporterSerializer(serializers.ModelSerializer):
     gross_earned = serializers.SerializerMethodField()
     deductions = serializers.SerializerMethodField()

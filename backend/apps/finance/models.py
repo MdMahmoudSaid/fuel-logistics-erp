@@ -6,12 +6,14 @@ from django.contrib.postgres.constraints import ExclusionConstraint
 from django.contrib.postgres.fields import DateRangeField, RangeOperators
 from django.db import models
 
-from apps.audit.mixins import AuditableModel, assert_profit_period_dates_unlocked
+from apps.audit.mixins import AuditableModel
 from apps.core.models import TimeStampedModel
+from apps.core.request_cache import memoize_per_request
 
 CURRENCY_CHOICES = [("XOF", "XOF")]
 
 
+@memoize_per_request
 def _account_current_balance(account):
     """opening_balance + Sigma(TreasuryTransaction) (guide Section 8.10/D:
     "computed, never stored, so it can never drift from the transaction
@@ -774,23 +776,6 @@ class ExpenseAllocation(TimeStampedModel):
     def __str__(self) -> str:
         return f"{self.expense_id}: {self.allocated_amount} -> {self.content_object}"
 
-    def _assert_period_unlocked(self):
-        dates = [self.expense.date]
-        if self.pk:
-            previous_date = type(self).objects.filter(pk=self.pk).values_list(
-                "expense__date", flat=True
-            ).first()
-            dates.append(previous_date)
-        assert_profit_period_dates_unlocked(dates)
-
-    def save(self, *args, **kwargs):
-        self._assert_period_unlocked()
-        super().save(*args, **kwargs)
-
-    def delete(self, *args, **kwargs):
-        self._assert_period_unlocked()
-        return super().delete(*args, **kwargs)
-
 
 class TreasuryTransaction(AuditableModel, TimeStampedModel):
     """One movement of company cash/bank money (docs/PHASE_5_PLAN.md Etape 5;
@@ -901,9 +886,11 @@ class Shareholder(TimeStampedModel):
 class ShareholderProfitPeriod(AuditableModel, TimeStampedModel):
     """A business-controlled profit period with no fixed calendar length.
 
-    Exactly one period may be OPEN. Closing snapshots its real net profit,
-    creates and validates the shareholder distribution atomically, and locks
-    dated financial writes in that interval. The latest period may be
+    Exactly one period may be OPEN. Closing freezes its net profit, creates
+    and validates the shareholder distribution atomically and snapshots every
+    sold trip (ShareholderProfitPeriodTripSnapshot) - it never blocks later
+    writes: anything done afterwards, even on an older trip or debt, counts in
+    the open period (client decision 2026-10-05). The latest period may be
     reopened only with an audit reason and only while none of its profit
     shares has been withdrawn.
     """
@@ -938,6 +925,16 @@ class ShareholderProfitPeriod(AuditableModel, TimeStampedModel):
     reopened_at = models.DateTimeField(null=True, blank=True)
     reopen_reason = models.TextField(blank=True)
     reopen_count = models.PositiveIntegerField(default=0)
+    # Running totals frozen at closure (spec 2026-10-05-periodes-
+    # independantes): the open period's figures are "now minus these",
+    # so anything done after the closure - even on an older trip or debt -
+    # lands in the open period. Null while OPEN.
+    general_expenses_paid_snapshot = models.DecimalField(
+        max_digits=16, decimal_places=2, null=True, blank=True
+    )
+    distributed_total_snapshot = models.DecimalField(
+        max_digits=16, decimal_places=2, null=True, blank=True
+    )
 
     class Meta:
         ordering = ["-start_date", "-id"]
@@ -962,6 +959,46 @@ class ShareholderProfitPeriod(AuditableModel, TimeStampedModel):
 
     def __str__(self) -> str:
         return f"Profit period {self.start_date} - {self.end_date or 'open'}"
+
+    def is_locked_for_deletion(self) -> bool:
+        # An OPEN period never carries a distribution or a frozen
+        # net_profit (only close_period sets those) - it is a pure
+        # bookkeeping marker, never financial history. Once CLOSED, even
+        # once, it is locked forever like every other AuditableModel.
+        # ShareholderProfitPeriodService.reopen_period relies on this to
+        # retract an auto-opened successor that was never itself closed.
+        return self.status != self.Status.OPEN
+
+
+class ShareholderProfitPeriodTripSnapshot(models.Model):
+    """One sold trip's margin-report row as it stood when `period` closed.
+
+    The open period shows each trip's change since this row (a new trip
+    counts in full), so a late fee or client quantity control on an old
+    trip appears as an adjustment instead of silently rewriting history.
+    `trip` is SET_NULL so a later-deleted trip still shows as a negative
+    adjustment from `data`.
+    """
+
+    period = models.ForeignKey(
+        ShareholderProfitPeriod, on_delete=models.CASCADE, related_name="trip_snapshots"
+    )
+    trip = models.ForeignKey(
+        "trips.Trip", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="profit_snapshots",
+    )
+    margin = models.DecimalField(max_digits=16, decimal_places=2)
+    data = models.JSONField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["period", "trip"], name="finance_profit_snapshot_period_trip"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.period_id}: {self.data.get('trip_reference')} = {self.margin}"
 
 
 class ShareholderProfitDistribution(AuditableModel, TimeStampedModel):

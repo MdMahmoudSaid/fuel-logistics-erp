@@ -1,18 +1,20 @@
 import logging
 from decimal import Decimal
 
+from django.db.models import Count, Sum
 from rest_framework import serializers
 
 from apps.accounts.models import Role, User
 from apps.accounts.serializers import UserSerializer
+from apps.core.request_cache import memoize_per_request
 from apps.core.serializers import ProductSerializer
 from apps.customers.models import Customer
-from apps.customers.serializers import CustomerSerializer
+from apps.customers.serializers import CustomerBriefSerializer
 from apps.documents.models import Document
 from apps.purchasing.serializers import CessionLetterSerializer
 from apps.purchasing.services import SupplierStockService
-from apps.suppliers.serializers import SupplierSerializer
-from apps.transport.serializers import DriverSerializer, TransporterSerializer, TruckSerializer
+from apps.suppliers.serializers import SupplierBriefSerializer
+from apps.transport.serializers import DriverSerializer, TransporterBriefSerializer, TruckSerializer
 from apps.trips.models import (
     ClientVerificationCorrection,
     DeliveryControl,
@@ -51,13 +53,55 @@ class TripStatusHistorySerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+@memoize_per_request
+def _truck_load_count(truck_id, cession_letter_id) -> int:
+    return (
+        Trip.objects.filter(truck_id=truck_id, cession_letter_id=cession_letter_id)
+        .exclude(status=Trip.Status.CANCELLED)
+        .count()
+    )
+
+
+def prime_trip_list(trips) -> None:
+    """Pre-compute, in a handful of queries, the per-trip figures
+    TripSerializer would otherwise query row by row (cost basis, cession
+    letter remaining quantity, truck load count) for one list page."""
+    trips = list(trips)
+    TripCostService.prime_cost_bases(trips)
+    cession_ids = {trip.cession_letter_id for trip in trips if trip.cession_letter_id}
+    if not cession_ids:
+        return
+    active = Trip.objects.filter(cession_letter_id__in=cession_ids).exclude(
+        status=Trip.Status.CANCELLED
+    )
+    loaded = dict(
+        active.values("cession_letter_id")
+        .annotate(total=Sum("quantity_loaded"))
+        .values_list("cession_letter_id", "total")
+    )
+    counts = {
+        (row["truck_id"], row["cession_letter_id"]): row["count"]
+        for row in active.values("truck_id", "cession_letter_id").annotate(count=Count("id"))
+    }
+    for trip in trips:
+        cession = trip.cession_letter
+        if cession is None:
+            continue
+        SupplierStockService.get_cession_remaining.prime(
+            cession.authorized_quantity - (loaded.get(cession.id) or Decimal("0.00")), cession
+        )
+        _truck_load_count.prime(
+            counts.get((trip.truck_id, cession.id), 0), trip.truck_id, cession.id
+        )
+
+
 class TripSerializer(serializers.ModelSerializer):
-    truck_detail = TruckSerializer(source="truck", read_only=True)
-    transporter_detail = TransporterSerializer(source="transporter", read_only=True)
+    truck_detail =TruckSerializer(source="truck", read_only=True)
+    transporter_detail = TransporterBriefSerializer(source="transporter", read_only=True)
     driver_detail = DriverSerializer(source="driver", read_only=True)
-    supplier_detail = SupplierSerializer(source="supplier", read_only=True)
+    supplier_detail = SupplierBriefSerializer(source="supplier", read_only=True)
     product_detail = ProductSerializer(source="product", read_only=True)
-    client_detail = CustomerSerializer(source="client", read_only=True)
+    client_detail = CustomerBriefSerializer(source="client", read_only=True)
     created_by_detail = UserSerializer(source="created_by", read_only=True)
     cession_letter_detail = CessionLetterSerializer(source="cession_letter", read_only=True)
     cession_letter_truck_load_count = serializers.SerializerMethodField()
@@ -159,11 +203,7 @@ class TripSerializer(serializers.ModelSerializer):
         letter reads 1, not 0. Cancelled trips never really happened, so
         they're excluded, same as every other loaded-quantity aggregate in
         this codebase (SupplierStockService.get_purchase_loaded_quantity)."""
-        return (
-            Trip.objects.filter(truck_id=obj.truck_id, cession_letter_id=obj.cession_letter_id)
-            .exclude(status=Trip.Status.CANCELLED)
-            .count()
-        )
+        return _truck_load_count(obj.truck_id, obj.cession_letter_id)
 
     def get_delivery_control_detail(self, obj) -> dict | None:
         try:

@@ -15,6 +15,7 @@ from django.db import connection, transaction
 from django.db.models import F, Q, Sum
 from django.utils import timezone
 
+from apps.core.request_cache import memoize_per_request
 from apps.documents.models import Document
 from apps.finance.models import (
     AdvanceConsumption,
@@ -39,6 +40,13 @@ from apps.finance.models import (
 )
 from apps.purchasing.models import SupplierOrder
 from apps.purchasing.services import SupplierStockService
+from apps.finance.profit_periods import (
+    general_expenses_paid_between,
+    general_expenses_paid_total,
+    latest_closed_period,
+    take_snapshot,
+    validated_distributions_total,
+)
 from apps.reports.queries.margin_report import MarginReportQuery
 from apps.sales.models import Invoice
 from apps.suppliers.models import Supplier
@@ -70,6 +78,7 @@ class PaymentAllocationService:
         return invoice.total_amount - allocated
 
     @staticmethod
+    @memoize_per_request
     def get_customer_outstanding(customer) -> Decimal:
         """Total invoiced (non-cancelled) minus total received, regardless
         of per-invoice allocation state - money the company has already
@@ -309,10 +318,7 @@ class PaymentAllocationService:
 
         if target != invoice.status:
             invoice.status = target
-            invoice.save(
-                update_fields=["status", "updated_at"],
-                allow_closed_period_payment_status_sync=True,
-            )
+            invoice.save(update_fields=["status", "updated_at"])
 
 
 class IndirectSettlementService:
@@ -932,6 +938,7 @@ class AdvanceConsumptionService:
         return [advance for advance in queryset if advance.remaining_amount > ZERO]
 
     @staticmethod
+    @memoize_per_request
     def get_consumed_amount(debt) -> Decimal:
         content_type = ContentType.objects.get_for_model(debt.__class__)
         return (
@@ -1451,6 +1458,7 @@ class ControlledDebtPaymentService:
         )
 
     @staticmethod
+    @memoize_per_request
     def _paid_for_source(model, object_id) -> Decimal:
         content_type = ContentType.objects.get_for_model(model)
         return (
@@ -1463,6 +1471,7 @@ class ControlledDebtPaymentService:
         )
 
     @staticmethod
+    @memoize_per_request
     def get_supplier_order_cash_paid(order) -> Decimal:
         """Cash actually paid against `order`, excluding advance consumption."""
         return (
@@ -1534,6 +1543,7 @@ class ControlledDebtPaymentService:
         ]
 
     @classmethod
+    @memoize_per_request
     def _open_expenses(cls, debt_type, *, for_update=False):
         categories = cls._EXPENSE_CATEGORY_BY_DEBT_TYPE[debt_type]
         # Every remaining bucket (CUSTOMS/TRANSIT/ROAD_TRANSIT/BORDER/
@@ -1620,6 +1630,7 @@ class ControlledDebtPaymentService:
         }
 
     @classmethod
+    @memoize_per_request
     def describe_supplier_balance(cls, supplier) -> dict:
         total_due = cls.describe_supplier(supplier)["remaining_amount"]
         open_advances = sum(
@@ -1652,6 +1663,7 @@ class ControlledDebtPaymentService:
         }
 
     @classmethod
+    @memoize_per_request
     def describe_transporter_balance(cls, transporter) -> dict:
         total_due = cls.describe_transporter(transporter)["remaining_amount"]
         open_advances = sum(
@@ -1742,6 +1754,7 @@ class ControlledDebtPaymentService:
         return {"total_amount": total, "paid_amount": paid, "remaining_amount": total - paid}
 
     @classmethod
+    @memoize_per_request
     def describe_expense(cls, expense) -> dict:
         paid = cls._paid_for_source(Expense, expense.id)
         allocations = list(expense.allocations.all())
@@ -2217,8 +2230,17 @@ class ShareholderProfitPeriodService:
         ShareholderProfitPeriodService._lock_mutations()
         if isinstance(start_date, str):
             start_date = date.fromisoformat(start_date)
-        if start_date > timezone.localdate():
-            raise ShareholderProfitPeriodError("La date de debut ne peut pas etre future.")
+        # Client decision (2026-10-05): closing a period almost always ends
+        # it on today's date (you close books up through now, not through
+        # some already-finished day), so close_period's auto-open always
+        # needs to start tomorrow. Tomorrow is a bounded, harmless amount
+        # of lookahead - no financial write can land on a date before it
+        # actually happens either way - so the limit allows it for manual
+        # opens too instead of special-casing the automatic path.
+        if start_date > timezone.localdate() + timedelta(days=1):
+            raise ShareholderProfitPeriodError(
+                "La date de debut ne peut pas depasser demain."
+            )
         if ShareholderProfitPeriod.objects.filter(status=ShareholderProfitPeriod.Status.OPEN).exists():
             raise ShareholderProfitPeriodError("Une periode est deja ouverte.")
         latest = ShareholderProfitPeriod.objects.filter(
@@ -2269,13 +2291,36 @@ class ShareholderProfitPeriodService:
         period.distribution = distribution
         period.closed_by = actor
         period.closed_at = timezone.now()
+        # Spec 2026-10-05-periodes-independantes: freeze the running totals
+        # (after this closure's own distribution) - the next period's
+        # figures are measured from here, never from a date window.
+        period.general_expenses_paid_snapshot = general_expenses_paid_total()
+        period.distributed_total_snapshot = validated_distributions_total()
         period.save(
             update_fields=[
                 "end_date", "status", "net_profit", "distribution", "closed_by",
-                "closed_at", "updated_at",
+                "closed_at", "general_expenses_paid_snapshot",
+                "distributed_total_snapshot", "updated_at",
             ],
             user=actor,
         )
+        take_snapshot(period, MarginReportQuery.run())
+
+        # Client decision (2026-10-04, revised 2026-10-05): closing a
+        # period must not leave operations stuck waiting for someone to
+        # fill in the separate "Demarrer une nouvelle periode" form - the
+        # next period starts right away. `end_date` is almost always
+        # today (you close books up through now), so open_period's "at
+        # most tomorrow" allowance is what makes this succeed in the
+        # common case; the try/except stays only as a defensive
+        # safety net since every precondition it could still fail on
+        # (another OPEN period, an out-of-order start date) is already
+        # impossible immediately after this close.
+        try:
+            ShareholderProfitPeriodService.open_period(end_date + timedelta(days=1), actor)
+        except ShareholderProfitPeriodError:
+            pass
+
         return period
 
     @staticmethod
@@ -2290,10 +2335,6 @@ class ShareholderProfitPeriodService:
         period = ShareholderProfitPeriod.objects.select_for_update().get(pk=period_id)
         if period.status != ShareholderProfitPeriod.Status.CLOSED:
             raise ShareholderProfitPeriodError("Cette periode est deja ouverte.")
-        if ShareholderProfitPeriod.objects.filter(status=ShareholderProfitPeriod.Status.OPEN).exists():
-            raise ShareholderProfitPeriodError(
-                "Fermez d'abord la periode actuellement ouverte."
-            )
         later_exists = ShareholderProfitPeriod.objects.filter(
             status=ShareholderProfitPeriod.Status.CLOSED,
             start_date__gt=period.start_date,
@@ -2302,21 +2343,41 @@ class ShareholderProfitPeriodService:
             raise ShareholderProfitPeriodError(
                 "Seule la derniere periode cloturee peut etre rouverte."
             )
+        # The only period that can still be OPEN here is the automatic
+        # successor `close_period` opened right after this one - no later
+        # CLOSED period exists (checked above) and the DB only ever allows
+        # one OPEN period at a time, so it cannot be anything else. It has
+        # no financial history of its own yet (closing is what freezes
+        # net_profit/distribution), so retracting it is what frees the
+        # single "one open period" slot back for `period` itself.
+        current_open = ShareholderProfitPeriod.objects.select_for_update().filter(
+            status=ShareholderProfitPeriod.Status.OPEN
+        ).first()
+        if current_open is not None:
+            current_open.delete(
+                user=actor,
+                reason=f"Periode retiree automatiquement : reouverture de {period.start_date}.",
+            )
         if period.distribution_id:
             ShareholderDistributionService.cancel_distribution(period.distribution_id, actor)
 
+        period.trip_snapshots.all().delete()
         period.status = ShareholderProfitPeriod.Status.OPEN
         period.end_date = None
         period.net_profit = None
         period.distribution = None
+        period.general_expenses_paid_snapshot = None
+        period.distributed_total_snapshot = None
         period.reopened_by = actor
         period.reopened_at = timezone.now()
         period.reopen_reason = reason
         period.reopen_count += 1
         period.save(
             update_fields=[
-                "status", "end_date", "net_profit", "distribution", "reopened_by",
-                "reopened_at", "reopen_reason", "reopen_count", "updated_at",
+                "status", "end_date", "net_profit", "distribution",
+                "general_expenses_paid_snapshot", "distributed_total_snapshot",
+                "reopened_by", "reopened_at", "reopen_reason", "reopen_count",
+                "updated_at",
             ],
             user=actor,
             reason=reason,
@@ -2514,6 +2575,7 @@ class ShareholderContributionService:
         return contribution
 
     @staticmethod
+    @memoize_per_request
     def get_total_capital() -> Decimal:
         opening_balances = Shareholder.objects.aggregate(total=Sum("contribution"))["total"] or ZERO
         contributions = ShareholderContribution.objects.aggregate(total=Sum("amount"))["total"] or ZERO
@@ -2638,6 +2700,7 @@ class WorkingCapitalService:
         }
 
     @staticmethod
+    @memoize_per_request
     def get_supplier_pipeline_breakdown() -> dict:
         """Per confirmed SupplierOrder, splits how much of its still-
         unsold fuel value (stocked at the depot -> en cours on a truck ->
@@ -2689,6 +2752,7 @@ class WorkingCapitalService:
         }
 
     @staticmethod
+    @memoize_per_request
     def get_working_capital() -> dict:
         # Local import: apps.reports.queries.customer_outstanding_report
         # imports PaymentAllocationService from this very module - a
@@ -3059,15 +3123,24 @@ class ShareholderProfitPreviewService:
     """
 
     @staticmethod
-    def get_preview(date_from=None, date_to=None) -> dict:
+    @memoize_per_request
+    def get_preview(date_from=None, date_to=None, since_last_closure=False) -> dict:
         # No period given -> all-time: the net profit of every trip minus
         # every validated distribution, i.e. "what is left to distribute".
         # It falls to zero once everything has been distributed (client
         # request 2026-09-25), instead of only looking at the days after the
         # last distribution's period.
-        rows = MarginReportQuery.run(date_from=date_from, date_to=date_to)
+        # since_last_closure ("Periode en cours", spec 2026-10-05-periodes-
+        # independantes): every period-scoped figure is "now minus the last
+        # closure's snapshot", so anything done after a closure - even on
+        # an older trip or debt - counts in the open period.
+        rows = MarginReportQuery.run(
+            date_from=date_from, date_to=date_to, since_last_closure=since_last_closure
+        )
         current_profit = sum((row["current_margin"] for row in rows), ZERO)
         operational_profit = current_profit
+        revenue = sum((row["revenue"] for row in rows), ZERO)
+        last_closure = latest_closed_period() if since_last_closure else None
 
         # Phase 4 (docs/superpowers/specs/2026-09-02-business-corrections-
         # 6-phases-design.md): general expenses = Expense rows with no
@@ -3075,16 +3148,18 @@ class ShareholderProfitPreviewService:
         # operational_profit via MarginReportQuery/TripProfitService), only
         # those actually PAID - an UNPAID general expense hasn't left
         # treasury yet, so it shouldn't reduce net profit before it does.
-        general_expenses = Expense.objects.filter(
-            allocations__isnull=True, status=Expense.Status.PAID
-        )
-        if date_from:
-            general_expenses = general_expenses.filter(date__gte=date_from)
-        if date_to:
-            general_expenses = general_expenses.filter(date__lte=date_to)
-        general_expenses_paid = (
-            general_expenses.aggregate(total=Sum("amount"))["total"] or ZERO
-        )
+        # A general expense counts when it is PAID (client decision
+        # 2026-10-05), not on the date it was recorded.
+        if since_last_closure:
+            general_expenses_paid = general_expenses_paid_total() - (
+                (last_closure.general_expenses_paid_snapshot or ZERO)
+                if last_closure
+                else ZERO
+            )
+        elif date_from or date_to:
+            general_expenses_paid = general_expenses_paid_between(date_from, date_to)
+        else:
+            general_expenses_paid = general_expenses_paid_total()
         net_profit = operational_profit - general_expenses_paid
 
         # total_company_absorbed_loss is still computed for the typed API
@@ -3152,7 +3227,7 @@ class ShareholderProfitPreviewService:
         # internal input to all_time_net_profit below - it is no longer what
         # gets returned as "net_profit" (see override right before the return,
         # client decision 2026-10-04).
-        if date_from is None and date_to is None:
+        if date_from is None and date_to is None and not since_last_closure:
             all_time_net_profit = net_profit
         else:
             all_time_general_expenses = (
@@ -3171,6 +3246,23 @@ class ShareholderProfitPreviewService:
             or ZERO
         )
         distributable_result = all_time_net_profit - already_validated_total
+
+        # Reconciliation lines of the open period (spec 2026-10-05, 3.3):
+        # operational_profit - general_expenses_paid + carried_over -
+        # distributions_since_closure == distributable_result. A closure
+        # with a negative result distributed nothing, so its deficit carries
+        # over; distributions validated/cancelled since the closure close
+        # the gap. Zero outside the "Periode en cours" view.
+        carried_over = ZERO
+        distributions_since_closure = ZERO
+        if since_last_closure:
+            if last_closure is not None:
+                carried_over = min(last_closure.net_profit or ZERO, ZERO)
+                distributions_since_closure = already_validated_total - (
+                    last_closure.distributed_total_snapshot or ZERO
+                )
+            else:
+                distributions_since_closure = already_validated_total
 
         # Client decision (2026-10-04): "bénéfice net après dépenses
         # générales" must behave like "bénéfice à distribuer" - it falls to
@@ -3198,7 +3290,10 @@ class ShareholderProfitPreviewService:
             "period_end": date_to,
             "current_profit": current_profit,
             "operational_profit": operational_profit,
+            "revenue": revenue,
             "general_expenses_paid": general_expenses_paid,
+            "carried_over": carried_over,
+            "distributions_since_closure": distributions_since_closure,
             "net_profit": net_profit,
             "total_company_absorbed_loss": total_company_absorbed_loss,
             "working_capital": working_capital,

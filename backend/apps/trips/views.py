@@ -24,6 +24,7 @@ from .serializers import (
     DeliveryControlSerializer,
     TripSerializer,
     TripStatusHistorySerializer,
+    prime_trip_list,
 )
 from .services import (
     CustomerAlreadySoldError,
@@ -100,7 +101,24 @@ def _generate_next_reference(truck) -> str:
 
 
 class TripViewSet(viewsets.ModelViewSet):
-    queryset = Trip.objects.select_related("supplier_order")
+    # Everything TripSerializer embeds is loaded here in bulk - one query
+    # per related record per row made the trips page slow.
+    queryset = Trip.objects.select_related(
+        "supplier_order",
+        "truck",
+        "transporter",
+        "driver",
+        "supplier",
+        "product",
+        "client",
+        "created_by__role",
+        "cession_letter__created_by__role",
+        "delivery_control__controller__role",
+        "delivery_control__anomaly_confirmed_by__role",
+    ).prefetch_related(
+        "cession_letter__documents__uploaded_by",
+        "verification_corrections__corrected_by__role",
+    )
     serializer_class = TripSerializer
     filterset_fields = [
         "truck",
@@ -112,6 +130,12 @@ class TripViewSet(viewsets.ModelViewSet):
     ]
     permission_classes = [HasModulePermission]
     module = "operations"
+
+    def paginate_queryset(self, queryset):
+        page = super().paginate_queryset(queryset)
+        if page is not None:
+            prime_trip_list(page)
+        return page
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):

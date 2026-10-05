@@ -8,7 +8,7 @@ describe('DateRangeFilter', () => {
 
     const events = wrapper.emitted('change')
     expect(events).toBeTruthy()
-    expect(events![0]).toEqual([{ preset: 'month', range: 'month' }])
+    expect(events![0]).toEqual([{ preset: 'period', range: 'period' }])
   })
 
   it('emits a preset range when the selector changes', async () => {

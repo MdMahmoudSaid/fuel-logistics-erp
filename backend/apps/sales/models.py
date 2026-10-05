@@ -217,46 +217,6 @@ class Invoice(AuditableModel, TimeStampedModel):
     def is_locked_for_deletion(self) -> bool:
         return self.status != self.Status.DRAFT
 
-    def save(self, *args, allow_closed_period_payment_status_sync=False, **kwargs):
-        """Save an invoice, with one tightly-scoped closed-period exception.
-
-        Allocating money already received only moves the derived payment
-        status between VALIDATED/PARTIALLY_PAID/PAID; it does not change the
-        sale, invoice amount, invoice date, or any profit calculation.  That
-        status synchronization must remain possible after a profit period is
-        closed, while every other invoice mutation stays locked.
-        """
-        if not allow_closed_period_payment_status_sync:
-            return super().save(*args, **kwargs)
-        if not self.pk:
-            raise ValueError("La synchronisation de paiement exige une facture existante.")
-
-        previous = type(self).objects.get(pk=self.pk)
-        payment_statuses = {
-            self.Status.VALIDATED,
-            self.Status.PARTIALLY_PAID,
-            self.Status.PAID,
-        }
-        immutable_values_match = (
-            self.invoice_number == previous.invoice_number
-            and self.sale_id == previous.sale_id
-            and self.total_amount == previous.total_amount
-            and self.issued_date == previous.issued_date
-        )
-        update_fields = set(kwargs.get("update_fields") or [])
-        if (
-            previous.status not in payment_statuses
-            or self.status not in payment_statuses
-            or not immutable_values_match
-            or not update_fields
-            or not update_fields.issubset({"status", "updated_at"})
-        ):
-            raise ValueError(
-                "Seul le statut de paiement d'une facture existante peut etre "
-                "synchronise dans une periode cloturee."
-            )
-        return super().save(*args, _skip_profit_period_lock=True, **kwargs)
-
     @property
     def all_sales(self) -> list:
         """Every Sale billed on this invoice: the primary one first, then

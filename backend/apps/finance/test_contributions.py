@@ -413,9 +413,19 @@ def _make_trip_with_sale(suffix, admin_user, *, loading_date):
         quantity_loaded=Decimal("45000.00"), client=customer, loading_date=loading_date,
         bl_reference=f"BL-PDF-{suffix}", status=Trip.Status.DELIVERED, created_by=admin_user,
     )
-    Sale.objects.create(
+    sale = Sale.objects.create(
         trip=trip, customer=customer, product=product,
         delivered_quantity=Decimal("45000.00"), unit_selling_price=Decimal("900.0000"),
+    )
+    # Profit belongs to the SALE date since 2026-10-05: sold on loading day.
+    from datetime import date as _date, datetime as _datetime, time as _time
+
+    from django.utils import timezone as _tz
+
+    Sale.objects.filter(pk=sale.pk).update(
+        created_at=_tz.make_aware(
+            _datetime.combine(_date.fromisoformat(str(loading_date)), _time(12))
+        )
     )
     return trip
 

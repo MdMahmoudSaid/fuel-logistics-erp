@@ -12,6 +12,7 @@ from decimal import Decimal
 
 from django.db.models import Sum
 
+from apps.core.request_cache import memoize_per_request
 from apps.purchasing.models import SupplierOrder
 from apps.purchasing.services import SupplierStockService
 from apps.trips.models import Trip
@@ -34,6 +35,7 @@ class TheoreticalStockService:
     applies here just as much as to TripProfitService)."""
 
     @staticmethod
+    @memoize_per_request
     def get_supplier_reliquats() -> Decimal:
         """Sum of SupplierStockService.get_purchase_reliquat() across every
         active (CONFIRMED) supplier order - fuel already purchased but not
@@ -47,6 +49,7 @@ class TheoreticalStockService:
         )
 
     @classmethod
+    @memoize_per_request
     def get_supplier_reliquat_value(cls) -> Decimal:
         """Monetary value of get_supplier_reliquats(), each order's own
         remaining reliquat priced at ITS OWN unit_price - never a single
@@ -63,6 +66,7 @@ class TheoreticalStockService:
         ).quantize(Decimal("0.01"))
 
     @staticmethod
+    @memoize_per_request
     def get_loaded_unsold_quantity() -> Decimal:
         """Sum of Trip.quantity_loaded for trips that have not yet produced
         a Sale - fuel leaves theoretical stock exactly when the Sale is
@@ -108,10 +112,12 @@ class TheoreticalStockService:
         )
 
     @classmethod
+    @memoize_per_request
     def get_in_transit_quantity(cls) -> Decimal:
         return cls._in_transit_trips().aggregate(total=Sum("quantity_loaded"))["total"] or ZERO
 
     @classmethod
+    @memoize_per_request
     def get_in_transit_value(cls) -> Decimal:
         """Valued at the pure fuel purchase price per litre (client
         decision, 2026-09-06) - trip fees incurred so far are deliberately
@@ -140,6 +146,7 @@ class TheoreticalStockService:
         )
 
     @classmethod
+    @memoize_per_request
     def get_company_stock_value(cls) -> Decimal:
         """Valued at each trip's full cost basis - purchase price + transport
         + every allocated expense (TripCostService.calculate_trip_cost_basis,
@@ -157,5 +164,6 @@ class TheoreticalStockService:
         ).quantize(Decimal("0.01"))
 
     @classmethod
+    @memoize_per_request
     def get_total_theoretical_stock(cls) -> Decimal:
         return cls.get_supplier_reliquats() + cls.get_loaded_unsold_quantity()

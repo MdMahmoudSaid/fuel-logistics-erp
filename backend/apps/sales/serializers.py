@@ -1,10 +1,11 @@
-from django.db.models import Sum
+from decimal import Decimal
+
 from django.contrib.contenttypes.models import ContentType
 from rest_framework import serializers
 
 from apps.accounts.serializers import UserSerializer
 from apps.core.serializers import ProductSerializer
-from apps.customers.serializers import CustomerSerializer
+from apps.customers.serializers import CustomerBriefSerializer
 from apps.documents.models import Document
 from apps.finance.models import CustomerPayment
 from apps.sales.models import CustomerOrder, Invoice, InvoiceCorrection, Sale
@@ -26,7 +27,7 @@ _MANUALLY_SETTABLE_STATUSES = {
 
 
 class CustomerOrderSerializer(serializers.ModelSerializer):
-    customer_detail = CustomerSerializer(source="customer", read_only=True)
+    customer_detail = CustomerBriefSerializer(source="customer", read_only=True)
     product_detail = ProductSerializer(source="product", read_only=True)
     assigned_quantity = serializers.SerializerMethodField()
     loaded_quantity = serializers.SerializerMethodField()
@@ -92,7 +93,7 @@ class SaleSerializer(serializers.ModelSerializer):
     dependency the wrong way round.
     """
 
-    customer_detail = CustomerSerializer(source="customer", read_only=True)
+    customer_detail = CustomerBriefSerializer(source="customer", read_only=True)
     product_detail = ProductSerializer(source="product", read_only=True)
     trip_reference = serializers.CharField(source="trip.reference", read_only=True)
     quantity_loaded = serializers.DecimalField(
@@ -209,21 +210,29 @@ class InvoiceSerializer(serializers.ModelSerializer):
     def get_sales_detail(self, obj) -> list[dict]:
         """Every Sale billed on this invoice (one entry unless several
         trips were grouped on it)."""
-        return SaleSerializer(obj.all_sales, many=True, context=self.context).data
+        # Same list as Invoice.all_sales, read through `.all()` so the
+        # extra sales InvoiceViewSet prefetches for a whole page are reused
+        # instead of queried again per invoice.
+        sales = [obj.sale, *sorted(obj.extra_sales.all(), key=lambda sale: sale.id)]
+        return SaleSerializer(sales, many=True, context=self.context).data
+
+    @staticmethod
+    def _paid(obj):
+        return sum((allocation.amount for allocation in obj.allocations.all()), Decimal("0"))
 
     def get_paid_amount(self, obj) -> str:
-        paid = obj.allocations.aggregate(total=Sum("amount"))["total"] or 0
-        return f"{paid:.2f}"
+        return f"{self._paid(obj):.2f}"
 
     def get_outstanding_amount(self, obj) -> str:
-        paid = obj.allocations.aggregate(total=Sum("amount"))["total"] or 0
-        return f"{max(obj.total_amount - paid, 0):.2f}"
+        return f"{max(obj.total_amount - self._paid(obj), 0):.2f}"
 
     def get_payments(self, obj) -> list[dict]:
         content_type = ContentType.objects.get_for_model(CustomerPayment)
         rows = []
-        allocations = obj.allocations.select_related("payment").order_by(
-            "-payment__payment_date", "-payment_id"
+        allocations = sorted(
+            obj.allocations.all(),
+            key=lambda allocation: (allocation.payment.payment_date, allocation.payment_id),
+            reverse=True,
         )
         for allocation in allocations:
             payment = allocation.payment

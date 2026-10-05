@@ -5,7 +5,7 @@ from django.db.models import Sum
 from rest_framework import serializers
 
 from apps.core.serializers import ProductSerializer
-from apps.customers.serializers import CustomerSerializer
+from apps.customers.serializers import CustomerBriefSerializer
 
 from .models import Quotation, QuotationLine
 
@@ -48,7 +48,7 @@ class QuotationSerializer(serializers.ModelSerializer):
     never drift from their sum.
     """
 
-    customer_detail = CustomerSerializer(source="customer", read_only=True)
+    customer_detail = CustomerBriefSerializer(source="customer", read_only=True)
     lines = QuotationLineSerializer(many=True)
 
     class Meta:

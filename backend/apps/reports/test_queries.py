@@ -64,6 +64,19 @@ def _make_admin(suffix):
     )
 
 
+def _sold_on(trip, day):
+    """Date a test sale on `day` - since 2026-10-05 a trip's profit/revenue
+    belongs to its SALE date, so tests that place a trip in a date range
+    move its sale there too."""
+    from datetime import date as _date, datetime as _datetime, time as _time
+
+    from django.utils import timezone as _tz
+
+    Sale.objects.filter(trip=trip).update(
+        created_at=_tz.make_aware(_datetime.combine(_date.fromisoformat(str(day)), _time(12)))
+    )
+
+
 def _make_full_trip(suffix, admin_user, status=Trip.Status.DELIVERED, with_sale=True):
     product = Product.objects.get(code="gasoil")
     supplier = Supplier.objects.create(name=f"Supplier {suffix}", country="Senegal")
@@ -115,6 +128,7 @@ def _make_full_trip(suffix, admin_user, status=Trip.Status.DELIVERED, with_sale=
             delivered_quantity=Decimal("44850.00"),
             unit_selling_price=Decimal("650.0000"),
         )
+        _sold_on(trip, trip.loading_date)
     return {
         "admin_user": admin_user,
         "supplier": supplier,
@@ -406,12 +420,15 @@ def test_margin_report_period_total_equals_sum_of_row_margins():
     fx_in_1 = _make_full_trip("MARGINPERIODA", admin_user)
     fx_in_1["trip"].loading_date = "2026-08-05"
     fx_in_1["trip"].save(update_fields=["loading_date"])
+    _sold_on(fx_in_1["trip"], "2026-08-05")
     fx_in_2 = _make_full_trip("MARGINPERIODB", admin_user)
     fx_in_2["trip"].loading_date = "2026-08-20"
     fx_in_2["trip"].save(update_fields=["loading_date"])
+    _sold_on(fx_in_2["trip"], "2026-08-20")
     fx_out = _make_full_trip("MARGINPERIODC", admin_user)
     fx_out["trip"].loading_date = "2026-07-01"
     fx_out["trip"].save(update_fields=["loading_date"])
+    _sold_on(fx_out["trip"], "2026-07-01")
 
     from apps.reports.services.profit import TripProfitService
 
@@ -538,9 +555,11 @@ def test_shareholder_profit_preview_default_is_all_time_minus_validated_distribu
     fx_old = _make_full_trip("PREVIEWPERIODOLD", admin_user)
     fx_old["trip"].loading_date = "2026-07-10"
     fx_old["trip"].save(update_fields=["loading_date"])
+    _sold_on(fx_old["trip"], "2026-07-10")
     fx_new = _make_full_trip("PREVIEWPERIODNEW", admin_user)
     fx_new["trip"].loading_date = "2026-08-15"
     fx_new["trip"].save(update_fields=["loading_date"])
+    _sold_on(fx_new["trip"], "2026-08-15")
     Shareholder.objects.create(name="Preview Period", participation_percent=Decimal("100"))
 
     from apps.reports.services.profit import TripProfitService

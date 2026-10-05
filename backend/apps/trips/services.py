@@ -17,6 +17,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import Sum
 from django.utils import timezone
 
+from apps.core.request_cache import memoize_per_request
 from apps.core.models import LossToleranceConfig
 from apps.core.reference import generate_monthly_reference
 from apps.finance.models import Expense, ExpenseAllocation, TransportDeduction, TransportPayment
@@ -132,6 +133,7 @@ class TripCostService:
         return trip.quantity_loaded * trip.supplier_order.unit_price
 
     @staticmethod
+    @memoize_per_request
     def _transport_cost(trip: Trip) -> Decimal:
         return (
             TransportPayment.objects.filter(trip=trip).aggregate(total=Sum("base_amount"))[
@@ -141,6 +143,7 @@ class TripCostService:
         )
 
     @staticmethod
+    @memoize_per_request
     def _expenses_by_category(trip: Trip) -> dict:
         allocations = (
             ExpenseAllocation.objects.filter(
@@ -154,6 +157,43 @@ class TripCostService:
             category = allocation.expense.category
             breakdown[category] = breakdown.get(category, _ZERO) + allocation.allocated_amount
         return breakdown
+
+    @classmethod
+    def prime_cost_bases(cls, trips) -> None:
+        """Compute _transport_cost and _expenses_by_category for every trip
+        of a list page in two queries (instead of two per trip) and hand
+        them to the per-request read cache. Same filters as the two
+        helpers above - keep them in step."""
+        trips = [
+            trip
+            for trip in trips
+            if trip.pk is not None
+            and not (cls._transport_cost.is_cached(trip) and cls._expenses_by_category.is_cached(trip))
+        ]
+        if not trips:
+            return
+        ids = [trip.id for trip in trips]
+        transport = dict(
+            TransportPayment.objects.filter(trip_id__in=ids)
+            .values("trip_id")
+            .annotate(total=Sum("base_amount"))
+            .values_list("trip_id", "total")
+        )
+        expenses: dict[int, dict[str, Decimal]] = {trip_id: {} for trip_id in ids}
+        allocations = (
+            ExpenseAllocation.objects.filter(
+                content_type=ContentType.objects.get_for_model(Trip), object_id__in=ids
+            )
+            .exclude(expense__status=Expense.Status.CANCELLED)
+            .select_related("expense")
+        )
+        for allocation in allocations:
+            breakdown = expenses[allocation.object_id]
+            category = allocation.expense.category
+            breakdown[category] = breakdown.get(category, _ZERO) + allocation.allocated_amount
+        for trip in trips:
+            cls._transport_cost.prime(transport.get(trip.id) or _ZERO, trip)
+            cls._expenses_by_category.prime(expenses[trip.id], trip)
 
     @classmethod
     def calculate_trip_cost_basis(cls, trip: Trip) -> dict:

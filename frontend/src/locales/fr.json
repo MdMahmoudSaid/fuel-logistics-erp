@@ -85,6 +85,7 @@
     "hidePassword": "Masquer le code PIN"
   },
   "dateRange": {
+    "period": "Période en cours",
     "today": "Aujourd'hui",
     "yesterday": "Hier",
     "week": "Cette semaine",
@@ -1066,6 +1067,9 @@
         "reopen": "Rouvrir la période",
         "reopenHelp": "Si une correction est indispensable, seule la dernière période clôturée peut être rouverte. Le motif est obligatoire et conservé dans l’audit.",
         "reopenError": "Impossible de rouvrir cette période.",
+        "reopenTitle": "Rouvrir la dernière période clôturée",
+        "reopenConfirm": "Rouvrir la période {period} ? Sa répartition aux associés sera annulée (les soldes reviennent à leur valeur d’avant la répartition).",
+        "reopenConfirmWithSuccessor": "Rouvrir la période {period} ? Sa répartition aux associés sera annulée (les soldes reviennent à leur valeur d’avant la répartition) et la période ouverte du {successor} sera retirée : tout ce qui a été fait depuis sera compté dans la période rouverte.",
         "reason": "Motif de la réouverture",
         "history": "Historique des périodes",
         "lastReopen": "Dernier motif de réouverture",
@@ -1188,6 +1192,10 @@
         "unitProfit": "Bénéfice/L",
         "totalProfit": "Bénéfice total"
       },
+      "adjustment": "Ajustement",
+      "adjustmentHelp": "Trajet d'une période déjà clôturée, modifié depuis : seule la différence est comptée ici.",
+      "carriedOver": "Report période précédente",
+      "distributionsSinceClosure": "Répartitions depuis la clôture",
       "distributableResultHelp": "Tous les trajets, toutes périodes, moins les répartitions déjà validées."
     }
   },

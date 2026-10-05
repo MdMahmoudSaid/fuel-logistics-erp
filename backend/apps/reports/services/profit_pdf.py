@@ -37,6 +37,7 @@ PROFIT_PDF_LABELS = {
         "operationalProfit": "Benefice operationnel des trajets",
         "revenue": "Chiffre d'affaires",
         "tripsCount": "Trajets pris en compte",
+        "adjustment": "ajustement",
         "generalExpenses": "Depenses generales payees",
         "netProfit": "Benefice net apres depenses generales",
         "workingCapital": "Fond de roulement - detail complet",
@@ -82,6 +83,7 @@ PROFIT_PDF_LABELS = {
         "operationalProfit": "Operational profit (trips)",
         "revenue": "Revenue",
         "tripsCount": "Trips counted",
+        "adjustment": "adjustment",
         "generalExpenses": "General expenses paid",
         "netProfit": "Net profit after general expenses",
         "workingCapital": "Working capital - full breakdown",
@@ -279,13 +281,9 @@ def render_profit_report_pdf(
     elements.append(Spacer(1, 8 * mm))
 
     # Section 1: Rentabilite.
-    revenue = sum(
-        (
-            Decimal(row["quantity_invoiced"]) * Decimal(row["unit_selling_price"])
-            for row in rows
-        ),
-        ZERO,
-    )
+    # Rows carry their own revenue: a quantity x price product would be
+    # wrong on a since-closure adjustment row (spec 2026-10-05).
+    revenue = preview["revenue"]
     elements.append(Paragraph(_safe_paragraph_text(labels["profitability"]), heading_style))
     elements.append(Spacer(1, 2 * mm))
     profitability_rows = [
@@ -366,7 +364,18 @@ def render_profit_report_pdf(
             "unit_profit": _format_unit_money,
             "current_margin": _format_money,
         }
+        # On a since-closure adjustment row only the additive columns are
+        # deltas; a unit price/profit there would be misleading.
+        unit_fields = {"supplier_unit_price", "unit_selling_price", "unit_profit"}
+
         def _cell(field, row):
+            if row.get("is_adjustment") and field in unit_fields:
+                return "—"
+            if field == "trip_reference" and row.get("is_adjustment"):
+                return Paragraph(
+                    _safe_paragraph_text(f"{row.get(field, '')} ({labels['adjustment']})"),
+                    cell_style,
+                )
             if field in formatters:
                 return formatters[field](row.get(field))
             if field in ("client", "trip_reference"):

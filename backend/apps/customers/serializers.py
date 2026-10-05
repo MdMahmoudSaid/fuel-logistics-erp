@@ -6,6 +6,20 @@ from rest_framework import serializers
 from .models import Customer
 
 
+class CustomerBriefSerializer(serializers.ModelSerializer):
+    """A customer embedded in another record (trip, sale, invoice...):
+    identity only. Its running totals live on the customer's own page -
+    recomputing them for every embedded row made each list page cost
+    several queries per row."""
+
+    class Meta:
+        model = Customer
+        fields = [
+            "id", "name", "company_name", "phone", "address",
+            "contact_name", "notes", "is_active", "created_at", "updated_at",
+        ]
+        read_only_fields = fields
+
 class CustomerSerializer(serializers.ModelSerializer):
     total_invoiced = serializers.SerializerMethodField()
     total_collected = serializers.SerializerMethodField()

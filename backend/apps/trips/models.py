@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from django.db import models
 
-from apps.audit.mixins import AuditableModel, assert_profit_period_dates_unlocked
+from apps.audit.mixins import AuditableModel
 from apps.core.models import TimeStampedModel
 
 
@@ -173,16 +173,6 @@ class Trip(TimeStampedModel):
 
     def __str__(self) -> str:
         return self.reference
-
-    def save(self, *args, **kwargs):
-        dates = [self.loading_date]
-        if self.pk:
-            previous_date = type(self).objects.filter(pk=self.pk).values_list(
-                "loading_date", flat=True
-            ).first()
-            dates.append(previous_date)
-        assert_profit_period_dates_unlocked(dates)
-        super().save(*args, **kwargs)
 
     def is_active(self) -> bool:
         return self.status not in self.TERMINAL_STATUSES

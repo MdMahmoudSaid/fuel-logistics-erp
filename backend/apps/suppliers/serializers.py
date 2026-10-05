@@ -9,6 +9,18 @@ from apps.purchasing.services import SupplierStockService
 from .models import Supplier
 
 
+class SupplierBriefSerializer(serializers.ModelSerializer):
+    """A supplier embedded in another record: identity only (see
+    CustomerBriefSerializer)."""
+
+    class Meta:
+        model = Supplier
+        fields = [
+            "id", "name", "company_name", "country", "phone",
+            "contact_name", "notes", "is_active", "created_at", "updated_at",
+        ]
+        read_only_fields = fields
+
 class SupplierSerializer(serializers.ModelSerializer):
     total_purchased = serializers.SerializerMethodField()
     total_paid = serializers.SerializerMethodField()

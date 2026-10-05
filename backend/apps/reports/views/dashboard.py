@@ -29,7 +29,7 @@ from apps.finance.services import (
     ShareholderProfitPreviewService,
     WorkingCapitalService,
 )
-from apps.reports.date_range import resolve_date_range
+from apps.reports.date_range import is_current_period, resolve_date_range
 from apps.reports.queries.customer_outstanding_report import CustomerOutstandingReportQuery
 from apps.reports.queries.supplier_outstanding_report import SupplierOutstandingReportQuery
 from apps.reports.queries.transporter_outstanding_report import (
@@ -47,25 +47,6 @@ from apps.transport.models import Transporter
 from apps.trips.models import Trip
 
 ZERO = Decimal("0.00")
-
-# Dashboard recette fix (2026-09-04): "Depenses generales payees" must never
-# include a trip-linked fee (douane/transit/transit routiere/chargement/
-# transport/frontiere), even one that happens to have no ExpenseAllocation
-# row yet (an edge case the allocation-only filter alone would miss) - these
-# are the 6 is_system=True category codes (finance.0014_expensecategory
-# seed data / docs/superpowers/specs/2026-09-02-business-corrections-6-
-# phases-design.md Phase 3), reused here as the same hardcoded values other
-# services (ControlledDebtPaymentService) already key off, never a new
-# lookup path.
-_TRIP_EXPENSE_CATEGORIES = {
-    Expense.Category.CUSTOMS,
-    Expense.Category.TRANSIT,
-    Expense.Category.ROAD_TRANSIT,
-    Expense.Category.TRANSPORT,
-    Expense.Category.LOADING,
-    Expense.Category.ROAD,
-}
-
 
 class DashboardViewSet(viewsets.ViewSet):
     """GET /api/dashboard/summary/?range=...&from=...&to=... - the 6
@@ -113,8 +94,11 @@ class DashboardViewSet(viewsets.ViewSet):
             trips = trips.filter(loading_date__lte=date_to)
 
         sold_trips = list(
-            trips.filter(sale__isnull=False).select_related("sale", "sale__customer")
+            trips.filter(sale__isnull=False).select_related(
+                "sale", "sale__customer", "supplier_order", "delivery_control"
+            )
         )
+        TripProfitService.prime_trips(sold_trips)
 
         operations = {
             "trips_count": trips.count(),
@@ -286,17 +270,6 @@ class DashboardViewSet(viewsets.ViewSet):
         if date_to:
             period_collections = period_collections.filter(payment_date__lte=date_to)
 
-        # Dashboard recette fix (2026-09-04): "Depenses generales payees"
-        # must count only general expenses, never a trip-linked fee - same
-        # "no ExpenseAllocation" definition ShareholderProfitPreviewService.
-        # get_preview() already uses for net_profit's general_expenses_paid,
-        # plus the category exclusion above for the edge case of a trip-fee
-        # category expense recorded with no allocation yet (allocations__
-        # isnull=True alone would not catch that).
-        paid_expenses = expenses.filter(
-            status=Expense.Status.PAID, allocations__isnull=True
-        ).exclude(category__in=_TRIP_EXPENSE_CATEGORIES)
-
         # Journal de tresorerie "Entrees / sorties" card (bug fix,
         # docs/superpowers/specs/2026-09-02-business-corrections-6-phases-
         # design.md follow-up): period_collections/period_paid_expenses
@@ -327,21 +300,29 @@ class DashboardViewSet(viewsets.ViewSet):
             or ZERO
         )
 
-        period_paid_expenses_total = (
-            paid_expenses.aggregate(total=Sum("amount"))["total"] or ZERO
+        # Client decision (2026-10-05): the "de la periode" cards come from
+        # the same preview as the Benefices page they link to - revenue and
+        # operating profit by SALE date (or, for "Periode en cours", since
+        # the last closure), general expenses by PAYMENT date - so a trip
+        # loaded before a closure and sold after it counts in the open
+        # period, and both pages always show the same figures.
+        period_preview = ShareholderProfitPreviewService.get_preview(
+            date_from=date_from,
+            date_to=date_to,
+            since_last_closure=is_current_period(request.query_params),
         )
         financial_summary = {
-            "period_revenue": sales["revenue"],
+            "period_revenue": period_preview["revenue"],
             "period_collections": period_collections.aggregate(total=Sum("amount"))["total"]
             or ZERO,
-            "period_paid_expenses": period_paid_expenses_total,
+            "period_paid_expenses": period_preview["general_expenses_paid"],
             "period_treasury_in": period_treasury_in,
             "period_treasury_out": period_treasury_out,
             # period_accounting_profit stays trips-only operational profit
             # (unchanged, still correct - just no longer the dashboard's
             # headline figure, see period_net_profit below). Kept for any
             # other consumer; page Benefices remains the place to see it.
-            "period_accounting_profit": profit["total_margin"],
+            "period_accounting_profit": period_preview["operational_profit"],
             # Client decision (2026-10-04): the dashboard's headline profit
             # card must fall as distributions are validated and reach zero
             # once everything is distributed, same as the Bénéfices page -

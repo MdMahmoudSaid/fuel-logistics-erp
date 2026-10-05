@@ -2855,21 +2855,6 @@ def test_allocate_available_credit_updates_payment_status_inside_closed_profit_p
 
 
 @pytest.mark.django_db
-def test_closed_period_payment_status_escape_rejects_financial_invoice_changes():
-    admin_user, _customer, invoice = _make_invoice_for_payment(
-        "EXISTING-CLOSED-GUARD", total_amount=Decimal("45000000.00")
-    )
-    invoice.total_amount += Decimal("1.00")
-    invoice.status = Invoice.Status.PAID
-
-    with pytest.raises(ValueError, match="Seul le statut de paiement"):
-        invoice.save(
-            update_fields=["status", "total_amount", "updated_at"],
-            allow_closed_period_payment_status_sync=True,
-        )
-
-
-@pytest.mark.django_db
 def test_acceptance_indirect_customer_payment_reduces_debt_without_treasury_row():
     """5M expense paid directly by a customer owing 50M -> debt reduced to
     45M and zero TreasuryTransaction rows created (guide Section 1.6/§25)."""

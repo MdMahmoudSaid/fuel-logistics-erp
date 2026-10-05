@@ -9,6 +9,7 @@ from decimal import Decimal
 from django.db import transaction
 from django.db.models import Sum
 
+from apps.core.request_cache import memoize_per_request
 from apps.purchasing.models import CessionLetter, SupplierOrder
 
 
@@ -18,6 +19,7 @@ class SupplierStockService:
         return SupplierOrder.objects.filter(status=SupplierOrder.Status.CONFIRMED)
 
     @staticmethod
+    @memoize_per_request
     def get_purchase_loaded_quantity(purchase: SupplierOrder) -> Decimal:
         """SUM(trips.quantity_loaded) for this order, excluding cancelled
         trips (Phase 3: apps.trips.Trip now exists). Imported lazily to keep
@@ -109,6 +111,7 @@ class SupplierStockService:
         return purchase.total_amount - SupplierStockService.get_purchase_loaded_amount(purchase)
 
     @staticmethod
+    @memoize_per_request
     def get_purchase_in_transit_amount(purchase: SupplierOrder) -> Decimal:
         """Monetary value, at the order's own unit_price, of `purchase`'s
         loaded litres currently "en cours" - on a truck, not yet arrived at
@@ -139,6 +142,7 @@ class SupplierStockService:
         return (quantity * purchase.unit_price).quantize(Decimal("0.01"))
 
     @staticmethod
+    @memoize_per_request
     def get_purchase_company_stock_amount(purchase: SupplierOrder) -> Decimal:
         """Monetary value, at the order's own unit_price, of `purchase`'s
         loaded litres that have arrived and are sitting in the company's
@@ -169,6 +173,7 @@ class SupplierStockService:
         return (quantity * purchase.unit_price).quantize(Decimal("0.01"))
 
     @staticmethod
+    @memoize_per_request
     def get_cession_remaining(cession: CessionLetter) -> Decimal:
         """authorized_quantity - SUM(trips.quantity_loaded against this
         cession), excluding cancelled trips - never a stored/mutable field

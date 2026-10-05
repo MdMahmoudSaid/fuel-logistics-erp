@@ -116,7 +116,7 @@ describe('ProfitView', () => {
     await flushPromises()
 
     // The period filter triggers the load - simulate the DateRangeFilter's
-    // default emit (it auto-applies "month" onMounted).
+    // default emit (it auto-applies "period" onMounted).
     await flushPromises()
 
     expect(fetchShareholderProfitPreview).toHaveBeenCalled()
@@ -581,7 +581,7 @@ describe('ProfitView', () => {
     await flushPromises()
 
     expect(exportProfitReportPdf).toHaveBeenCalledWith(
-      expect.objectContaining({ preset: 'month' }),
+      expect.objectContaining({ preset: 'period' }),
       'fr',
     )
   })
@@ -597,5 +597,127 @@ describe('ProfitView', () => {
 
     expect(wrapper.text()).toContain("Impossible d'exporter ce rapport.")
     expect(wrapper.text()).toContain('TRIP-1')
+  })
+  // Spec 2026-10-05-periodes-independantes: in "Periode en cours" an older
+  // trip changed since the last closure comes back as an adjustment row
+  // carrying only the difference - totals must sum each row's own revenue
+  // and supplier cost (a quantity x price product is wrong on a delta row).
+  it('sums revenue from rows and marks since-closure adjustment rows', async () => {
+    fetchReport.mockResolvedValue({
+      report_type: 'margin-report',
+      fields: [],
+      rows: [
+        {
+          trip_id: 1,
+          is_adjustment: false,
+          trip_reference: 'TRIP-NEW',
+          client: 'Client A',
+          product: 'Gasoil',
+          quantity: '1000.00',
+          quantity_loaded: '1000.00',
+          quantity_invoiced: '1000.00',
+          transporter_loss_quantity: '0.00',
+          transporter_loss_indemnity: '0.00',
+          supplier_unit_price: '600.0000',
+          transport_cost: '0.00',
+          customs_cost: '0.00',
+          transit_cost: '0.00',
+          road_transit_cost: '0.00',
+          border_cost: '0.00',
+          loading_cost: '0.00',
+          additional_costs: '0.00',
+          real_total_cost: '600000.00',
+          unit_cost: '600.0000',
+          unit_selling_price: '1000.0000',
+          unit_profit: '400.0000',
+          current_margin: '400000.00',
+          revenue: '1000000.00',
+          supplier_cost: '600000.00',
+        },
+        {
+          trip_id: 2,
+          is_adjustment: true,
+          trip_reference: 'TRIP-OLD',
+          client: 'Client B',
+          product: 'Gasoil',
+          quantity: '0.00',
+          quantity_loaded: '0.00',
+          quantity_invoiced: '0.00',
+          transporter_loss_quantity: '0.00',
+          transporter_loss_indemnity: '0.00',
+          supplier_unit_price: '600.0000',
+          transport_cost: '0.00',
+          customs_cost: '90000.00',
+          transit_cost: '0.00',
+          road_transit_cost: '0.00',
+          border_cost: '0.00',
+          loading_cost: '0.00',
+          additional_costs: '0.00',
+          real_total_cost: '90000.00',
+          unit_cost: '602.0000',
+          unit_selling_price: '900.0000',
+          unit_profit: '298.0000',
+          current_margin: '-90000.00',
+          revenue: '0.00',
+          supplier_cost: '0.00',
+        },
+      ],
+    })
+
+    const wrapper = mount(ProfitView)
+    await flushPromises()
+    await flushPromises()
+
+    const operational = wrapper.find('[data-test="profit-operational-card"]')
+    expect(operational.text()).toContain('310 000 XOF')
+    expect(operational.text()).toContain('1 000 000 XOF')
+    const badges = wrapper.findAll('[data-test="profit-adjustment-badge"]')
+    expect(badges).toHaveLength(1)
+    expect(badges[0]!.text()).toBe('Ajustement')
+    expect(wrapper.text()).not.toContain('298,0000')
+  })
+
+  it('explains a deficit carried over from the last closure under the net profit', async () => {
+    fetchShareholderProfitPreview.mockResolvedValue({
+      period_start: '2026-10-06',
+      period_end: null,
+      current_profit: '0.00',
+      operational_profit: '0.00',
+      revenue: '0.00',
+      general_expenses_paid: '0.00',
+      carried_over: '-500000.00',
+      distributions_since_closure: '0.00',
+      net_profit: '-500000.00',
+      all_time_net_profit: '-500000.00',
+      total_company_absorbed_loss: '0.00',
+      working_capital: {
+        capital: '0.00',
+        treasury_available: '0.00',
+        customer_receivables: '0.00',
+        supplier_debt_total: '0.00',
+        transporter_debt_total: '0.00',
+        other_debts: '0.00',
+        supplier_reliquat_value: '0.00',
+        supplier_in_transit_value: '0.00',
+        supplier_company_stock_value: '0.00',
+        gross: '0.00',
+        total: '0.00',
+      },
+      already_distributed: '0.00',
+      already_validated_total: '0.00',
+      result_after_debts_and_capital: '0.00',
+      distributable_result: '-500000.00',
+      shareholders: [],
+    })
+
+    const wrapper = mount(ProfitView)
+    await flushPromises()
+    await flushPromises()
+
+    const carried = wrapper.find('[data-test="profit-carried-over"]')
+    expect(carried.exists()).toBe(true)
+    expect(carried.text()).toContain('Report période précédente')
+    expect(carried.text()).toContain('500 000 XOF')
+    expect(wrapper.find('[data-test="profit-distributions-since-closure"]').exists()).toBe(false)
   })
 })

@@ -6,7 +6,7 @@ from apps.core.serializers import ProductSerializer
 from apps.documents.serializers import DocumentSerializer
 from apps.purchasing.models import CessionLetter, SupplierOrder
 from apps.purchasing.services import SupplierOrderAmendmentService, SupplierStockService
-from apps.suppliers.serializers import SupplierSerializer
+from apps.suppliers.serializers import SupplierBriefSerializer
 
 
 class CessionLetterSerializer(serializers.ModelSerializer):
@@ -69,7 +69,7 @@ class CessionLetterSerializer(serializers.ModelSerializer):
 class SupplierOrderSerializer(serializers.ModelSerializer):
     reliquat = serializers.SerializerMethodField()
     loaded_quantity = serializers.SerializerMethodField()
-    supplier_detail = SupplierSerializer(source="supplier", read_only=True)
+    supplier_detail = SupplierBriefSerializer(source="supplier", read_only=True)
     product_detail = ProductSerializer(source="product", read_only=True)
     created_by_detail = UserSerializer(source="created_by", read_only=True)
     documents = DocumentSerializer(many=True, read_only=True)

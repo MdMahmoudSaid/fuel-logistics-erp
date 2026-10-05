@@ -365,7 +365,7 @@ describe('DashboardView', () => {
     const wrapper = mount(DashboardView, { global: { plugins: [makeRouter()] } })
     await flushPromises()
 
-    expect(fetchDashboardSummary).toHaveBeenCalledWith({ preset: 'month', range: 'month' })
+    expect(fetchDashboardSummary).toHaveBeenCalledWith({ preset: 'period', range: 'period' })
     expect(wrapper.find('[data-test="period-detail"]').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('Détail de la période')
   })

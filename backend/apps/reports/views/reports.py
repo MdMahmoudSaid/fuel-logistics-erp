@@ -8,7 +8,7 @@ from rest_framework.exceptions import NotFound, PermissionDenied, ValidationErro
 from rest_framework.response import Response
 
 from apps.accounts.permissions import HasModulePermission
-from apps.reports.date_range import resolve_date_range
+from apps.reports.date_range import is_current_period, resolve_date_range
 from apps.reports.export import rows_to_csv, rows_to_xlsx
 from apps.reports.queries.capital_report import CapitalReportQuery
 from apps.reports.queries.customer_outstanding_report import CustomerOutstandingReportQuery
@@ -116,6 +116,8 @@ class ReportViewSet(viewsets.ViewSet):
             params["date_from"] = date_from
         if date_to:
             params["date_to"] = date_to
+        if pk == "margin-report" and is_current_period(request.query_params):
+            params["since_last_closure"] = True
         try:
             rows = query_class.run(**params)
         except (TypeError, ValueError) as exc:

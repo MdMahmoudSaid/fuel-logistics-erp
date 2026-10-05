@@ -26,6 +26,11 @@ import { formatMoney, formatQuantity, formatUnitMoney } from '@/utils/currency'
 const { t, locale } = useI18n()
 
 interface MarginRow {
+  // Since-closure delta row ("Periode en cours", spec 2026-10-05-periodes-
+  // independantes): additive columns hold the change, not the trip total.
+  is_adjustment: boolean
+  revenue: string
+  supplier_cost: string
   trip_reference: string
   client: string
   product: string
@@ -76,12 +81,10 @@ const workingCapitalDebtsTotal = computed(() => {
 })
 
 const periodProfit = computed(() => rows.value.reduce((sum, r) => sum + num(r.current_margin), 0))
-const revenue = computed(() =>
-  rows.value.reduce((sum, r) => sum + num(r.quantity_invoiced) * num(r.unit_selling_price), 0),
-)
-const supplierCost = computed(() =>
-  rows.value.reduce((sum, r) => sum + num(r.quantity_loaded) * num(r.supplier_unit_price), 0),
-)
+// Each row carries its own revenue/supplier cost: a quantity x price
+// product would be wrong on an adjustment row, which only holds deltas.
+const revenue = computed(() => rows.value.reduce((sum, r) => sum + num(r.revenue), 0))
+const supplierCost = computed(() => rows.value.reduce((sum, r) => sum + num(r.supplier_cost), 0))
 const lossIndemnity = computed(() =>
   rows.value.reduce((sum, r) => sum + num(r.transporter_loss_indemnity), 0),
 )
@@ -269,6 +272,25 @@ async function onExportPdf() {
               align="left"
               :value="formatMoney(preview.net_profit)"
             />
+            <!-- Reconciliation with the cards to the left (spec 2026-10-05):
+                 a deficit left by the last closure, and distributions
+                 validated/cancelled since it. -->
+            <p
+              v-if="preview && Number(preview.carried_over) < 0"
+              data-test="profit-carried-over"
+              class="text-texte-3 mt-2 text-xs"
+            >
+              {{ t('finance.profit.carriedOver') }} :
+              <span class="text-critique font-mono">{{ formatMoney(preview.carried_over) }}</span>
+            </p>
+            <p
+              v-if="preview && Math.abs(Number(preview.distributions_since_closure)) > 0"
+              data-test="profit-distributions-since-closure"
+              class="text-texte-3 mt-1 text-xs"
+            >
+              {{ t('finance.profit.distributionsSinceClosure') }} :
+              <span class="font-mono">{{ formatMoney(-Number(preview.distributions_since_closure)) }}</span>
+            </p>
           </div>
         </div>
       </section>
@@ -445,7 +467,16 @@ async function onExportPdf() {
                 :key="row.trip_reference"
                 class="border-ligne border-b last:border-0"
               >
-                <td class="px-3 py-2.5">{{ row.trip_reference }}</td>
+                <td class="px-3 py-2.5">
+                  {{ row.trip_reference }}
+                  <span
+                    v-if="row.is_adjustment"
+                    data-test="profit-adjustment-badge"
+                    :title="t('finance.profit.adjustmentHelp')"
+                    class="bg-transit-tint text-transit-texte ms-1 rounded px-1.5 py-0.5 text-xs font-medium"
+                    >{{ t('finance.profit.adjustment') }}</span
+                  >
+                </td>
                 <td class="px-3 py-2.5">{{ row.client || '—' }}</td>
                 <td class="px-3 py-2.5">{{ row.product }}</td>
                 <td class="px-3 py-2.5 text-end">
@@ -461,16 +492,20 @@ async function onExportPdf() {
                   <MonoValue :value="formatMoney(num(row.transporter_loss_indemnity))" />
                 </td>
                 <td class="px-3 py-2.5 text-end">
-                  <MonoValue :value="formatUnitMoney(num(row.supplier_unit_price))" />
+                  <span v-if="row.is_adjustment" class="text-texte-3">—</span>
+                  <MonoValue v-else :value="formatUnitMoney(num(row.supplier_unit_price))" />
                 </td>
                 <td class="px-3 py-2.5 text-end">
                   <MonoValue :value="formatMoney(num(row.real_total_cost))" />
                 </td>
                 <td class="px-3 py-2.5 text-end">
-                  <MonoValue :value="formatUnitMoney(num(row.unit_selling_price))" />
+                  <span v-if="row.is_adjustment" class="text-texte-3">—</span>
+                  <MonoValue v-else :value="formatUnitMoney(num(row.unit_selling_price))" />
                 </td>
                 <td class="px-3 py-2.5 text-end">
+                  <span v-if="row.is_adjustment" class="text-texte-3">—</span>
                   <MonoValue
+                    v-else
                     :value="formatUnitMoney(num(row.unit_profit))"
                     :class="
                       num(row.unit_profit) > 0

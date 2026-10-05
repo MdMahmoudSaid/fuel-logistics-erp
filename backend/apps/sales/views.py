@@ -55,7 +55,7 @@ class SaleViewSet(viewsets.ModelViewSet):
     the response an honest 405 with a clear reason, for every role.
     """
 
-    queryset = Sale.objects.select_related("customer", "product", "trip").all()
+    queryset = Sale.objects.select_related("customer", "product", "trip__truck").all()
     serializer_class = SaleSerializer
     filterset_fields = ["customer", "product", "trip"]
     permission_classes = [HasModulePermission]
@@ -86,8 +86,16 @@ class SaleViewSet(viewsets.ModelViewSet):
 
 class InvoiceViewSet(viewsets.ModelViewSet):
     queryset = (
-        Invoice.objects.select_related("sale", "sale__customer")
-        .prefetch_related("corrections", "extra_sales")
+        Invoice.objects.select_related(
+            "sale__customer", "sale__product", "sale__trip__truck"
+        )
+        .prefetch_related(
+            "corrections__corrected_by__role",
+            "extra_sales__customer",
+            "extra_sales__product",
+            "extra_sales__trip__truck",
+            "allocations__payment",
+        )
         .all()
     )
     serializer_class = InvoiceSerializer

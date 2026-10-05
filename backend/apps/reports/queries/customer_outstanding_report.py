@@ -7,6 +7,7 @@
 # (guide Section 9.1's "do not scatter formulas" applies to outstanding
 # balances just as much as to margin).
 
+from apps.core.request_cache import memoize_per_request
 from apps.customers.models import Customer
 from apps.finance.services import PaymentAllocationService
 from apps.sales.models import Invoice
@@ -18,6 +19,7 @@ class CustomerOutstandingReportQuery:
     FIELDS = FIELDS
 
     @classmethod
+    @memoize_per_request
     def run(cls, *, date_from=None, date_to=None) -> list[dict]:
         # "As of today" report: the period params are accepted and ignored
         # (the Reports page hides the period filter for it; a direct call with

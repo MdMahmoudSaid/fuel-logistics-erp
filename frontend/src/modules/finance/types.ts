@@ -683,7 +683,15 @@ export interface ShareholderProfitPreview {
   // current_profit); net_profit = operational_profit - general_expenses_paid
   // (unallocated Expense rows actually PAID in the period).
   operational_profit: string
+  // Sum of the margin-report rows' revenue for the same scope.
+  revenue: string
   general_expenses_paid: string
+  // "Periode en cours" reconciliation (spec 2026-10-05-periodes-
+  // independantes): operational_profit - general_expenses_paid +
+  // carried_over - distributions_since_closure == distributable_result.
+  // Both are "0.00" for any other date filter.
+  carried_over: string
+  distributions_since_closure: string
   net_profit: string
   // Tolerance-absorbed delivery loss (DeliveryControl.company_absorbed_
   // loss_quantity x unit_selling_price), summed across every trip. Already

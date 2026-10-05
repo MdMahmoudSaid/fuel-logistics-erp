@@ -253,13 +253,34 @@ async function onClosePeriod() {
   }
 }
 
+const showReopenDialog = ref(false)
+const reopenWarning = computed(() => {
+  const period = latestClosedPeriod.value
+  if (!period) return ''
+  const label = `${period.start_date} — ${period.end_date}`
+  return activePeriod.value
+    ? t('finance.shareholder.period.reopenConfirmWithSuccessor', {
+        period: label,
+        successor: activePeriod.value.start_date,
+      })
+    : t('finance.shareholder.period.reopenConfirm', { period: label })
+})
+
+function openReopenDialog() {
+  reopenReason.value = ''
+  periodError.value = ''
+  showReopenDialog.value = true
+}
+
 async function onReopenPeriod() {
-  if (!latestClosedPeriod.value || reopenReason.value.trim().length < 5) return
+  const period = latestClosedPeriod.value
+  if (!period || reopenReason.value.trim().length < 5) return
   periodBusy.value = true
   periodError.value = ''
   try {
-    await reopenShareholderProfitPeriod(latestClosedPeriod.value.id, reopenReason.value)
+    await reopenShareholderProfitPeriod(period.id, reopenReason.value)
     reopenReason.value = ''
+    showReopenDialog.value = false
     await Promise.all([loadPeriods(), loadDistributions(), loadPreview(), loadBalancesSummary()])
   } catch (e) {
     periodError.value = extractErrorMessage(e, t('finance.shareholder.period.reopenError'))
@@ -828,31 +849,6 @@ async function onWithdrawalShareholderChange() {
             t('finance.shareholder.period.start')
           }}</Button>
         </form>
-        <div v-if="latestClosedPeriod" class="border-ligne mt-5 border-t pt-4">
-          <p class="text-texte-2 text-sm">{{ t('finance.shareholder.period.reopenHelp') }}</p>
-          <form class="mt-2 flex flex-wrap items-end gap-3" @submit.prevent="onReopenPeriod">
-            <div class="min-w-64 flex-1 space-y-1.5">
-              <label class="text-texte-2 text-sm font-medium" for="reopen_reason">{{
-                t('finance.shareholder.period.reason')
-              }}</label
-              ><textarea
-                id="reopen_reason"
-                v-model="reopenReason"
-                minlength="5"
-                required
-                class="border-ligne-forte min-h-20 w-full rounded-lg border bg-white px-3.5 py-2"
-              />
-            </div>
-            <Button
-              data-test="reopen-profit-period"
-              type="submit"
-              variant="danger"
-              :loading="periodBusy"
-              :disabled="reopenReason.trim().length < 5"
-              >{{ t('finance.shareholder.period.reopen') }}</Button
-            >
-          </form>
-        </div>
       </section>
 
       <div v-if="periods.length" class="mb-5">
@@ -872,15 +868,26 @@ async function onWithdrawalShareholderChange() {
                 {{ t('finance.shareholder.period.lastReopen') }}: {{ period.reopen_reason }}
               </p>
             </div>
-            <div class="text-end">
-              <Badge :variant="period.status === 'CLOSED' ? 'livre' : 'transit'">{{
-                t(`finance.shareholder.period.statusValues.${period.status}`)
-              }}</Badge
-              ><MonoValue
-                v-if="period.net_profit != null"
-                class="mt-1"
-                :value="formatMoney(period.net_profit)"
-              />
+            <div class="flex flex-wrap items-center justify-end gap-3">
+              <div class="text-end">
+                <Badge :variant="period.status === 'CLOSED' ? 'livre' : 'transit'">{{
+                  t(`finance.shareholder.period.statusValues.${period.status}`)
+                }}</Badge
+                ><MonoValue
+                  v-if="period.net_profit != null"
+                  class="mt-1"
+                  :value="formatMoney(period.net_profit)"
+                />
+              </div>
+              <button
+                v-if="period.id === latestClosedPeriod?.id"
+                type="button"
+                data-test="open-reopen-dialog"
+                class="border-critique text-critique hover:bg-critique-tint rounded-lg border px-3 py-1.5 text-xs font-medium"
+                @click="openReopenDialog"
+              >
+                {{ t('finance.shareholder.period.reopen') }}
+              </button>
             </div>
           </div>
         </div>
@@ -1605,6 +1612,52 @@ async function onWithdrawalShareholderChange() {
         "
         @cancel="showContributionForm = false"
       />
+    </Modal>
+
+    <Modal
+      v-if="showReopenDialog && latestClosedPeriod"
+      :title="t('finance.shareholder.period.reopenTitle')"
+      @close="showReopenDialog = false"
+    >
+      <div data-test="reopen-period-dialog" class="space-y-4">
+        <p class="font-semibold">
+          {{ latestClosedPeriod.start_date }} — {{ latestClosedPeriod.end_date }}
+        </p>
+        <p class="border-critique bg-critique-tint text-critique rounded-lg border p-2.5 text-sm">
+          {{ reopenWarning }}
+        </p>
+        <AppAlert v-if="periodError" :message="periodError" />
+        <form class="space-y-4" @submit.prevent="onReopenPeriod">
+          <div class="space-y-1.5">
+            <label class="text-texte-2 text-sm font-medium" for="reopen_reason">{{
+              t('finance.shareholder.period.reason')
+            }}</label
+            ><textarea
+              id="reopen_reason"
+              v-model="reopenReason"
+              minlength="5"
+              required
+              class="border-ligne-forte min-h-20 w-full rounded-lg border bg-white px-3.5 py-2"
+            />
+          </div>
+          <div class="flex justify-end gap-3">
+            <Button
+              data-test="cancel-reopen-period"
+              variant="ghost"
+              @click="showReopenDialog = false"
+              >{{ t('common.cancel') }}</Button
+            >
+            <Button
+              data-test="reopen-profit-period"
+              type="submit"
+              variant="danger"
+              :loading="periodBusy"
+              :disabled="reopenReason.trim().length < 5"
+              >{{ t('finance.shareholder.period.reopen') }}</Button
+            >
+          </div>
+        </form>
+      </div>
     </Modal>
 
     <Modal

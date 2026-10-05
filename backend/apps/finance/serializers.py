@@ -9,12 +9,12 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from apps.accounts.serializers import UserSerializer
-from apps.customers.serializers import CustomerSerializer
+from apps.customers.serializers import CustomerBriefSerializer
 from apps.documents.models import Document
 from apps.documents.validators import validate_image_upload
 from apps.finance.labels import describe_treasury_transaction
-from apps.suppliers.serializers import SupplierSerializer
-from apps.transport.serializers import TransporterSerializer
+from apps.suppliers.serializers import SupplierBriefSerializer
+from apps.transport.serializers import TransporterBriefSerializer
 from apps.trips.models import Trip
 
 from .models import (
@@ -129,7 +129,7 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
     (guide Section 8.2: "avec liste d'allocations imbriquee").
     """
 
-    customer_detail = CustomerSerializer(source="customer", read_only=True)
+    customer_detail = CustomerBriefSerializer(source="customer", read_only=True)
     recorded_by_detail = UserSerializer(source="recorded_by", read_only=True)
     allocations_detail = PaymentAllocationSerializer(source="allocations", many=True, read_only=True)
     allocations = InvoiceAllocationInputSerializer(many=True, write_only=True, required=False)
@@ -325,7 +325,7 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
 
 
 class SupplierPaymentSerializer(serializers.ModelSerializer):
-    supplier_detail = SupplierSerializer(source="supplier", read_only=True)
+    supplier_detail = SupplierBriefSerializer(source="supplier", read_only=True)
     recorded_by_detail = UserSerializer(source="recorded_by", read_only=True)
     proof_url = serializers.SerializerMethodField()
 
@@ -440,7 +440,7 @@ class SupplierPaymentSerializer(serializers.ModelSerializer):
 
 
 class SupplierAdvanceSerializer(serializers.ModelSerializer):
-    supplier_detail = SupplierSerializer(source="supplier", read_only=True)
+    supplier_detail = SupplierBriefSerializer(source="supplier", read_only=True)
     attachment = serializers.FileField(write_only=True, required=False, allow_null=True, default=None)
     proof_url = serializers.SerializerMethodField()
     remaining_amount = serializers.DecimalField(max_digits=16, decimal_places=2, read_only=True)
@@ -497,7 +497,7 @@ class SupplierAdvanceSerializer(serializers.ModelSerializer):
 
 
 class TransporterAdvanceSerializer(serializers.ModelSerializer):
-    transporter_detail = TransporterSerializer(source="transporter", read_only=True)
+    transporter_detail = TransporterBriefSerializer(source="transporter", read_only=True)
     attachment = serializers.FileField(write_only=True, required=False, allow_null=True, default=None)
     proof_url = serializers.SerializerMethodField()
     remaining_amount = serializers.DecimalField(max_digits=16, decimal_places=2, read_only=True)
@@ -561,7 +561,7 @@ class TransportPaymentSerializer(serializers.ModelSerializer):
 
         return can_modify_commission(obj)
 
-    transporter_detail = TransporterSerializer(source="transporter", read_only=True)
+    transporter_detail = TransporterBriefSerializer(source="transporter", read_only=True)
     trip_reference = serializers.CharField(source="trip.reference", read_only=True)
     net_amount = serializers.DecimalField(max_digits=16, decimal_places=2, read_only=True)
     deduction_label = serializers.SerializerMethodField()
@@ -650,7 +650,13 @@ class TransportPaymentSerializer(serializers.ModelSerializer):
         return data
 
     def get_deduction_label(self, obj) -> str:
-        deduction = obj.trip.transport_deductions.order_by("-created_at", "-id").first()
+        # Latest deduction, picked from `.all()` so the deductions
+        # TransportPaymentViewSet prefetches for a page are reused.
+        deduction = max(
+            obj.trip.transport_deductions.all(),
+            key=lambda item: (item.created_at, item.id),
+            default=None,
+        )
         if deduction is None:
             return ""
         return (

@@ -11,6 +11,7 @@ from decimal import Decimal
 from django.contrib.contenttypes.models import ContentType
 from django.db.models import Sum
 
+from apps.core.request_cache import memoize_per_request
 from apps.finance.models import (
     Expense,
     ExpenseAllocation,
@@ -34,6 +35,7 @@ class TripProfitService:
         return trip.quantity_loaded * trip.supplier_order.unit_price
 
     @staticmethod
+    @memoize_per_request
     def _transport_cost(trip: Trip) -> Decimal:
         """Frais Transport Brut: the gross settlement amount, before loss
         deductions or advances (guide Section 1.5: those are separate
@@ -46,6 +48,7 @@ class TripProfitService:
         )
 
     @staticmethod
+    @memoize_per_request
     def _transporter_loss_quantity(trip: Trip) -> Decimal:
         return (
             TransportDeduction.objects.filter(trip=trip)
@@ -55,6 +58,7 @@ class TripProfitService:
         )
 
     @staticmethod
+    @memoize_per_request
     def _transporter_loss_indemnity(trip: Trip) -> Decimal:
         return (
             TransportDeduction.objects.filter(trip=trip)
@@ -62,6 +66,36 @@ class TripProfitService:
             .aggregate(total=Sum("amount"))["total"]
             or ZERO
         )
+
+    @classmethod
+    def prime_trips(cls, trips) -> None:
+        """Compute, for a whole list of trips in a few queries, the per-trip
+        figures get_cost_breakdown reads (cost basis, transporter loss
+        quantity and indemnity) and hand them to the per-request read cache.
+        Same filters as the helpers above - keep them in step."""
+        TripCostService.prime_cost_bases(trips)
+        trips = [
+            trip
+            for trip in trips
+            if trip.pk is not None
+            and not (
+                cls._transporter_loss_quantity.is_cached(trip)
+                and cls._transporter_loss_indemnity.is_cached(trip)
+            )
+        ]
+        if not trips:
+            return
+        losses = {
+            row["trip_id"]: row
+            for row in TransportDeduction.objects.filter(trip_id__in=[trip.id for trip in trips])
+            .exclude(status=TransportDeduction.Status.CANCELLED)
+            .values("trip_id")
+            .annotate(quantity=Sum("chargeable_quantity"), amount=Sum("amount"))
+        }
+        for trip in trips:
+            row = losses.get(trip.id, {})
+            cls._transporter_loss_quantity.prime(row.get("quantity") or ZERO, trip)
+            cls._transporter_loss_indemnity.prime(row.get("amount") or ZERO, trip)
 
     @staticmethod
     def _expense_allocations(trip: Trip):
@@ -129,6 +163,7 @@ class TripProfitService:
         return cls.calculate_current_margin(trip)
 
     @classmethod
+    @memoize_per_request
     def get_cost_breakdown(cls, trip: Trip) -> dict:
         """Detailed revenue/cost decomposition for a trip's current margin
         (guide Section 9.1's recommended component list).
