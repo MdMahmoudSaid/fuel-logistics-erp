@@ -56,6 +56,10 @@ ACTION_MAP = {
     # therefore restricted to roles that may validate shareholder records.
     "close": "validate",
     "reopen": "validate",
+    # Idempotent system rollover: a viewer may trigger it, but cannot choose
+    # or alter any dates.  The server derives the next start date from the
+    # latest closed period and records the authenticated actor in the audit.
+    "ensure_current": "view",
     # Trip status transitions (docs/PHASE_3_PLAN.md Etape 6) are routine
     # day-to-day operations work, not a "validate" business action - map to
     # "edit" so the Operations role (which has edit but not validate on the

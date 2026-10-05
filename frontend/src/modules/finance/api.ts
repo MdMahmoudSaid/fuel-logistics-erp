@@ -411,6 +411,10 @@ export const shareholderDistributionResource = createResourceApi<ShareholderProf
 export const shareholderProfitPeriodResource =
   createResourceApi<ShareholderProfitPeriod>('/shareholder-periods/')
 
+export function ensureCurrentShareholderProfitPeriod(): Promise<void> {
+  return apiClient.post('/shareholder-periods/ensure-current/').then(() => undefined)
+}
+
 export function closeShareholderProfitPeriod(
   periodId: number,
   endDate: string,

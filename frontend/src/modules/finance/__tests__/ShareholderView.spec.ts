@@ -36,6 +36,7 @@ const validateShareholderDistribution = vi.fn()
 const shareholderPeriodResourceList = vi.fn()
 const shareholderPeriodResourceCreate = vi.fn()
 const closeShareholderProfitPeriod = vi.fn()
+const ensureCurrentShareholderProfitPeriod = vi.fn()
 const reopenShareholderProfitPeriod = vi.fn()
 
 function emptyList() {
@@ -91,6 +92,8 @@ vi.mock('../api', () => ({
   validateShareholderDistribution: (...args: unknown[]) => validateShareholderDistribution(...args),
   cancelShareholderDistribution: (...args: unknown[]) => cancelShareholderDistribution(...args),
   closeShareholderProfitPeriod: (...args: unknown[]) => closeShareholderProfitPeriod(...args),
+  ensureCurrentShareholderProfitPeriod: (...args: unknown[]) =>
+    ensureCurrentShareholderProfitPeriod(...args),
   reopenShareholderProfitPeriod: (...args: unknown[]) => reopenShareholderProfitPeriod(...args),
   recordShareholderLoanRepayment: vi.fn(),
   createShareholderContribution: vi.fn(),
@@ -109,6 +112,7 @@ describe('ShareholderView', () => {
     shareholderWithdrawalResourceList.mockResolvedValue(emptyList())
     shareholderDistributionResourceList.mockResolvedValue(emptyList())
     shareholderPeriodResourceList.mockResolvedValue(emptyList())
+    ensureCurrentShareholderProfitPeriod.mockResolvedValue(undefined)
     fetchShareholderProfitPreview.mockResolvedValue({
       period_start: '2026-08-01',
       period_end: null,
@@ -293,6 +297,17 @@ describe('ShareholderView', () => {
     await flushPromises()
 
     expect(shareholderPeriodResourceCreate).toHaveBeenCalledWith({ start_date: '2026-06-01' })
+  })
+
+  it('ensures the current profit period before listing periods', async () => {
+    mount(ShareholderView)
+    await flushPromises()
+
+    expect(ensureCurrentShareholderProfitPeriod).toHaveBeenCalledOnce()
+    expect(shareholderPeriodResourceList).toHaveBeenCalledOnce()
+    expect(
+      ensureCurrentShareholderProfitPeriod.mock.invocationCallOrder[0],
+    ).toBeLessThan(shareholderPeriodResourceList.mock.invocationCallOrder[0])
   })
 
   it('closes the open period and requests automatic distribution', async () => {

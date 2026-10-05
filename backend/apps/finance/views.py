@@ -802,6 +802,16 @@ class ShareholderProfitPeriodViewSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         raise MethodNotAllowed("DELETE", detail=_NO_HARD_DELETE_DETAIL)
 
+    @action(detail=False, methods=["post"], url_path="ensure-current")
+    def ensure_current(self, request):
+        period, created = ShareholderProfitPeriodService.ensure_current_period(
+            request.user
+        )
+        return Response({
+            "created": created,
+            "period": self.get_serializer(period).data if period is not None else None,
+        })
+
     @action(detail=True, methods=["post"])
     def close(self, request, pk=None):
         class CloseInput(serializers.Serializer):

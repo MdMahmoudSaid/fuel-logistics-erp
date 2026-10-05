@@ -30,7 +30,7 @@ services:
       context: ./backend
       args:
         REQUIREMENTS_FILE: requirements/prod.txt
-    image: bessma/fuel-backend:customer-credit-20261004-r2
+    image: bessma/fuel-backend:period-rollover-20261005
     env_file:
     - /etc/bessma/fuel-app.env
     command:
@@ -62,7 +62,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile.production
-    image: bessma/fuel-frontend:customer-credit-20261004-r2
+    image: bessma/fuel-frontend:period-rollover-20261005
     ports:
     - 127.0.0.1:5174:8080
     volumes:
@@ -101,7 +101,7 @@ services:
       context: ./backend
       args:
         REQUIREMENTS_FILE: requirements/prod.txt
-    image: bessma/fuel-backend:customer-credit-20261004-r2
+    image: bessma/fuel-backend:period-rollover-20261005
     env_file:
     - /etc/bessma/fuel-migrate.env
     command:

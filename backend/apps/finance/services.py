@@ -2234,6 +2234,45 @@ class ShareholderProfitPeriodService:
 
     @staticmethod
     @transaction.atomic
+    def ensure_current_period(actor, as_of=None):
+        """Open the successor of the latest closed period when its day arrives.
+
+        A future placeholder is deliberately not created at close time: doing
+        so would prevent an administrator from reopening the just-closed
+        period for an audited same-day correction.  This idempotent rollover
+        is called by the client before it lists periods, so the next period is
+        opened automatically on the first visit on or after its start date.
+        """
+        ShareholderProfitPeriodService._lock_mutations()
+        current = ShareholderProfitPeriod.objects.filter(
+            status=ShareholderProfitPeriod.Status.OPEN
+        ).first()
+        if current is not None:
+            return current, False
+
+        latest = ShareholderProfitPeriod.objects.filter(
+            status=ShareholderProfitPeriod.Status.CLOSED
+        ).order_by("-end_date", "-id").first()
+        if latest is None:
+            return None, False
+
+        rollover_date = latest.end_date + timedelta(days=1)
+        current_date = as_of or timezone.localdate()
+        if rollover_date > current_date:
+            return None, False
+
+        period = ShareholderProfitPeriod(
+            start_date=rollover_date,
+            opened_by=actor,
+        )
+        period.save(
+            user=actor,
+            reason=f"Ouverture automatique apres la periode #{latest.id}",
+        )
+        return period, True
+
+    @staticmethod
+    @transaction.atomic
     def close_period(period_id, end_date, actor) -> ShareholderProfitPeriod:
         ShareholderProfitPeriodService._lock_mutations()
         period = ShareholderProfitPeriod.objects.select_for_update().get(pk=period_id)

@@ -15,6 +15,7 @@ import { createResourceApi } from '@/api/resource'
 import {
   cancelShareholderDistribution,
   closeShareholderProfitPeriod,
+  ensureCurrentShareholderProfitPeriod,
   fetchShareholderBalancesSummary,
   fetchShareholderLedger,
   fetchShareholderProfitPreview,
@@ -221,6 +222,7 @@ const periodDistributionIds = computed(
 )
 
 async function loadPeriods() {
+  await ensureCurrentShareholderProfitPeriod()
   const data = await shareholderProfitPeriodResource.list()
   periods.value = [...data.results]
 }

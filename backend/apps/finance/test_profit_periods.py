@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 
 import pytest
@@ -107,3 +108,31 @@ def test_only_latest_closed_period_can_reopen_and_reason_is_required():
         ShareholderProfitPeriodService.reopen_period(first.id, "Ancienne correction", user)
     with pytest.raises(ShareholderProfitPeriodError, match="Expliquez"):
         ShareholderProfitPeriodService.reopen_period(second.id, "non", user)
+
+
+@pytest.mark.django_db
+def test_automatic_rollover_waits_until_next_day_and_is_idempotent():
+    user = actor("AUTO")
+    Shareholder.objects.create(name="Associe auto", participation_percent=Decimal("100.00"))
+    period = ShareholderProfitPeriodService.open_period("2026-06-01", user)
+    ShareholderProfitPeriodService.close_period(period.id, "2026-06-30", user)
+
+    pending, created = ShareholderProfitPeriodService.ensure_current_period(
+        user, as_of=date(2026, 6, 30)
+    )
+    assert pending is None
+    assert created is False
+
+    successor, created = ShareholderProfitPeriodService.ensure_current_period(
+        user, as_of=date(2026, 7, 1)
+    )
+    assert created is True
+    assert successor.start_date == date(2026, 7, 1)
+    assert successor.status == ShareholderProfitPeriod.Status.OPEN
+
+    same_successor, created = ShareholderProfitPeriodService.ensure_current_period(
+        user, as_of=date(2026, 7, 2)
+    )
+    assert created is False
+    assert same_successor.id == successor.id
+    assert ShareholderProfitPeriod.objects.filter(status="OPEN").count() == 1

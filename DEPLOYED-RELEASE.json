@@ -1,6 +1,6 @@
 {
-  "commit": "codex/production-customer-credit@customer-credit-20261004",
-  "deployed_at": "20261004",
-  "method": "Audited customer-credit allocation release preserving the hardened production configuration and flexible profit periods",
-  "rollback": "/home/bouye/apps/.releases/fuel-security-c4ed455"
+  "commit": "main@period-rollover-20261005",
+  "deployed_at": "20261005",
+  "method": "Automatic next-day profit-period rollover with audited closed-period protection preserved",
+  "rollback": "/home/bouye/apps/.releases/fuel-customer-credit-d52eeb3"
 }
