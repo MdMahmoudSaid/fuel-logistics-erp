@@ -45,6 +45,11 @@ const fetchCustomerLedger = vi.fn(async (_id: number) => ({
   invoices: ledgerInvoices,
   payments: [],
 }))
+const confirmDialogMock = vi.fn(async (_message: string) => true)
+vi.mock('@/composables/useConfirmDialog', () => ({
+  confirmDialog: (message: string) => confirmDialogMock(message),
+}))
+
 const createCustomerPayment = vi.fn(async (p: Record<string, unknown>) => ({ id: 1, ...p }))
 vi.mock('../api', () => ({
   createCustomerPaymentWithProof: (p: Record<string, unknown>) => createCustomerPayment(p),
@@ -210,5 +215,67 @@ describe('PaymentAllocationForm advance mode (client advances 2026-10-09)', () =
     expect(createCustomerPayment.mock.calls[0][0].allocations).toEqual([
       { invoice: null, amount: '750000' },
     ])
+  })
+})
+
+describe('PaymentAllocationForm overpayment popup (2026-10-09)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    ledgerInvoices = [makeInvoice({ id: 1, outstanding: '2000000.00', total_amount: '2000000.00' })]
+    fetchCustomerLedger.mockImplementation(async () => ({
+      customer: { id: 1, name: 'Client X', company_name: '' },
+      outstanding_balance: '2000000.00',
+      invoices: ledgerInvoices,
+      payments: [],
+    }))
+  })
+
+  async function payThreeMillion() {
+    const wrapper = mount(PaymentAllocationForm, { props: { initialCustomerId: 1 } })
+    await flushPromises()
+    await wrapper.find('#amount').setValue('3000000')
+    await wrapper.find('#cash_account').setValue('1')
+    return wrapper
+  }
+
+  it('explains the surplus and records nothing when the user cancels', async () => {
+    confirmDialogMock.mockResolvedValueOnce(false)
+    const wrapper = await payThreeMillion()
+    expect(wrapper.find('[data-test="surplus-hint"]').exists()).toBe(true)
+
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(confirmDialogMock).toHaveBeenCalledTimes(1)
+    const message = confirmDialogMock.mock.calls[0][0]
+    expect(message).toContain('Client X')
+    expect(message).toContain('avance')
+    expect(createCustomerPayment).not.toHaveBeenCalled()
+  })
+
+  it('records the payment (debt + surplus credit line) once confirmed', async () => {
+    confirmDialogMock.mockResolvedValueOnce(true)
+    const wrapper = await payThreeMillion()
+
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createCustomerPayment).toHaveBeenCalledTimes(1)
+    expect(createCustomerPayment.mock.calls[0][0].allocations).toEqual([
+      { invoice: 1, amount: '2000000.00' },
+      { invoice: null, amount: '1000000.00' },
+    ])
+  })
+
+  it('asks nothing when the payment does not exceed the debt', async () => {
+    const wrapper = mount(PaymentAllocationForm, { props: { initialCustomerId: 1 } })
+    await flushPromises()
+    await wrapper.find('#amount').setValue('2000000')
+    await wrapper.find('#cash_account').setValue('1')
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(confirmDialogMock).not.toHaveBeenCalled()
+    expect(createCustomerPayment).toHaveBeenCalledTimes(1)
   })
 })

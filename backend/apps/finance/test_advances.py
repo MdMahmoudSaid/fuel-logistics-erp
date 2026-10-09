@@ -1148,3 +1148,126 @@ def test_transporter_ledger_endpoint_advances_applied_reflects_automatic_consump
     assert response.data["advances_applied"] == "100000.00"
     assert "summary" in response.data
     assert "entries" in response.data
+
+
+# ---------------------------------------------------------------------------
+# Overpayment -> advance (2026-10-09): paying a supplier/transporter more than
+# its open debt is refused unless the user confirmed it (surplus_as_advance);
+# then the whole debt is paid and the surplus becomes an advance, atomically.
+# ---------------------------------------------------------------------------
+
+
+def _supplier_with_debt(suffix):
+    # 1000 L x 600 = 600 000 of debt, fully loaded.
+    admin_user, supplier, order = _make_supplier_order_with_status(
+        suffix, SupplierOrder.Status.CONFIRMED,
+    )
+    _fully_load(order, suffix=suffix)
+    bank = BankAccount.objects.create(name=f"Bank {suffix}", opening_balance=Decimal("5000000.00"))
+    return admin_user, supplier, order, bank
+
+
+@pytest.mark.django_db
+def test_supplier_overpayment_is_refused_without_confirmation():
+    admin_user, supplier, _order, bank = _supplier_with_debt("OVER-REFUSE")
+    from apps.finance.services import ControlledDebtPaymentError
+
+    with pytest.raises(ControlledDebtPaymentError, match="depasse le reste a payer"):
+        ControlledDebtPaymentService.record_payment(
+            debt_type="supplier", debt_id=supplier.id, bank_account_id=bank.id,
+            amount=Decimal("900000.00"), date="2026-10-09", reference="OVR", actor=admin_user,
+        )
+    assert not SupplierPayment.objects.filter(supplier=supplier).exists()
+    assert not SupplierAdvance.objects.filter(supplier=supplier).exists()
+
+
+@pytest.mark.django_db
+def test_supplier_overpayment_pays_debt_and_turns_surplus_into_advance():
+    admin_user, supplier, _order, bank = _supplier_with_debt("OVER-SUP")
+    before = bank.current_balance
+
+    result = ControlledDebtPaymentService.record_payment(
+        debt_type="supplier", debt_id=supplier.id, bank_account_id=bank.id,
+        amount=Decimal("900000.00"), date="2026-10-09", reference="OVR", actor=admin_user,
+        surplus_as_advance=True,
+    )
+
+    assert result["advance_amount"] == Decimal("300000.00")
+    balance = ControlledDebtPaymentService.describe_supplier_balance(supplier)
+    assert balance["total_due"] == Decimal("0.00")
+    assert balance["open_advances"] == Decimal("300000.00")
+    advance = SupplierAdvance.objects.get(supplier=supplier)
+    assert advance.amount == Decimal("300000.00")
+    assert advance.reference == "OVR"
+    bank.refresh_from_db()
+    assert before - bank.current_balance == Decimal("900000.00")
+
+
+@pytest.mark.django_db
+def test_transporter_overpayment_pays_debt_and_turns_surplus_into_advance():
+    trip, transporter = _make_trip_for_deduction("OVER-TRA")
+    TransportPayment.objects.create(
+        trip=trip, transporter=transporter,
+        calculation_method=TransportPayment.CalculationMethod.FIXED,
+        base_amount=Decimal("700000.00"),
+    )
+    bank = BankAccount.objects.create(name="Bank over tra", opening_balance=Decimal("2000000.00"))
+    actor = _make_admin("OVER-TRA-ACTOR")
+
+    result = ControlledDebtPaymentService.record_payment(
+        debt_type="transporter", debt_id=transporter.id, bank_account_id=bank.id,
+        amount=Decimal("1000000.00"), date="2026-10-09", reference="OVT", actor=actor,
+        surplus_as_advance=True,
+    )
+
+    assert result["advance_amount"] == Decimal("300000.00")
+    balance = ControlledDebtPaymentService.describe_transporter_balance(transporter)
+    assert balance["total_due"] == Decimal("0.00")
+    assert balance["open_advances"] == Decimal("300000.00")
+    assert TransporterAdvance.objects.get(transporter=transporter).amount == Decimal("300000.00")
+
+
+@pytest.mark.django_db
+def test_overpayment_without_surplus_does_not_create_an_advance():
+    admin_user, supplier, _order, bank = _supplier_with_debt("OVER-EXACT")
+
+    result = ControlledDebtPaymentService.record_payment(
+        debt_type="supplier", debt_id=supplier.id, bank_account_id=bank.id,
+        amount=Decimal("600000.00"), date="2026-10-09", reference="EX", actor=admin_user,
+        surplus_as_advance=True,
+    )
+
+    assert result["advance_amount"] == Decimal("0.00")
+    assert not SupplierAdvance.objects.filter(supplier=supplier).exists()
+
+
+@pytest.mark.django_db
+def test_overpayment_still_checks_bank_balance_for_the_full_amount():
+    admin_user, supplier, _order, _bank = _supplier_with_debt("OVER-BANK")
+    small = BankAccount.objects.create(name="Small bank", opening_balance=Decimal("700000.00"))
+    from apps.finance.services import ControlledDebtPaymentError
+
+    with pytest.raises(ControlledDebtPaymentError, match="Solde bancaire insuffisant"):
+        ControlledDebtPaymentService.record_payment(
+            debt_type="supplier", debt_id=supplier.id, bank_account_id=small.id,
+            amount=Decimal("900000.00"), date="2026-10-09", reference="OVR", actor=admin_user,
+            surplus_as_advance=True,
+        )
+    assert not SupplierPayment.objects.filter(supplier=supplier).exists()
+
+
+@pytest.mark.django_db
+def test_debt_payment_endpoint_accepts_confirmed_overpayment(advances_finance_client):
+    _admin, supplier, _order, bank = _supplier_with_debt("OVER-API")
+    url = "/api/treasury-transactions/record-debt-payment/"
+    payload = {
+        "debt_type": "supplier", "debt_id": supplier.id, "bank_account": bank.id,
+        "amount": "900000.00", "date": "2026-10-09", "reference": "API-OVR",
+    }
+
+    refused = advances_finance_client.post(url, payload)
+    assert refused.status_code == 400
+
+    accepted = advances_finance_client.post(url, {**payload, "surplus_as_advance": "true"})
+    assert accepted.status_code == 201, accepted.data
+    assert accepted.data["advance_amount"] == "300000.00"

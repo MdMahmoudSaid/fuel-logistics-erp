@@ -795,6 +795,12 @@
       "bank": "Bank",
       "cash": "Cash"
     },
+    "overpayment": {
+      "confirm": "The amount entered ({amount}) exceeds the debt of {name} ({debt}).\n\nIf you confirm:\n• the whole debt will be paid: {debt}\n• the rest, {surplus}, will be recorded as an advance for {name}, deducted automatically from {next}.\n\nIf this is a typing mistake, click Cancel.",
+      "nextDebts": "their next debts",
+      "nextInvoices": "their next validated invoices",
+      "hint": "Amount above the debt: {surplus} will be recorded as an advance (confirmation required)."
+    },
     "customerLedger": {
       "title": "Customer Ledger — {name}",
       "newPayment": "New payment",

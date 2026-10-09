@@ -315,6 +315,7 @@ export function recordDebtPayment(payload: {
   reference?: string
   note?: string
   attachment?: File | null
+  surplus_as_advance?: boolean
 }): Promise<DebtPaymentResult> {
   const { attachment, ...fields } = payload
   if (!attachment) {

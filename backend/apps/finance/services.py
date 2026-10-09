@@ -1282,6 +1282,7 @@ class ControlledDebtPaymentService:
         actor,
         note="",
         attachment=None,
+        surplus_as_advance=False,
     ) -> dict:
         amount = Decimal(str(amount)).quantize(Decimal("0.01"))
         if amount <= ZERO:
@@ -1292,6 +1293,29 @@ class ControlledDebtPaymentService:
         if amount > bank_balance:
             raise ControlledDebtPaymentError(
                 "Solde bancaire insuffisant pour effectuer ce paiement."
+            )
+
+        # Overpayment -> advance (2026-10-09): only once the user confirmed
+        # it in the UI (surplus_as_advance), a supplier/transporter payment
+        # above the open debt pays the whole debt and the surplus becomes an
+        # advance, in this same transaction. Without the flag the
+        # "depasse le reste a payer" guard below still refuses it, so a
+        # mistyped amount is never silently accepted.
+        total_amount = amount
+        advance_amount = ZERO
+        if surplus_as_advance and debt_type in (cls.SUPPLIER, cls.TRANSPORTER):
+            if debt_type == cls.SUPPLIER:
+                party = Supplier.objects.select_for_update().get(pk=debt_id)
+                remaining = cls.describe_supplier(party)["remaining_amount"]
+            else:
+                party = Transporter.objects.select_for_update().get(pk=debt_id)
+                remaining = cls.describe_transporter(party)["remaining_amount"]
+            if amount > remaining:
+                advance_amount = amount - max(remaining, ZERO)
+                amount = amount - advance_amount
+        if amount <= ZERO and advance_amount > ZERO:
+            raise ControlledDebtPaymentError(
+                "Aucune dette ouverte : utilisez Nouvelle avance pour ce montant."
             )
 
         if debt_type == cls.SUPPLIER:
@@ -1344,8 +1368,28 @@ class ControlledDebtPaymentService:
                 txn.document = document
                 txn.save(update_fields=["document"])
 
+        result["advance_amount"] = advance_amount
+        if advance_amount > ZERO:
+            create_advance = (
+                AdvanceService.create_supplier_advance
+                if debt_type == cls.SUPPLIER
+                else AdvanceService.create_transporter_advance
+            )
+            party_field = "supplier_id" if debt_type == cls.SUPPLIER else "transporter_id"
+            create_advance(
+                **{party_field: debt_id},
+                bank_account_id=bank_account.id,
+                cash_account_id=None,
+                amount=advance_amount,
+                date=date,
+                reference=reference,
+                notes=note or "Excedent de paiement converti en avance",
+                attachment=None,
+                actor=actor,
+            )
+
         result["bank_balance_before"] = bank_balance
-        result["bank_balance_after"] = bank_balance - amount
+        result["bank_balance_after"] = bank_balance - total_amount
         return result
 
     @classmethod

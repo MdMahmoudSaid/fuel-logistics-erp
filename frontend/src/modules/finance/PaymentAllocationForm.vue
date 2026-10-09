@@ -19,6 +19,7 @@ import type {
 } from './types'
 import Button from '@/components/ui/Button.vue'
 import { formatMoney } from '@/utils/currency'
+import { confirmDialog } from '@/composables/useConfirmDialog'
 import { IMAGE_UPLOAD_ACCEPT, isAllowedImageFile } from '@/utils/imageUpload'
 
 // Dedicated cash account name FinancePostingService owns server-side
@@ -192,7 +193,29 @@ const allocatedTotal = computed(() =>
 )
 const unallocatedRemainder = computed(() => (Number(form.value.amount) || 0) - allocatedTotal.value)
 
+// Overpayment -> advance (2026-10-09): a receipt above what the customer owes
+// is never recorded silently - the user confirms that the debt is fully paid
+// and the rest becomes an advance (consumed by the next validated invoices).
+const customerDebt = computed(() => Math.max(Number(outstandingBalance.value ?? 0), 0))
+const surplusAmount = computed(() => {
+  if (props.advanceMode || outstandingBalance.value === null) return 0
+  return Math.max((Number(form.value.amount) || 0) - customerDebt.value, 0)
+})
+
 async function onSubmit() {
+  if (surplusAmount.value > 0) {
+    const customer = customers.value.find((c) => String(c.id) === String(form.value.customer))
+    const confirmed = await confirmDialog(
+      t('finance.overpayment.confirm', {
+        amount: formatMoney(Number(form.value.amount)),
+        name: customer?.name ?? '',
+        debt: formatMoney(customerDebt.value),
+        surplus: formatMoney(surplusAmount.value),
+        next: t('finance.overpayment.nextInvoices'),
+      }),
+    )
+    if (!confirmed) return
+  }
   saving.value = true
   error.value = ''
   proofError.value = ''
@@ -427,6 +450,9 @@ async function onSubmit() {
         <p class="text-texte-2 text-sm font-medium" data-test="outstanding-balance">
           {{ t('finance.payment.outstandingBalance') }}:
           <span class="text-texte font-semibold">{{ formatMoney(outstandingBalance ?? 0) }}</span>
+        </p>
+        <p v-if="surplusAmount > 0" class="text-ecart mt-1 text-sm" data-test="surplus-hint">
+          {{ t('finance.overpayment.hint', { surplus: formatMoney(surplusAmount) }) }}
         </p>
       </div>
 

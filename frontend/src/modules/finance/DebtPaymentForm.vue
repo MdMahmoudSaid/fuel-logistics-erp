@@ -6,6 +6,7 @@ import { createResourceApi } from '@/api/resource'
 import Button from '@/components/ui/Button.vue'
 import MonoValue from '@/components/ui/MonoValue.vue'
 import { fetchPayableDebts, recordDebtPayment } from './api'
+import { confirmDialog } from '@/composables/useConfirmDialog'
 import type { DebtPaymentType, PayableDebt } from './types'
 import { formatMoney } from '@/utils/currency'
 import { IMAGE_UPLOAD_ACCEPT, isAllowedImageFile } from '@/utils/imageUpload'
@@ -91,6 +92,17 @@ const remainingAfterPayment = computed(() => {
   if (!selectedDebt.value) return 0
   return Number(selectedDebt.value.remaining_amount) - amountNumber.value
 })
+// Overpayment -> advance (2026-10-09): for a supplier/transporter, the part
+// of the amount above the open debt becomes an advance - only after the user
+// confirmed the popup in submit(). Other debt types still refuse it.
+const supportsSurplusAdvance = computed(
+  () => debtType.value === 'supplier' || debtType.value === 'transporter',
+)
+const surplusAmount = computed(() =>
+  supportsSurplusAdvance.value && remainingAfterPayment.value < 0
+    ? -remainingAfterPayment.value
+    : 0,
+)
 
 async function loadDebts() {
   debtLoading.value = true
@@ -157,7 +169,10 @@ function validate(): boolean {
     error.value = t('finance.debtPayment.errors.positiveAmount')
     return false
   }
-  if (amountNumber.value > Number(selectedDebt.value.remaining_amount)) {
+  if (
+    !supportsSurplusAdvance.value &&
+    amountNumber.value > Number(selectedDebt.value.remaining_amount)
+  ) {
     error.value = t('finance.debtPayment.errors.aboveRemaining')
     return false
   }
@@ -176,6 +191,18 @@ function validate(): boolean {
 
 async function submit() {
   if (!validate() || !selectedDebt.value || !selectedBank.value) return
+  if (surplusAmount.value > 0) {
+    const confirmed = await confirmDialog(
+      t('finance.overpayment.confirm', {
+        amount: formatMoney(amountNumber.value),
+        name: selectedDebt.value.label,
+        debt: formatMoney(selectedDebt.value.remaining_amount),
+        surplus: formatMoney(surplusAmount.value),
+        next: t('finance.overpayment.nextDebts'),
+      }),
+    )
+    if (!confirmed) return
+  }
   saving.value = true
   try {
     await recordDebtPayment({
@@ -187,6 +214,7 @@ async function submit() {
       reference: reference.value,
       note: note.value,
       attachment: attachment.value,
+      surplus_as_advance: surplusAmount.value > 0,
     })
     emit('success')
   } catch (err: unknown) {
@@ -383,10 +411,13 @@ onMounted(load)
             {{ t('finance.debtPayment.afterPayment') }}
           </p>
           <MonoValue
-            :value="selectedDebt ? formatMoney(remainingAfterPayment) : '—'"
+            :value="selectedDebt ? formatMoney(Math.max(remainingAfterPayment, 0)) : '—'"
             align="left"
-            :class="remainingAfterPayment < 0 ? 'text-critique' : 'text-texte'"
+            :class="remainingAfterPayment < 0 && !surplusAmount ? 'text-critique' : 'text-texte'"
           />
+          <p v-if="surplusAmount > 0" class="text-ecart mt-1 text-xs" data-test="surplus-hint">
+            {{ t('finance.overpayment.hint', { surplus: formatMoney(surplusAmount) }) }}
+          </p>
         </div>
       </div>
 

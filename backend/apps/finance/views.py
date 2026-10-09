@@ -69,6 +69,7 @@ from .serializers import (
     TreasuryTransferRequestSerializer,
 )
 from .services import (
+    AdvanceError,
     ControlledDebtPaymentError,
     ControlledDebtPaymentService,
     ExpenseCancellationError,
@@ -641,8 +642,9 @@ class TreasuryTransactionViewSet(viewsets.ModelViewSet):
                 actor=request.user,
                 note=data["note"],
                 attachment=data["attachment"],
+                surplus_as_advance=data["surplus_as_advance"],
             )
-        except ControlledDebtPaymentError as exc:
+        except (ControlledDebtPaymentError, AdvanceError) as exc:
             return Response({"detail": str(exc)}, status=http_status.HTTP_400_BAD_REQUEST)
 
         return Response(
@@ -657,6 +659,7 @@ class TreasuryTransactionViewSet(viewsets.ModelViewSet):
                     "debt": result["debt"],
                     "bank_balance_before": result["bank_balance_before"],
                     "bank_balance_after": result["bank_balance_after"],
+                    "advance_amount": result["advance_amount"],
                 }
             ),
             status=http_status.HTTP_201_CREATED,

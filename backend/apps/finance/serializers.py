@@ -1079,6 +1079,9 @@ class ControlledDebtPaymentRequestSerializer(serializers.Serializer):
     )
     debt_id = serializers.IntegerField()
     bank_account = serializers.IntegerField()
+    # Overpayment -> advance (2026-10-09): sent only after the user
+    # confirmed the surplus popup; see ControlledDebtPaymentService.record_payment.
+    surplus_as_advance = serializers.BooleanField(required=False, default=False)
     amount = serializers.DecimalField(
         max_digits=16, decimal_places=2, min_value=Decimal("0.01")
     )

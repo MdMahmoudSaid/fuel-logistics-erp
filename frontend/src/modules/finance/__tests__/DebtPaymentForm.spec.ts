@@ -4,6 +4,11 @@ import DebtPaymentForm from '../DebtPaymentForm.vue'
 
 const fetchPayableDebts = vi.fn()
 const recordDebtPayment = vi.fn()
+const confirmDialogMock = vi.fn()
+
+vi.mock('@/composables/useConfirmDialog', () => ({
+  confirmDialog: (...args: unknown[]) => confirmDialogMock(...args),
+}))
 
 vi.mock('../api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api')>()
@@ -186,13 +191,91 @@ describe('DebtPaymentForm', () => {
     expect(recordDebtPayment).not.toHaveBeenCalled()
   })
 
-  it('rejects an amount greater than the remaining debt', async () => {
+  function smallSupplierDebt(debtType = 'supplier') {
+    fetchPayableDebts.mockResolvedValueOnce([
+      {
+        id: 10,
+        debt_type: debtType,
+        label: 'Supplier 1',
+        total_amount: '300000.00',
+        paid_amount: '0.00',
+        remaining_amount: '300000.00',
+        status: 'CONFIRMED',
+      },
+    ])
+  }
+
+  it('asks for confirmation before turning a supplier overpayment into an advance', async () => {
+    smallSupplierDebt()
+    confirmDialogMock.mockResolvedValueOnce(false)
     const wrapper = mount(DebtPaymentForm)
     await flushPromises()
 
-    await wrapper.find('#amount').setValue('500001')
+    await wrapper.find('#amount').setValue('400000')
+    expect(wrapper.find('[data-test="surplus-hint"]').exists()).toBe(true)
     await wrapper.find('form').trigger('submit')
+    await flushPromises()
 
+    expect(confirmDialogMock).toHaveBeenCalledTimes(1)
+    const message = confirmDialogMock.mock.calls[0][0] as string
+    expect(message).toContain('Supplier 1')
+    expect(message).toContain('300')
+    expect(message).toContain('100')
+    // Cancelled: nothing is recorded.
+    expect(recordDebtPayment).not.toHaveBeenCalled()
+  })
+
+  it('records the overpayment with surplus_as_advance once confirmed', async () => {
+    smallSupplierDebt()
+    confirmDialogMock.mockResolvedValueOnce(true)
+    const wrapper = mount(DebtPaymentForm)
+    await flushPromises()
+
+    await wrapper.find('#amount').setValue('400000')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(recordDebtPayment).toHaveBeenCalledWith(
+      expect.objectContaining({ amount: 400000, surplus_as_advance: true }),
+    )
+  })
+
+  it('does not ask anything for a payment within the debt', async () => {
+    const wrapper = mount(DebtPaymentForm)
+    await flushPromises()
+
+    await wrapper.find('#amount').setValue('100000')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(confirmDialogMock).not.toHaveBeenCalled()
+    expect(recordDebtPayment).toHaveBeenCalledWith(
+      expect.objectContaining({ surplus_as_advance: false }),
+    )
+  })
+
+  it('still rejects an amount greater than the remaining debt for other debt types', async () => {
+    fetchPayableDebts.mockResolvedValueOnce([]).mockResolvedValueOnce([
+      {
+        id: 0,
+        debt_type: 'customs',
+        label: 'Douane',
+        total_amount: '300000.00',
+        paid_amount: '0.00',
+        remaining_amount: '300000.00',
+        status: 'UNPAID',
+      },
+    ])
+    const wrapper = mount(DebtPaymentForm)
+    await flushPromises()
+    await wrapper.findAll('select')[0].setValue('customs')
+    await flushPromises()
+
+    await wrapper.find('#amount').setValue('400000')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(confirmDialogMock).not.toHaveBeenCalled()
     expect(recordDebtPayment).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('Le montant dépasse le reste à payer.')
   })

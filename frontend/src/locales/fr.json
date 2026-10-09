@@ -797,6 +797,12 @@
       "bank": "Banque",
       "cash": "Caisse"
     },
+    "overpayment": {
+      "confirm": "Le montant saisi ({amount}) dépasse la dette de {name} ({debt}).\n\nSi vous confirmez :\n• toute la dette sera payée : {debt}\n• le reste, {surplus}, sera enregistré comme avance pour {name}, déduite automatiquement de {next}.\n\nS'il s'agit d'une erreur de saisie, cliquez sur Annuler.",
+      "nextDebts": "ses prochaines dettes",
+      "nextInvoices": "ses prochaines factures validées",
+      "hint": "Montant supérieur à la dette : {surplus} sera enregistré comme avance (confirmation demandée)."
+    },
     "customerLedger": {
       "title": "Compte client — {name}",
       "newPayment": "Nouveau paiement",
