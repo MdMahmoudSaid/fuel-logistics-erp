@@ -332,7 +332,9 @@ def test_customer_ledger_json_response_unchanged_without_format_param():
     response = client.get(f"/api/customers/{customer.id}/ledger/")
     assert response.status_code == 200
     assert response["Content-Type"].startswith("application/json")
-    assert set(response.data.keys()) == {"customer", "outstanding_balance", "invoices", "payments"}
+    assert set(response.data.keys()) == {
+        "customer", "outstanding_balance", "available_credit", "invoices", "payments",
+    }
 
 
 @pytest.mark.django_db

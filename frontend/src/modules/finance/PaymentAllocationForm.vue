@@ -28,7 +28,11 @@ import { IMAGE_UPLOAD_ACCEPT, isAllowedImageFile } from '@/utils/imageUpload'
 // reserved for destination=VERS_MOI, which the server resolves on its own).
 const VERS_MOI_ACCOUNT_NAME = 'Vers moi'
 
-const props = defineProps<{ initialCustomerId?: number | null }>()
+// advanceMode (client advances, 2026-10-09): the customer owes nothing, so
+// the whole receipt is recorded as open credit - no invoice lines. The
+// backend consumes it automatically when the customer's next invoice is
+// validated (PaymentAllocationService.apply_customer_credit_to_invoice).
+const props = defineProps<{ initialCustomerId?: number | null; advanceMode?: boolean }>()
 const emit = defineEmits<{ success: [customerId: number]; cancel: [] }>()
 const { t } = useI18n()
 
@@ -202,12 +206,14 @@ async function onSubmit() {
     // #proof_file (also removed) giving no visible error either since
     // that input is visually hidden (sr-only).
 
-    const allocations: InvoiceAllocationInput[] = lines.value
-      .filter((line) => line.amount)
-      .map((line) => ({
-        invoice: line.invoice ? Number(line.invoice) : null,
-        amount: line.amount,
-      }))
+    const allocations: InvoiceAllocationInput[] = props.advanceMode
+      ? [{ invoice: null, amount: String(form.value.amount) }]
+      : lines.value
+          .filter((line) => line.amount)
+          .map((line) => ({
+            invoice: line.invoice ? Number(line.invoice) : null,
+            amount: line.amount,
+          }))
 
     const payload: Record<string, unknown> = {
       customer: Number(form.value.customer),
@@ -409,14 +415,22 @@ async function onSubmit() {
         <AppAlert v-if="proofError" :message="proofError" />
       </div>
 
-      <div v-if="outstandingBalance !== null" class="border-ligne border-t pt-4">
+      <p
+        v-if="advanceMode"
+        class="border-ligne text-texte-2 border-t pt-4 text-sm"
+        data-test="advance-explanation"
+      >
+        {{ t('finance.customerLedger.advanceExplanation') }}
+      </p>
+
+      <div v-if="!advanceMode && outstandingBalance !== null" class="border-ligne border-t pt-4">
         <p class="text-texte-2 text-sm font-medium" data-test="outstanding-balance">
           {{ t('finance.payment.outstandingBalance') }}:
           <span class="text-texte font-semibold">{{ formatMoney(outstandingBalance ?? 0) }}</span>
         </p>
       </div>
 
-      <div class="border-ligne space-y-2 border-t pt-4">
+      <div v-if="!advanceMode" class="border-ligne space-y-2 border-t pt-4">
         <div class="flex items-center justify-between">
           <h2 class="font-display text-sm font-semibold uppercase">
             {{ t('finance.payment.allocateToInvoices') }}
@@ -484,7 +498,13 @@ async function onSubmit() {
           {{ t('common.cancel') }}
         </Button>
         <Button type="submit" variant="primary" :loading="saving">
-          {{ saving ? t('finance.payment.saving') : t('finance.payment.record') }}
+          {{
+            saving
+              ? t('finance.payment.saving')
+              : advanceMode
+                ? t('finance.customerLedger.recordAdvance')
+                : t('finance.payment.record')
+          }}
         </Button>
       </div>
     </form>

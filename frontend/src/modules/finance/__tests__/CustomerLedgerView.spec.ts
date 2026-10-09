@@ -243,4 +243,33 @@ describe('CustomerLedgerView', () => {
       { invoice: 11, amount: '15.00' },
     ])
   })
+
+  it('shows "Nouvelle avance" and the available advance when the customer owes nothing', async () => {
+    fetchCustomerLedger.mockResolvedValueOnce({
+      customer: { id: 1, name: 'Client X', company_name: '' },
+      outstanding_balance: '-500000.00',
+      available_credit: '500000.00',
+      invoices: [],
+      payments: [],
+    })
+    const wrapper = mount(CustomerLedgerView)
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="customer-new-payment"]').text()).toBe('Nouvelle avance')
+    expect(wrapper.find('[data-test="customer-available-credit"]').text()).toContain('500')
+  })
+
+  it('keeps "Nouveau paiement" while the customer still owes money', async () => {
+    fetchCustomerLedger.mockResolvedValueOnce({
+      customer: { id: 1, name: 'Client X', company_name: '' },
+      outstanding_balance: '1000.00',
+      available_credit: '0.00',
+      invoices: [],
+      payments: [],
+    })
+    const wrapper = mount(CustomerLedgerView)
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="customer-new-payment"]').text()).toBe('Nouveau paiement')
+  })
 })

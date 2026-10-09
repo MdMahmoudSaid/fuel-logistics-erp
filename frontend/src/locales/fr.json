@@ -800,6 +800,10 @@
     "customerLedger": {
       "title": "Compte client — {name}",
       "newPayment": "Nouveau paiement",
+      "newAdvance": "Nouvelle avance",
+      "recordAdvance": "Enregistrer l'avance",
+      "availableCredit": "Avance disponible",
+      "advanceExplanation": "Ce client n'a aucune dette : le montant est enregistré comme avance et sera déduit automatiquement de ses prochaines factures validées.",
       "back": "Retour",
       "loadError": "Impossible de charger le grand livre client.",
       "totalInvoiced": "Total facturé",

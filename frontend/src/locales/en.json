@@ -798,6 +798,10 @@
     "customerLedger": {
       "title": "Customer Ledger — {name}",
       "newPayment": "New payment",
+      "newAdvance": "New advance",
+      "recordAdvance": "Record advance",
+      "availableCredit": "Available advance",
+      "advanceExplanation": "This customer owes nothing: the amount is recorded as an advance and will be deducted automatically from their next validated invoices.",
       "back": "Back",
       "loadError": "Could not load the customer ledger.",
       "totalInvoiced": "Total invoiced",

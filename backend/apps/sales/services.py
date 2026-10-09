@@ -181,6 +181,14 @@ class InvoiceService:
 
         invoice.status = Invoice.Status.VALIDATED
         invoice.save(update_fields=["status", "updated_at"])
+
+        # Client advances (2026-10-09): open customer credit pays the invoice
+        # down as soon as it becomes payable. Lazy import: apps.finance
+        # already depends on apps.sales.
+        from apps.finance.services import PaymentAllocationService
+
+        PaymentAllocationService.apply_customer_credit_to_invoice(invoice)
+        invoice.refresh_from_db()
         return invoice
 
     @staticmethod

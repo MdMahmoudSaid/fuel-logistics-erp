@@ -115,6 +115,10 @@ const openInvoices = computed(
       (invoice) => Number(invoice.outstanding) > 0 && invoice.status !== 'CANCELLED',
     ).length ?? 0,
 )
+// Client advances (2026-10-09): a customer who owes nothing gets "Nouvelle
+// avance" instead of "Nouveau paiement" - same rule as the supplier ledger.
+// The receipt is kept as open credit, consumed by the next validated invoices.
+const isAdvanceMode = computed(() => Number(ledger.value?.outstanding_balance ?? 0) <= 0)
 const lastPayment = computed(() => {
   const payments = [...(ledger.value?.payments ?? [])]
   return payments.sort((a, b) => b.payment_date.localeCompare(a.payment_date))[0] ?? null
@@ -147,8 +151,17 @@ function invoiceStatusLabel(status: string, outstanding: string) {
         {{ t('finance.customerLedger.title', { name: ledger?.customer.name ?? '…' }) }}
       </h1>
       <div class="no-print flex flex-wrap gap-2">
-        <Button v-if="ledger" variant="primary" @click="showPaymentModal = true">
-          {{ t('finance.customerLedger.newPayment') }}
+        <Button
+          v-if="ledger"
+          variant="primary"
+          data-test="customer-new-payment"
+          @click="showPaymentModal = true"
+        >
+          {{
+            isAdvanceMode
+              ? t('finance.customerLedger.newAdvance')
+              : t('finance.customerLedger.newPayment')
+          }}
         </Button>
         <Button v-if="ledger" variant="ghost" @click="printLedger">
           {{ t('reports.print') }}
@@ -166,7 +179,7 @@ function invoiceStatusLabel(status: string, outstanding: string) {
     <p v-else-if="loading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
     <template v-else-if="ledger">
-      <section class="grid gap-3 md:grid-cols-5">
+      <section class="grid gap-3 md:grid-cols-3">
         <div class="border-ligne rounded-lg border bg-white p-4">
           <p class="text-texte-2 text-xs font-semibold uppercase">
             {{ t('finance.customerLedger.totalInvoiced') }}
@@ -188,6 +201,17 @@ function invoiceStatusLabel(status: string, outstanding: string) {
             align="left"
             :class="Number(ledger.outstanding_balance) > 0 ? 'text-ecart' : 'text-livre'"
             :value="formatMoney(ledger.outstanding_balance)"
+          />
+        </div>
+        <div class="border-ligne rounded-lg border bg-white p-4">
+          <p class="text-texte-2 text-xs font-semibold uppercase">
+            {{ t('finance.customerLedger.availableCredit') }}
+          </p>
+          <MonoValue
+            class="font-semibold"
+            align="left"
+            data-test="customer-available-credit"
+            :value="formatMoney(ledger.available_credit ?? 0)"
           />
         </div>
         <div class="border-ligne rounded-lg border bg-white p-4">
@@ -391,12 +415,13 @@ function invoiceStatusLabel(status: string, outstanding: string) {
 
     <Modal
       v-if="showPaymentModal"
-      :title="t('finance.payment.title')"
+      :title="isAdvanceMode ? t('finance.customerLedger.newAdvance') : t('finance.payment.title')"
       max-width="max-w-3xl"
       @close="showPaymentModal = false"
     >
       <PaymentAllocationForm
         :initial-customer-id="customerId"
+        :advance-mode="isAdvanceMode"
         @success="onPaymentSuccess"
         @cancel="showPaymentModal = false"
       />

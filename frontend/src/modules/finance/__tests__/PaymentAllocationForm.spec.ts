@@ -185,3 +185,30 @@ describe('PaymentAllocationForm FIFO auto-allocation', () => {
     expect(wrapper.text()).toContain('recu-client.png')
   })
 })
+
+describe('PaymentAllocationForm advance mode (client advances 2026-10-09)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    ledgerInvoices = []
+  })
+
+  it('hides invoice lines and records the whole amount as open credit', async () => {
+    const wrapper = mount(PaymentAllocationForm, {
+      props: { initialCustomerId: 1, advanceMode: true },
+    })
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="line-invoice"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="advance-explanation"]').exists()).toBe(true)
+
+    await wrapper.find('#amount').setValue('750000')
+    await wrapper.find('#cash_account').setValue('1')
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createCustomerPayment).toHaveBeenCalledTimes(1)
+    expect(createCustomerPayment.mock.calls[0][0].allocations).toEqual([
+      { invoice: null, amount: '750000' },
+    ])
+  })
+})

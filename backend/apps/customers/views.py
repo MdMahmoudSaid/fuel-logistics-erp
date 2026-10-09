@@ -61,6 +61,9 @@ class CustomerViewSet(viewsets.ModelViewSet):
             {
                 "customer": CustomerSerializer(customer).data,
                 "outstanding_balance": f"{outstanding_balance:.2f}",
+                "available_credit": (
+                    f"{PaymentAllocationService.get_customer_available_credit(customer):.2f}"
+                ),
                 "invoices": invoices_data,
                 "payments": CustomerPaymentSerializer(payments, many=True, context={"request": request}).data,
             }

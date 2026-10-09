@@ -295,6 +295,47 @@ class PaymentAllocationService:
         return created_or_updated
 
     @staticmethod
+    def get_customer_available_credit(customer) -> Decimal:
+        """Sum of every non-reversed receipt's unallocated credit - what the
+        customer ledger shows as the client's open advance."""
+        payments = customer.payments.exclude(is_reversed=True).prefetch_related("allocations")
+        return sum(
+            (PaymentAllocationService.get_payment_unallocated_amount(p) for p in payments), ZERO
+        )
+
+    @staticmethod
+    @transaction.atomic
+    def apply_customer_credit_to_invoice(invoice: Invoice) -> Decimal:
+        """Client advances (2026-10-09): consume the customer's open credit,
+        oldest receipt first, against a freshly validated invoice - the
+        customer-side counterpart of AdvanceConsumptionService. Reuses
+        allocate_available_credit, so no treasury row is ever posted (the
+        cash came in when the receipt was recorded). Returns the amount
+        applied."""
+        if invoice.status != Invoice.Status.VALIDATED:
+            return ZERO
+        receipts = list(
+            CustomerPayment.objects.select_for_update()
+            .filter(customer_id=invoice.sale.customer_id, is_reversed=False)
+            .order_by("payment_date", "id")
+        )
+        applied = ZERO
+        for receipt in receipts:
+            outstanding = PaymentAllocationService.get_invoice_outstanding(invoice)
+            if outstanding <= ZERO:
+                break
+            available = PaymentAllocationService.get_payment_unallocated_amount(receipt)
+            amount = min(available, outstanding)
+            if amount <= ZERO:
+                continue
+            PaymentAllocationService.allocate_available_credit(
+                receipt.id, [{"invoice": invoice.id, "amount": amount}]
+            )
+            invoice.refresh_from_db()
+            applied += amount
+        return applied
+
+    @staticmethod
     def _sync_invoice_status(invoice: Invoice) -> None:
         """Move VALIDATED -> PARTIALLY_PAID -> PAID as allocations land.
         Never touches DRAFT/CANCELLED invoices - those aren't payable yet

@@ -354,6 +354,8 @@ export interface CustomerLedgerInvoice {
 export interface CustomerLedger {
   customer: { id: number; name: string; company_name: string }
   outstanding_balance: string
+  // Open customer credit (unallocated receipts), consumed by validated invoices.
+  available_credit?: string
   invoices: CustomerLedgerInvoice[]
   payments: CustomerPayment[]
 }

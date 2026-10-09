@@ -7094,3 +7094,99 @@ def test_expense_api_exposes_who_paid_customer_bank_or_cash(finance_client):
     assert rows[unpaid["id"]]["paid_via"] is None
     by_customer = next(r for r in rows.values() if r["paid_by_customer_directly"])
     assert (by_customer["paid_via"], by_customer["paid_via_name"]) == ("customer", "Client Payeur")
+
+
+# --- Client advances (2026-10-09): a receipt recorded while the customer owes
+# nothing stays as unallocated credit and is consumed automatically, oldest
+# first, when an invoice of that customer is validated - mirroring how
+# supplier/transporter advances are consumed by their debts.
+
+
+def _draft_invoice(suffix, total_amount, customer=None):
+    admin_user, customer, invoice = _make_invoice_for_payment(
+        suffix, total_amount=total_amount, customer=customer
+    )
+    invoice.status = Invoice.Status.DRAFT
+    invoice.save(update_fields=["status"])
+    return admin_user, customer, invoice
+
+
+def _advance(customer, amount, payment_date, user, cash_account):
+    return CustomerPayment.objects.create(
+        customer=customer,
+        amount=Decimal(amount),
+        payment_date=payment_date,
+        method=CustomerPayment.Method.CASH,
+        cash_account=cash_account,
+        recorded_by=user,
+    )
+
+
+@pytest.mark.django_db
+def test_validating_invoice_consumes_customer_advance_oldest_first():
+    from apps.sales.services import InvoiceService
+
+    admin_user, customer, invoice = _draft_invoice("ADV-FIFO", Decimal("8000000.00"))
+    cash = CashAccount.objects.create(name="Cash advance fifo")
+    older = _advance(customer, "5000000.00", "2026-10-01", admin_user, cash)
+    newer = _advance(customer, "6000000.00", "2026-10-02", admin_user, cash)
+    PaymentAllocation.objects.create(payment=newer, invoice=None, amount=Decimal("6000000.00"))
+    treasury_count = TreasuryTransaction.objects.count()
+
+    InvoiceService.validate_invoice(invoice.id, admin_user)
+
+    invoice.refresh_from_db()
+    assert invoice.status == Invoice.Status.PAID
+    assert PaymentAllocationService.get_payment_unallocated_amount(older) == Decimal("0.00")
+    assert PaymentAllocationService.get_payment_unallocated_amount(newer) == Decimal("3000000.00")
+    assert TreasuryTransaction.objects.count() == treasury_count
+
+
+@pytest.mark.django_db
+def test_validating_invoice_partially_covered_by_advance():
+    from apps.sales.services import InvoiceService
+
+    admin_user, customer, invoice = _draft_invoice("ADV-PART", Decimal("8000000.00"))
+    cash = CashAccount.objects.create(name="Cash advance partial")
+    advance = _advance(customer, "3000000.00", "2026-10-01", admin_user, cash)
+
+    InvoiceService.validate_invoice(invoice.id, admin_user)
+
+    invoice.refresh_from_db()
+    assert invoice.status == Invoice.Status.PARTIALLY_PAID
+    assert PaymentAllocationService.get_invoice_outstanding(invoice) == Decimal("5000000.00")
+    assert PaymentAllocationService.get_payment_unallocated_amount(advance) == Decimal("0.00")
+
+
+@pytest.mark.django_db
+def test_validating_invoice_ignores_reversed_receipts_and_other_customers():
+    from apps.sales.services import InvoiceService
+
+    admin_user, customer, invoice = _draft_invoice("ADV-IGN", Decimal("8000000.00"))
+    cash = CashAccount.objects.create(name="Cash advance ignore")
+    reversed_receipt = _advance(customer, "2000000.00", "2026-10-01", admin_user, cash)
+    reversed_receipt.is_reversed = True
+    reversed_receipt.save(update_fields=["is_reversed"])
+    other_customer = Customer.objects.create(name="Other advance customer")
+    _advance(other_customer, "4000000.00", "2026-10-01", admin_user, cash)
+
+    InvoiceService.validate_invoice(invoice.id, admin_user)
+
+    invoice.refresh_from_db()
+    assert invoice.status == Invoice.Status.VALIDATED
+    assert not invoice.allocations.exists()
+
+
+@pytest.mark.django_db
+def test_customer_ledger_exposes_available_credit(finance_client):
+    admin_user, customer, _invoice = _make_invoice_for_payment(
+        "ADV-LEDGER", total_amount=Decimal("1000000.00")
+    )
+    cash = CashAccount.objects.create(name="Cash advance ledger")
+    receipt = _advance(customer, "1500000.00", "2026-10-01", admin_user, cash)
+    PaymentAllocation.objects.create(payment=receipt, invoice=_invoice, amount=Decimal("1000000.00"))
+
+    response = finance_client.get(f"/api/customers/{customer.id}/ledger/")
+
+    assert response.status_code == 200, response.data
+    assert response.data["available_credit"] == "500000.00"
