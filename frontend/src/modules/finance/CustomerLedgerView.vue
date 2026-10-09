@@ -153,7 +153,7 @@ function invoiceStatusLabel(status: string, outstanding: string) {
       <div class="no-print flex flex-wrap gap-2">
         <Button
           v-if="ledger"
-          variant="primary"
+          :variant="isAdvanceMode ? 'secondary' : 'primary'"
           data-test="customer-new-payment"
           @click="showPaymentModal = true"
         >

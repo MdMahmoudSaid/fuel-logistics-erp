@@ -256,6 +256,8 @@ describe('CustomerLedgerView', () => {
     await flushPromises()
 
     expect(wrapper.find('[data-test="customer-new-payment"]').text()).toBe('Nouvelle avance')
+    // Same black "secondary" button as the supplier/transporter "Nouvelle avance".
+    expect(wrapper.find('[data-test="customer-new-payment"]').classes()).toContain('bg-bitume')
     expect(wrapper.find('[data-test="customer-available-credit"]').text()).toContain('500')
   })
 
@@ -271,5 +273,6 @@ describe('CustomerLedgerView', () => {
     await flushPromises()
 
     expect(wrapper.find('[data-test="customer-new-payment"]').text()).toBe('Nouveau paiement')
+    expect(wrapper.find('[data-test="customer-new-payment"]').classes()).toContain('bg-orange')
   })
 })

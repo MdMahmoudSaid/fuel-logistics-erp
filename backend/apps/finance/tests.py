@@ -7190,3 +7190,24 @@ def test_customer_ledger_exposes_available_credit(finance_client):
 
     assert response.status_code == 200, response.data
     assert response.data["available_credit"] == "500000.00"
+
+
+@pytest.mark.django_db
+def test_bulk_validation_consumes_customer_advance_invoice_by_invoice():
+    from apps.sales.services import InvoiceService
+
+    admin_user, customer, first = _draft_invoice("ADV-BULK-A", Decimal("3000000.00"))
+    _admin_b, _customer_b, second = _draft_invoice(
+        "ADV-BULK-B", Decimal("4000000.00"), customer=customer
+    )
+    cash = CashAccount.objects.create(name="Cash advance bulk")
+    _advance(customer, "5000000.00", "2026-10-01", admin_user, cash)
+
+    InvoiceService.validate_invoices([first.id, second.id], admin_user)
+
+    first.refresh_from_db()
+    second.refresh_from_db()
+    assert first.status == Invoice.Status.PAID
+    assert second.status == Invoice.Status.PARTIALLY_PAID
+    assert PaymentAllocationService.get_invoice_outstanding(second) == Decimal("2000000.00")
+    assert PaymentAllocationService.get_customer_available_credit(customer) == Decimal("0.00")
