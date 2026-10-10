@@ -768,6 +768,7 @@
       "invoiceOptionRemaining": "outstanding",
       "allocateToInvoices": "Allocate to invoices",
       "addLine": "+ Add line",
+      "lineAmountRequired": "Enter the amount to allocate to each selected invoice.",
       "autoAllocate": "Auto-allocate (FIFO)",
       "loadingInvoices": "Loading unpaid invoices…",
       "unallocatedCredit": "Unallocated credit",

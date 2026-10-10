@@ -4,6 +4,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { createResourceApi } from '@/api/resource'
 import Button from '@/components/ui/Button.vue'
+import FormActions from '@/components/ui/FormActions.vue'
 import MonoValue from '@/components/ui/MonoValue.vue'
 import { fetchPayableDebts, recordDebtPayment } from './api'
 import { confirmDialog } from '@/composables/useConfirmDialog'
@@ -230,13 +231,13 @@ onMounted(load)
 </script>
 
 <template>
-  <form class="space-y-5" @submit.prevent="submit">
+  <form class="space-y-3" @submit.prevent="submit">
     <AppAlert v-if="error" :message="error" />
     <p v-if="loading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
     <template v-else>
-      <div class="grid gap-4 sm:grid-cols-2">
-        <label class="space-y-1.5">
+      <div class="grid gap-x-4 gap-y-3 sm:grid-cols-3">
+        <label class="space-y-1">
           <span class="text-texte-2 text-sm font-medium">{{ t('finance.debtPayment.type') }}</span>
           <select
             v-model="debtType"
@@ -249,7 +250,7 @@ onMounted(load)
           </select>
         </label>
 
-        <label class="space-y-1.5">
+        <label class="space-y-1 sm:col-span-2">
           <span class="text-texte-2 text-sm font-medium">{{ t('finance.debtPayment.debt') }}</span>
           <select
             id="debt"
@@ -291,7 +292,10 @@ onMounted(load)
         </div>
       </div>
 
-      <div v-if="selectedDebt?.lines?.length" class="border-ligne rounded-lg border bg-white p-3">
+      <div
+        v-if="selectedDebt?.lines?.length"
+        class="border-ligne max-h-36 overflow-y-auto rounded-lg border bg-white p-3"
+      >
         <p class="text-texte-3 mb-2 text-xs font-medium uppercase">
           {{ t('finance.debtPayment.lineDetails') }}
         </p>
@@ -318,8 +322,8 @@ onMounted(load)
         </ul>
       </div>
 
-      <div class="grid gap-4 sm:grid-cols-2">
-        <label class="space-y-1.5">
+      <div class="grid gap-x-4 gap-y-3 sm:grid-cols-3">
+        <label class="space-y-1">
           <span class="text-texte-2 text-sm font-medium">{{ t('finance.debtPayment.bank') }}</span>
           <select
             v-model="bankAccountId"
@@ -331,7 +335,7 @@ onMounted(load)
           </select>
         </label>
 
-        <label class="space-y-1.5">
+        <label class="space-y-1">
           <span class="text-texte-2 text-sm font-medium">{{
             t('finance.debtPayment.amount')
           }}</span>
@@ -344,10 +348,8 @@ onMounted(load)
             class="border-ligne h-11 w-full rounded-lg border px-3 text-sm"
           />
         </label>
-      </div>
 
-      <div class="grid gap-4 sm:grid-cols-2">
-        <label class="space-y-1.5">
+        <label class="space-y-1">
           <span class="text-texte-2 text-sm font-medium">{{ t('finance.debtPayment.date') }}</span>
           <input
             v-model="date"
@@ -355,7 +357,8 @@ onMounted(load)
             class="border-ligne h-11 w-full rounded-lg border px-3 text-sm"
           />
         </label>
-        <label class="space-y-1.5">
+
+        <label class="space-y-1">
           <span class="text-texte-2 text-sm font-medium">
             {{ t('finance.debtPayment.reference') }}
           </span>
@@ -364,25 +367,24 @@ onMounted(load)
             class="border-ligne h-11 w-full rounded-lg border px-3 text-sm"
           />
         </label>
-      </div>
 
-      <div class="grid gap-4 sm:grid-cols-2">
-        <label class="space-y-1.5">
+        <label class="space-y-1">
           <span class="text-texte-2 text-sm font-medium">{{ t('finance.debtPayment.note') }}</span>
           <textarea
             v-model="note"
-            rows="2"
-            class="border-ligne w-full rounded-lg border px-3 py-2 text-sm"
+            rows="1"
+            class="border-ligne block min-h-11 w-full resize-y rounded-lg border px-3 py-2 text-sm"
           />
         </label>
-        <label class="space-y-1.5">
-          <span class="text-texte-2 text-sm font-medium">
+
+        <label class="space-y-1">
+          <span class="text-texte-2 block truncate text-sm font-medium">
             {{ t('finance.debtPayment.attachment') }}
           </span>
           <input
             type="file"
             :accept="IMAGE_UPLOAD_ACCEPT"
-            class="border-ligne w-full rounded-lg border px-3 py-2 text-sm"
+            class="border-ligne h-11 w-full rounded-lg border px-3 py-2 text-sm"
             @change="onAttachmentChange"
           />
           <span v-if="attachment" class="text-texte-2 block text-xs">{{ attachment.name }}</span>
@@ -421,14 +423,14 @@ onMounted(load)
         </div>
       </div>
 
-      <div class="flex justify-end gap-2">
+      <FormActions>
         <Button variant="ghost" type="button" @click="emit('cancel')">{{
           t('common.cancel')
         }}</Button>
         <Button variant="primary" type="submit" :loading="saving">
           {{ t('finance.debtPayment.submit') }}
         </Button>
-      </div>
+      </FormActions>
     </template>
   </form>
 </template>

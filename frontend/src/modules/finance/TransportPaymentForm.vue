@@ -14,6 +14,7 @@ import { translateApiError } from '@/i18n/apiErrors'
 import { correctTransportPayment, transportPaymentResource } from './api'
 import type { TransportPayment } from './types'
 import Button from '@/components/ui/Button.vue'
+import FormActions from '@/components/ui/FormActions.vue'
 import { formatMoney, formatQuantity, formatUnitMoney } from '@/utils/currency'
 
 const props = defineProps<{
@@ -96,18 +97,15 @@ async function onSubmit() {
 </script>
 
 <template>
-  <div class="space-y-4">
+  <div class="space-y-3">
     <AppAlert v-if="error" :message="error" />
 
-    <form
-      class="border-ligne space-y-4 rounded-xl border bg-surface p-6"
-      @submit.prevent="onSubmit"
-    >
+    <form class="space-y-3" @submit.prevent="onSubmit">
       <h2 class="font-display text-sm font-semibold uppercase">
         {{ title ?? t('finance.transportPayment.title') }}
       </h2>
 
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="grid grid-cols-1 gap-x-4 gap-y-3 md:grid-cols-2">
         <div class="space-y-1.5">
           <span class="text-texte-2 text-sm font-medium">{{
             t('finance.transportPayment.trip')
@@ -192,14 +190,15 @@ async function onSubmit() {
         </div>
       </div>
 
-      <div class="flex justify-end gap-2">
+      <FormActions>
+        <slot name="extra-actions" />
         <Button type="button" variant="ghost" @click="emit('cancel')">
           {{ cancelLabel ?? t('common.cancel') }}
         </Button>
         <Button type="submit" variant="primary" :loading="saving">
           {{ saving ? t('finance.transportPayment.saving') : t('finance.transportPayment.save') }}
         </Button>
-      </div>
+      </FormActions>
     </form>
   </div>
 </template>

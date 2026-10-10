@@ -10,8 +10,7 @@ import { fetchCustomerLedger, exportLedgerPdf, exportCustomerPaymentPdf } from '
 import { exportInvoicePdf } from '@/modules/sales/api'
 import Modal from '@/components/ui/Modal.vue'
 import PaymentAllocationForm from './PaymentAllocationForm.vue'
-import ExistingPaymentAllocationForm from './ExistingPaymentAllocationForm.vue'
-import type { CustomerLedger, CustomerPayment } from './types'
+import type { CustomerLedger } from './types'
 import { formatMoney, formatQuantity } from '@/utils/currency'
 import AppLogo from '@/components/AppLogo.vue'
 import Badge from '@/components/ui/Badge.vue'
@@ -32,7 +31,6 @@ const exportingInvoiceId = ref<number | null>(null)
 
 const customerId = computed(() => Number(route.params.id))
 const showPaymentModal = ref(false)
-const paymentToAllocate = ref<CustomerPayment | null>(null)
 const previewUrl = ref<string | null>(null)
 const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp']
 
@@ -55,11 +53,6 @@ async function load() {
 
 function onPaymentSuccess() {
   showPaymentModal.value = false
-  load()
-}
-
-function onExistingAllocationSuccess() {
-  paymentToAllocate.value = null
   load()
 }
 
@@ -382,15 +375,6 @@ function invoiceStatusLabel(status: string, outstanding: string) {
                 <td class="px-2 py-1.5 text-right">
                   <div class="flex justify-end gap-3">
                     <button
-                      v-if="Number(payment.unallocated_amount) > 0 && !payment.is_reversed"
-                      type="button"
-                      data-test="allocate-existing-payment"
-                      class="text-bitume font-medium underline"
-                      @click="paymentToAllocate = payment"
-                    >
-                      {{ t('finance.customerLedger.allocation.action') }}
-                    </button>
-                    <button
                       type="button"
                       data-test="customer-payment-pdf"
                       class="text-bitume underline disabled:opacity-50"
@@ -424,20 +408,6 @@ function invoiceStatusLabel(status: string, outstanding: string) {
         :advance-mode="isAdvanceMode"
         @success="onPaymentSuccess"
         @cancel="showPaymentModal = false"
-      />
-    </Modal>
-
-    <Modal
-      v-if="paymentToAllocate && ledger"
-      :title="t('finance.customerLedger.allocation.title')"
-      max-width="max-w-3xl"
-      @close="paymentToAllocate = null"
-    >
-      <ExistingPaymentAllocationForm
-        :payment="paymentToAllocate"
-        :invoices="ledger.invoices"
-        @success="onExistingAllocationSuccess"
-        @cancel="paymentToAllocate = null"
       />
     </Modal>
 

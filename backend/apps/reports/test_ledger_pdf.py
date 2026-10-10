@@ -509,15 +509,15 @@ def test_transporter_ledger_pdf_export_empty_does_not_crash():
 @pytest.mark.parametrize(
     "value,expected_fr",
     [
-        ("PAID", "Paye"),
-        ("CANCELLED", "Annule"),
-        ("CONFIRMED", "Confirmee"),
+        ("PAID", "Payé"),
+        ("CANCELLED", "Annulé"),
+        ("CONFIRMED", "Confirmée"),
         ("DRAFT", "Brouillon"),
-        ("CASH", "Especes"),
+        ("CASH", "Espèces"),
         ("BANK_TRANSFER", "Virement bancaire"),
         ("payment", "Paiement"),
         ("invoice", "Facture"),
-        ("advance_given", "Avance versee"),
+        ("advance_given", "Avance versée"),
     ],
 )
 def test_value_labels_fr_cover_the_client_keyword_table(value, expected_fr):
@@ -528,9 +528,9 @@ def test_value_labels_fr_cover_the_client_keyword_table(value, expected_fr):
 @pytest.mark.parametrize(
     "key,expected_fr",
     [
-        ("reference", "Reference"),
+        ("reference", "Référence"),
         ("status", "Statut"),
-        ("outstanding_balance", "Solde impaye"),
+        ("outstanding_balance", "Solde impayé"),
         ("net_amount", "Montant net"),
         ("total_amount", "Montant total"),
         ("product", "Produit"),
@@ -708,3 +708,44 @@ def test_customer_ledger_pdf_export_includes_loaded_and_received_quantity_column
     assert _format_field_value(
         "delivered_quantity", section_row["delivered_quantity"], "fr"
     ) == "44 800 L"
+
+
+@pytest.mark.django_db
+def test_invoice_document_keeps_every_field_in_the_report_layout():
+    """Restyle 2026-10-09: the invoice PDF uses the Reports document layout
+    (info grid + delivery table + totals) and still prints every field of the
+    old label/value invoice, plus already paid / remaining due."""
+    from apps.reports.services.invoice_pdf import build_invoice_document
+
+    invoice = _make_invoice("INVDOC1")
+    document, rows = build_invoice_document(invoice, lang="fr")
+
+    info = {item["label"]: item["value"] for item in document["info"]}
+    assert info["Facture n°"] == "INV-PDF-INVDOC1"
+    assert info["Date d'émission"] == "19/08/2026"
+    assert info["Client"] == "Client INVDOC1"
+    assert info["Statut"] == "Brouillon"
+    assert "Date d'export" in info
+    assert document["title"] == "Facture INV-PDF-INVDOC1"
+
+    sale = invoice.sale
+    assert rows == [
+        {
+            "trip": sale.trip.reference,
+            "truck": (
+                f"{sale.trip.truck.internal_id} "
+                f"({sale.trip.truck.tractor_registration} / {sale.trip.truck.tanker_registration})"
+            ),
+            "product": sale.product.name,
+            "quantity_loaded": sale.trip.quantity_loaded,
+            "quantity_delivered": Decimal("44900.00"),
+            "unit_price": Decimal("850.0000"),
+            "amount": sale.subtotal,
+        }
+    ]
+    summary = {line["label"]: line["value"] for line in document["summary"]}
+    assert summary == {
+        "Total facture": invoice.total_amount,
+        "Déjà payé": Decimal("0.00"),
+        "Reste à payer": invoice.total_amount,
+    }

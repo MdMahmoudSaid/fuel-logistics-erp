@@ -124,7 +124,7 @@ class CustomerViewSet(viewsets.ModelViewSet):
             {
                 "date": payment.payment_date,
                 "type": "payment",
-                "reference": payment.reference,
+                "reference": payment.reference or f"PAY-{payment.id}",
                 "amount": payment.amount,
                 "status": payment.method,
             }
@@ -158,7 +158,7 @@ class CustomerViewSet(viewsets.ModelViewSet):
             {
                 "payment_date": payment.payment_date,
                 "method": payment.method,
-                "reference": payment.reference,
+                "reference": payment.reference or f"PAY-{payment.id}",
                 "amount": payment.amount,
             }
             for payment in payments

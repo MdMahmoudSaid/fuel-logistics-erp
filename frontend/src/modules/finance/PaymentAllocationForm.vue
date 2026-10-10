@@ -18,6 +18,7 @@ import type {
   PaymentMethod,
 } from './types'
 import Button from '@/components/ui/Button.vue'
+import FormActions from '@/components/ui/FormActions.vue'
 import { formatMoney } from '@/utils/currency'
 import { confirmDialog } from '@/composables/useConfirmDialog'
 import { IMAGE_UPLOAD_ACCEPT, isAllowedImageFile } from '@/utils/imageUpload'
@@ -145,6 +146,24 @@ function markLinesDirty() {
   autoAllocateDirty.value = true
 }
 
+// Bug fix (2026-10-09): picking an invoice on a line left its amount empty,
+// and onSubmit drops amount-less lines - the whole receipt was silently
+// recorded as unallocated credit while the invoice stayed partially paid.
+// The amount now defaults to what this invoice still owes, capped by what is
+// left of the receipt.
+function fillLineAmount(line: AllocationLine) {
+  if (!line.invoice || line.amount) return
+  const invoice = unpaidInvoices.value.find((inv) => String(inv.id) === String(line.invoice))
+  const leftOnReceipt = (Number(form.value.amount) || 0) - allocatedTotal.value
+  const amount = Math.min(Number(invoice?.outstanding ?? 0), leftOnReceipt)
+  if (amount > 0) line.amount = amount.toFixed(2)
+}
+
+function onLineInvoiceChange(line: AllocationLine) {
+  markLinesDirty()
+  fillLineAmount(line)
+}
+
 watch(
   () => form.value.customer,
   async () => {
@@ -159,6 +178,8 @@ watch(
   () => form.value.amount,
   () => {
     if (!autoAllocateDirty.value) runFifoAutoAllocate()
+    // Invoice chosen before the amount was typed: fill that line now.
+    else lines.value.forEach(fillLineAmount)
   },
 )
 
@@ -203,6 +224,10 @@ const surplusAmount = computed(() => {
 })
 
 async function onSubmit() {
+  if (!props.advanceMode && lines.value.some((line) => line.invoice && !Number(line.amount))) {
+    error.value = t('finance.payment.lineAmountRequired')
+    return
+  }
   if (surplusAmount.value > 0) {
     const customer = customers.value.find((c) => String(c.id) === String(form.value.customer))
     const confirmed = await confirmDialog(
@@ -248,8 +273,8 @@ async function onSubmit() {
       destination: form.value.destination,
       allocations,
     }
-    // BANK/CASH need their matching account; VERS_MOI/INDIRECT are fully
-    // resolved server-side (CustomerPaymentSerializer.validate() derives
+    // BANK/CASH need their matching account (the form only offers these two
+    // since 2026-10-09; VERS_MOI/INDIRECT are still resolved server-side (CustomerPaymentSerializer.validate() derives
     // is_indirect and the account to use from `destination` alone).
     if (form.value.destination === 'BANK') {
       payload.bank_account = Number(form.value.bank_account)
@@ -270,15 +295,14 @@ async function onSubmit() {
 </script>
 
 <template>
-  <div class="space-y-4">
+  <div class="space-y-3">
     <AppAlert v-if="error" :message="error" />
 
-    <form
-      class="border-ligne space-y-4 rounded-xl border bg-surface p-6"
-      @submit.prevent="onSubmit"
-    >
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div class="space-y-1.5">
+    <!-- Mise en page compacte (3 colonnes) : tout le formulaire tient dans la
+         fenêtre, la barre « Enregistrer » reste visible (FormActions). -->
+    <form class="space-y-3" @submit.prevent="onSubmit">
+      <div class="grid grid-cols-1 gap-x-4 gap-y-3 md:grid-cols-3">
+        <div class="space-y-1">
           <label class="text-texte-2 text-sm font-medium" for="customer">{{
             t('finance.payment.customer')
           }}</label>
@@ -293,7 +317,7 @@ async function onSubmit() {
           </select>
         </div>
 
-        <div class="space-y-1.5">
+        <div class="space-y-1">
           <label class="text-texte-2 text-sm font-medium" for="amount">{{
             t('finance.payment.amount')
           }}</label>
@@ -308,7 +332,7 @@ async function onSubmit() {
           />
         </div>
 
-        <div class="space-y-1.5">
+        <div class="space-y-1">
           <label class="text-texte-2 text-sm font-medium" for="payment_date">{{
             t('finance.payment.paymentDate')
           }}</label>
@@ -321,7 +345,7 @@ async function onSubmit() {
           />
         </div>
 
-        <div class="space-y-1.5">
+        <div class="space-y-1">
           <label class="text-texte-2 text-sm font-medium" for="method">{{
             t('finance.payment.method')
           }}</label>
@@ -337,18 +361,7 @@ async function onSubmit() {
           </select>
         </div>
 
-        <div class="space-y-1.5">
-          <label class="text-texte-2 text-sm font-medium" for="reference">{{
-            t('finance.payment.reference')
-          }}</label>
-          <input
-            id="reference"
-            v-model="form.reference"
-            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-          />
-        </div>
-
-        <div class="space-y-1.5">
+        <div class="space-y-1">
           <label class="text-texte-2 text-sm font-medium" for="destination">{{
             t('finance.payment.destination')
           }}</label>
@@ -359,17 +372,10 @@ async function onSubmit() {
           >
             <option value="CASH">{{ t('finance.payment.cash') }}</option>
             <option value="BANK">{{ t('finance.payment.bank') }}</option>
-            <option value="VERS_MOI">{{ t('finance.payment.destinationVersMoi') }}</option>
-            <option value="INDIRECT">{{ t('finance.payment.destinationIndirect') }}</option>
           </select>
         </div>
-      </div>
 
-      <div
-        v-if="form.destination === 'BANK' || form.destination === 'CASH'"
-        class="border-ligne grid grid-cols-1 md:grid-cols-2 gap-4 border-t pt-4"
-      >
-        <div v-if="form.destination === 'BANK'" class="space-y-1.5">
+        <div v-if="form.destination === 'BANK'" class="space-y-1">
           <label class="text-texte-2 text-sm font-medium" for="bank_account">{{
             t('finance.payment.bankAccount')
           }}</label>
@@ -383,7 +389,7 @@ async function onSubmit() {
             <option v-for="a in bankAccounts" :key="a.id" :value="a.id">{{ a.name }}</option>
           </select>
         </div>
-        <div v-else class="space-y-1.5">
+        <div v-else-if="form.destination === 'CASH'" class="space-y-1">
           <label class="text-texte-2 text-sm font-medium" for="cash_account">{{
             t('finance.payment.cashAccount')
           }}</label>
@@ -399,35 +405,42 @@ async function onSubmit() {
             </option>
           </select>
         </div>
-      </div>
 
-      <div class="border-ligne space-y-1.5 border-t pt-4">
-        <label class="text-texte-2 text-sm font-medium" for="note">{{
-          t('finance.payment.note')
-        }}</label>
-        <textarea
-          id="note"
-          v-model="form.note"
-          rows="2"
-          class="border-ligne-forte w-full rounded-lg border bg-white px-3.5 py-2.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-        />
-      </div>
-
-      <div class="border-ligne space-y-1.5 border-t pt-4">
-        <label class="text-texte-2 text-sm font-medium" for="proof_file">{{
-          t('finance.payment.proofLabel')
-        }}</label>
-        <div class="flex flex-wrap items-center gap-3">
-          <label
-            for="proof_file"
-            class="border-ligne-forte text-texte hover:bg-sable inline-flex h-11 cursor-pointer items-center rounded-lg border bg-white px-3 text-sm font-medium transition"
-          >
-            {{ t('finance.payment.chooseFile') }}
-          </label>
-          <span class="text-texte-2 text-sm">
-            {{ proofFile?.name || t('finance.payment.noFileSelected') }}
-          </span>
+        <div class="space-y-1">
+          <label class="text-texte-2 text-sm font-medium" for="reference">{{
+            t('finance.payment.reference')
+          }}</label>
+          <input
+            id="reference"
+            v-model="form.reference"
+            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+          />
         </div>
+
+        <div class="space-y-1 md:col-span-2">
+          <label class="text-texte-2 text-sm font-medium" for="note">{{
+            t('finance.payment.note')
+          }}</label>
+          <textarea
+            id="note"
+            v-model="form.note"
+            rows="1"
+            class="border-ligne-forte block min-h-12 w-full resize-y rounded-lg border bg-white px-3.5 py-2.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+          />
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <span class="text-texte-2 text-sm font-medium">{{ t('finance.payment.proofLabel') }}</span>
+        <label
+          for="proof_file"
+          class="border-ligne-forte text-texte hover:bg-sable inline-flex h-10 cursor-pointer items-center rounded-lg border bg-white px-3 text-sm font-medium transition"
+        >
+          {{ t('finance.payment.chooseFile') }}
+        </label>
+        <span class="text-texte-2 min-w-0 truncate text-sm">
+          {{ proofFile?.name || t('finance.payment.noFileSelected') }}
+        </span>
         <input
           id="proof_file"
           type="file"
@@ -435,29 +448,19 @@ async function onSubmit() {
           class="sr-only"
           @change="onProofFileChange"
         />
-        <AppAlert v-if="proofError" :message="proofError" />
       </div>
+      <AppAlert v-if="proofError" :message="proofError" />
 
       <p
         v-if="advanceMode"
-        class="border-ligne text-texte-2 border-t pt-4 text-sm"
+        class="border-ligne text-texte-2 rounded-lg border bg-sable px-3 py-2 text-sm"
         data-test="advance-explanation"
       >
         {{ t('finance.customerLedger.advanceExplanation') }}
       </p>
 
-      <div v-if="!advanceMode && outstandingBalance !== null" class="border-ligne border-t pt-4">
-        <p class="text-texte-2 text-sm font-medium" data-test="outstanding-balance">
-          {{ t('finance.payment.outstandingBalance') }}:
-          <span class="text-texte font-semibold">{{ formatMoney(outstandingBalance ?? 0) }}</span>
-        </p>
-        <p v-if="surplusAmount > 0" class="text-ecart mt-1 text-sm" data-test="surplus-hint">
-          {{ t('finance.overpayment.hint', { surplus: formatMoney(surplusAmount) }) }}
-        </p>
-      </div>
-
-      <div v-if="!advanceMode" class="border-ligne space-y-2 border-t pt-4">
-        <div class="flex items-center justify-between">
+      <div v-if="!advanceMode" class="border-ligne space-y-2 border-t pt-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
           <h2 class="font-display text-sm font-semibold uppercase">
             {{ t('finance.payment.allocateToInvoices') }}
           </h2>
@@ -475,6 +478,15 @@ async function onSubmit() {
             </button>
           </div>
         </div>
+        <div v-if="outstandingBalance !== null">
+          <p class="text-texte-2 text-sm font-medium" data-test="outstanding-balance">
+            {{ t('finance.payment.outstandingBalance') }}:
+            <span class="text-texte font-semibold">{{ formatMoney(outstandingBalance ?? 0) }}</span>
+          </p>
+          <p v-if="surplusAmount > 0" class="text-ecart text-sm" data-test="surplus-hint">
+            {{ t('finance.overpayment.hint', { surplus: formatMoney(surplusAmount) }) }}
+          </p>
+        </div>
         <p v-if="loadingInvoices" class="text-texte-3 text-sm">
           {{ t('finance.payment.loadingInvoices') }}
         </p>
@@ -483,8 +495,8 @@ async function onSubmit() {
           <select
             v-model="line.invoice"
             data-test="line-invoice"
-            class="border-ligne-forte h-12 flex-1 rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-            @change="markLinesDirty"
+            class="border-ligne-forte h-12 min-w-0 flex-1 rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+            @change="onLineInvoiceChange(line)"
           >
             <option value="">{{ t('finance.payment.unallocatedCredit') }}</option>
             <option v-for="inv in unpaidInvoices" :key="inv.id" :value="inv.id">
@@ -519,7 +531,7 @@ async function onSubmit() {
         </p>
       </div>
 
-      <div class="flex justify-end gap-2">
+      <FormActions>
         <Button type="button" variant="ghost" @click="emit('cancel')">
           {{ t('common.cancel') }}
         </Button>
@@ -532,7 +544,7 @@ async function onSubmit() {
                 : t('finance.payment.record')
           }}
         </Button>
-      </div>
+      </FormActions>
     </form>
   </div>
 </template>

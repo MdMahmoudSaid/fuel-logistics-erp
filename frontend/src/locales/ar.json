@@ -768,6 +768,7 @@
       "invoiceOptionRemaining": "المتبقي",
       "allocateToInvoices": "توزيع على الفواتير",
       "addLine": "+ إضافة سطر",
+      "lineAmountRequired": "أدخل المبلغ المخصص لكل فاتورة مختارة.",
       "autoAllocate": "توزيع تلقائي (FIFO)",
       "loadingInvoices": "جارٍ تحميل الفواتير غير المدفوعة…",
       "unallocatedCredit": "رصيد غير مخصَّص",

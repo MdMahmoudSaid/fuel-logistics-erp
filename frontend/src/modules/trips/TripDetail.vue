@@ -1144,7 +1144,9 @@ const cessionProofUrl = computed(
         v-if="showExpenseForm"
         class="fixed inset-0 z-30 flex items-center justify-center bg-black/40 p-4"
       >
-        <div class="max-h-[90vh] w-full max-w-lg overflow-y-auto">
+        <div
+          class="bg-surface border-ligne max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border p-6"
+        >
           <ExpenseForm
             :key="automaticExpense?.category ?? editingExpense?.id ?? 'new'"
             :preset-allocation="{ kind: 'trip', objectId: trip.id, label: trip.reference }"
@@ -1158,12 +1160,19 @@ const cessionProofUrl = computed(
             @select-commission="onSelectCommission"
             @success="onExpenseSaved"
             @cancel="onExpenseCancel"
-          />
-          <div v-if="inFeeQueue && feeQueue.length" class="mt-2 flex justify-end">
-            <Button variant="ghost" data-test="skip-all-fees" @click="skipAllFees">
-              {{ t('trips.detail.skipAllFees') }}
-            </Button>
-          </div>
+         >
+            <template v-if="inFeeQueue && feeQueue.length" #extra-actions>
+              <Button
+                variant="ghost"
+                type="button"
+                class="me-auto"
+                data-test="skip-all-fees"
+                @click="skipAllFees"
+              >
+                {{ t('trips.detail.skipAllFees') }}
+              </Button>
+            </template>
+          </ExpenseForm>
         </div>
       </div>
 
@@ -1171,7 +1180,9 @@ const cessionProofUrl = computed(
         v-if="showTransportPaymentForm"
         class="fixed inset-0 z-30 flex items-center justify-center bg-black/40 p-4"
       >
-        <div class="max-h-[90vh] w-full max-w-lg overflow-y-auto">
+        <div
+          class="bg-surface border-ligne max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border p-6"
+        >
           <TransportPaymentForm
             :payment="editingTransportPayment"
             :mode="transportPaymentFormMode"
@@ -1184,12 +1195,19 @@ const cessionProofUrl = computed(
             :cancel-label="inFeeQueue ? t('trips.detail.skipFee') : undefined"
             @success="onTransportPaymentSaved"
             @cancel="onTransportPaymentCancel"
-          />
-          <div v-if="inFeeQueue && feeQueue.length" class="mt-2 flex justify-end">
-            <Button variant="ghost" data-test="skip-all-fees" @click="skipAllFees">
-              {{ t('trips.detail.skipAllFees') }}
-            </Button>
-          </div>
+         >
+            <template v-if="inFeeQueue && feeQueue.length" #extra-actions>
+              <Button
+                variant="ghost"
+                type="button"
+                class="me-auto"
+                data-test="skip-all-fees"
+                @click="skipAllFees"
+              >
+                {{ t('trips.detail.skipAllFees') }}
+              </Button>
+            </template>
+          </TransportPaymentForm>
         </div>
       </div>
 

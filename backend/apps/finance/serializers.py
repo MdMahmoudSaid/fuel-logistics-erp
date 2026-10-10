@@ -308,6 +308,7 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
             if allocations:
                 PaymentAllocationService.allocate_payment(payment.id, allocations)
             FinancePostingService.record_customer_payment_treasury(payment, document=document)
+            PaymentAllocationService.apply_customer_credit_to_open_invoices(payment.customer)
         payment.refresh_from_db()
         return payment
 
@@ -320,6 +321,7 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
         payment = super().update(instance, validated_data)
         if allocations:
             PaymentAllocationService.allocate_payment(payment.id, allocations)
+        PaymentAllocationService.apply_customer_credit_to_open_invoices(payment.customer)
         payment.refresh_from_db()
         return payment
 

@@ -312,7 +312,7 @@ class PaymentAllocationService:
         allocate_available_credit, so no treasury row is ever posted (the
         cash came in when the receipt was recorded). Returns the amount
         applied."""
-        if invoice.status != Invoice.Status.VALIDATED:
+        if invoice.status not in (Invoice.Status.VALIDATED, Invoice.Status.PARTIALLY_PAID):
             return ZERO
         receipts = list(
             CustomerPayment.objects.select_for_update()
@@ -333,6 +333,30 @@ class PaymentAllocationService:
             )
             invoice.refresh_from_db()
             applied += amount
+        return applied
+
+    @staticmethod
+    @transaction.atomic
+    def apply_customer_credit_to_open_invoices(customer) -> Decimal:
+        """Automatic distribution (client request 2026-10-09: "quand on fait
+        un paiement, il doit distribuer entre les factures"): whatever part of
+        the customer's receipts is still unallocated is applied to their open
+        invoices, oldest invoice first, so open credit and an unpaid invoice
+        never coexist and no manual "Affecter" step is needed. What is left
+        once every invoice is paid stays as the client's advance (consumed
+        later at invoice validation). Returns the amount applied."""
+        invoices = (
+            Invoice.objects.filter(
+                sale__customer=customer,
+                status__in=(Invoice.Status.VALIDATED, Invoice.Status.PARTIALLY_PAID),
+            )
+            .order_by("issued_date", "id")
+        )
+        applied = ZERO
+        for invoice in invoices:
+            if PaymentAllocationService.get_customer_available_credit(customer) <= ZERO:
+                break
+            applied += PaymentAllocationService.apply_customer_credit_to_invoice(invoice)
         return applied
 
     @staticmethod

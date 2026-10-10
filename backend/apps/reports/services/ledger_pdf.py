@@ -63,22 +63,22 @@ LEDGER_PDF_LABELS = {
         "account_type": "Type de compte",
         "party": "Compte",
         "export_date": "Date d'export",
-        "summary": "Resume des soldes",
+        "summary": "Résumé des soldes",
         "history": "Historique complet",
-        "settlement_title": "Reglement par trajet",
-        "trip_reference": "Reference du trajet",
+        "settlement_title": "Règlement par trajet",
+        "trip_reference": "Référence du trajet",
         "truck": "Camion",
         "plate": "Plaque (tracteur / citerne)",
         "transporter": "Transporteur",
         "supplier": "Fournisseur",
         "client": "Client",
         "product": "Produit",
-        "quantity": "Quantite chargee",
-        "quantity_delivered": "Quantite livree",
+        "quantity": "Quantité chargée",
+        "quantity_delivered": "Quantité livrée",
         "loss": "Perte",
         "trip_status": "Statut du trajet",
         "gross_amount": "Montant brut",
-        "deductions": "Deductions",
+        "deductions": "Déductions",
         "net_amount": "Montant net",
         "date": "Date",
         "notes": "Notes",
@@ -87,20 +87,20 @@ LEDGER_PDF_LABELS = {
         # Per-payment PDF (client/fournisseur) - Section 2, 2026-09-05
         "customer_payment_title": "Paiement client",
         "supplier_payment_title": "Paiement fournisseur",
-        "amount_paid": "Montant paye",
-        "method": "Methode de paiement",
+        "amount_paid": "Montant payé",
+        "method": "Méthode de paiement",
         "account": "Compte banque/caisse",
-        "reference": "Reference",
-        "invoice": "Facture(s) concernee(s)",
+        "reference": "Référence",
+        "invoice": "Facture(s) concernée(s)",
         "invoice_amount": "Montant facture",
-        "already_paid": "Montant deja paye",
+        "already_paid": "Montant déjà payé",
         "remaining_balance": "Solde restant",
         "invoice_status": "Statut facture",
-        "no_invoice": "Aucune facture (credit non affecte)",
-        "order": "Commande(s) fournisseur concernee(s)",
+        "no_invoice": "Aucune facture (crédit non affecté)",
+        "order": "Commande(s) fournisseur concernée(s)",
         "order_amount": "Montant commande",
-        "advance_used": "Avance utilisee",
-        "no_order": "Aucune commande (avance generale)",
+        "advance_used": "Avance utilisée",
+        "no_order": "Aucune commande (avance générale)",
         "not_available": "Non applicable",
         # Global export - extra sections, Section 3, 2026-09-05
         "invoices_section": "Liste des factures",
@@ -108,13 +108,13 @@ LEDGER_PDF_LABELS = {
         "reliquat_section": "Reliquat par produit",
         "purchase_history_section": "Historique des achats",
         "payments_advances_section": "Paiements et avances",
-        "trucks_section": "Camions rattaches",
-        "settlements_section": "Reglements par trajet",
+        "trucks_section": "Camions rattachés",
+        "settlements_section": "Règlements par trajet",
         "advances_section": "Avances",
         # Per-invoice PDF (feedback 2026-09-10)
         "invoice_title": "Facture",
-        "invoice_number": "Numero de facture",
-        "issued_date": "Date d'emission",
+        "invoice_number": "Numéro de facture",
+        "issued_date": "Date d'émission",
         "unit_price": "Prix de vente unitaire",
         "total_amount": "Montant total",
     },
@@ -182,22 +182,22 @@ LEDGER_PDF_LABELS = {
         "account_type": "Type de compte",
         "party": "Compte",
         "export_date": "Date d'export",
-        "summary": "Resume des soldes",
+        "summary": "Résumé des soldes",
         "history": "Historique complet",
-        "settlement_title": "Reglement par trajet",
-        "trip_reference": "Reference du trajet",
+        "settlement_title": "Règlement par trajet",
+        "trip_reference": "Référence du trajet",
         "truck": "Camion",
         "plate": "Plaque (tracteur / citerne)",
         "transporter": "Transporteur",
         "supplier": "Fournisseur",
         "client": "Client",
         "product": "Produit",
-        "quantity": "Quantite chargee",
-        "quantity_delivered": "Quantite livree",
+        "quantity": "Quantité chargée",
+        "quantity_delivered": "Quantité livrée",
         "loss": "Perte",
         "trip_status": "Statut du trajet",
         "gross_amount": "Montant brut",
-        "deductions": "Deductions",
+        "deductions": "Déductions",
         "net_amount": "Montant net",
         "date": "Date",
         "notes": "Notes",
@@ -205,32 +205,32 @@ LEDGER_PDF_LABELS = {
         "proof": "Justificatif",
         "customer_payment_title": "Paiement client",
         "supplier_payment_title": "Paiement fournisseur",
-        "amount_paid": "Montant paye",
-        "method": "Methode de paiement",
+        "amount_paid": "Montant payé",
+        "method": "Méthode de paiement",
         "account": "Compte banque/caisse",
-        "reference": "Reference",
-        "invoice": "Facture(s) concernee(s)",
+        "reference": "Référence",
+        "invoice": "Facture(s) concernée(s)",
         "invoice_amount": "Montant facture",
-        "already_paid": "Montant deja paye",
+        "already_paid": "Montant déjà payé",
         "remaining_balance": "Solde restant",
         "invoice_status": "Statut facture",
-        "no_invoice": "Aucune facture (credit non affecte)",
-        "order": "Commande(s) fournisseur concernee(s)",
+        "no_invoice": "Aucune facture (crédit non affecté)",
+        "order": "Commande(s) fournisseur concernée(s)",
         "order_amount": "Montant commande",
-        "advance_used": "Avance utilisee",
-        "no_order": "Aucune commande (avance generale)",
+        "advance_used": "Avance utilisée",
+        "no_order": "Aucune commande (avance générale)",
         "not_available": "Non applicable",
         "invoices_section": "Liste des factures",
         "payments_section": "Liste des paiements",
         "reliquat_section": "Reliquat par produit",
         "purchase_history_section": "Historique des achats",
         "payments_advances_section": "Paiements et avances",
-        "trucks_section": "Camions rattaches",
-        "settlements_section": "Reglements par trajet",
+        "trucks_section": "Camions rattachés",
+        "settlements_section": "Règlements par trajet",
         "advances_section": "Avances",
         "invoice_title": "Facture",
-        "invoice_number": "Numero de facture",
-        "issued_date": "Date d'emission",
+        "invoice_number": "Numéro de facture",
+        "issued_date": "Date d'émission",
         "unit_price": "Prix de vente unitaire",
         "total_amount": "Montant total",
     },
@@ -247,52 +247,52 @@ LEDGER_PDF_LABELS = {
 # existing, already-correct `.title()` behaviour for lang="en").
 FIELD_LABELS_FR = {
     "id": "Identifiant",
-    "label": "Libelle",
+    "label": "Libellé",
     "type": "Type",
     "date": "Date",
     "amount": "Montant",
-    "reference": "Reference",
+    "reference": "Référence",
     "note": "Note",
     "notes": "Notes",
     "proof_url": "Justificatif",
     "proof": "Justificatif",
     "status": "Statut",
-    "outstanding_balance": "Solde impaye",
-    "total_due": "Total du",
+    "outstanding_balance": "Solde impayé",
+    "total_due": "Total dû",
     "open_advances": "Avances ouvertes",
     "net_balance": "Solde net",
-    "last_advance": "Derniere avance",
+    "last_advance": "Dernière avance",
     "last_payment": "Dernier paiement",
-    "total_purchased": "Total achete",
-    "total_paid": "Total paye",
-    "total_invoiced": "Total facture",
-    "total_received": "Total encaisse",
+    "total_purchased": "Total acheté",
+    "total_paid": "Total payé",
+    "total_invoiced": "Total facturé",
+    "total_received": "Total encaissé",
     "open_invoices": "Factures ouvertes",
     "invoice_number": "Facture",
-    "issued_date": "Date d'emission",
+    "issued_date": "Date d'émission",
     "quantity_loaded": "Qté chargée",
     "delivered_quantity": "Qté reçue",
     "total_amount": "Montant total",
     "outstanding": "Solde restant",
     "payment_date": "Date de paiement",
-    "method": "Methode de paiement",
+    "method": "Méthode de paiement",
     "indirect": "Indirect",
     "is_advance": "Avance",
     "product_name": "Produit",
     "product": "Produit",
     "total_reliquat": "Reliquat",
     "purchase_date": "Date d'achat",
-    "quantity_litres": "Quantite (L)",
+    "quantity_litres": "Quantité (L)",
     "unit_price": "Prix unitaire",
     "internal_id": "Camion",
     "tractor_registration": "Plaque tracteur",
     "tanker_registration": "Plaque citerne",
     "trip_reference": "Trajet",
     "base_amount": "Montant brut",
-    "deduction_amount": "Deduction",
+    "deduction_amount": "Déduction",
     "net_amount": "Montant net",
-    "settled": "Solde",
-    "advance_applied": "Avance appliquee",
+    "settled": "Soldé",
+    "advance_applied": "Avance appliquée",
 }
 
 # Enum/code VALUE -> printable-value translation (2026-09-05 language fix):
@@ -303,45 +303,45 @@ FIELD_LABELS_FR = {
 # back-to-fr policy as FIELD_LABELS_FR above.
 VALUE_LABELS_FR = {
     # SupplierLedgerService/TransporterLedgerService entry "type"
-    "advance_given": "Avance versee",
-    "debt_created": "Dette creee",
-    "advance_consumed": "Avance consommee",
+    "advance_given": "Avance versée",
+    "debt_created": "Dette créée",
+    "advance_consumed": "Avance consommée",
     "payment": "Paiement",
     "invoice": "Facture",
     # Invoice.Status / SupplierOrder.Status / TransportPayment.Status
     # (union - no colliding meaning across these enums)
     "DRAFT": "Brouillon",
-    "VALIDATED": "Validee",
-    "CONFIRMED": "Confirmee",
-    "PARTIALLY_PAID": "Partiellement paye",
-    "PAID": "Paye",
-    "CANCELLED": "Annule",
-    "PLANNED": "Planifie",
-    "PAYABLE": "A payer",
-    "DEDUCTION_APPLIED": "Deduction appliquee",
+    "VALIDATED": "Validée",
+    "CONFIRMED": "Confirmée",
+    "PARTIALLY_PAID": "Partiellement payé",
+    "PAID": "Payé",
+    "CANCELLED": "Annulé",
+    "PLANNED": "Planifié",
+    "PAYABLE": "À payer",
+    "DEDUCTION_APPLIED": "Déduction appliquée",
     # Trip.Status (frontend/src/locales/fr.json trips.status - reused
     # verbatim here so both sides of the app use the same French wording)
-    "ASSIGNED": "Affecte",
-    "SENT_FOR_LOADING": "Envoye au chargement",
+    "ASSIGNED": "Affecté",
+    "SENT_FOR_LOADING": "Envoyé au chargement",
     "LOADING": "Chargement en cours",
-    "LOADED": "Charge",
-    "ROAD_TRANSIT": "Transit routiere",
+    "LOADED": "Chargé",
+    "ROAD_TRANSIT": "Transit routière",
     "IN_TRANSIT": "En transit",
-    "BORDER": "Frontiere",
+    "BORDER": "Frontière",
     "CUSTOMS": "Douane",
     "GOING_TO_COMPANY_STOCK": "En route vers stock entreprise",
-    "ARRIVED_AT_COMPANY_STOCK": "Arrive au stock entreprise",
-    "STOCKED": "Stocke",
+    "ARRIVED_AT_COMPANY_STOCK": "Arrivé au stock entreprise",
+    "STOCKED": "Stocké",
     "GOING_TO_CLIENT": "En route vers le client",
-    "ARRIVED_AT_CLIENT": "Arrive chez le client",
-    "QUANTITY_CONTROL": "Controle de quantite",
-    "DELIVERED": "Livre",
-    "COMPLETED": "Termine",
-    "BLOCKED": "Bloque",
+    "ARRIVED_AT_CLIENT": "Arrivé chez le client",
+    "QUANTITY_CONTROL": "Contrôle de quantité",
+    "DELIVERED": "Livré",
+    "COMPLETED": "Terminé",
+    "BLOCKED": "Bloqué",
     # CustomerPayment.Method / SupplierPayment.Method
-    "CASH": "Especes",
+    "CASH": "Espèces",
     "BANK_TRANSFER": "Virement bancaire",
-    "CHEQUE": "Cheque",
+    "CHEQUE": "Chèque",
     "OTHER": "Autre",
 }
 
@@ -366,14 +366,6 @@ _SUMMARY_TABLE_STYLE = TableStyle(
         ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
     ]
 )
-
-
-def _bold_row(row_index: int):
-    """A TableStyle command bolding one full row (label + value column) of
-    a 2-column label/value table - same helper as
-    apps.reports.services.profit_pdf._bold_row, duplicated per this
-    module's self-contained-helpers convention (see module docstring)."""
-    return ("FONTNAME", (0, row_index), (-1, row_index), "Helvetica-Bold")
 
 
 # Balance keys that represent a party's final, bottom-line figure across
@@ -558,51 +550,61 @@ def _doc_template(buffer, *, title: str) -> SimpleDocTemplate:
     )
 
 
-def _section_table(title: str, rows: list[dict], *, lang: str, is_rtl: bool, heading_style):
-    """One labeled Paragraph + Table block for a section of rows, or an
-    empty list if there is nothing to print - callers just extend()
-    elements with the result, so an empty section never crashes and never
-    prints an empty table.
+# Reports-document layout for the 3 party ledgers (client request
+# 2026-10-09: "même structure que le relevé client"). Field-name -> column
+# kind, used for both the column width (report_pdf._KIND_WIDTH_MM) and the
+# number formatting; any other field is pre-formatted (translated enum,
+# Oui/Non, nested dict) and printed as text.
+_DATE_FIELDS = {"date", "issued_date", "payment_date", "purchase_date", "created_at"}
+_REF_FIELDS = {"reference", "invoice_number", "trip_reference", "internal_id"}
+_ENUM_FIELDS = {"type", "status", "method", "indirect", "is_advance", "settled"}
+_ACCOUNT_TYPE_LABELS = {
+    "client": ("Client", "Client", "عميل"),
+    "fournisseur": ("Fournisseur", "Supplier", "مورد"),
+    "transporteur": ("Transporteur", "Transporter", "ناقل"),
+}
+_LEDGER_INFO_LABELS = {
+    "generated_on": ("Généré le", "Generated on", "تاريخ الإنشاء"),
+    "account_type": ("Type de compte", "Account type", "نوع الحساب"),
+    "party": ("Compte", "Account", "الحساب"),
+    "currency": ("Devise", "Currency", "العملة"),
+    "empty": ("Aucune donnée.", "No data.", "لا توجد بيانات."),
+}
 
-    Restructure (2026-09-06, client feedback: these tables read as "mal
-    structuree"): every cell is now a Paragraph inside an evenly-split,
-    explicit-width column instead of a bare string in an auto-sized one -
-    a long free-text value (a party/product name, a note) used to force
-    its own column as wide as its content, which could overflow the page
-    edge on a wide section; wrapped in a Paragraph with a fixed column
-    width it wraps onto a second line instead. Money/quantity/unit-price
-    columns (by field name - _MONEY_FIELDS et al.) go through
-    _format_field_value and render right-aligned, the same convention
-    every other PDF in the app uses for figures."""
-    if not rows:
-        return []
-    fields = list(rows[0].keys())
-    header_text = [_translate_key(field, lang) for field in fields]
-    if is_rtl:
-        fields = list(reversed(fields))
-        header_text = list(reversed(header_text))
 
-    numeric_fields = _MONEY_FIELDS | _QUANTITY_FIELDS | _UNIT_PRICE_FIELDS
-    header_style = _cell_style(lang, header=True)
-    body_styles = [_cell_style(lang, numeric=field in numeric_fields) for field in fields]
+def _ledger_column(field: str, lang: str) -> dict:
+    if field in _MONEY_FIELDS:
+        kind = "money"
+    elif field in _QUANTITY_FIELDS:
+        kind = "quantity"
+    elif field in _UNIT_PRICE_FIELDS:
+        kind = "unit_money"
+    elif field in _DATE_FIELDS:
+        kind = "date"
+    elif field in _REF_FIELDS:
+        kind = "ref"
+    elif field in _ENUM_FIELDS:
+        kind = "enum"
+    else:
+        kind = "text"
+    numeric = kind in ("money", "quantity", "unit_money")
+    return {
+        "field": field,
+        "label": _translate_key(field, lang),
+        "kind": kind,
+        "align": "end" if numeric else "start",
+        "enum_labels": {},
+    }
 
-    header = [Paragraph(_safe_paragraph_text(text), header_style) for text in header_text]
-    data = [header] + [
-        [
-            Paragraph(_safe_paragraph_text(_format_field_value(field, row.get(field), lang)), body_styles[i])
-            for i, field in enumerate(fields)
-        ]
-        for row in rows
-    ]
-    col_width = _PAGE_CONTENT_WIDTH / len(fields)
-    table = Table(data, repeatRows=1, colWidths=[col_width] * len(fields))
-    table.setStyle(_TABLE_STYLE)
-    return [
-        Spacer(1, 8 * mm),
-        Paragraph(_safe_paragraph_text(title), heading_style),
-        Spacer(1, 2 * mm),
-        table,
-    ]
+
+def _ledger_cell(column: dict, value, lang: str):
+    """Raw value for money/quantity/unit-price/date columns (report_pdf
+    formats them), display string for every other column."""
+    if column["kind"] in ("money", "quantity", "unit_money", "date"):
+        return value
+    if value is None or value == "":
+        return None
+    return _format_field_value(column["field"], value, lang)
 
 
 def render_ledger_pdf(
@@ -616,76 +618,75 @@ def render_ledger_pdf(
     lang: str = "fr",
     extra_sections: list[dict] | None = None,
 ) -> bytes:
-    """Generic party-ledger PDF: header + balance-summary table + one
-    "history" table (`rows`) + any number of additional labeled sections
-    (`extra_sections`, each `{"title": str, "rows": list[dict]}`) - Section
-    3 of the 2026-09-05 recette-corrections pass added `extra_sections` so
-    each of the 3 ledgers can print every section already visible on its
-    page (invoices/payments for client, reliquat/purchase-history/payments
-    for fournisseur, trucks/settlements/advances for transporteur) rather
-    than only the merged chronological history. Deliberately generic over
-    dict shape (iterates summary.items() / rows[0].keys()) so it never
-    hardcodes a field name - each caller adapts its own service's real
-    response into a (summary dict, rows list, extra_sections list) shape
-    at the call site instead. A section with an empty rows list is simply
-    skipped (see _section_table) - export never crashes on missing data."""
+    """Generic party-ledger PDF: the history table (`rows`) plus any number
+    of labeled sections (`extra_sections`, each `{"title", "rows"}` - each
+    ledger prints every section already visible on its page), and the
+    balance summary. Deliberately generic over dict shape (columns come from
+    rows[0].keys(), summary lines from summary.items()) so each caller keeps
+    adapting its own service's response at the call site.
+
+    Restyle 2026-10-09: rendered through report_pdf.render_report_pdf with
+    the same masthead, information grid, table look, totals block and
+    "Page n / N" footer as the Reports page PDFs (e.g. Relevé client). A
+    section with no rows is skipped, so export never crashes on missing
+    data; a ledger with no rows at all prints the empty-table text."""
+    from apps.reports.services.report_labels import LABELS as REPORT_LABELS
+    from apps.reports.services.report_pdf import render_report_pdf
+
+    lang = lang if lang in ("fr", "en", "ar") else "fr"
+    index = ("fr", "en", "ar").index(lang)
     labels = _labels(lang)
-    is_rtl = lang == "ar"
 
-    buffer = io.BytesIO()
-    doc = _doc_template(buffer, title=f"{labels['title']} - {party_name}")
-    styles = getSampleStyleSheet()
-    align_style = ParagraphStyle("aligned", parent=styles["Normal"], alignment=TA_RIGHT if is_rtl else 0)
-    # (doc's own `title=` above is PDF metadata, not markup-parsed - no
-    # escaping needed there, only for the Paragraph flowables below.)
-    heading_style = ParagraphStyle(
-        "headingAligned", parent=styles["Heading2"], alignment=TA_RIGHT if is_rtl else 0
-    )
+    sections = [{"title": labels["history"], "rows": rows}] + list(extra_sections or [])
+    sections = [section for section in sections if section["rows"]] or [{"title": labels["history"], "rows": []}]
 
-    # Security fix (2026-09-06): party_name (customer/supplier/transporter
-    # .name) is free text an operator typed into a form - escape before it
-    # reaches Paragraph, see _safe_paragraph_text's docstring.
-    safe_party_name = _safe_paragraph_text(party_name)
-    # Restructure (2026-09-06): logo + company name + "Grand livre" title
-    # heading - previously this PDF printed the company name but never the
-    # document's own title, and no logo at all (client feedback: "ne
-    # contient pas les logos, ne contient pas le nom d'entreprise").
-    elements = _pdf_masthead(
-        company_name=company_name, doc_title=labels["title"], styles=styles, heading_style=heading_style
-    )
-    elements += [
-        Paragraph(f"{labels['account_type']}: {account_type} — {labels['party']}: {safe_party_name}", align_style),
-        Paragraph(f"{labels['export_date']}: {export_date.isoformat()}", align_style),
-        Spacer(1, 8 * mm),
-        Paragraph(labels["summary"], heading_style),
-        Spacer(1, 2 * mm),
-    ]
+    tables, document_rows = [], []
+    for number, section in enumerate(sections):
+        key = f"s{number}"
+        fields = list(section["rows"][0].keys()) if section["rows"] else ["date", "type", "reference", "amount"]
+        # Date first, like every accounting statement.
+        fields.sort(key=lambda field: field not in _DATE_FIELDS)
+        columns = [_ledger_column(field, lang) for field in fields]
+        tables.append({"title": section["title"], "columns": columns, "section": key})
+        for row in section["rows"]:
+            cells = {column["field"]: _ledger_cell(column, row.get(column["field"]), lang) for column in columns}
+            document_rows.append({**cells, "section": key})
 
-    summary_data = [
-        [_translate_key(key, lang), _format_field_value(key, value, lang)] for key, value in summary.items()
-    ]
-    bold_rows = [index for index, key in enumerate(summary.keys()) if key in _FINAL_BALANCE_KEYS]
-    if is_rtl:
-        summary_data = [list(reversed(row)) for row in summary_data]
-    if summary_data:
-        summary_table = Table(summary_data, colWidths=[90 * mm, 90 * mm])
-        summary_table.setStyle(_SUMMARY_TABLE_STYLE)
-        if bold_rows:
-            summary_table.setStyle(TableStyle([_bold_row(index) for index in bold_rows]))
-        elements.append(summary_table)
-
-    elements.extend(
-        _section_table(labels["history"], rows, lang=lang, is_rtl=is_rtl, heading_style=heading_style)
-    )
-    for section in extra_sections or []:
-        elements.extend(
-            _section_table(
-                section["title"], section["rows"], lang=lang, is_rtl=is_rtl, heading_style=heading_style
-            )
+    summary_lines = []
+    for key, value in summary.items():
+        if key in ("id", "label"):  # the party is already in the title / info grid
+            continue
+        money = key in _MONEY_FIELDS or (key in ("last_payment", "last_advance") and isinstance(value, Decimal))
+        summary_lines.append(
+            {
+                "label": _translate_key(key, lang),
+                "value": value if money else (_format_field_value(key, value, lang) or "—"),
+                "kind": "money" if money and value is not None else "text",
+                "emphasis": key in _FINAL_BALANCE_KEYS,
+            }
         )
 
-    doc.build(elements)
-    return buffer.getvalue()
+    info_label = {key: values[index] for key, values in _LEDGER_INFO_LABELS.items()}
+    account_label = _ACCOUNT_TYPE_LABELS.get(account_type, (account_type,) * 3)[index]
+    document = {
+        "company": {"name": company_name},
+        "title": f"{labels['title']} — {party_name}",
+        "lang": lang,
+        "direction": "rtl" if lang == "ar" else "ltr",
+        "orientation": "portrait",
+        "info": [
+            {"label": info_label["generated_on"], "value": export_date.strftime("%d/%m/%Y")},
+            {"label": info_label["account_type"], "value": account_label},
+            {"label": info_label["party"], "value": party_name},
+            {"label": info_label["currency"], "value": "XOF"},
+        ],
+        "tables": tables,
+        "opening_balance": None,
+        "summary": summary_lines,
+        "labels": {"page": REPORT_LABELS[lang]["ui.page"]},
+        "empty_text": info_label["empty"],
+    }
+    return render_report_pdf(document, document_rows, lang)
 
 
 def _label_value_style(lang: str, *, bold: bool = False) -> ParagraphStyle:
@@ -830,54 +831,11 @@ def render_trip_settlement_pdf(payment, lang: str = "fr") -> bytes:
 
 
 def render_invoice_pdf(invoice, lang: str = "fr") -> bytes:
-    """Single-record PDF for one Invoice (feedback 2026-09-10: the client
-    ledger's Factures table needed the same per-row PDF export the
-    Paiements table already had). Same label/value grid layout as
-    render_trip_settlement_pdf/render_customer_payment_pdf, printing the
-    same fields already shown on InvoiceDetail.vue plus the truck plates
-    (Sale.trip.truck) - same "the client wants to see which truck loaded
-    this invoice" ask that also added Sale.truck_plates to the API."""
-    labels = _labels(lang)
-    sales = invoice.all_sales
-    sale = sales[0]
-    trip = sale.trip
-    truck = trip.truck
-    # Multi-trip invoice: list every trip / truck, sum the quantities; a
-    # single unit price only makes sense when all lines share it.
-    prices = {x.unit_selling_price for x in sales}
+    """Per-invoice PDF (feedback 2026-09-10), restyled 2026-10-09 in the
+    Reports document layout - see invoice_pdf.py."""
+    from apps.reports.services.invoice_pdf import render_invoice_pdf as render
 
-    field_rows = [
-        (labels["invoice_number"], invoice.invoice_number),
-        (labels["client"], sale.customer.name),
-        (labels["product"], ", ".join(dict.fromkeys(x.product.name for x in sales))),
-        (labels["trip_reference"], ", ".join(x.trip.reference for x in sales)),
-        (labels["truck"], ", ".join(x.trip.truck.internal_id for x in sales)),
-        (
-            labels["plate"],
-            " | ".join(
-                f"{x.trip.truck.tractor_registration} / {x.trip.truck.tanker_registration}"
-                for x in sales
-            ),
-        ),
-        (labels["quantity"], _format_quantity(sum(x.trip.quantity_loaded for x in sales))),
-        (
-            labels["quantity_delivered"],
-            _format_quantity(sum(x.delivered_quantity for x in sales)),
-        ),
-        (
-            labels["unit_price"],
-            _format_unit_money(sale.unit_selling_price) if len(prices) == 1 else "—",
-        ),
-        (labels["total_amount"], _format_money(invoice.total_amount)),
-        (labels["invoice_status"], invoice.status),
-        (labels["issued_date"], invoice.issued_date),
-        (labels["export_date"], datetime.date.today()),
-    ]
-    return _label_value_pdf(
-        title=f"{labels['invoice_title']} - {invoice.invoice_number}",
-        field_rows=field_rows,
-        lang=lang,
-    )
+    return render(invoice, lang)
 
 
 def render_customer_payment_pdf(payment, lang: str = "fr") -> bytes:

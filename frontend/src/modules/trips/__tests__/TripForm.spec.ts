@@ -224,6 +224,28 @@ describe('TripForm', () => {
     expect(createTrip).toHaveBeenCalledWith(expect.objectContaining({ transporter: 12 }))
   })
 
+  it('no longer shows the optional customer-order and client pickers', async () => {
+    const router = makeRouter()
+    await router.isReady()
+    const wrapper = mount(TripForm, { global: { plugins: [router] } })
+    await flushPromises()
+
+    expect(wrapper.find('#customer_order').exists()).toBe(false)
+    expect(wrapper.find('#client').exists()).toBe(false)
+
+    await wrapper.find('#cession_letter').setValue('9')
+    await flushPromises()
+    await wrapper.find('#truck').setValue('3')
+    await wrapper.find('#quantity_loaded').setValue('20000')
+    await wrapper.find('#loading_date').setValue('2026-08-18')
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createTrip).toHaveBeenCalledWith(
+      expect.objectContaining({ client: null, customer_order: null }),
+    )
+  })
+
   it('submits the derived transporter for an external truck trip', async () => {
     const router = makeRouter()
     await router.isReady()

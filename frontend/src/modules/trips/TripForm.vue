@@ -7,10 +7,8 @@ import { createResourceApi } from '@/api/resource'
 import { useAuthStore } from '@/stores/auth'
 import { cessionLetterResource, supplierOrderResource } from '@/modules/purchasing/api'
 import type { CessionLetter, SupplierOrder } from '@/modules/purchasing/types'
-import { customerOrderResource } from '@/modules/sales/api'
-import type { CustomerOrder } from '@/modules/sales/types'
 import { tripResource } from './api'
-import type { Trip, TruckBrief, TransporterBrief, DriverBrief, CustomerBrief } from './types'
+import type { Trip, TruckBrief, TransporterBrief, DriverBrief } from './types'
 import { formatTruckPlates } from './formatTruckPlates'
 import { translateApiError, extractFieldErrors } from '@/i18n/apiErrors'
 import Button from '@/components/ui/Button.vue'
@@ -43,8 +41,6 @@ const transporters = ref<TransporterBrief[]>([])
 // transporter is currently busy with another truck.
 const allTransporters = ref<TransporterBrief[]>([])
 const drivers = ref<DriverBrief[]>([])
-const customers = ref<CustomerBrief[]>([])
-const customerOrders = ref<CustomerOrder[]>([])
 
 // Truck & transporter pickers filter to available-only by default (plan
 // Etape 9). Only an Admin can flip this to see occupied ones and force an
@@ -56,7 +52,6 @@ const showBusyTrucks = ref(false)
 const trucksResource = createResourceApi<TruckBrief>('/trucks/')
 const transporterResource = createResourceApi<TransporterBrief>('/transporters/')
 const driverResource = createResourceApi<DriverBrief>('/drivers/')
-const customerResource = createResourceApi<CustomerBrief>('/customers/')
 
 async function loadTransporters() {
   const params = showBusyTrucks.value ? {} : { available: true }
@@ -72,7 +67,6 @@ const form = ref({
   quantity_loaded: '',
   loading_date: '',
   bl_reference: '',
-  client: '',
   customer_order: prefilledOrderId.value ? String(prefilledOrderId.value) : '',
   notes: '',
 })
@@ -119,35 +113,16 @@ function onTruckChange() {
   if (truck.default_driver) form.value.driver = String(truck.default_driver)
 }
 
-// Orders still open to receiving more trips — hides CLOSED/CANCELLED/
-// DELIVERED from the picker when the form wasn't reached from a specific
-// order's "New Trip" button.
-const ASSIGNABLE_ORDER_STATUSES = [
-  'CONFIRMED',
-  'PARTIALLY_ASSIGNED',
-  'IN_PROGRESS',
-  'PARTIALLY_DELIVERED',
-]
-
 onMounted(async () => {
-  const [cessionData, driverData, customerData] = await Promise.all([
+  const [cessionData, driverData] = await Promise.all([
     cessionLetterResource.list({ status: 'ACTIVE' }),
     driverResource.list(),
-    customerResource.list(),
   ])
   cessions.value = cessionData.results
   drivers.value = driverData.results
-  customers.value = customerData.results
   const allTransportersData = await transporterResource.list()
   allTransporters.value = allTransportersData.results
   await Promise.all([loadTrucks(), loadTransporters()])
-
-  if (!prefilledOrderId.value) {
-    const orderData = await customerOrderResource.list()
-    customerOrders.value = orderData.results.filter((o) =>
-      ASSIGNABLE_ORDER_STATUSES.includes(o.status),
-    )
-  }
 })
 
 // --- Live cession-remaining bar (same idiom as CessionLetterForm's
@@ -200,7 +175,8 @@ async function onSubmit() {
     cession_letter: selectedCession.value.id,
     product: selectedSupplierOrder.value.product,
     quantity_loaded: form.value.quantity_loaded,
-    client: form.value.client ? Number(form.value.client) : null,
+    // Le client se choisit après coup (« Attribuer un client » sur le trajet).
+    client: null,
     customer_order: form.value.customer_order ? Number(form.value.customer_order) : null,
     loading_date: form.value.loading_date,
     bl_reference: form.value.bl_reference,
@@ -417,43 +393,6 @@ async function onSubmit() {
         {{ t('trips.newForm.againstCustomerOrder') }}
         <span class="text-texte font-medium">#{{ prefilledOrderId }}</span>
       </div>
-      <div v-else class="space-y-1.5">
-        <label class="text-texte-2 text-sm font-medium" for="customer_order">{{
-          t('trips.newForm.customerOrder')
-        }}</label>
-        <select
-          id="customer_order"
-          v-model="form.customer_order"
-          class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-        >
-          <option value="">{{ t('trips.newForm.noCustomerOrder') }}</option>
-          <option v-for="o in customerOrders" :key="o.id" :value="o.id">
-            #{{ o.id }} — {{ o.customer_detail?.name }} ({{
-              formatQuantity(o.remaining_quantity)
-            }}
-            {{ t('purchasing.cessionForm.remainingSuffix') }})
-          </option>
-        </select>
-        <p v-if="fieldErrors.customer_order" class="text-critique text-xs">
-          {{ fieldErrors.customer_order }}
-        </p>
-      </div>
-
-      <div class="space-y-1.5">
-        <label class="text-texte-2 text-sm font-medium" for="client">{{
-          t('trips.newForm.client')
-        }}</label>
-        <select
-          id="client"
-          v-model="form.client"
-          class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-        >
-          <option value="">{{ t('trips.newForm.noClient') }}</option>
-          <option v-for="c in customers" :key="c.id" :value="c.id">{{ c.name }}</option>
-        </select>
-        <p v-if="fieldErrors.client" class="text-critique text-xs">{{ fieldErrors.client }}</p>
-      </div>
-
       <div class="space-y-1.5">
         <label class="text-texte-2 text-sm font-medium" for="notes">{{
           t('trips.newForm.notes')

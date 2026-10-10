@@ -134,6 +134,51 @@ describe('PaymentAllocationForm FIFO auto-allocation', () => {
     expect(amountInputs()[0].element.value).toBe('123.45')
   })
 
+  it('fills the amount of an invoice picked before the payment amount (2026-10-09 bug)', async () => {
+    const wrapper = mount(PaymentAllocationForm)
+    await flushPromises()
+    await selectCustomer(wrapper)
+
+    // the user picks the invoice first, then types the amount
+    await findAllTyped<HTMLSelectElement>(wrapper, '[data-test="line-invoice"]')[0].setValue('2')
+    await wrapper.find('#amount').setValue('400')
+    await flushPromises()
+
+    expect(findAllTyped<HTMLInputElement>(wrapper, '[data-test="line-amount"]')[0].element.value).toBe(
+      '400.00',
+    )
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+    expect(createCustomerPayment).toHaveBeenCalledWith(
+      expect.objectContaining({ allocations: [{ invoice: 2, amount: '400.00' }] }),
+    )
+  })
+
+  it('refuses an invoice line without amount instead of recording it as open credit', async () => {
+    const wrapper = mount(PaymentAllocationForm)
+    await flushPromises()
+    await selectCustomer(wrapper)
+    await wrapper.find('#amount').setValue('400')
+    await flushPromises()
+
+    const lineAmount = findAllTyped<HTMLInputElement>(wrapper, '[data-test="line-amount"]')[0]
+    await lineAmount.setValue('')
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createCustomerPayment).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('Saisissez le montant')
+  })
+
+  it('offers only Caisse and Banque as destination', async () => {
+    const wrapper = mount(PaymentAllocationForm)
+    await flushPromises()
+    const values = findAllTyped<HTMLOptionElement>(wrapper, '#destination option').map(
+      (o) => o.element.value,
+    )
+    expect(values).toEqual(['CASH', 'BANK'])
+  })
+
   it('recomputes FIFO from scratch when the auto-allocate button is clicked again', async () => {
     const wrapper = mount(PaymentAllocationForm)
     await flushPromises()

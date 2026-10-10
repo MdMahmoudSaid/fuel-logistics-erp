@@ -59,6 +59,9 @@ export function fetchCustomerLedger(customerId: number): Promise<CustomerLedger>
   return apiClient.get<CustomerLedger>(`/customers/${customerId}/ledger/`).then((r) => r.data)
 }
 
+// No longer called by the customer ledger (credit is distributed to open
+// invoices automatically since 2026-10-10); kept for
+// ExistingPaymentAllocationForm, which nothing renders any more.
 export function allocateExistingCustomerPayment(
   paymentId: number,
   allocations: { invoice: number; amount: string }[],

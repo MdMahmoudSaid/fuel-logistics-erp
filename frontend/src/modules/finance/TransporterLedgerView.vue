@@ -377,7 +377,7 @@ function badgeVariant(status: string) {
     <Modal
       v-if="showPaymentModal && ledger"
       :title="t('finance.debtPayment.title')"
-      max-width="max-w-2xl"
+      max-width="max-w-3xl"
       @close="showPaymentModal = false"
     >
       <DebtPaymentForm
@@ -393,7 +393,7 @@ function badgeVariant(status: string) {
     <Modal
       v-if="showAdvanceForm && ledger"
       :title="t('finance.advanceForm.title')"
-      max-width="max-w-2xl"
+      max-width="max-w-3xl"
       @close="showAdvanceForm = false"
     >
       <AdvanceForm

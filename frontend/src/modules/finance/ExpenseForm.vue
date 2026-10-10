@@ -20,6 +20,7 @@ import {
 import { EXPENSE_CATEGORIES } from './types'
 import { useExpenseCategoryLabel } from './expenseCategoryLabel'
 import Button from '@/components/ui/Button.vue'
+import FormActions from '@/components/ui/FormActions.vue'
 import EntityAllocationPicker, { type AllocationDraft } from './EntityAllocationPicker.vue'
 import { formatMoney, formatQuantity, formatUnitMoney } from '@/utils/currency'
 import type {
@@ -444,14 +445,11 @@ async function onSubmit() {
 </script>
 
 <template>
-  <div class="space-y-4">
+  <div class="space-y-3">
     <AppAlert v-if="error" :message="error" />
 
-    <form
-      class="border-ligne space-y-4 rounded-xl border bg-surface p-6"
-      @submit.prevent="onSubmit"
-    >
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <form class="space-y-3" @submit.prevent="onSubmit">
+      <div class="grid grid-cols-1 gap-x-4 gap-y-3 md:grid-cols-2">
         <h2 v-if="title" class="font-display md:col-span-2 text-sm font-semibold uppercase">
           {{ title }}
         </h2>
@@ -572,7 +570,8 @@ async function onSubmit() {
         </div>
       </div>
 
-      <div class="space-y-1.5">
+      <!-- Frais d'un trajet : pas de champ Notes (pop-up plus court). -->
+      <div v-if="!isTripAllocation" class="space-y-1.5">
         <label class="text-texte-2 text-sm font-medium" for="notes">{{
           t('finance.expense.notes')
         }}</label>
@@ -584,7 +583,7 @@ async function onSubmit() {
         />
       </div>
 
-      <div class="border-ligne flex items-center gap-2 border-t pt-4">
+      <div class="border-ligne flex items-center gap-2 border-t pt-3">
         <input
           id="paid_by_customer"
           v-model="paidByCustomerDirectly"
@@ -635,7 +634,7 @@ async function onSubmit() {
         </div>
       </template>
 
-      <div v-else class="border-ligne space-y-2 border-t pt-4">
+      <div v-else class="border-ligne space-y-2 border-t pt-3">
         <div
           v-if="showTreasuryPayment"
           class="border-ligne space-y-3 rounded-lg border bg-fond p-3"
@@ -812,14 +811,15 @@ async function onSubmit() {
         </template>
       </div>
 
-      <div class="flex justify-end gap-2">
+      <FormActions>
+        <slot name="extra-actions" />
         <Button type="button" variant="ghost" @click="emit('cancel')">
           {{ cancelLabel ?? t('common.cancel') }}
         </Button>
         <Button type="submit" variant="primary" :loading="saving">
           {{ saving ? t('finance.expense.saving') : t('finance.expense.save') }}
         </Button>
-      </div>
+      </FormActions>
     </form>
   </div>
 </template>

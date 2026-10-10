@@ -4,6 +4,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { createResourceApi } from '@/api/resource'
 import Button from '@/components/ui/Button.vue'
+import FormActions from '@/components/ui/FormActions.vue'
 import MonoValue from '@/components/ui/MonoValue.vue'
 import { createSupplierAdvance, createTransporterAdvance, fetchPartyBalances } from './api'
 import type { PartyBalance, PartyType } from './types'
@@ -219,13 +220,13 @@ onMounted(load)
 </script>
 
 <template>
-  <form class="space-y-5" @submit.prevent="submit">
+  <form class="space-y-3" @submit.prevent="submit">
     <AppAlert v-if="error" :message="error" />
     <p v-if="loading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
     <template v-else>
-      <div class="grid gap-4 sm:grid-cols-2">
-        <label class="space-y-1.5">
+      <div class="grid gap-x-4 gap-y-3 sm:grid-cols-3">
+        <label class="space-y-1">
           <span class="text-texte-2 text-sm font-medium">{{ t('finance.advanceForm.type') }}</span>
           <select
             v-model="partyType"
@@ -238,7 +239,7 @@ onMounted(load)
           </select>
         </label>
 
-        <label class="space-y-1.5">
+        <label class="space-y-1 sm:col-span-2">
           <span class="text-texte-2 text-sm font-medium">{{ t('finance.advanceForm.party') }}</span>
           <select
             id="party"
@@ -254,10 +255,8 @@ onMounted(load)
             {{ emptyPartyMessage }}
           </span>
         </label>
-      </div>
 
-      <div class="grid gap-4 sm:grid-cols-3">
-        <label class="space-y-1.5">
+        <label class="space-y-1">
           <span class="text-texte-2 text-sm font-medium">{{
             t('finance.advanceForm.accountKind')
           }}</span>
@@ -269,7 +268,7 @@ onMounted(load)
             <option value="cash">{{ t('finance.advanceForm.cash') }}</option>
           </select>
         </label>
-        <label v-if="accountKind === 'bank'" class="space-y-1.5 sm:col-span-2">
+        <label v-if="accountKind === 'bank'" class="space-y-1">
           <span class="text-texte-2 text-sm font-medium">{{ t('finance.advanceForm.bank') }}</span>
           <select
             v-model="bankAccountId"
@@ -280,7 +279,7 @@ onMounted(load)
             </option>
           </select>
         </label>
-        <label v-else class="space-y-1.5 sm:col-span-2">
+        <label v-else class="space-y-1">
           <span class="text-texte-2 text-sm font-medium">{{ t('finance.advanceForm.cash') }}</span>
           <select
             v-model="cashAccountId"
@@ -291,10 +290,8 @@ onMounted(load)
             </option>
           </select>
         </label>
-      </div>
 
-      <div class="grid gap-4 sm:grid-cols-2">
-        <label class="space-y-1.5">
+        <label class="space-y-1">
           <span class="text-texte-2 text-sm font-medium">{{
             t('finance.advanceForm.amount')
           }}</span>
@@ -307,7 +304,8 @@ onMounted(load)
             class="border-ligne h-11 w-full rounded-lg border px-3 text-sm"
           />
         </label>
-        <label class="space-y-1.5">
+
+        <label class="space-y-1">
           <span class="text-texte-2 text-sm font-medium">{{ t('finance.advanceForm.date') }}</span>
           <input
             v-model="date"
@@ -315,10 +313,8 @@ onMounted(load)
             class="border-ligne h-11 w-full rounded-lg border px-3 text-sm"
           />
         </label>
-      </div>
 
-      <div class="grid gap-4 sm:grid-cols-2">
-        <label class="space-y-1.5">
+        <label class="space-y-1">
           <span class="text-texte-2 text-sm font-medium">{{
             t('finance.advanceForm.reference')
           }}</span>
@@ -327,29 +323,30 @@ onMounted(load)
             class="border-ligne h-11 w-full rounded-lg border px-3 text-sm"
           />
         </label>
-        <label class="space-y-1.5">
+
+        <label class="space-y-1">
+          <span class="text-texte-2 text-sm font-medium">{{
+            t('finance.advanceForm.attachment')
+          }}</span>
+          <input
+            type="file"
+            :accept="IMAGE_UPLOAD_ACCEPT"
+            class="border-ligne w-full rounded-lg border px-3 py-2 text-sm"
+            @change="onAttachmentChange"
+          />
+          <span v-if="attachment" class="text-texte-2 block text-xs">{{ attachment.name }}</span>
+        </label>
+
+        <label class="space-y-1 sm:col-span-3">
           <span class="text-texte-2 text-sm font-medium">{{ t('finance.advanceForm.note') }}</span>
           <textarea
             v-model="note"
-            rows="2"
-            class="border-ligne w-full rounded-lg border px-3 py-2 text-sm"
+            rows="1"
+            class="border-ligne block min-h-11 w-full resize-y rounded-lg border px-3 py-2 text-sm"
           />
         </label>
       </div>
-
-      <label class="block space-y-1.5">
-        <span class="text-texte-2 text-sm font-medium">{{
-          t('finance.advanceForm.attachment')
-        }}</span>
-        <input
-          type="file"
-          :accept="IMAGE_UPLOAD_ACCEPT"
-          class="border-ligne w-full rounded-lg border px-3 py-2 text-sm"
-          @change="onAttachmentChange"
-        />
-        <span v-if="attachment" class="text-texte-2 block text-xs">{{ attachment.name }}</span>
-        <AppAlert v-if="attachmentError" :message="attachmentError" />
-      </label>
+      <AppAlert v-if="attachmentError" :message="attachmentError" />
 
       <div v-if="selectedAccount" class="border-ligne rounded-lg border bg-sable p-3 text-sm">
         <p class="text-texte-3 text-xs font-medium uppercase">
@@ -358,14 +355,14 @@ onMounted(load)
         <MonoValue :value="formatMoney(selectedAccount.current_balance)" align="left" />
       </div>
 
-      <div class="flex justify-end gap-2">
+      <FormActions>
         <Button variant="ghost" type="button" @click="emit('cancel')">{{
           t('common.cancel')
         }}</Button>
         <Button variant="primary" type="submit" :loading="saving">
           {{ t('finance.advanceForm.submit') }}
         </Button>
-      </div>
+      </FormActions>
     </template>
   </form>
 </template>

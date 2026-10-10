@@ -289,7 +289,7 @@ const filteredTransactions = computed(() =>
     <Modal
       v-if="showDebtPaymentModal"
       :title="t('finance.debtPayment.title')"
-      max-width="max-w-2xl"
+      max-width="max-w-3xl"
       @close="showDebtPaymentModal = false"
     >
       <DebtPaymentForm @success="onDebtPaymentSuccess" @cancel="showDebtPaymentModal = false" />
@@ -298,7 +298,7 @@ const filteredTransactions = computed(() =>
     <Modal
       v-if="showAdvanceModal"
       :title="t('finance.advanceForm.title')"
-      max-width="max-w-2xl"
+      max-width="max-w-3xl"
       @close="showAdvanceModal = false"
     >
       <AdvanceForm @success="onAdvanceSuccess" @cancel="showAdvanceModal = false" />

@@ -6,7 +6,6 @@ const fetchCustomerLedger = vi.fn()
 const exportLedgerPdf = vi.fn()
 const exportCustomerPaymentPdf = vi.fn()
 const exportInvoicePdf = vi.fn()
-const allocateExistingCustomerPayment = vi.fn()
 const push = vi.fn()
 
 vi.mock('vue-router', () => ({
@@ -18,7 +17,6 @@ vi.mock('../api', () => ({
   fetchCustomerLedger: (...args: unknown[]) => fetchCustomerLedger(...args),
   exportLedgerPdf: (...args: unknown[]) => exportLedgerPdf(...args),
   exportCustomerPaymentPdf: (...args: unknown[]) => exportCustomerPaymentPdf(...args),
-  allocateExistingCustomerPayment: (...args: unknown[]) => allocateExistingCustomerPayment(...args),
 }))
 
 vi.mock('@/modules/sales/api', () => ({
@@ -181,7 +179,7 @@ describe('CustomerLedgerView', () => {
     expect(push).not.toHaveBeenCalled()
   })
 
-  it('clearly labels validated unpaid invoices and applies existing credit FIFO', async () => {
+  it('clearly labels validated unpaid invoices and no longer offers a manual Affecter step', async () => {
     fetchCustomerLedger.mockResolvedValue({
       customer: { id: 1, name: 'Client X', company_name: '' },
       outstanding_balance: '100.00',
@@ -220,28 +218,13 @@ describe('CustomerLedgerView', () => {
         },
       ],
     })
-    allocateExistingCustomerPayment.mockResolvedValue({})
 
     const wrapper = mount(CustomerLedgerView)
     await flushPromises()
 
     expect(wrapper.text()).toContain('Validée — non payée')
-    await wrapper.find('[data-test="allocate-existing-payment"]').trigger('click')
-    await flushPromises()
-
-    expect(
-      (wrapper.find('[data-test="allocation-amount-10"]').element as HTMLInputElement).value,
-    ).toBe('60.00')
-    expect(
-      (wrapper.find('[data-test="allocation-amount-11"]').element as HTMLInputElement).value,
-    ).toBe('15.00')
-    await wrapper.find('[data-test="submit-existing-allocation"]').trigger('submit')
-    await flushPromises()
-
-    expect(allocateExistingCustomerPayment).toHaveBeenCalledWith(7, [
-      { invoice: 10, amount: '60.00' },
-      { invoice: 11, amount: '15.00' },
-    ])
+    // Credit is now distributed to open invoices by the server (2026-10-10).
+    expect(wrapper.find('[data-test="allocate-existing-payment"]').exists()).toBe(false)
   })
 
   it('shows "Nouvelle avance" and the available advance when the customer owes nothing', async () => {

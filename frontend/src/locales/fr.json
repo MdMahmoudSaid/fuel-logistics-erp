@@ -770,6 +770,7 @@
       "invoiceOptionRemaining": "restant",
       "allocateToInvoices": "Répartir sur les factures",
       "addLine": "+ Ajouter une ligne",
+      "lineAmountRequired": "Saisissez le montant à affecter à chaque facture choisie.",
       "autoAllocate": "Répartir auto (FIFO)",
       "loadingInvoices": "Chargement des factures impayées…",
       "unallocatedCredit": "Crédit non alloué",

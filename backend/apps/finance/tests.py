@@ -3533,6 +3533,9 @@ def test_customer_payment_allocating_an_unallocated_credit_via_update_remains_al
     # a safe, available correction (e.g. "this payment was recorded as a
     # pure credit, now allocate it to the right invoice").
     admin_user, customer, invoice = _make_invoice_for_payment("EDIT-ALLOC-LATER")
+    # Still a draft when the receipt comes in: nothing open to pay yet, so
+    # the receipt stays a credit (open invoices are now paid automatically).
+    Invoice.objects.filter(pk=invoice.pk).update(status=Invoice.Status.DRAFT)
     bank_account = BankAccount.objects.create(name="Bank EDIT-ALLOC-LATER")
     create_response = finance_client.post(
         "/api/customer-payments/",
@@ -3548,6 +3551,7 @@ def test_customer_payment_allocating_an_unallocated_credit_via_update_remains_al
     assert create_response.status_code == 201, create_response.data
     payment_id = create_response.data["id"]
     assert not PaymentAllocation.objects.filter(payment_id=payment_id).exists()
+    Invoice.objects.filter(pk=invoice.pk).update(status=Invoice.Status.VALIDATED)
 
     response = finance_client.patch(
         f"/api/customer-payments/{payment_id}/",
@@ -6936,7 +6940,9 @@ def test_customer_payment_update_rejects_an_invoice_of_another_customer(finance_
     )
 
     assert response.status_code == 400
-    assert not PaymentAllocation.objects.filter(payment_id=created.data["id"]).exists()
+    assert not PaymentAllocation.objects.filter(
+        payment_id=created.data["id"], invoice=other_invoice
+    ).exists()
 
 
 # --- General expense paid by customers (client request 2026-09-25) ---
@@ -7211,3 +7217,75 @@ def test_bulk_validation_consumes_customer_advance_invoice_by_invoice():
     assert second.status == Invoice.Status.PARTIALLY_PAID
     assert PaymentAllocationService.get_invoice_outstanding(second) == Decimal("2000000.00")
     assert PaymentAllocationService.get_customer_available_credit(customer) == Decimal("0.00")
+
+
+# ---------------------------------------------------------------------------
+# Automatic distribution of customer receipts (client request 2026-10-10:
+# "quand on fait un paiement, il doit distribuer entre les factures") - no
+# manual "Affecter" step: unallocated credit is applied to open invoices,
+# oldest first, as soon as the payment is saved.
+# ---------------------------------------------------------------------------
+
+
+def _post_cash_receipt(finance_client, customer, amount, *, allocations=None, suffix="AUTO"):
+    cash_account = CashAccount.objects.create(name=f"Caisse {suffix}")
+    payload = {
+        "customer": customer.id,
+        "amount": amount,
+        "payment_date": "2026-10-10",
+        "method": CustomerPayment.Method.CASH,
+        "destination": CustomerPayment.Destination.CASH,
+        "cash_account": cash_account.id,
+    }
+    if allocations is not None:
+        payload["allocations"] = allocations
+    response = finance_client.post("/api/customer-payments/", payload, format="json")
+    assert response.status_code == 201, response.data
+    return CustomerPayment.objects.get(pk=response.data["id"])
+
+
+@pytest.mark.django_db
+def test_receipt_without_allocation_lines_pays_the_open_invoice(finance_client):
+    _admin, customer, invoice = _make_invoice_for_payment("AUTO1", total_amount=Decimal("2000000.00"))
+
+    payment = _post_cash_receipt(finance_client, customer, "2000000.00", suffix="AUTO1")
+
+    invoice.refresh_from_db()
+    assert invoice.status == Invoice.Status.PAID
+    assert PaymentAllocationService.get_payment_unallocated_amount(payment) == Decimal("0.00")
+    assert PaymentAllocationService.get_customer_available_credit(customer) == Decimal("0.00")
+
+
+@pytest.mark.django_db
+def test_receipt_marked_as_open_credit_still_pays_open_invoices_oldest_first(finance_client):
+    _admin, customer, older = _make_invoice_for_payment("AUTO2A", total_amount=Decimal("1000000.00"))
+    _admin2, _customer, newer = _make_invoice_for_payment(
+        "AUTO2B", total_amount=Decimal("3000000.00"), customer=customer
+    )
+    Invoice.objects.filter(pk=newer.pk).update(issued_date="2026-12-31")
+
+    _post_cash_receipt(
+        finance_client,
+        customer,
+        "2500000.00",
+        allocations=[{"invoice": None, "amount": "2500000.00"}],
+        suffix="AUTO2",
+    )
+
+    older.refresh_from_db()
+    newer.refresh_from_db()
+    assert older.status == Invoice.Status.PAID
+    assert newer.status == Invoice.Status.PARTIALLY_PAID
+    assert PaymentAllocationService.get_invoice_outstanding(newer) == Decimal("1500000.00")
+    assert PaymentAllocationService.get_customer_available_credit(customer) == Decimal("0.00")
+
+
+@pytest.mark.django_db
+def test_receipt_above_the_debt_keeps_only_the_surplus_as_advance(finance_client):
+    _admin, customer, invoice = _make_invoice_for_payment("AUTO3", total_amount=Decimal("2000000.00"))
+
+    _post_cash_receipt(finance_client, customer, "3000000.00", suffix="AUTO3")
+
+    invoice.refresh_from_db()
+    assert invoice.status == Invoice.Status.PAID
+    assert PaymentAllocationService.get_customer_available_credit(customer) == Decimal("1000000.00")

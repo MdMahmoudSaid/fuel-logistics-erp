@@ -480,7 +480,7 @@ function proofUrl(order: SupplierLedger['orders'][number]) {
     <Modal
       v-if="showPaymentForm && ledger"
       :title="t('finance.debtPayment.title')"
-      max-width="max-w-2xl"
+      max-width="max-w-3xl"
       @close="showPaymentForm = false"
     >
       <DebtPaymentForm
@@ -496,7 +496,7 @@ function proofUrl(order: SupplierLedger['orders'][number]) {
     <Modal
       v-if="showAdvanceForm && ledger"
       :title="t('finance.advanceForm.title')"
-      max-width="max-w-2xl"
+      max-width="max-w-3xl"
       @close="showAdvanceForm = false"
     >
       <AdvanceForm
