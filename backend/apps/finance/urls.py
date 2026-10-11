@@ -7,6 +7,7 @@ from .views import (
     CustomerPaymentViewSet,
     ExpenseCategoryViewSet,
     ExpenseViewSet,
+    OpeningDebtViewSet,
     ShareholderContributionViewSet,
     ShareholderLoanViewSet,
     ShareholderProfitDistributionViewSet,
@@ -28,6 +29,7 @@ router.register("customer-payments", CustomerPaymentViewSet, basename="customerp
 router.register("supplier-payments", SupplierPaymentViewSet, basename="supplierpayment")
 router.register("supplier-advances", SupplierAdvanceViewSet, basename="supplieradvance")
 router.register("transporter-advances", TransporterAdvanceViewSet, basename="transporteradvance")
+router.register("opening-debts", OpeningDebtViewSet, basename="openingdebt")
 router.register("transport-payments", TransportPaymentViewSet, basename="transportpayment")
 router.register("expenses", ExpenseViewSet, basename="expense")
 router.register("expense-categories", ExpenseCategoryViewSet, basename="expensecategory")

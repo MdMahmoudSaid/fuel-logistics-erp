@@ -6,10 +6,20 @@ import AppAlert from '@/components/ui/AppAlert.vue'
 import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { fetchCustomerLedger, exportLedgerPdf, exportCustomerPaymentPdf } from './api'
+import {
+  cancelCustomerPayment,
+  fetchCustomerLedger,
+  exportLedgerPdf,
+  exportCustomerPaymentPdf,
+} from './api'
 import { exportInvoicePdf } from '@/modules/sales/api'
+import { useAuthStore } from '@/stores/auth'
+import { confirmDialog } from '@/composables/useConfirmDialog'
 import Modal from '@/components/ui/Modal.vue'
 import PaymentAllocationForm from './PaymentAllocationForm.vue'
+import OpeningDebtForm from './OpeningDebtForm.vue'
+import OpeningDebtsCard from './OpeningDebtsCard.vue'
+import AdvancesCard, { type AdvanceRow } from './AdvancesCard.vue'
 import type { CustomerLedger } from './types'
 import { formatMoney, formatQuantity } from '@/utils/currency'
 import AppLogo from '@/components/AppLogo.vue'
@@ -20,7 +30,9 @@ import MonoValue from '@/components/ui/MonoValue.vue'
 
 const route = useRoute()
 const router = useRouter()
+const auth = useAuthStore()
 const { t, locale } = useI18n()
+const canCancelPayments = computed(() => auth.can('finance', 'cancel'))
 
 const ledger = ref<CustomerLedger | null>(null)
 const loading = ref(true)
@@ -31,6 +43,8 @@ const exportingInvoiceId = ref<number | null>(null)
 
 const customerId = computed(() => Number(route.params.id))
 const showPaymentModal = ref(false)
+const showDebtModal = ref(false)
+const cancellingPaymentId = ref<number | null>(null)
 const previewUrl = ref<string | null>(null)
 const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp']
 
@@ -54,6 +68,26 @@ async function load() {
 function onPaymentSuccess() {
   showPaymentModal.value = false
   load()
+}
+
+function onDebtSuccess() {
+  showDebtModal.value = false
+  load()
+}
+
+async function onCancelPayment(paymentId: number) {
+  if (!(await confirmDialog(t('finance.customerLedger.paymentCancelConfirm')))) return
+  cancellingPaymentId.value = paymentId
+  error.value = ''
+  try {
+    await cancelCustomerPayment(paymentId)
+    await load()
+  } catch (e) {
+    const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+    error.value = detail || t('finance.customerLedger.paymentCancelError')
+  } finally {
+    cancellingPaymentId.value = null
+  }
 }
 
 function printLedger() {
@@ -95,12 +129,39 @@ async function exportPaymentPdf(paymentId: number) {
 
 onMounted(load)
 
+// "Nouvelle dette" (2026-10-11): a prior debt is owed like an invoice.
+const openingDebtsTotal = computed(
+  () => ledger.value?.opening_debts?.reduce((total, debt) => total + Number(debt.amount), 0) ?? 0,
+)
 const totalInvoiced = computed(
   () =>
-    ledger.value?.invoices.reduce((total, invoice) => total + Number(invoice.total_amount), 0) ?? 0,
+    (ledger.value?.invoices.reduce((total, invoice) => total + Number(invoice.total_amount), 0) ??
+      0) + openingDebtsTotal.value,
 )
 const totalReceived = computed(
-  () => ledger.value?.payments.reduce((total, payment) => total + Number(payment.amount), 0) ?? 0,
+  () =>
+    ledger.value?.payments
+      .filter((payment) => !payment.is_reversed)
+      .reduce((total, payment) => total + Number(payment.amount), 0) ?? 0,
+)
+// Advances get their own section (2026-10-11); "Paiements" lists the rest.
+const regularPayments = computed(
+  () => ledger.value?.payments.filter((payment) => !payment.is_advance) ?? [],
+)
+const advanceRows = computed<AdvanceRow[]>(
+  () =>
+    ledger.value?.payments
+      .filter((payment) => payment.is_advance)
+      .map((payment) => ({
+        id: payment.id,
+        date: payment.payment_date,
+        reference: payment.reference,
+        account: payment.account_name ?? null,
+        amount: payment.amount,
+        remaining: payment.unallocated_amount,
+        proofUrl: payment.proof_url,
+        reversed: payment.is_reversed,
+      })) ?? [],
 )
 const openInvoices = computed(
   () =>
@@ -113,7 +174,7 @@ const openInvoices = computed(
 // The receipt is kept as open credit, consumed by the next validated invoices.
 const isAdvanceMode = computed(() => Number(ledger.value?.outstanding_balance ?? 0) <= 0)
 const lastPayment = computed(() => {
-  const payments = [...(ledger.value?.payments ?? [])]
+  const payments = (ledger.value?.payments ?? []).filter((payment) => !payment.is_reversed)
   return payments.sort((a, b) => b.payment_date.localeCompare(a.payment_date))[0] ?? null
 })
 
@@ -139,23 +200,28 @@ function invoiceStatusLabel(status: string, outstanding: string) {
     <div class="hidden items-center gap-2.5 print:mb-2 print:flex">
       <AppLogo :size="36" />
     </div>
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div class="flex flex-wrap items-center justify-between gap-3">
       <h1 class="font-display text-2xl leading-none font-semibold uppercase">
         {{ t('finance.customerLedger.title', { name: ledger?.customer.name ?? '…' }) }}
       </h1>
-      <div class="no-print flex flex-wrap gap-2">
-        <Button
-          v-if="ledger"
-          :variant="isAdvanceMode ? 'secondary' : 'primary'"
-          data-test="customer-new-payment"
-          @click="showPaymentModal = true"
-        >
-          {{
-            isAdvanceMode
-              ? t('finance.customerLedger.newAdvance')
-              : t('finance.customerLedger.newPayment')
-          }}
-        </Button>
+      <div class="no-print flex flex-wrap items-center gap-2">
+        <template v-if="ledger">
+          <Button variant="secondary" data-test="customer-new-debt" @click="showDebtModal = true">
+            {{ t('finance.openingDebt.newDebt') }}
+          </Button>
+          <Button
+            :variant="isAdvanceMode ? 'secondary' : 'primary'"
+            data-test="customer-new-payment"
+            @click="showPaymentModal = true"
+          >
+            {{
+              isAdvanceMode
+                ? t('finance.customerLedger.newAdvance')
+                : t('finance.customerLedger.newPayment')
+            }}
+          </Button>
+          <span class="bg-ligne mx-1 hidden h-8 w-px sm:block" aria-hidden="true" />
+        </template>
         <Button v-if="ledger" variant="ghost" @click="printLedger">
           {{ t('reports.print') }}
         </Button>
@@ -178,6 +244,17 @@ function invoiceStatusLabel(status: string, outstanding: string) {
             {{ t('finance.customerLedger.totalInvoiced') }}
           </p>
           <MonoValue class="font-semibold" align="left" :value="formatMoney(totalInvoiced)" />
+          <p
+            v-if="openingDebtsTotal > 0"
+            class="text-texte-3 mt-0.5 text-xs"
+            data-test="customer-opening-debts-included"
+          >
+            {{
+              t('finance.customerLedger.openingDebtsIncluded', {
+                amount: formatMoney(openingDebtsTotal),
+              })
+            }}
+          </p>
         </div>
         <div class="border-ligne rounded-lg border bg-white p-4">
           <p class="text-texte-2 text-xs font-semibold uppercase">
@@ -224,6 +301,12 @@ function invoiceStatusLabel(status: string, outstanding: string) {
           />
         </div>
       </section>
+
+      <OpeningDebtsCard
+        :debts="ledger.opening_debts ?? []"
+        @changed="load"
+        @preview="previewUrl = $event"
+      />
 
       <Card :title="t('finance.customerLedger.invoices')">
         <div class="overflow-x-auto">
@@ -339,15 +422,21 @@ function invoiceStatusLabel(status: string, outstanding: string) {
                 <th class="px-2 py-1.5 font-medium text-right">
                   {{ t('finance.customerLedger.paymentsTable.unallocated') }}
                 </th>
-                <th class="px-2 py-1.5 font-medium">Justificatif</th>
+                <th class="px-2 py-1.5 font-medium">
+                  {{ t('finance.customerLedger.paymentStatus') }}
+                </th>
+                <th class="px-2 py-1.5 font-medium">
+                  {{ t('finance.customerLedger.paymentsTable.proof') }}
+                </th>
                 <th class="px-2 py-1.5 font-medium"></th>
               </tr>
             </thead>
             <tbody>
               <tr
-                v-for="payment in ledger.payments"
+                v-for="payment in regularPayments"
                 :key="payment.id"
                 class="border-ligne border-b last:border-0"
+                :class="payment.is_reversed ? 'opacity-60' : ''"
               >
                 <td class="px-2 py-1.5">{{ payment.payment_date }}</td>
                 <td class="px-2 py-1.5">{{ t(`paymentMethod.${payment.method}`) }}</td>
@@ -356,10 +445,21 @@ function invoiceStatusLabel(status: string, outstanding: string) {
                 </td>
                 <td class="px-2 py-1.5">{{ payment.reference || '—' }}</td>
                 <td class="text-texte px-2 py-1.5 text-right font-medium">
-                  <MonoValue :value="formatMoney(payment.amount)" />
+                  <MonoValue
+                    :class="payment.is_reversed ? 'text-texte-3 line-through' : ''"
+                    :value="formatMoney(payment.amount)"
+                  />
                 </td>
                 <td class="px-2 py-1.5 text-right">
-                  <MonoValue :value="formatMoney(payment.unallocated_amount)" />
+                  <MonoValue
+                    :value="formatMoney(payment.is_reversed ? 0 : payment.unallocated_amount)"
+                  />
+                </td>
+                <td class="px-2 py-1.5">
+                  <Badge v-if="payment.is_reversed" variant="critique">
+                    {{ t('finance.customerLedger.cancelled') }}
+                  </Badge>
+                  <span v-else class="text-texte-3">—</span>
                 </td>
                 <td class="px-2 py-1.5">
                   <button
@@ -368,7 +468,7 @@ function invoiceStatusLabel(status: string, outstanding: string) {
                     class="text-bitume underline"
                     @click="previewUrl = payment.proof_url"
                   >
-                    Voir justificatif
+                    {{ t('finance.partyLedger.viewProof') }}
                   </button>
                   <span v-else class="text-texte-3">—</span>
                 </td>
@@ -383,11 +483,21 @@ function invoiceStatusLabel(status: string, outstanding: string) {
                     >
                       {{ t('finance.partyLedger.pdf') }}
                     </button>
+                    <button
+                      v-if="canCancelPayments && !payment.is_reversed && !payment.is_indirect"
+                      type="button"
+                      data-test="customer-payment-cancel"
+                      class="text-critique disabled:opacity-50"
+                      :disabled="cancellingPaymentId === payment.id"
+                      @click="onCancelPayment(payment.id)"
+                    >
+                      {{ t('finance.customerLedger.paymentCancel') }}
+                    </button>
                   </div>
                 </td>
               </tr>
-              <tr v-if="ledger.payments.length === 0">
-                <td colspan="8" class="text-texte-3 px-2 py-4 text-center">
+              <tr v-if="regularPayments.length === 0">
+                <td colspan="9" class="text-texte-3 px-2 py-4 text-center">
                   {{ t('finance.customerLedger.noPayments') }}
                 </td>
               </tr>
@@ -395,6 +505,16 @@ function invoiceStatusLabel(status: string, outstanding: string) {
           </table>
         </div>
       </Card>
+
+      <AdvancesCard
+        :rows="advanceRows"
+        :exporting-id="exportingPaymentId"
+        :cancelling-id="cancellingPaymentId"
+        :can-cancel="canCancelPayments"
+        @pdf="exportPaymentPdf"
+        @preview="previewUrl = $event"
+        @cancel="onCancelPayment"
+      />
     </template>
 
     <Modal
@@ -408,6 +528,21 @@ function invoiceStatusLabel(status: string, outstanding: string) {
         :advance-mode="isAdvanceMode"
         @success="onPaymentSuccess"
         @cancel="showPaymentModal = false"
+      />
+    </Modal>
+
+    <Modal
+      v-if="showDebtModal && ledger"
+      :title="t('finance.openingDebt.newDebt')"
+      max-width="max-w-3xl"
+      @close="showDebtModal = false"
+    >
+      <OpeningDebtForm
+        party-type="customer"
+        :party-id="customerId"
+        :party-name="ledger.customer.name"
+        @success="onDebtSuccess"
+        @cancel="showDebtModal = false"
       />
     </Modal>
 

@@ -24,6 +24,7 @@ from .models import (
     Expense,
     ExpenseAllocation,
     ExpenseCategory,
+    OpeningDebt,
     PaymentAllocation,
     Shareholder,
     ShareholderContribution,
@@ -44,6 +45,8 @@ from .services import (
     AdvanceService,
     ControlledDebtPaymentService,
     FinancePostingService,
+    OpeningDebtError,
+    OpeningDebtService,
     PaymentAllocationService,
     ShareholderContributionError,
     ShareholderContributionService,
@@ -85,6 +88,82 @@ class CashAccountSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_at", "updated_at"]
 
 
+def _account_name(obj) -> str | None:
+    """Name of the bank/cash account a payment or advance went through."""
+    account = obj.bank_account if obj.bank_account_id else obj.cash_account
+    return account.name if account else None
+
+
+class OpeningDebtSerializer(serializers.ModelSerializer):
+    """"Nouvelle dette" (2026-10-11). Create sends exactly one of customer/
+    supplier/transporter; paid/remaining/status are always derived."""
+
+    attachment = serializers.FileField(write_only=True, required=False, allow_null=True, default=None)
+    proof_url = serializers.SerializerMethodField()
+    paid_amount = serializers.SerializerMethodField()
+    remaining_amount = serializers.SerializerMethodField()
+    status = serializers.SerializerMethodField()
+    party_type = serializers.SerializerMethodField()
+
+    class Meta:
+        model = OpeningDebt
+        fields = [
+            "id", "customer", "supplier", "transporter", "party_type", "amount", "date",
+            "reference", "notes", "attachment", "proof_url", "paid_amount", "remaining_amount",
+            "status", "cancelled_at", "recorded_by", "created_at", "updated_at",
+        ]
+        read_only_fields = ["id", "cancelled_at", "recorded_by", "created_at", "updated_at"]
+
+    def get_proof_url(self, obj) -> str | None:
+        if not obj.document_id or not obj.document.file:
+            return None
+        return obj.document.file.url
+
+    def get_paid_amount(self, obj) -> str:
+        return f"{OpeningDebtService.describe(obj)['paid_amount']:.2f}"
+
+    def get_remaining_amount(self, obj) -> str:
+        return f"{OpeningDebtService.describe(obj)['remaining_amount']:.2f}"
+
+    def get_status(self, obj) -> str:
+        return OpeningDebtService.describe(obj)["status"]
+
+    def get_party_type(self, obj) -> str:
+        return OpeningDebtService.party_type(obj)
+
+    def validate_attachment(self, value):
+        if value is None:
+            return value
+        return validate_image_upload(value)
+
+    def validate(self, data):
+        if self.instance is not None:
+            raise serializers.ValidationError(
+                "Une dette enregistree ne se modifie pas : annulez-la puis saisissez-la de nouveau."
+            )
+        parties = [field for field in OpeningDebtService.PARTY_TYPES if data.get(field)]
+        if len(parties) != 1:
+            raise serializers.ValidationError("Choisissez un seul client, fournisseur ou transporteur.")
+        data["party_type"] = parties[0]
+        return data
+
+    def create(self, validated_data):
+        party_type = validated_data["party_type"]
+        try:
+            return OpeningDebtService.create(
+                party_type=party_type,
+                party_id=validated_data[party_type].id,
+                amount=validated_data["amount"],
+                date=validated_data["date"],
+                reference=validated_data.get("reference", ""),
+                notes=validated_data.get("notes", ""),
+                attachment=validated_data.get("attachment"),
+                actor=self.context["request"].user,
+            )
+        except OpeningDebtError as exc:
+            raise serializers.ValidationError(str(exc))
+
+
 class PaymentAllocationSerializer(serializers.ModelSerializer):
     """Read-only nested representation - rows are only ever written by
     PaymentAllocationService.allocate_payment() (guide Section 8.4)."""
@@ -93,7 +172,7 @@ class PaymentAllocationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = PaymentAllocation
-        fields = ["id", "payment", "invoice", "invoice_number", "amount", "created_at"]
+        fields = ["id", "payment", "invoice", "invoice_number", "opening_debt", "amount", "created_at"]
         read_only_fields = fields
 
 
@@ -134,6 +213,7 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
     allocations_detail = PaymentAllocationSerializer(source="allocations", many=True, read_only=True)
     allocations = InvoiceAllocationInputSerializer(many=True, write_only=True, required=False)
     unallocated_amount = serializers.SerializerMethodField()
+    account_name = serializers.SerializerMethodField()
     proof_url = serializers.SerializerMethodField()
     proof = serializers.FileField(write_only=True, required=False, allow_null=True)
 
@@ -159,8 +239,8 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
         model = CustomerPayment
         fields = [
             "id", "customer", "customer_detail", "amount", "payment_date", "method",
-            "bank_account", "cash_account", "reference", "is_indirect", "destination", "note",
-            "recorded_by", "recorded_by_detail",
+            "bank_account", "cash_account", "account_name", "reference", "is_indirect", "destination",
+            "is_advance", "note", "recorded_by", "recorded_by_detail",
             "allocations", "allocations_detail", "proof", "proof_url",
             "unallocated_amount", "is_reversed",
             "created_at", "updated_at",
@@ -169,6 +249,9 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
 
     def get_unallocated_amount(self, obj) -> str:
         return f"{PaymentAllocationService.get_payment_unallocated_amount(obj):.2f}"
+
+    def get_account_name(self, obj) -> str | None:
+        return _account_name(obj)
 
     def get_proof_url(self, obj) -> str | None:
         content_type = ContentType.objects.get_for_model(CustomerPayment)
@@ -334,7 +417,7 @@ class SupplierPaymentSerializer(serializers.ModelSerializer):
     class Meta:
         model = SupplierPayment
         fields = [
-            "id", "supplier", "supplier_detail", "supplier_order", "amount", "payment_date",
+            "id", "supplier", "supplier_detail", "supplier_order", "opening_debt", "amount", "payment_date",
             "method", "bank_account", "cash_account", "is_advance", "reference",
             "recorded_by", "recorded_by_detail", "proof_url", "is_reversed",
             "created_at", "updated_at",
@@ -342,7 +425,7 @@ class SupplierPaymentSerializer(serializers.ModelSerializer):
         # is_reversed is read-only here: only SupplierPaymentCancellationService.
         # cancel_supplier_payment (via the /cancel/ action) may ever set it -
         # never a plain PATCH, which would skip the treasury reversal.
-        read_only_fields = ["id", "recorded_by", "is_reversed", "created_at", "updated_at"]
+        read_only_fields = ["id", "opening_debt", "recorded_by", "is_reversed", "created_at", "updated_at"]
 
     def get_proof_url(self, obj) -> str | None:
         payment_content_type = ContentType.objects.get_for_model(SupplierPayment)
@@ -446,15 +529,19 @@ class SupplierAdvanceSerializer(serializers.ModelSerializer):
     attachment = serializers.FileField(write_only=True, required=False, allow_null=True, default=None)
     proof_url = serializers.SerializerMethodField()
     remaining_amount = serializers.DecimalField(max_digits=16, decimal_places=2, read_only=True)
+    account_name = serializers.SerializerMethodField()
 
     class Meta:
         model = SupplierAdvance
         fields = [
             "id", "supplier", "supplier_detail", "bank_account", "cash_account",
             "amount", "date", "reference", "notes", "attachment", "proof_url",
-            "remaining_amount", "recorded_by", "created_at", "updated_at",
+            "remaining_amount", "account_name", "recorded_by", "created_at", "updated_at",
         ]
         read_only_fields = ["id", "remaining_amount", "recorded_by", "created_at", "updated_at"]
+
+    def get_account_name(self, obj) -> str | None:
+        return _account_name(obj)
 
     def get_proof_url(self, obj) -> str | None:
         if not obj.document_id or not obj.document.file:
@@ -503,15 +590,19 @@ class TransporterAdvanceSerializer(serializers.ModelSerializer):
     attachment = serializers.FileField(write_only=True, required=False, allow_null=True, default=None)
     proof_url = serializers.SerializerMethodField()
     remaining_amount = serializers.DecimalField(max_digits=16, decimal_places=2, read_only=True)
+    account_name = serializers.SerializerMethodField()
 
     class Meta:
         model = TransporterAdvance
         fields = [
             "id", "transporter", "transporter_detail", "bank_account", "cash_account",
             "amount", "date", "reference", "notes", "attachment", "proof_url",
-            "remaining_amount", "settled", "created_at", "updated_at",
+            "remaining_amount", "settled", "account_name", "created_at", "updated_at",
         ]
         read_only_fields = ["id", "remaining_amount", "settled", "created_at", "updated_at"]
+
+    def get_account_name(self, obj) -> str | None:
+        return _account_name(obj)
 
     def get_proof_url(self, obj) -> str | None:
         if not obj.document_id or not obj.document.file:

@@ -7,7 +7,12 @@ import AppAlert from '@/components/ui/AppAlert.vue'
 import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { fetchTransporterLedger, exportLedgerPdf, exportTransportPaymentPdf } from './api'
+import {
+  exportAdvancePdf,
+  exportLedgerPdf,
+  exportTransportPaymentPdf,
+  fetchTransporterLedger,
+} from './api'
 import type { TransporterLedger } from './types'
 import { formatMoney } from '@/utils/currency'
 import AppLogo from '@/components/AppLogo.vue'
@@ -15,6 +20,9 @@ import Badge from '@/components/ui/Badge.vue'
 import Button from '@/components/ui/Button.vue'
 import Card from '@/components/ui/Card.vue'
 import AdvanceForm from './AdvanceForm.vue'
+import AdvancesCard, { type AdvanceRow } from './AdvancesCard.vue'
+import OpeningDebtForm from './OpeningDebtForm.vue'
+import OpeningDebtsCard from './OpeningDebtsCard.vue'
 import DebtPaymentForm from './DebtPaymentForm.vue'
 import Modal from '@/components/ui/Modal.vue'
 import MonoValue from '@/components/ui/MonoValue.vue'
@@ -28,6 +36,8 @@ const loading = ref(true)
 const error = ref('')
 const showPaymentModal = ref(false)
 const showAdvanceForm = ref(false)
+const showDebtForm = ref(false)
+const exportingAdvanceId = ref<number | null>(null)
 const previewUrl = ref<string | null>(null)
 const exporting = ref(false)
 const exportingPaymentId = ref<number | null>(null)
@@ -71,6 +81,35 @@ async function onAdvanceSaved() {
   await load()
 }
 
+async function onDebtSaved() {
+  showDebtForm.value = false
+  await load()
+}
+
+const advanceRows = computed<AdvanceRow[]>(
+  () =>
+    ledger.value?.advances.map((advance) => ({
+      id: advance.id,
+      date: advance.date,
+      reference: advance.reference,
+      account: advance.account_name ?? null,
+      amount: advance.amount,
+      remaining: advance.remaining_amount,
+      proofUrl: advance.proof_url,
+    })) ?? [],
+)
+
+async function exportAdvance(advanceId: number) {
+  exportingAdvanceId.value = advanceId
+  try {
+    await exportAdvancePdf('transporter', advanceId, locale.value)
+  } catch {
+    error.value = t('reports.exportError')
+  } finally {
+    exportingAdvanceId.value = null
+  }
+}
+
 function printLedger() {
   window.print()
 }
@@ -112,25 +151,27 @@ function badgeVariant(status: string) {
     <div class="hidden items-center gap-2.5 print:mb-2 print:flex">
       <AppLogo :size="36" />
     </div>
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div class="flex flex-wrap items-center justify-between gap-3">
       <h1 class="font-display text-2xl leading-none font-semibold uppercase">
         {{ t('finance.transporterLedger.title', { name: ledger?.transporter.name ?? '…' }) }}
       </h1>
-      <div class="no-print flex flex-wrap gap-2">
-        <Button
-          v-if="ledger && Number(ledger.summary.net_balance) < 0"
-          variant="primary"
-          @click="showPaymentModal = true"
-        >
-          {{ t('finance.transporterLedger.newPayment') }}
-        </Button>
-        <Button
-          v-if="ledger && Number(ledger.summary.net_balance) >= 0"
-          variant="secondary"
-          @click="showAdvanceForm = true"
-        >
-          {{ t('finance.advanceForm.title') }}
-        </Button>
+      <div class="no-print flex flex-wrap items-center gap-2">
+        <template v-if="ledger">
+          <Button variant="secondary" data-test="transporter-new-debt" @click="showDebtForm = true">
+            {{ t('finance.openingDebt.newDebt') }}
+          </Button>
+          <Button
+            v-if="Number(ledger.summary.net_balance) < 0"
+            variant="primary"
+            @click="showPaymentModal = true"
+          >
+            {{ t('finance.transporterLedger.newPayment') }}
+          </Button>
+          <Button v-else variant="secondary" @click="showAdvanceForm = true">
+            {{ t('finance.advanceForm.title') }}
+          </Button>
+          <span class="bg-ligne mx-1 hidden h-8 w-px sm:block" aria-hidden="true" />
+        </template>
         <Button v-if="ledger" variant="ghost" @click="printLedger">
           {{ t('reports.print') }}
         </Button>
@@ -192,6 +233,12 @@ function badgeVariant(status: string) {
           </p>
         </div>
       </section>
+
+      <OpeningDebtsCard
+        :debts="ledger.opening_debts ?? []"
+        @changed="load"
+        @preview="previewUrl = $event"
+      />
 
       <Card :title="t('finance.transporterLedger.trucks')">
         <ul class="divide-ligne divide-y text-sm">
@@ -283,47 +330,12 @@ function badgeVariant(status: string) {
         </div>
       </Card>
 
-      <Card :title="t('finance.transporterLedger.advances')">
-        <div class="overflow-x-auto">
-          <table class="w-full text-start text-sm">
-            <thead>
-              <tr class="border-ligne text-texte-2 border-b">
-                <th class="px-2 py-1.5 font-medium">
-                  {{ t('finance.transporterLedger.advancesTable.date') }}
-                </th>
-                <th class="px-2 py-1.5 font-medium">
-                  {{ t('finance.transporterLedger.advancesTable.reference') }}
-                </th>
-                <th class="px-2 py-1.5 font-medium">
-                  {{ t('finance.transporterLedger.advancesTable.settled') }}
-                </th>
-                <th class="px-2 py-1.5 font-medium text-right">
-                  {{ t('finance.transporterLedger.advancesTable.amount') }}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="advance in ledger.advances"
-                :key="advance.id"
-                class="border-ligne border-b last:border-0"
-              >
-                <td class="px-2 py-1.5">{{ advance.date }}</td>
-                <td class="px-2 py-1.5">{{ advance.reference || '—' }}</td>
-                <td class="px-2 py-1.5">{{ advance.settled ? t('common.yes') : t('common.no') }}</td>
-                <td class="text-texte px-2 py-1.5 text-right font-medium">
-                  <MonoValue :value="formatMoney(advance.amount)" />
-                </td>
-              </tr>
-              <tr v-if="ledger.advances.length === 0">
-                <td colspan="4" class="text-texte-3 px-2 py-4 text-center">
-                  {{ t('finance.transporterLedger.noAdvances') }}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </Card>
+      <AdvancesCard
+        :rows="advanceRows"
+        :exporting-id="exportingAdvanceId"
+        @pdf="exportAdvance"
+        @preview="previewUrl = $event"
+      />
 
       <Card :title="t('finance.partyLedger.entriesTitle')">
         <div class="overflow-x-auto">
@@ -350,7 +362,9 @@ function badgeVariant(status: string) {
                 <td class="px-3 py-2.5">{{ entry.date }}</td>
                 <td class="px-3 py-2.5">{{ t(`finance.partyLedger.entryTypes.${entry.type}`) }}</td>
                 <td class="px-3 py-2.5">{{ entry.reference || '—' }}</td>
-                <td class="px-3 py-2.5 text-end"><MonoValue :value="formatMoney(entry.amount)" /></td>
+                <td class="px-3 py-2.5 text-end">
+                  <MonoValue :value="formatMoney(entry.amount)" />
+                </td>
                 <td class="px-3 py-2.5">
                   <button
                     v-if="entry.proof_url"
@@ -403,6 +417,21 @@ function badgeVariant(status: string) {
         lock-party
         @success="onAdvanceSaved"
         @cancel="showAdvanceForm = false"
+      />
+    </Modal>
+
+    <Modal
+      v-if="showDebtForm && ledger"
+      :title="t('finance.openingDebt.newDebt')"
+      max-width="max-w-3xl"
+      @close="showDebtForm = false"
+    >
+      <OpeningDebtForm
+        party-type="transporter"
+        :party-id="ledger.transporter.id"
+        :party-name="ledger.transporter.name"
+        @success="onDebtSaved"
+        @cancel="showDebtForm = false"
       />
     </Modal>
 

@@ -11,6 +11,7 @@
 from decimal import Decimal
 
 from apps.core.request_cache import memoize_per_request
+from apps.finance.models import OpeningDebt
 from apps.finance.services import ControlledDebtPaymentService
 from apps.purchasing.models import SupplierOrder
 from apps.suppliers.models import Supplier
@@ -28,10 +29,12 @@ class SupplierOutstandingReportQuery:
         # "As of today" report: the period params are accepted and ignored
         # (the Reports page hides the period filter for it; a direct call with
         # dates must not fail).
-        supplier_ids = (
+        supplier_ids = set(
             SupplierOrder.objects.filter(status=SupplierOrder.Status.CONFIRMED)
             .values_list("supplier_id", flat=True)
-            .distinct()
+        ) | set(
+            OpeningDebt.objects.filter(cancelled_at__isnull=True, supplier__isnull=False)
+            .values_list("supplier_id", flat=True)
         )
         rows = []
         for supplier in Supplier.objects.filter(id__in=supplier_ids):

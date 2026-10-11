@@ -9,6 +9,7 @@
 
 from apps.core.request_cache import memoize_per_request
 from apps.customers.models import Customer
+from apps.finance.models import OpeningDebt
 from apps.finance.services import PaymentAllocationService
 from apps.sales.models import Invoice
 
@@ -24,10 +25,12 @@ class CustomerOutstandingReportQuery:
         # "As of today" report: the period params are accepted and ignored
         # (the Reports page hides the period filter for it; a direct call with
         # dates must not fail).
-        customer_ids = (
+        customer_ids = set(
             Invoice.objects.exclude(status=Invoice.Status.CANCELLED)
             .values_list("sale__customer_id", flat=True)
-            .distinct()
+        ) | set(
+            OpeningDebt.objects.filter(cancelled_at__isnull=True, customer__isnull=False)
+            .values_list("customer_id", flat=True)
         )
         customers = Customer.objects.filter(id__in=customer_ids)
         return [

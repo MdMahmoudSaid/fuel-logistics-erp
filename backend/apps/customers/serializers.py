@@ -53,7 +53,12 @@ class CustomerSerializer(serializers.ModelSerializer):
     def get_outstanding_balance(self, obj) -> str:
         invoiced = Decimal(self.get_total_invoiced(obj))
         collected = Decimal(self.get_total_collected(obj))
-        return f"{max(invoiced - collected, Decimal('0.00')):.2f}"
+        # "Nouvelle dette" (2026-10-11): owed exactly like an invoice.
+        opening = (
+            obj.opening_debts.filter(cancelled_at__isnull=True).aggregate(total=Sum("amount"))["total"]
+            or Decimal("0.00")
+        )
+        return f"{max(invoiced + opening - collected, Decimal('0.00')):.2f}"
 
     def get_open_invoices_count(self, obj) -> int:
         return obj.sales.filter(invoice__status__in=["VALIDATED", "PARTIALLY_PAID"]).count()

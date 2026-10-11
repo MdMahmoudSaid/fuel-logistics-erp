@@ -18,7 +18,7 @@ from decimal import Decimal
 from django.db.models import Q, Sum
 
 from apps.customers.models import Customer
-from apps.finance.models import CustomerPayment, PaymentAllocation
+from apps.finance.models import CustomerPayment, OpeningDebt, PaymentAllocation
 from apps.sales.models import Invoice
 
 ZERO = Decimal("0.00")
@@ -59,6 +59,23 @@ class GeneralReceivableReportQuery:
             if invoice.total_amount - allocated != ZERO:
                 invoice_lines[customer_id].append((invoice, allocated))
 
+        # "Nouvelle dette" (2026-10-11): owed like an invoice, listed first.
+        opening_debts = (
+            OpeningDebt.objects.filter(cancelled_at__isnull=True, customer__isnull=False)
+            .annotate(
+                allocated=Sum(
+                    "allocations__amount", filter=~Q(allocations__payment__is_reversed=True)
+                )
+            )
+            .order_by("date", "id")
+        )
+        opening_lines = defaultdict(list)
+        for debt in opening_debts:
+            allocated = debt.allocated or ZERO
+            invoiced[debt.customer_id] += debt.amount
+            if debt.amount - allocated != ZERO:
+                opening_lines[debt.customer_id].append((debt, allocated))
+
         received = {
             row["customer_id"]: row["total"]
             for row in CustomerPayment.objects.exclude(is_reversed=True)
@@ -67,10 +84,11 @@ class GeneralReceivableReportQuery:
         }
         allocated_on_valid_invoices = {
             row["payment__customer_id"]: row["total"]
-            for row in PaymentAllocation.objects.filter(
-                payment__is_reversed=False, invoice__isnull=False
+            for row in PaymentAllocation.objects.filter(payment__is_reversed=False)
+            .filter(
+                Q(invoice__isnull=False) & ~Q(invoice__status=Invoice.Status.CANCELLED)
+                | Q(opening_debt__isnull=False, opening_debt__cancelled_at__isnull=True)
             )
-            .exclude(invoice__status=Invoice.Status.CANCELLED)
             .values("payment__customer_id")
             .annotate(total=Sum("amount"))
         }
@@ -82,6 +100,18 @@ class GeneralReceivableReportQuery:
                 continue
             credit = (received.get(customer.id) or ZERO) - (allocated_on_valid_invoices.get(customer.id) or ZERO)
             customer_rows = [
+                {
+                    "customer": customer.name,
+                    "line_type": "opening_debt",
+                    "reference": debt.reference or None,
+                    "date": debt.date,
+                    "trip_reference": None,
+                    "invoiced_amount": debt.amount,
+                    "received_amount": allocated,
+                    "remaining_amount": debt.amount - allocated,
+                }
+                for debt, allocated in opening_lines[customer.id]
+            ] + [
                 {
                     "customer": customer.name,
                     "line_type": "invoice",

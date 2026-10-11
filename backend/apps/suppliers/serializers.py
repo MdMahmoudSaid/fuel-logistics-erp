@@ -65,7 +65,12 @@ class SupplierSerializer(serializers.ModelSerializer):
         # (apps.finance.services), which this must stay consistent with.
         total_purchased = Decimal(self.get_total_purchased(obj))
         paid = Decimal(self.get_total_paid(obj))
-        return f"{max(total_purchased - paid, Decimal('0.00')):.2f}"
+        # "Nouvelle dette" (2026-10-11): its payments are in total_paid.
+        opening = (
+            obj.opening_debts.filter(cancelled_at__isnull=True).aggregate(total=Sum("amount"))["total"]
+            or Decimal("0.00")
+        )
+        return f"{max(total_purchased + opening - paid, Decimal('0.00')):.2f}"
 
     def get_total_reliquat(self, obj) -> str:
         total = sum(

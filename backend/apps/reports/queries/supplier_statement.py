@@ -6,7 +6,7 @@
 # with SupplierPayment rows (credit, what has been paid) into one running
 # balance.
 
-from apps.finance.models import SupplierPayment
+from apps.finance.models import OpeningDebt, SupplierPayment
 from apps.purchasing.models import SupplierOrder
 from apps.reports.queries.statement_common import opening_balance, statement_rows
 
@@ -28,7 +28,18 @@ class SupplierStatementQuery:
         payments = SupplierPayment.objects.filter(supplier_id=supplier_id).exclude(
             is_reversed=True
         )
+        opening_debts = OpeningDebt.objects.filter(supplier_id=supplier_id, cancelled_at__isnull=True)
         return [
+            {
+                "date": debt.date,
+                "type": "OPENING_DEBT",
+                "reference": debt.reference or f"DET-{debt.id}",
+                "debit": debt.amount,
+                "credit": None,
+                "sort_key": (debt.date, -1, debt.id),
+            }
+            for debt in opening_debts
+        ] + [
             {
                 "date": order.purchase_date,
                 "type": "PURCHASE",

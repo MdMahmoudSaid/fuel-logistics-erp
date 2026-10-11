@@ -79,8 +79,12 @@ class SupplierViewSet(viewsets.ModelViewSet):
         # "suppliers.Supplier" only via string FK), so a module-level import
         # here would run the dependency the wrong way round
         # (docs/PHASE_5_PLAN.md Etape 8: "achats + acomptes/avances fournisseurs").
-        from apps.finance.serializers import SupplierPaymentSerializer
-        from apps.finance.services import SupplierLedgerService
+        from apps.finance.serializers import (
+            OpeningDebtSerializer,
+            SupplierAdvanceSerializer,
+            SupplierPaymentSerializer,
+        )
+        from apps.finance.services import OpeningDebtService, SupplierLedgerService
 
         ledger_data = SupplierLedgerService.get_ledger(supplier)
 
@@ -95,7 +99,12 @@ class SupplierViewSet(viewsets.ModelViewSet):
         total_paid = sum(
             (p.amount for p in payments if not p.is_reversed), Decimal("0.00")
         )
-        total_purchased = sum((o.total_amount for o in confirmed_orders), Decimal("0.00"))
+        opening_debts = OpeningDebtService.active(supplier=supplier)
+        # "Nouvelle dette" (2026-10-11) is owed like an order; its payments
+        # are already in total_paid.
+        total_purchased = sum((o.total_amount for o in confirmed_orders), Decimal("0.00")) + sum(
+            (debt.amount for debt in opening_debts), Decimal("0.00")
+        )
         # Business rule reversal (client request, 2026-09-10): the debt owed
         # to this supplier ("outstanding_balance") is the full confirmed
         # order total, due immediately on confirmation - see
@@ -112,6 +121,14 @@ class SupplierViewSet(viewsets.ModelViewSet):
                 "reliquat_summary": reliquat_summary,
                 "payments": SupplierPaymentSerializer(
                     payments, many=True, context={"request": request}
+                ).data,
+                "opening_debts": OpeningDebtSerializer(
+                    opening_debts, many=True, context={"request": request}
+                ).data,
+                "advances": SupplierAdvanceSerializer(
+                    supplier.advances.select_related("bank_account", "cash_account", "document"),
+                    many=True,
+                    context={"request": request},
                 ).data,
                 "total_purchased": f"{total_purchased:.2f}",
                 "total_paid": f"{total_paid:.2f}",

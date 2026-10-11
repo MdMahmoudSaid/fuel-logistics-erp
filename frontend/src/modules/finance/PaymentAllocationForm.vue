@@ -42,6 +42,8 @@ const customerResource = createResourceApi<CustomerBrief>('/customers/')
 const customers = ref<CustomerBrief[]>([])
 const unpaidInvoices = ref<CustomerLedgerInvoice[]>([])
 const outstandingBalance = ref<string | null>(null)
+// "Nouvelle dette" (2026-10-11): settled automatically before the invoices.
+const openingDebtRemaining = ref(0)
 const loadingInvoices = ref(false)
 
 const form = ref({
@@ -99,6 +101,7 @@ const error = ref('')
 async function loadInvoices() {
   unpaidInvoices.value = []
   outstandingBalance.value = null
+  openingDebtRemaining.value = 0
   if (!form.value.customer) return
   loadingInvoices.value = true
   try {
@@ -107,6 +110,10 @@ async function loadInvoices() {
       (inv) => Number(inv.outstanding) > 0 && inv.status !== 'CANCELLED' && inv.status !== 'DRAFT',
     )
     outstandingBalance.value = ledger.outstanding_balance
+    openingDebtRemaining.value = (ledger.opening_debts ?? []).reduce(
+      (total, debt) => total + Number(debt.remaining_amount),
+      0,
+    )
   } finally {
     loadingInvoices.value = false
   }
@@ -271,6 +278,8 @@ async function onSubmit() {
       reference: form.value.reference,
       note: form.value.note,
       destination: form.value.destination,
+      // Listed in the ledger's own "Avances" section (2026-10-11).
+      is_advance: props.advanceMode ? true : undefined,
       allocations,
     }
     // BANK/CASH need their matching account (the form only offers these two
@@ -482,6 +491,15 @@ async function onSubmit() {
           <p class="text-texte-2 text-sm font-medium" data-test="outstanding-balance">
             {{ t('finance.payment.outstandingBalance') }}:
             <span class="text-texte font-semibold">{{ formatMoney(outstandingBalance ?? 0) }}</span>
+          </p>
+          <p
+            v-if="openingDebtRemaining > 0"
+            class="text-texte-3 text-xs"
+            data-test="opening-debt-hint"
+          >
+            {{
+              t('finance.payment.openingDebtFirst', { amount: formatMoney(openingDebtRemaining) })
+            }}
           </p>
           <p v-if="surplusAmount > 0" class="text-ecart text-sm" data-test="surplus-hint">
             {{ t('finance.overpayment.hint', { surplus: formatMoney(surplusAmount) }) }}

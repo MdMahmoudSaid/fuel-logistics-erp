@@ -11,7 +11,7 @@
 from decimal import Decimal
 
 from apps.core.request_cache import memoize_per_request
-from apps.finance.models import TransportPayment
+from apps.finance.models import OpeningDebt, TransportPayment
 from apps.finance.services import ControlledDebtPaymentService
 from apps.transport.models import Transporter
 
@@ -28,10 +28,12 @@ class TransporterOutstandingReportQuery:
         # "As of today" report: the period params are accepted and ignored
         # (the Reports page hides the period filter for it; a direct call with
         # dates must not fail).
-        transporter_ids = (
+        transporter_ids = set(
             TransportPayment.objects.exclude(status=TransportPayment.Status.PAID)
             .values_list("transporter_id", flat=True)
-            .distinct()
+        ) | set(
+            OpeningDebt.objects.filter(cancelled_at__isnull=True, transporter__isnull=False)
+            .values_list("transporter_id", flat=True)
         )
         rows = []
         for transporter in Transporter.objects.filter(id__in=transporter_ids):

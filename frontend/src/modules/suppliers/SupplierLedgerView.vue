@@ -6,10 +6,18 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { confirmDialog } from '@/composables/useConfirmDialog'
 import { fetchSupplierLedger } from '@/modules/purchasing/api'
-import { cancelSupplierPayment, exportLedgerPdf, exportSupplierPaymentPdf } from '@/modules/finance/api'
+import {
+  cancelSupplierPayment,
+  exportAdvancePdf,
+  exportLedgerPdf,
+  exportSupplierPaymentPdf,
+} from '@/modules/finance/api'
 import type { SupplierLedger } from '@/modules/purchasing/types'
 import DebtPaymentForm from '@/modules/finance/DebtPaymentForm.vue'
 import AdvanceForm from '@/modules/finance/AdvanceForm.vue'
+import AdvancesCard, { type AdvanceRow } from '@/modules/finance/AdvancesCard.vue'
+import OpeningDebtForm from '@/modules/finance/OpeningDebtForm.vue'
+import OpeningDebtsCard from '@/modules/finance/OpeningDebtsCard.vue'
 import { formatMoney, formatQuantity } from '@/utils/currency'
 import AppLogo from '@/components/AppLogo.vue'
 import Badge from '@/components/ui/Badge.vue'
@@ -28,6 +36,8 @@ const loading = ref(true)
 const error = ref('')
 const showPaymentForm = ref(false)
 const showAdvanceForm = ref(false)
+const showDebtForm = ref(false)
+const exportingAdvanceId = ref<number | null>(null)
 const previewUrl = ref<string | null>(null)
 const exporting = ref(false)
 const exportingPaymentId = ref<number | null>(null)
@@ -58,6 +68,35 @@ async function onPaymentSaved() {
 async function onAdvanceSaved() {
   showAdvanceForm.value = false
   await load()
+}
+
+async function onDebtSaved() {
+  showDebtForm.value = false
+  await load()
+}
+
+const advanceRows = computed<AdvanceRow[]>(
+  () =>
+    ledger.value?.advances?.map((advance) => ({
+      id: advance.id,
+      date: advance.date,
+      reference: advance.reference,
+      account: advance.account_name ?? null,
+      amount: advance.amount,
+      remaining: advance.remaining_amount,
+      proofUrl: advance.proof_url,
+    })) ?? [],
+)
+
+async function exportAdvance(advanceId: number) {
+  exportingAdvanceId.value = advanceId
+  try {
+    await exportAdvancePdf('supplier', advanceId, locale.value)
+  } catch {
+    error.value = t('reports.exportError')
+  } finally {
+    exportingAdvanceId.value = null
+  }
 }
 
 function printLedger() {
@@ -138,25 +177,27 @@ function proofUrl(order: SupplierLedger['orders'][number]) {
     <div class="hidden items-center gap-2.5 print:mb-2 print:flex">
       <AppLogo :size="36" />
     </div>
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div class="flex flex-wrap items-center justify-between gap-3">
       <h1 class="font-display text-2xl leading-none font-semibold uppercase">
         {{ t('purchasing.supplierLedger.title', { name: ledger?.supplier.name ?? '…' }) }}
       </h1>
-      <div class="no-print flex flex-wrap gap-2">
-        <Button
-          v-if="ledger && Number(ledger.summary.net_balance) < 0"
-          variant="primary"
-          @click="showPaymentForm = true"
-        >
-          {{ t('finance.supplierPayment.recordPayment') }}
-        </Button>
-        <Button
-          v-if="ledger && Number(ledger.summary.net_balance) >= 0"
-          variant="secondary"
-          @click="showAdvanceForm = true"
-        >
-          {{ t('finance.advanceForm.title') }}
-        </Button>
+      <div class="no-print flex flex-wrap items-center gap-2">
+        <template v-if="ledger">
+          <Button variant="secondary" data-test="supplier-new-debt" @click="showDebtForm = true">
+            {{ t('finance.openingDebt.newDebt') }}
+          </Button>
+          <Button
+            v-if="Number(ledger.summary.net_balance) < 0"
+            variant="primary"
+            @click="showPaymentForm = true"
+          >
+            {{ t('finance.supplierPayment.recordPayment') }}
+          </Button>
+          <Button v-else variant="secondary" @click="showAdvanceForm = true">
+            {{ t('finance.advanceForm.title') }}
+          </Button>
+          <span class="bg-ligne mx-1 hidden h-8 w-px sm:block" aria-hidden="true" />
+        </template>
         <Button v-if="ledger" variant="ghost" @click="printLedger">
           {{ t('reports.print') }}
         </Button>
@@ -219,12 +260,20 @@ function proofUrl(order: SupplierLedger['orders'][number]) {
         </div>
       </section>
 
+      <OpeningDebtsCard
+        :debts="ledger.opening_debts ?? []"
+        @changed="load"
+        @preview="previewUrl = $event"
+      />
+
       <Card :title="t('purchasing.supplierLedger.reliquatByProduct')">
         <div class="overflow-x-auto">
           <table class="w-full text-start text-sm">
             <thead>
               <tr class="border-ligne text-texte-2 border-b">
-                <th class="px-3 py-2.5 font-medium">{{ t('purchasing.supplierLedger.product') }}</th>
+                <th class="px-3 py-2.5 font-medium">
+                  {{ t('purchasing.supplierLedger.product') }}
+                </th>
                 <th class="px-3 py-2.5 text-end font-medium">
                   {{ t('purchasing.supplierLedger.totalReliquat') }}
                 </th>
@@ -328,7 +377,7 @@ function proofUrl(order: SupplierLedger['orders'][number]) {
         </div>
       </Card>
 
-      <Card :title="t('purchasing.supplierLedger.paymentsAndAdvances')">
+      <Card :title="t('finance.customerLedger.payments')">
         <AppAlert v-if="cancelError" :message="cancelError" />
         <div class="overflow-x-auto">
           <table class="w-full text-start text-sm">
@@ -428,6 +477,13 @@ function proofUrl(order: SupplierLedger['orders'][number]) {
         </div>
       </Card>
 
+      <AdvancesCard
+        :rows="advanceRows"
+        :exporting-id="exportingAdvanceId"
+        @pdf="exportAdvance"
+        @preview="previewUrl = $event"
+      />
+
       <Card :title="t('finance.partyLedger.entriesTitle')">
         <div class="overflow-x-auto">
           <table class="w-full text-start text-sm">
@@ -453,7 +509,9 @@ function proofUrl(order: SupplierLedger['orders'][number]) {
                 <td class="px-3 py-2.5">{{ entry.date }}</td>
                 <td class="px-3 py-2.5">{{ t(`finance.partyLedger.entryTypes.${entry.type}`) }}</td>
                 <td class="px-3 py-2.5">{{ entry.reference || '—' }}</td>
-                <td class="px-3 py-2.5 text-end"><MonoValue :value="formatMoney(entry.amount)" /></td>
+                <td class="px-3 py-2.5 text-end">
+                  <MonoValue :value="formatMoney(entry.amount)" />
+                </td>
                 <td class="px-3 py-2.5">
                   <button
                     v-if="entry.proof_url"
@@ -506,6 +564,21 @@ function proofUrl(order: SupplierLedger['orders'][number]) {
         lock-party
         @success="onAdvanceSaved"
         @cancel="showAdvanceForm = false"
+      />
+    </Modal>
+
+    <Modal
+      v-if="showDebtForm && ledger"
+      :title="t('finance.openingDebt.newDebt')"
+      max-width="max-w-3xl"
+      @close="showDebtForm = false"
+    >
+      <OpeningDebtForm
+        party-type="supplier"
+        :party-id="ledger.supplier.id"
+        :party-name="ledger.supplier.name"
+        @success="onDebtSaved"
+        @cancel="showDebtForm = false"
       />
     </Modal>
 

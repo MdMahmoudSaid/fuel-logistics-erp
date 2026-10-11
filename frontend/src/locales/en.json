@@ -593,7 +593,8 @@
     "PROFIT_SHARE": "Profit share",
     "WITHDRAWAL": "Withdrawal",
     "LOAN_GIVEN": "Loan given",
-    "LOAN_RECEIVED": "Loan received"
+    "LOAN_RECEIVED": "Loan received",
+    "OPENING_DEBT": "Prior debt"
   },
   "expenseCategory": {
     "customs": "Customs",
@@ -765,6 +766,7 @@
       "imageOnlyError": "Only JPG, JPEG, PNG or WEBP images are allowed.",
       "proofUploadError": "The payment was recorded, but the proof image could not be uploaded.",
       "outstandingBalance": "Customer's total outstanding debt",
+      "openingDebtFirst": "Including prior debt: {amount}, settled automatically first (keep \"Unallocated credit\" to pay it).",
       "invoiceOptionRemaining": "outstanding",
       "allocateToInvoices": "Allocate to invoices",
       "addLine": "+ Add line",
@@ -852,7 +854,13 @@
         "saveError": "Could not apply this receipt."
       },
       "noPayments": "No payments yet.",
-      "downloadProof": "Download proof"
+      "downloadProof": "Download proof",
+      "openingDebtsIncluded": "incl. prior debts: {amount}",
+      "paymentCancel": "Cancel",
+      "paymentCancelConfirm": "Cancel this customer payment? An offsetting treasury entry will be created and the amount will no longer reduce the customer balance. This action is logged.",
+      "paymentCancelError": "Unable to cancel this payment.",
+      "cancelled": "Cancelled",
+      "paymentStatus": "Status"
     },
     "transporterLedger": {
       "title": "Transporter Ledger — {name}",
@@ -1013,7 +1021,8 @@
         "advance_given": "Advance given",
         "debt_created": "Debt created",
         "advance_consumed": "Advance applied",
-        "payment": "Additional payment"
+        "payment": "Additional payment",
+        "opening_debt": "Prior debt"
       }
     },
     "shareholder": {
@@ -1206,6 +1215,60 @@
       "carriedOver": "Carried over from previous period",
       "distributionsSinceClosure": "Distributions since closing",
       "distributableResultHelp": "All trips, all periods, minus distributions already validated."
+    },
+    "openingDebt": {
+      "newDebt": "New debt",
+      "party": "Account",
+      "explanation": {
+        "customer": "Debt the customer owed before the app. It adds to their balance like an invoice and is settled by their payments (their available advance covers it automatically).",
+        "supplier": "Debt owed to this supplier before the app. It adds to the balance like an order and is settled with \"Record a payment\" (their available advance covers it automatically).",
+        "transporter": "Debt owed to this transporter before the app. It adds to the balance like a trip settlement and is settled with \"Record a payment\" (their available advance covers it automatically)."
+      },
+      "amount": "Debt amount",
+      "date": "Debt date",
+      "reference": "Reference",
+      "submit": "Save debt",
+      "saveError": "Unable to save this debt.",
+      "errors": {
+        "positiveAmount": "The amount must be greater than zero.",
+        "dateRequired": "The date is required."
+      },
+      "section": "Prior debts",
+      "table": {
+        "date": "Date",
+        "reference": "Reference",
+        "amount": "Amount",
+        "paid": "Paid",
+        "remaining": "Remaining due",
+        "status": "Status",
+        "proof": "Proof"
+      },
+      "status": {
+        "UNPAID": "Unpaid",
+        "PARTIALLY_PAID": "Partially paid",
+        "PAID": "Paid",
+        "CANCELLED": "Cancelled"
+      },
+      "cancel": "Cancel",
+      "cancelConfirm": "Cancel this debt? It will no longer count in the balance. Advances covering it become available again. A debt already settled by a payment cannot be cancelled.",
+      "cancelError": "Unable to cancel this debt."
+    },
+    "advances": {
+      "title": "Advances",
+      "none": "No advance.",
+      "open": "Available",
+      "partlyUsed": "Partly used",
+      "used": "Used",
+      "cancelled": "Cancelled",
+      "table": {
+        "date": "Date",
+        "reference": "Reference",
+        "account": "Account",
+        "amount": "Amount",
+        "remaining": "Available",
+        "status": "Status",
+        "proof": "Proof"
+      }
     }
   },
   "truckStatus": {

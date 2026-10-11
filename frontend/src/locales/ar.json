@@ -593,7 +593,8 @@
     "PROFIT_SHARE": "حصة أرباح",
     "WITHDRAWAL": "سحب",
     "LOAN_GIVEN": "سلفة ممنوحة",
-    "LOAN_RECEIVED": "سلفة مستلمة"
+    "LOAN_RECEIVED": "سلفة مستلمة",
+    "OPENING_DEBT": "دين سابق"
   },
   "expenseCategory": {
     "customs": "الجمارك",
@@ -765,6 +766,7 @@
       "imageOnlyError": "يُسمح فقط بصور JPG أو JPEG أو PNG أو WEBP.",
       "proofUploadError": "تم تسجيل الدفعة، لكن تعذر رفع صورة الإثبات.",
       "outstandingBalance": "إجمالي دين العميل",
+      "openingDebtFirst": "منها دين سابق: {amount}، يُسدَّد تلقائيًا أولًا (اترك «رصيد غير مخصص» لسداده).",
       "invoiceOptionRemaining": "المتبقي",
       "allocateToInvoices": "توزيع على الفواتير",
       "addLine": "+ إضافة سطر",
@@ -852,7 +854,13 @@
         "saveError": "تعذر تخصيص هذه الدفعة."
       },
       "noPayments": "لا توجد دفعات.",
-      "downloadProof": "تنزيل الإثبات"
+      "downloadProof": "تنزيل الإثبات",
+      "openingDebtsIncluded": "منها ديون سابقة: {amount}",
+      "paymentCancel": "إلغاء",
+      "paymentCancelConfirm": "إلغاء دفعة العميل هذه؟ سيُنشأ قيد خزينة معاكس ولن يُخصم المبلغ من رصيد العميل بعد الآن. هذا الإجراء مسجَّل.",
+      "paymentCancelError": "تعذّر إلغاء هذه الدفعة.",
+      "cancelled": "ملغاة",
+      "paymentStatus": "الحالة"
     },
     "transporterLedger": {
       "title": "دفتر أستاذ الناقل — {name}",
@@ -1013,7 +1021,8 @@
         "advance_given": "سلفة مدفوعة",
         "debt_created": "دين مستحق",
         "advance_consumed": "سلفة مخصومة",
-        "payment": "دفعة تكميلية"
+        "payment": "دفعة تكميلية",
+        "opening_debt": "دين سابق"
       }
     },
     "shareholder": {
@@ -1206,6 +1215,60 @@
       "carriedOver": "مرحّل من الفترة السابقة",
       "distributionsSinceClosure": "توزيعات منذ الإقفال",
       "distributableResultHelp": "جميع الرحلات وكل الفترات، بعد خصم التوزيعات المعتمدة."
+    },
+    "openingDebt": {
+      "newDebt": "دين جديد",
+      "party": "الحساب",
+      "explanation": {
+        "customer": "دين على العميل سابق لاستخدام التطبيق. يُضاف إلى رصيده مثل الفاتورة ويُسدَّد بدفعاته (تغطيه سلفته المتاحة تلقائيًا).",
+        "supplier": "دين لهذا المورد سابق لاستخدام التطبيق. يُضاف إلى الرصيد مثل الطلب ويُسدَّد عبر «تسجيل دفعة» (تغطيه سلفته المتاحة تلقائيًا).",
+        "transporter": "دين لهذا الناقل سابق لاستخدام التطبيق. يُضاف إلى الرصيد مثل تسوية الرحلة ويُسدَّد عبر «تسجيل دفعة» (تغطيه سلفته المتاحة تلقائيًا)."
+      },
+      "amount": "مبلغ الدين",
+      "date": "تاريخ الدين",
+      "reference": "المرجع",
+      "submit": "حفظ الدين",
+      "saveError": "تعذّر حفظ هذا الدين.",
+      "errors": {
+        "positiveAmount": "يجب أن يكون المبلغ أكبر من صفر.",
+        "dateRequired": "التاريخ مطلوب."
+      },
+      "section": "ديون سابقة",
+      "table": {
+        "date": "التاريخ",
+        "reference": "المرجع",
+        "amount": "المبلغ",
+        "paid": "المدفوع",
+        "remaining": "المتبقي للدفع",
+        "status": "الحالة",
+        "proof": "المستند"
+      },
+      "status": {
+        "UNPAID": "غير مدفوع",
+        "PARTIALLY_PAID": "مدفوع جزئيًا",
+        "PAID": "مدفوع",
+        "CANCELLED": "ملغى"
+      },
+      "cancel": "إلغاء",
+      "cancelConfirm": "إلغاء هذا الدين؟ لن يُحتسب بعد الآن في الرصيد، وتعود السلف التي كانت تغطيه متاحة. لا يمكن إلغاء دين سُدِّد بدفعة.",
+      "cancelError": "تعذّر إلغاء هذا الدين."
+    },
+    "advances": {
+      "title": "السلف",
+      "none": "لا توجد سلف.",
+      "open": "متاحة",
+      "partlyUsed": "مستخدمة جزئيًا",
+      "used": "مستخدمة",
+      "cancelled": "ملغاة",
+      "table": {
+        "date": "التاريخ",
+        "reference": "المرجع",
+        "account": "الحساب",
+        "amount": "المبلغ",
+        "remaining": "المتاح",
+        "status": "الحالة",
+        "proof": "المستند"
+      }
     }
   },
   "truckStatus": {

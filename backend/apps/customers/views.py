@@ -36,8 +36,8 @@ class CustomerViewSet(viewsets.ModelViewSet):
         # in the app dependency graph (both already import
         # apps.customers.serializers.CustomerSerializer), so a module-level
         # import here would run the dependency the wrong way round.
-        from apps.finance.serializers import CustomerPaymentSerializer
-        from apps.finance.services import PaymentAllocationService
+        from apps.finance.serializers import CustomerPaymentSerializer, OpeningDebtSerializer
+        from apps.finance.services import OpeningDebtService, PaymentAllocationService
         from apps.sales.models import Invoice
         from apps.sales.serializers import InvoiceSerializer
 
@@ -65,6 +65,9 @@ class CustomerViewSet(viewsets.ModelViewSet):
                     f"{PaymentAllocationService.get_customer_available_credit(customer):.2f}"
                 ),
                 "invoices": invoices_data,
+                "opening_debts": OpeningDebtSerializer(
+                    OpeningDebtService.active(customer=customer), many=True, context={"request": request}
+                ).data,
                 "payments": CustomerPaymentSerializer(payments, many=True, context={"request": request}).data,
             }
         )

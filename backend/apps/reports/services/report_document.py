@@ -246,12 +246,12 @@ def _general_debt_summary(slug, rows, context):
 
 
 def _general_receivable_summary(slug, rows, context):
-    invoices = [r for r in rows if r["line_type"] == "invoice"]
+    invoices = [r for r in rows if r["line_type"] in ("invoice", "opening_debt")]
     credits = [r for r in rows if r["line_type"] == "credit"]
     totals = [r for r in rows if r["line_type"] == "customer_total"]
     return [
         _line("customers_with_balance_count", len(totals), "count"),
-        _line("open_invoices_count", len(invoices), "count"),
+        _line("open_invoices_count", sum(1 for r in invoices if r["line_type"] == "invoice"), "count"),
         _line("receivable_invoiced_total", _sum(invoices, "invoiced_amount"), "money"),
         _line("receivable_received_total", _sum(invoices + credits, "received_amount"), "money"),
         _line("unallocated_credit_total", _sum(credits, "received_amount"), "money"),

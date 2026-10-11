@@ -294,6 +294,8 @@ def test_supplier_ledger_json_response_unchanged_without_format_param():
         "orders",
         "reliquat_summary",
         "payments",
+        "opening_debts",
+        "advances",
         "total_purchased",
         "total_paid",
         "outstanding_balance",
@@ -333,7 +335,8 @@ def test_customer_ledger_json_response_unchanged_without_format_param():
     assert response.status_code == 200
     assert response["Content-Type"].startswith("application/json")
     assert set(response.data.keys()) == {
-        "customer", "outstanding_balance", "available_credit", "invoices", "payments",
+        "customer", "outstanding_balance", "available_credit", "invoices", "opening_debts",
+        "payments",
     }
 
 

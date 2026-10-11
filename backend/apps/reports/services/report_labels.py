@@ -226,6 +226,7 @@ ENUMS = {
         "INVOICE": ("Facture", "Invoice", "فاتورة"),
         "PURCHASE": ("Achat", "Purchase", "شراء"),
         "PAYMENT": ("Paiement", "Payment", "دفعة"),
+        "OPENING_DEBT": ("Dette antérieure", "Prior debt", "دين سابق"),
         "PROFIT_SHARE": ("Bénéfice attribué", "Profit share", "حصة أرباح"),
         "WITHDRAWAL": ("Retrait", "Withdrawal", "سحب"),
         "LOAN_GIVEN": ("Avance donnée", "Loan given", "سلفة ممنوحة"),
@@ -302,6 +303,7 @@ ENUMS = {
     },
     "receivableLine": {
         "invoice": ("Facture", "Invoice", "فاتورة"),
+        "opening_debt": ("Dette antérieure", "Prior debt", "دين سابق"),
         "credit": ("Crédit non affecté", "Unallocated credit", "رصيد غير مخصص"),
         "customer_total": ("Total client", "Customer total", "إجمالي العميل"),
     },

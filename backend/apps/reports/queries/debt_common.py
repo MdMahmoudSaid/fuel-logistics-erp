@@ -6,7 +6,7 @@
 # "Nouveau paiement" screen. Date / references / notes are display-only and are
 # read from the source object found by the line's id (one query per model).
 
-from apps.finance.models import Expense, TransportPayment
+from apps.finance.models import Expense, OpeningDebt, TransportPayment
 from apps.finance.services import ControlledDebtPaymentService as Debts
 from apps.purchasing.models import SupplierOrder
 
@@ -61,33 +61,62 @@ def fee_debt_rows(fee_types) -> list[dict]:
     return rows
 
 
+def _opening_debts(lines):
+    """OpeningDebt rows ("Nouvelle dette") behind the lines tagged so - their
+    ids can collide with order/settlement ids, hence the `source` tag."""
+    return OpeningDebt.objects.select_related("supplier", "transporter").in_bulk(
+        [line["id"] for line in lines if line.get("source") == "opening_debt"]
+    )
+
+
 def supplier_debt_rows() -> list[dict]:
     lines = [line for group in Debts.get_payable_debts(Debts.SUPPLIER) for line in group["lines"]]
-    orders = SupplierOrder.objects.select_related("supplier").in_bulk([line["id"] for line in lines])
-    return [
-        {
-            "supplier": orders[line["id"]].supplier.name,
-            "reference": orders[line["id"]].reference,
-            "date": orders[line["id"]].purchase_date,
-            **_amounts(line),
-            "status": _settlement_status(line),
-        }
-        for line in lines
-    ]
+    orders = SupplierOrder.objects.select_related("supplier").in_bulk(
+        [line["id"] for line in lines if line.get("source") != "opening_debt"]
+    )
+    opening = _opening_debts(lines)
+    rows = []
+    for line in lines:
+        if line.get("source") == "opening_debt":
+            debt = opening[line["id"]]
+            supplier, reference, date = debt.supplier.name, debt.reference or None, debt.date
+        else:
+            order = orders[line["id"]]
+            supplier, reference, date = order.supplier.name, order.reference, order.purchase_date
+        rows.append(
+            {
+                "supplier": supplier,
+                "reference": reference,
+                "date": date,
+                **_amounts(line),
+                "status": _settlement_status(line),
+            }
+        )
+    return rows
 
 
 def transporter_debt_rows() -> list[dict]:
     lines = [line for group in Debts.get_payable_debts(Debts.TRANSPORTER) for line in group["lines"]]
     payments = TransportPayment.objects.select_related("trip", "transporter").in_bulk(
-        [line["id"] for line in lines]
+        [line["id"] for line in lines if line.get("source") != "opening_debt"]
     )
-    return [
-        {
-            "transporter": payments[line["id"]].transporter.name,
-            "trip_reference": payments[line["id"]].trip.reference,
-            "date": payments[line["id"]].created_at.date(),
-            **_amounts(line),
-            "status": _settlement_status(line),
-        }
-        for line in lines
-    ]
+    opening = _opening_debts(lines)
+    rows = []
+    for line in lines:
+        if line.get("source") == "opening_debt":
+            debt = opening[line["id"]]
+            transporter, trip_reference, date = debt.transporter.name, debt.reference or None, debt.date
+        else:
+            payment = payments[line["id"]]
+            transporter = payment.transporter.name
+            trip_reference, date = payment.trip.reference, payment.created_at.date()
+        rows.append(
+            {
+                "transporter": transporter,
+                "trip_reference": trip_reference,
+                "date": date,
+                **_amounts(line),
+                "status": _settlement_status(line),
+            }
+        )
+    return rows

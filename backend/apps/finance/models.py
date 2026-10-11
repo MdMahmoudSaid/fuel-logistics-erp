@@ -192,6 +192,9 @@ class CustomerPayment(AuditableModel, TimeStampedModel):
     reference = models.CharField(max_length=100, blank=True)
     is_indirect = models.BooleanField(default=False)
     destination = models.CharField(max_length=20, choices=Destination.choices, default=Destination.CASH)
+    # Recorded with "Nouvelle avance" (customer owed nothing): listed in the
+    # ledger's own "Avances" section instead of "Paiements" (2026-10-11).
+    is_advance = models.BooleanField(default=False)
     note = models.TextField(blank=True)
     recorded_by = models.ForeignKey(
         "accounts.User", on_delete=models.PROTECT, related_name="customer_payments_recorded"
@@ -238,6 +241,12 @@ class PaymentAllocation(TimeStampedModel):
     invoice = models.ForeignKey(
         "sales.Invoice", on_delete=models.PROTECT, null=True, blank=True, related_name="allocations"
     )
+    # Settles a customer's OpeningDebt instead of an invoice (2026-10-11).
+    # Never both: a row with neither is unallocated credit.
+    opening_debt = models.ForeignKey(
+        "finance.OpeningDebt", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="allocations",
+    )
     amount = models.DecimalField(max_digits=16, decimal_places=2)
 
     class Meta:
@@ -247,9 +256,15 @@ class PaymentAllocation(TimeStampedModel):
                 condition=models.Q(amount__gt=0),
                 name="finance_paymentallocation_amount_positive",
             ),
+            models.CheckConstraint(
+                condition=models.Q(invoice__isnull=True) | models.Q(opening_debt__isnull=True),
+                name="finance_paymentallocation_single_target",
+            ),
         ]
 
     def __str__(self) -> str:
+        if self.opening_debt_id:
+            return f"{self.payment_id}: {self.amount} -> dette anterieure {self.opening_debt_id}"
         target = self.invoice.invoice_number if self.invoice_id else "unallocated credit"
         return f"{self.payment_id}: {self.amount} -> {target}"
 
@@ -279,6 +294,11 @@ class SupplierPayment(AuditableModel, TimeStampedModel):
         null=True,
         blank=True,
         related_name="payments",
+    )
+    # Pays a supplier OpeningDebt instead of an order (2026-10-11).
+    opening_debt = models.ForeignKey(
+        "finance.OpeningDebt", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="supplier_payments",
     )
     amount = models.DecimalField(max_digits=16, decimal_places=2)
     payment_date = models.DateField()
@@ -499,6 +519,69 @@ class AdvanceConsumption(TimeStampedModel):
     def __str__(self) -> str:
         advance = self.supplier_advance or self.transporter_advance
         return f"{advance}: {self.amount} -> {self.debt_object}"
+
+
+class OpeningDebt(AuditableModel, TimeStampedModel):
+    """"Nouvelle dette" (client request 2026-10-11): a debt that existed
+    before the company started using the app - what a customer already owed
+    the company, or what the company already owed a supplier/transporter.
+
+    Treated like any other debt of that party: it counts in the party's
+    balance, is paid by the same flows (customer receipts are distributed to
+    it, supplier/transporter "Nouveau paiement" covers it oldest-first) and
+    consumes the party's open advances/credit when it is recorded. It never
+    moves treasury itself: the money moved before the app existed.
+
+    Exactly one of customer/supplier/transporter is set. Cancelling (only
+    while nothing has been paid on it) sets cancelled_at; it is never
+    deleted (AuditableModel).
+    """
+
+    customer = models.ForeignKey(
+        "customers.Customer", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="opening_debts",
+    )
+    supplier = models.ForeignKey(
+        "suppliers.Supplier", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="opening_debts",
+    )
+    transporter = models.ForeignKey(
+        "transport.Transporter", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="opening_debts",
+    )
+    amount = models.DecimalField(max_digits=16, decimal_places=2)
+    date = models.DateField()
+    reference = models.CharField(max_length=100, blank=True)
+    notes = models.TextField(blank=True)
+    document = models.ForeignKey(
+        "documents.Document", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="opening_debts",
+    )
+    recorded_by = models.ForeignKey(
+        "accounts.User", on_delete=models.PROTECT, related_name="opening_debts_recorded"
+    )
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["date", "id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0),
+                name="finance_openingdebt_amount_positive",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(customer__isnull=False, supplier__isnull=True, transporter__isnull=True)
+                    | models.Q(customer__isnull=True, supplier__isnull=False, transporter__isnull=True)
+                    | models.Q(customer__isnull=True, supplier__isnull=True, transporter__isnull=False)
+                ),
+                name="finance_openingdebt_single_party",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        party = self.customer or self.supplier or self.transporter
+        return f"Dette anterieure {party}: {self.amount} ({self.date})"
 
 
 class TransportPayment(AuditableModel, TimeStampedModel):

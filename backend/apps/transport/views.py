@@ -76,9 +76,11 @@ class TransporterViewSet(viewsets.ModelViewSet):
         # "transport.Transporter" only via string FK).
         from apps.finance.models import TransportPayment, TreasuryTransaction
         from apps.finance.serializers import (
+            OpeningDebtSerializer,
             TransporterAdvanceSerializer,
             TransportPaymentSerializer,
         )
+        from apps.finance.services import OpeningDebtService
 
         transporter = self.get_object()
         payments = TransportPayment.objects.filter(transporter=transporter).select_related(
@@ -146,6 +148,11 @@ class TransporterViewSet(viewsets.ModelViewSet):
                 ).data,
                 "advances": TransporterAdvanceSerializer(
                     advances, many=True, context={"request": request}
+                ).data,
+                "opening_debts": OpeningDebtSerializer(
+                    OpeningDebtService.active(transporter=transporter),
+                    many=True,
+                    context={"request": request},
                 ).data,
                 "summary": decimals_to_str(ledger_data["summary"]),
                 "entries": decimals_to_str(ledger_data["entries"]),

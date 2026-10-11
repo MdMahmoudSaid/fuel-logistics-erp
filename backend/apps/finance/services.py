@@ -23,6 +23,7 @@ from apps.finance.models import (
     CashAccount,
     CustomerPayment,
     Expense,
+    OpeningDebt,
     PaymentAllocation,
     Shareholder,
     ShareholderContribution,
@@ -94,7 +95,13 @@ class PaymentAllocationService:
             customer.payments.exclude(is_reversed=True).aggregate(total=Sum("amount"))["total"]
             or ZERO
         )
-        return total_invoiced - total_received
+        # "Nouvelle dette" (2026-10-11): a debt from before the app is owed
+        # exactly like an invoice.
+        opening_debts = (
+            OpeningDebtService.active(customer=customer).aggregate(total=Sum("amount"))["total"]
+            or ZERO
+        )
+        return total_invoiced + opening_debts - total_received
 
     @staticmethod
     def get_payment_unallocated_amount(payment: CustomerPayment) -> Decimal:
@@ -108,13 +115,18 @@ class PaymentAllocationService:
         prefetched = getattr(payment, "_prefetched_objects_cache", {}).get("allocations")
         if prefetched is not None:
             allocated_to_invoices = sum(
-                (allocation.amount for allocation in prefetched if allocation.invoice_id), ZERO
+                (
+                    allocation.amount
+                    for allocation in prefetched
+                    if allocation.invoice_id or allocation.opening_debt_id
+                ),
+                ZERO,
             )
         else:
             allocated_to_invoices = (
-                payment.allocations.filter(invoice__isnull=False).aggregate(total=Sum("amount"))[
-                    "total"
-                ]
+                payment.allocations.filter(
+                    Q(invoice__isnull=False) | Q(opening_debt__isnull=False)
+                ).aggregate(total=Sum("amount"))["total"]
                 or ZERO
             )
         return payment.amount - allocated_to_invoices
@@ -253,46 +265,50 @@ class PaymentAllocationService:
                 f"sur ce paiement ({available})."
             )
 
-        credit_rows = list(
-            payment.allocations.select_for_update()
-            .filter(invoice__isnull=True)
-            .order_by("created_at", "id")
-        )
         created_or_updated: list[PaymentAllocation] = []
-        credit_index = 0
-
         for invoice, requested_amount in normalized:
-            remaining = requested_amount
-            while remaining > ZERO and credit_index < len(credit_rows):
-                credit = credit_rows[credit_index]
-                consumed = min(credit.amount, remaining)
-                if consumed == credit.amount:
-                    credit.invoice = invoice
-                    credit.save(update_fields=["invoice", "updated_at"])
-                    created_or_updated.append(credit)
-                    credit_index += 1
-                else:
-                    credit.amount -= consumed
-                    credit.save(update_fields=["amount", "updated_at"])
-                    created_or_updated.append(
-                        PaymentAllocation.objects.create(
-                            payment=payment, invoice=invoice, amount=consumed
-                        )
-                    )
-                remaining -= consumed
-
-            # Any amount left here comes from the receipt's implicit
-            # unallocated remainder (payment.amount minus allocation rows).
-            if remaining > ZERO:
-                created_or_updated.append(
-                    PaymentAllocation.objects.create(
-                        payment=payment, invoice=invoice, amount=remaining
-                    )
-                )
-
+            created_or_updated += PaymentAllocationService._move_credit(
+                payment, requested_amount, invoice=invoice
+            )
             PaymentAllocationService._sync_invoice_status(invoice)
 
         return created_or_updated
+
+    @staticmethod
+    def _move_credit(payment, amount, **target) -> list[PaymentAllocation]:
+        """Turn `amount` of a receipt's open credit into allocations on
+        `target` (invoice=... or opening_debt=...): explicit credit rows
+        (no invoice, no opening debt) first, oldest first, then the
+        receipt's implicit unallocated remainder. The caller holds the
+        payment lock and has checked `amount` against the available credit."""
+        created: list[PaymentAllocation] = []
+        remaining = amount
+        credit_rows = (
+            payment.allocations.select_for_update()
+            .filter(invoice__isnull=True, opening_debt__isnull=True)
+            .order_by("created_at", "id")
+        )
+        for credit in credit_rows:
+            if remaining <= ZERO:
+                break
+            consumed = min(credit.amount, remaining)
+            if consumed == credit.amount:
+                for field, value in target.items():
+                    setattr(credit, field, value)
+                credit.save(update_fields=[*target, "updated_at"])
+                created.append(credit)
+            else:
+                credit.amount -= consumed
+                credit.save(update_fields=["amount", "updated_at"])
+                created.append(
+                    PaymentAllocation.objects.create(payment=payment, amount=consumed, **target)
+                )
+            remaining -= consumed
+        if remaining > ZERO:
+            created.append(
+                PaymentAllocation.objects.create(payment=payment, amount=remaining, **target)
+            )
+        return created
 
     @staticmethod
     def get_customer_available_credit(customer) -> Decimal:
@@ -345,6 +361,12 @@ class PaymentAllocationService:
         never coexist and no manual "Affecter" step is needed. What is left
         once every invoice is paid stays as the client's advance (consumed
         later at invoice validation). Returns the amount applied."""
+        applied = ZERO
+        # Opening debts first: they predate every invoice in the app.
+        for debt in OpeningDebtService.open_debts(customer=customer, for_update=True):
+            if PaymentAllocationService.get_customer_available_credit(customer) <= ZERO:
+                return applied
+            applied += PaymentAllocationService.apply_customer_credit_to_opening_debt(debt)
         invoices = (
             Invoice.objects.filter(
                 sale__customer=customer,
@@ -352,11 +374,33 @@ class PaymentAllocationService:
             )
             .order_by("issued_date", "id")
         )
-        applied = ZERO
         for invoice in invoices:
             if PaymentAllocationService.get_customer_available_credit(customer) <= ZERO:
                 break
             applied += PaymentAllocationService.apply_customer_credit_to_invoice(invoice)
+        return applied
+
+    @staticmethod
+    @transaction.atomic
+    def apply_customer_credit_to_opening_debt(debt) -> Decimal:
+        """apply_customer_credit_to_invoice's counterpart for a customer
+        OpeningDebt: consumes open receipt credit, oldest receipt first,
+        without any treasury row. Returns the amount applied."""
+        receipts = (
+            CustomerPayment.objects.select_for_update()
+            .filter(customer_id=debt.customer_id, is_reversed=False)
+            .order_by("payment_date", "id")
+        )
+        applied = ZERO
+        for receipt in receipts:
+            remaining = OpeningDebtService.remaining_amount(debt)
+            if remaining <= ZERO:
+                break
+            amount = min(PaymentAllocationService.get_payment_unallocated_amount(receipt), remaining)
+            if amount <= ZERO:
+                continue
+            PaymentAllocationService._move_credit(receipt, amount, opening_debt=debt)
+            applied += amount
         return applied
 
     @staticmethod
@@ -765,6 +809,61 @@ class SupplierPaymentCancellationService:
         return payment
 
 
+class CustomerPaymentCancellationError(ValueError):
+    """Raised when a CustomerPayment cannot be cancelled as requested."""
+
+
+class CustomerPaymentCancellationService:
+    """Cancels a wrongly-entered customer receipt by contre-passation
+    (2026-10-11, e.g. a prior debt typed as "Nouvelle avance"), the
+    customer-side twin of SupplierPaymentCancellationService: an offsetting
+    treasury entry, is_reversed=True, never a delete. Every balance already
+    ignores reversed receipts; the invoices it paid reopen and the
+    customer's remaining credit is redistributed to them."""
+
+    @staticmethod
+    @transaction.atomic
+    def cancel_customer_payment(payment: CustomerPayment, actor) -> CustomerPayment:
+        payment = CustomerPayment.objects.select_for_update().get(pk=payment.pk)
+        if payment.is_reversed:
+            raise CustomerPaymentCancellationError("Ce paiement client est deja annule.")
+        if payment.is_indirect:
+            raise CustomerPaymentCancellationError(
+                "Un paiement indirect s'annule depuis le frais qu'il a regle."
+            )
+
+        content_type = ContentType.objects.get_for_model(CustomerPayment)
+        received = TreasuryTransaction.objects.filter(
+            source_content_type=content_type,
+            source_object_id=payment.id,
+            type=TreasuryTransaction.Type.MONEY_IN,
+        )
+        received_amount = received.aggregate(total=Sum("amount"))["total"] or ZERO
+        if received_amount > ZERO:
+            original = received.order_by("id").first()
+            TreasuryTransaction.objects.create(
+                bank_account=original.bank_account,
+                cash_account=original.cash_account,
+                type=TreasuryTransaction.Type.MONEY_OUT,
+                amount=received_amount,
+                date=timezone.localdate(),
+                note=f"Annulation paiement client #{payment.id}",
+                source_content_type=content_type,
+                source_object_id=payment.id,
+                recorded_by=actor,
+            )
+
+        invoice_ids = list(
+            payment.allocations.exclude(invoice__isnull=True).values_list("invoice", flat=True).distinct()
+        )
+        payment.is_reversed = True
+        payment.save(update_fields=["is_reversed", "updated_at"])
+        for invoice in Invoice.objects.filter(pk__in=invoice_ids):
+            PaymentAllocationService._sync_invoice_status(invoice)
+        PaymentAllocationService.apply_customer_credit_to_open_invoices(payment.customer)
+        return payment
+
+
 class FinancePostingService:
     """Posts a direct CustomerPayment to company treasury (Task 4, client
     modifications plan; docs/PHASE_5_PLAN.md conventions Etape 6: separate
@@ -1108,6 +1207,36 @@ class AdvanceConsumptionService:
                 remaining_to_cover -= amount
         return cls.get_consumed_amount(payment)
 
+    @classmethod
+    @transaction.atomic
+    def consume_for_opening_debt(cls, debt) -> None:
+        """Same FIFO consumption as for an order/settlement, for a supplier
+        or transporter OpeningDebt. Idempotent (recomputes what is still
+        uncovered under the advance locks)."""
+        if debt.cancelled_at or debt.customer_id:
+            return
+        if debt.supplier_id:
+            advances = cls.open_supplier_advances(debt.supplier, for_update=True)
+            advance_field = "supplier_advance"
+        else:
+            advances = cls.open_transporter_advances(debt.transporter, for_update=True)
+            advance_field = "transporter_advance"
+        content_type = ContentType.objects.get_for_model(debt.__class__)
+        remaining_to_cover = OpeningDebtService.remaining_amount(debt)
+        for advance in advances:
+            if remaining_to_cover <= ZERO:
+                break
+            amount = min(advance.remaining_amount, remaining_to_cover)
+            if amount <= ZERO:
+                continue
+            AdvanceConsumption.objects.create(
+                **{advance_field: advance},
+                debt_content_type=content_type,
+                debt_object_id=debt.id,
+                amount=amount,
+            )
+            remaining_to_cover -= amount
+
 
 class AdvanceError(ValueError):
     """Raised when an advance request breaks a financial rule (open debt
@@ -1222,6 +1351,182 @@ class AdvanceService:
         return advance
 
 
+class OpeningDebtError(ValueError):
+    """Raised when an opening debt ("Nouvelle dette") request breaks a rule."""
+
+
+class OpeningDebtService:
+    """"Nouvelle dette" (client request 2026-10-11): a debt from before the
+    app, recorded on a customer, supplier or transporter ledger and treated
+    like that party's ordinary debts (see OpeningDebt). How much of it is
+    paid is always derived, never stored:
+
+    - customer: PaymentAllocation rows pointing at it (receipts, distributed
+      automatically like for invoices);
+    - supplier: SupplierPayment rows pointing at it + advance consumption;
+    - transporter: TreasuryTransaction(MONEY_OUT) rows sourced to it (same
+      as TransportPayment) + advance consumption.
+    """
+
+    CUSTOMER = "customer"
+    SUPPLIER = "supplier"
+    TRANSPORTER = "transporter"
+    PARTY_TYPES = (CUSTOMER, SUPPLIER, TRANSPORTER)
+
+    @staticmethod
+    def party_type(debt) -> str:
+        if debt.customer_id:
+            return OpeningDebtService.CUSTOMER
+        if debt.supplier_id:
+            return OpeningDebtService.SUPPLIER
+        return OpeningDebtService.TRANSPORTER
+
+    @staticmethod
+    def active(**party):
+        """Non-cancelled opening debts of one party, oldest first
+        (`customer=`, `supplier=` or `transporter=`)."""
+        return OpeningDebt.objects.filter(cancelled_at__isnull=True, **party).order_by("date", "id")
+
+    @staticmethod
+    def cash_paid(debt) -> Decimal:
+        """What really settled it (receipts for a customer, payments for a
+        supplier/transporter), excluding advance consumption."""
+        if debt.customer_id:
+            return (
+                debt.allocations.exclude(payment__is_reversed=True).aggregate(total=Sum("amount"))["total"]
+                or ZERO
+            )
+        if debt.supplier_id:
+            return (
+                debt.supplier_payments.exclude(is_reversed=True).aggregate(total=Sum("amount"))["total"]
+                or ZERO
+            )
+        return ControlledDebtPaymentService._paid_for_source(OpeningDebt, debt.id)
+
+    @staticmethod
+    @memoize_per_request
+    def paid_amount(debt) -> Decimal:
+        paid = OpeningDebtService.cash_paid(debt)
+        if not debt.customer_id:
+            paid += AdvanceConsumptionService.get_consumed_amount(debt)
+        return paid
+
+    @staticmethod
+    def remaining_amount(debt) -> Decimal:
+        if debt.cancelled_at:
+            return ZERO
+        return debt.amount - OpeningDebtService.paid_amount(debt)
+
+    @staticmethod
+    def describe(debt) -> dict:
+        """One debt line, same shape as describe_supplier_order /
+        describe_transport_payment, plus `source` so a consumer can tell it
+        apart from an order/settlement with the same id."""
+        paid = OpeningDebtService.paid_amount(debt)
+        remaining = ZERO if debt.cancelled_at else debt.amount - paid
+        if debt.cancelled_at:
+            status = "CANCELLED"
+        elif remaining <= ZERO:
+            status = "PAID"
+        else:
+            status = "PARTIALLY_PAID" if paid > ZERO else "UNPAID"
+        return {
+            "id": debt.id,
+            "source": "opening_debt",
+            "debt_type": OpeningDebtService.party_type(debt),
+            "label": f"Dette antérieure {debt.reference}".strip(),
+            "date": debt.date,
+            "reference": debt.reference,
+            "total_amount": debt.amount,
+            "paid_amount": paid,
+            "remaining_amount": remaining,
+            "status": status,
+        }
+
+    @staticmethod
+    @memoize_per_request
+    def open_debts(*, for_update=False, **party) -> list:
+        queryset = OpeningDebtService.active(**party)
+        if for_update:
+            queryset = queryset.select_for_update()
+        return [debt for debt in queryset if OpeningDebtService.remaining_amount(debt) > ZERO]
+
+    @staticmethod
+    def total_remaining(**party) -> Decimal:
+        return sum(
+            (OpeningDebtService.remaining_amount(debt) for debt in OpeningDebtService.active(**party)),
+            ZERO,
+        )
+
+    @staticmethod
+    @transaction.atomic
+    def create(*, party_type, party_id, amount, date, reference, notes, attachment, actor) -> OpeningDebt:
+        from apps.customers.models import Customer
+
+        amount = Decimal(str(amount)).quantize(Decimal("0.01"))
+        if amount <= ZERO:
+            raise OpeningDebtError("Le montant de la dette doit etre superieur a zero.")
+        party_model = {
+            OpeningDebtService.CUSTOMER: Customer,
+            OpeningDebtService.SUPPLIER: Supplier,
+            OpeningDebtService.TRANSPORTER: Transporter,
+        }.get(party_type)
+        if party_model is None:
+            raise OpeningDebtError("Type de compte inconnu.")
+        party = party_model.objects.select_for_update().get(pk=party_id)
+
+        debt = OpeningDebt.objects.create(
+            **{party_type: party},
+            amount=amount, date=date, reference=reference, notes=notes, recorded_by=actor,
+        )
+        if attachment:
+            debt.document = Document.objects.create(
+                file=attachment, document_type="opening_debt_proof", reference=reference,
+                uploaded_by=actor, content_type=ContentType.objects.get_for_model(OpeningDebt),
+                object_id=debt.id,
+            )
+            debt.save(update_fields=["document", "updated_at"])
+
+        # Treated like an ordinary debt: whatever the party already has in
+        # advance/credit covers it right away, oldest first.
+        if party_type == OpeningDebtService.CUSTOMER:
+            PaymentAllocationService.apply_customer_credit_to_open_invoices(party)
+        else:
+            AdvanceConsumptionService.consume_for_opening_debt(debt)
+        return debt
+
+    @staticmethod
+    @transaction.atomic
+    def cancel(debt, actor) -> OpeningDebt:
+        """Undo a mistyped opening debt. Refused once real money paid it
+        (cancel that payment first); advance/credit that covered it is
+        released and goes back to the party."""
+        debt = OpeningDebt.objects.select_for_update().get(pk=debt.pk)
+        if debt.cancelled_at:
+            raise OpeningDebtError("Cette dette est deja annulee.")
+
+        if debt.customer_id:
+            # Receipts applied to it become open credit again, then flow to
+            # the customer's other open debts like any credit.
+            debt.allocations.update(opening_debt=None, updated_at=timezone.now())
+        else:
+            if OpeningDebtService.cash_paid(debt) > ZERO:
+                raise OpeningDebtError(
+                    "Cette dette a deja ete payee : annulez d'abord le paiement."
+                )
+            AdvanceConsumption.objects.filter(
+                debt_content_type=ContentType.objects.get_for_model(OpeningDebt),
+                debt_object_id=debt.id,
+                reversed_at__isnull=True,
+            ).update(reversed_at=timezone.now())
+
+        debt.cancelled_at = timezone.now()
+        debt.save(update_fields=["cancelled_at", "updated_at"])
+        if debt.customer_id:
+            PaymentAllocationService.apply_customer_credit_to_open_invoices(debt.customer)
+        return debt
+
+
 class ControlledDebtPaymentError(ValueError):
     """Raised when a controlled debt payment request breaks a financial rule."""
 
@@ -1261,10 +1566,12 @@ class ControlledDebtPaymentService:
     def get_payable_debts(cls, debt_type) -> list[dict]:
         if debt_type == cls.SUPPLIER:
             rows = []
-            supplier_ids = (
+            supplier_ids = set(
                 SupplierOrder.objects.filter(status=SupplierOrder.Status.CONFIRMED)
                 .values_list("supplier_id", flat=True)
-                .distinct()
+            ) | set(
+                OpeningDebt.objects.filter(cancelled_at__isnull=True, supplier__isnull=False)
+                .values_list("supplier_id", flat=True)
             )
             for supplier in Supplier.objects.filter(id__in=supplier_ids).order_by("name", "id"):
                 row = cls.describe_supplier(supplier)
@@ -1274,10 +1581,12 @@ class ControlledDebtPaymentService:
 
         if debt_type == cls.TRANSPORTER:
             rows = []
-            transporter_ids = (
+            transporter_ids = set(
                 TransportPayment.objects.exclude(status=TransportPayment.Status.PAID)
                 .values_list("transporter_id", flat=True)
-                .distinct()
+            ) | set(
+                OpeningDebt.objects.filter(cancelled_at__isnull=True, transporter__isnull=False)
+                .values_list("transporter_id", flat=True)
             )
             for transporter in Transporter.objects.filter(id__in=transporter_ids).order_by("name", "id"):
                 row = cls.describe_transporter(transporter)
@@ -1427,6 +1736,29 @@ class ControlledDebtPaymentService:
         remaining_to_allocate = amount
         payments = []
         transactions = []
+        # Opening debts ("Nouvelle dette") first: they predate every order.
+        for opening_debt in OpeningDebtService.open_debts(supplier=supplier, for_update=True):
+            if remaining_to_allocate <= ZERO:
+                break
+            line_amount = min(remaining_to_allocate, OpeningDebtService.remaining_amount(opening_debt))
+            payment = SupplierPayment.objects.create(
+                supplier=supplier,
+                opening_debt=opening_debt,
+                amount=line_amount,
+                payment_date=date,
+                method=SupplierPayment.Method.BANK_TRANSFER,
+                bank_account=bank_account,
+                is_advance=False,
+                reference=reference,
+                recorded_by=actor,
+            )
+            transaction_obj = FinancePostingService.record_supplier_payment_treasury(
+                payment, note=note
+            )
+            payments.append(payment)
+            if transaction_obj is not None:
+                transactions.append(transaction_obj)
+            remaining_to_allocate -= line_amount
         for order in cls._open_supplier_orders(supplier, for_update=True):
             if remaining_to_allocate <= ZERO:
                 break
@@ -1474,6 +1806,23 @@ class ControlledDebtPaymentService:
 
         remaining_to_allocate = amount
         transactions = []
+        # Opening debts ("Nouvelle dette") first: they predate every trip.
+        for opening_debt in OpeningDebtService.open_debts(transporter=transporter, for_update=True):
+            if remaining_to_allocate <= ZERO:
+                break
+            line_amount = min(remaining_to_allocate, OpeningDebtService.remaining_amount(opening_debt))
+            transactions.append(
+                cls._create_debt_transaction(
+                    debt=opening_debt,
+                    bank_account=bank_account,
+                    amount=line_amount,
+                    date=date,
+                    reference=reference,
+                    actor=actor,
+                    note=note,
+                )
+            )
+            remaining_to_allocate -= line_amount
         for payment in cls._open_transport_payments(transporter, for_update=True):
             if remaining_to_allocate <= ZERO:
                 break
@@ -1677,7 +2026,10 @@ class ControlledDebtPaymentService:
 
     @classmethod
     def describe_supplier(cls, supplier) -> dict:
-        lines = [cls.describe_supplier_order(order) for order in cls._open_supplier_orders(supplier)]
+        lines = [
+            OpeningDebtService.describe(debt)
+            for debt in OpeningDebtService.open_debts(supplier=supplier)
+        ] + [cls.describe_supplier_order(order) for order in cls._open_supplier_orders(supplier)]
         total = sum((line["total_amount"] for line in lines), ZERO)
         paid = sum((line["paid_amount"] for line in lines), ZERO)
         return {
@@ -1711,6 +2063,7 @@ class ControlledDebtPaymentService:
         total = order.total_amount if order.status == SupplierOrder.Status.CONFIRMED else ZERO
         return {
             "id": order.id,
+            "source": "supplier_order",
             "debt_type": cls.SUPPLIER,
             "label": f"{order.reference} - {order.supplier.name}",
             "total_amount": total,
@@ -1722,6 +2075,9 @@ class ControlledDebtPaymentService:
     @classmethod
     def describe_transporter(cls, transporter) -> dict:
         lines = [
+            OpeningDebtService.describe(debt)
+            for debt in OpeningDebtService.open_debts(transporter=transporter)
+        ] + [
             cls.describe_transport_payment(payment)
             for payment in cls._open_transport_payments(transporter)
         ]
@@ -1788,10 +2144,18 @@ class ControlledDebtPaymentService:
         )
         last_payment_txn = (
             TreasuryTransaction.objects.filter(
-                source_content_type=ContentType.objects.get_for_model(TransportPayment),
-                source_object_id__in=TransportPayment.objects.filter(
-                    transporter=transporter
-                ).values_list("id", flat=True),
+                Q(
+                    source_content_type=ContentType.objects.get_for_model(TransportPayment),
+                    source_object_id__in=TransportPayment.objects.filter(
+                        transporter=transporter
+                    ).values_list("id", flat=True),
+                )
+                | Q(
+                    source_content_type=ContentType.objects.get_for_model(OpeningDebt),
+                    source_object_id__in=OpeningDebt.objects.filter(
+                        transporter=transporter
+                    ).values_list("id", flat=True),
+                ),
                 type=TreasuryTransaction.Type.MONEY_OUT,
             ).order_by("-date", "-id").values("date", "amount").first()
         )
@@ -1816,6 +2180,7 @@ class ControlledDebtPaymentService:
         paid = cls._paid_for_source(TransportPayment, payment.id)
         return {
             "id": payment.id,
+            "source": "transport_payment",
             "debt_type": cls.TRANSPORTER,
             "label": f"{payment.trip.reference} - {payment.transporter.name}",
             "total_amount": payment.net_amount,
@@ -3415,6 +3780,21 @@ class ShareholderProfitPreviewService:
         }
 
 
+def _opening_debt_entries(debts) -> list[dict]:
+    """Grand livre timeline rows for "Nouvelle dette" (2026-10-11)."""
+    return [
+        {
+            "type": "opening_debt",
+            "date": debt.date,
+            "amount": debt.amount,
+            "reference": debt.reference,
+            "note": debt.notes,
+            "proof_url": debt.document.file.url if debt.document_id and debt.document.file else None,
+        }
+        for debt in debts
+    ]
+
+
 class SupplierLedgerService:
     """Chronological Grand livre for one supplier: advances given, debts
     created, advances consumed, and complementary payments, all in one
@@ -3454,9 +3834,14 @@ class SupplierLedgerService:
                 "proof_url": None,
             })
 
+        entries += _opening_debt_entries(OpeningDebtService.active(supplier=supplier))
+
         order_ct = ContentType.objects.get_for_model(SupplierOrder)
+        opening_ct = ContentType.objects.get_for_model(OpeningDebt)
         consumptions = AdvanceConsumption.objects.filter(
-            supplier_advance__supplier=supplier, debt_content_type=order_ct, reversed_at__isnull=True,
+            supplier_advance__supplier=supplier,
+            debt_content_type__in=[order_ct, opening_ct],
+            reversed_at__isnull=True,
         ).select_related("supplier_advance")
         for consumption in consumptions:
             # Dated to the debt it was applied against (not the consumption
@@ -3464,9 +3849,10 @@ class SupplierLedgerService:
             # the same business timeline as the debt that triggered it, and
             # purchase_date can be arbitrarily backdated relative to when
             # the order was actually confirmed in the system.
+            debt = consumption.debt_object
             entries.append({
                 "type": "advance_consumed",
-                "date": consumption.debt_object.purchase_date,
+                "date": debt.date if isinstance(debt, OpeningDebt) else debt.purchase_date,
                 "amount": consumption.amount,
                 "reference": consumption.supplier_advance.reference,
                 "note": "",
@@ -3549,9 +3935,14 @@ class TransporterLedgerService:
                 "proof_url": None,
             })
 
+        opening_debts = list(OpeningDebtService.active(transporter=transporter))
+        entries += _opening_debt_entries(opening_debts)
+
         payment_ct = ContentType.objects.get_for_model(TransportPayment)
+        opening_ct = ContentType.objects.get_for_model(OpeningDebt)
         consumptions = AdvanceConsumption.objects.filter(
-            transporter_advance__transporter=transporter, debt_content_type=payment_ct,
+            transporter_advance__transporter=transporter,
+            debt_content_type__in=[payment_ct, opening_ct],
             reversed_at__isnull=True,
         ).select_related("transporter_advance")
         for consumption in consumptions:
@@ -3559,9 +3950,10 @@ class TransporterLedgerService:
             # SupplierLedgerService above (consistency, not just here - a
             # TransportPayment's own "debt_created" entry uses its
             # created_at too, so this keeps both dated the same way).
+            debt = consumption.debt_object
             entries.append({
                 "type": "advance_consumed",
-                "date": consumption.debt_object.created_at.date(),
+                "date": debt.date if isinstance(debt, OpeningDebt) else debt.created_at.date(),
                 "amount": consumption.amount,
                 "reference": consumption.transporter_advance.reference,
                 "note": "",
@@ -3570,7 +3962,8 @@ class TransporterLedgerService:
 
         payment_ids = [payment.id for payment in payments]
         treasury_rows = TreasuryTransaction.objects.filter(
-            source_content_type=payment_ct, source_object_id__in=payment_ids,
+            Q(source_content_type=payment_ct, source_object_id__in=payment_ids)
+            | Q(source_content_type=opening_ct, source_object_id__in=[d.id for d in opening_debts]),
             type=TreasuryTransaction.Type.MONEY_OUT,
         ).select_related("document")
         for txn in treasury_rows:

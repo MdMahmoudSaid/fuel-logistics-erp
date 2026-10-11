@@ -67,6 +67,9 @@ export interface CustomerPayment {
   reference: string
   is_indirect: boolean
   destination: CustomerPaymentDestination
+  // Recorded with "Nouvelle avance" - listed in the ledger's Avances section.
+  is_advance?: boolean
+  account_name?: string | null
   note: string
   recorded_by: number | null
   recorded_by_detail: UserBrief | null
@@ -113,9 +116,32 @@ export interface SupplierAdvance {
   notes: string
   proof_url: string | null
   remaining_amount: string
+  account_name?: string | null
   recorded_by: number | null
   created_at: string
   updated_at: string
+}
+
+// "Nouvelle dette" (2026-10-11): a debt from before the app, on a customer,
+// supplier or transporter ledger. paid/remaining/status are server-derived.
+export type OpeningDebtPartyType = 'customer' | 'supplier' | 'transporter'
+
+export interface OpeningDebt {
+  id: number
+  customer: number | null
+  supplier: number | null
+  transporter: number | null
+  party_type: OpeningDebtPartyType
+  amount: string
+  date: string
+  reference: string
+  notes: string
+  proof_url: string | null
+  paid_amount: string
+  remaining_amount: string
+  status: 'UNPAID' | 'PARTIALLY_PAID' | 'PAID' | 'CANCELLED'
+  cancelled_at: string | null
+  created_at: string
 }
 
 export interface TransporterAdvance {
@@ -131,6 +157,7 @@ export interface TransporterAdvance {
   proof_url: string | null
   remaining_amount: string
   settled: boolean
+  account_name?: string | null
   created_at: string
   updated_at: string
 }
@@ -357,6 +384,7 @@ export interface CustomerLedger {
   // Open customer credit (unallocated receipts), consumed by validated invoices.
   available_credit?: string
   invoices: CustomerLedgerInvoice[]
+  opening_debts?: OpeningDebt[]
   payments: CustomerPayment[]
 }
 
@@ -374,6 +402,7 @@ export interface TransporterLedger {
   unsettled_advances: string
   payments: TransportPayment[]
   advances: TransporterAdvance[]
+  opening_debts?: OpeningDebt[]
   summary: PartyBalance
   entries: LedgerEntry[]
 }
@@ -399,7 +428,8 @@ export interface PartyBalance {
 // TransporterLedgerService), returned alongside `summary` (same shape as
 // PartyBalance) by GET /api/suppliers/{id}/ledger/ and
 // GET /api/transporters/{id}/ledger/.
-export type LedgerEntryType = 'advance_given' | 'debt_created' | 'advance_consumed' | 'payment'
+export type LedgerEntryType =
+  'advance_given' | 'debt_created' | 'opening_debt' | 'advance_consumed' | 'payment'
 
 export interface LedgerEntry {
   type: LedgerEntryType

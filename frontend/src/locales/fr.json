@@ -595,7 +595,8 @@
     "PROFIT_SHARE": "Bénéfice attribué",
     "WITHDRAWAL": "Retrait",
     "LOAN_GIVEN": "Avance donnée",
-    "LOAN_RECEIVED": "Avance reçue"
+    "LOAN_RECEIVED": "Avance reçue",
+    "OPENING_DEBT": "Dette antérieure"
   },
   "expenseCategory": {
     "customs": "Douane",
@@ -767,6 +768,7 @@
       "imageOnlyError": "Seules les images JPG, JPEG, PNG ou WEBP sont autorisées.",
       "proofUploadError": "Le paiement a été enregistré, mais l'image justificative n'a pas pu être envoyée.",
       "outstandingBalance": "Total de la dette du Client",
+      "openingDebtFirst": "Dont dette antérieure : {amount}, réglée automatiquement en premier (laissez « Crédit non alloué » pour la payer).",
       "invoiceOptionRemaining": "restant",
       "allocateToInvoices": "Répartir sur les factures",
       "addLine": "+ Ajouter une ligne",
@@ -854,7 +856,13 @@
         "saveError": "Impossible d'affecter cet encaissement."
       },
       "noPayments": "Aucun paiement.",
-      "downloadProof": "Télécharger le justificatif"
+      "downloadProof": "Télécharger le justificatif",
+      "openingDebtsIncluded": "dont dettes antérieures : {amount}",
+      "paymentCancel": "Annuler",
+      "paymentCancelConfirm": "Annuler ce paiement client ? Une écriture de trésorerie inverse sera créée et le montant ne sera plus déduit du solde du client. Cette action est tracée.",
+      "paymentCancelError": "Impossible d'annuler ce paiement.",
+      "cancelled": "Annulé",
+      "paymentStatus": "Statut"
     },
     "transporterLedger": {
       "title": "Compte transporteur — {name}",
@@ -1015,7 +1023,8 @@
         "advance_given": "Avance versée",
         "debt_created": "Dette créée",
         "advance_consumed": "Avance imputée",
-        "payment": "Paiement complémentaire"
+        "payment": "Paiement complémentaire",
+        "opening_debt": "Dette antérieure"
       }
     },
     "shareholder": {
@@ -1208,6 +1217,60 @@
       "carriedOver": "Report période précédente",
       "distributionsSinceClosure": "Répartitions depuis la clôture",
       "distributableResultHelp": "Tous les trajets, toutes périodes, moins les répartitions déjà validées."
+    },
+    "openingDebt": {
+      "newDebt": "Nouvelle dette",
+      "party": "Compte",
+      "explanation": {
+        "customer": "Dette du client antérieure à l'application. Elle s'ajoute à son solde comme une facture et sera réglée par ses paiements (son avance disponible la couvre automatiquement).",
+        "supplier": "Dette envers ce fournisseur antérieure à l'application. Elle s'ajoute au solde comme une commande et se règle avec « Enregistrer un paiement » (son avance disponible la couvre automatiquement).",
+        "transporter": "Dette envers ce transporteur antérieure à l'application. Elle s'ajoute au solde comme un règlement de trajet et se règle avec « Enregistrer un paiement » (son avance disponible la couvre automatiquement)."
+      },
+      "amount": "Montant de la dette",
+      "date": "Date de la dette",
+      "reference": "Référence",
+      "submit": "Enregistrer la dette",
+      "saveError": "Impossible d'enregistrer cette dette.",
+      "errors": {
+        "positiveAmount": "Le montant doit être supérieur à zéro.",
+        "dateRequired": "La date est obligatoire."
+      },
+      "section": "Dettes antérieures",
+      "table": {
+        "date": "Date",
+        "reference": "Référence",
+        "amount": "Montant",
+        "paid": "Payé",
+        "remaining": "Reste à payer",
+        "status": "Statut",
+        "proof": "Justificatif"
+      },
+      "status": {
+        "UNPAID": "Non payée",
+        "PARTIALLY_PAID": "Partiellement payée",
+        "PAID": "Payée",
+        "CANCELLED": "Annulée"
+      },
+      "cancel": "Annuler",
+      "cancelConfirm": "Annuler cette dette ? Elle ne comptera plus dans le solde. Les avances qui la couvraient redeviennent disponibles. Une dette déjà réglée par un paiement ne peut pas être annulée.",
+      "cancelError": "Impossible d'annuler cette dette."
+    },
+    "advances": {
+      "title": "Avances",
+      "none": "Aucune avance.",
+      "open": "Disponible",
+      "partlyUsed": "Partiellement utilisée",
+      "used": "Utilisée",
+      "cancelled": "Annulée",
+      "table": {
+        "date": "Date",
+        "reference": "Référence",
+        "account": "Compte",
+        "amount": "Montant",
+        "remaining": "Disponible",
+        "status": "Statut",
+        "proof": "Justificatif"
+      }
     }
   },
   "truckStatus": {

@@ -9,6 +9,8 @@ import type {
   DebtPaymentType,
   Expense,
   ExpenseCategoryOption,
+  OpeningDebt,
+  OpeningDebtPartyType,
   PartyBalance,
   PartyType,
   Shareholder,
@@ -386,6 +388,50 @@ export function createTransporterAdvance(payload: {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
     .then((r) => r.data)
+}
+
+// "Nouvelle dette" (2026-10-11): POST /api/opening-debts/ with exactly one
+// of customer/supplier/transporter; cancel only while nothing paid it.
+export function createOpeningDebt(payload: {
+  party_type: OpeningDebtPartyType
+  party_id: number
+  amount: string
+  date: string
+  reference?: string
+  notes?: string
+  attachment?: File | null
+}): Promise<OpeningDebt> {
+  const { attachment, party_type, party_id, ...fields } = payload
+  return apiClient
+    .post<OpeningDebt>(
+      '/opening-debts/',
+      buildAdvanceForm({ ...fields, [party_type]: party_id }, attachment),
+      { headers: { 'Content-Type': 'multipart/form-data' } },
+    )
+    .then((r) => r.data)
+}
+
+export function cancelOpeningDebt(id: number): Promise<OpeningDebt> {
+  return apiClient.post<OpeningDebt>(`/opening-debts/${id}/cancel/`).then((r) => r.data)
+}
+
+// POST /api/customer-payments/{id}/cancel/ - contre-passation of a
+// mistyped receipt (same rule as cancelSupplierPayment).
+export function cancelCustomerPayment(id: number): Promise<CustomerPayment> {
+  return apiClient.post<CustomerPayment>(`/customer-payments/${id}/cancel/`).then((r) => r.data)
+}
+
+// GET /api/supplier-advances/{id}/pdf/ and /api/transporter-advances/{id}/pdf/
+export async function exportAdvancePdf(
+  kind: 'supplier' | 'transporter',
+  id: number,
+  lang: string,
+): Promise<void> {
+  const response = await apiClient.get(`/${kind}-advances/${id}/pdf/`, {
+    params: { lang },
+    responseType: 'blob',
+  })
+  downloadBlob(new Blob([response.data]), `avance-${kind}-${id}.pdf`)
 }
 
 // ControlledDebtPaymentService.describe_supplier_balance/describe_transporter_balance

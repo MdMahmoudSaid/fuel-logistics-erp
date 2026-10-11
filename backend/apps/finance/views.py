@@ -21,6 +21,7 @@ from apps.reports.services.ledger_pdf import (
     render_supplier_payment_pdf,
     render_trip_settlement_pdf,
 )
+from apps.reports.services.payment_pdf import render_advance_pdf
 from apps.reports.queries.margin_report import MarginReportQuery
 from apps.reports.services.profit_pdf import render_profit_report_pdf
 from apps.suppliers.models import Supplier
@@ -33,6 +34,7 @@ from .models import (
     CustomerPayment,
     Expense,
     ExpenseCategory,
+    OpeningDebt,
     Shareholder,
     ShareholderContribution,
     ShareholderLoan,
@@ -55,6 +57,7 @@ from .serializers import (
     ExpenseSerializer,
     CustomerPaidExpensesRequestSerializer,
     IndirectSettlementRequestSerializer,
+    OpeningDebtSerializer,
     ShareholderContributionSerializer,
     ShareholderLoanSerializer,
     ShareholderProfitDistributionSerializer,
@@ -70,6 +73,10 @@ from .serializers import (
 )
 from .services import (
     AdvanceError,
+    CustomerPaymentCancellationError,
+    CustomerPaymentCancellationService,
+    OpeningDebtError,
+    OpeningDebtService,
     ControlledDebtPaymentError,
     ControlledDebtPaymentService,
     ExpenseCancellationError,
@@ -162,6 +169,22 @@ class CustomerPaymentViewSet(viewsets.ModelViewSet):
         response["Content-Disposition"] = f'attachment; filename="paiement-client-{payment.id}.pdf"'
         return response
 
+    @action(detail=True, methods=["post"])
+    def cancel(self, request, pk=None):
+        """Reverse a wrongly-entered receipt by contre-passation (2026-10-11),
+        same rule as SupplierPaymentViewSet.cancel.
+
+        POST /api/customer-payments/{id}/cancel/
+        """
+        payment = self.get_object()
+        try:
+            payment = CustomerPaymentCancellationService.cancel_customer_payment(
+                payment, request.user
+            )
+        except CustomerPaymentCancellationError as exc:
+            return Response({"detail": str(exc)}, status=http_status.HTTP_400_BAD_REQUEST)
+        return Response(CustomerPaymentSerializer(payment, context={"request": request}).data)
+
     @action(detail=True, methods=["post"], url_path="allocate")
     def allocate(self, request, pk=None):
         """Apply an existing receipt's available credit to open invoices.
@@ -233,6 +256,13 @@ class SupplierPaymentViewSet(viewsets.ModelViewSet):
         return Response(SupplierPaymentSerializer(payment, context={"request": request}).data)
 
 
+def _advance_pdf_response(advance, request, filename):
+    pdf_bytes = render_advance_pdf(advance, lang=request.query_params.get("lang", "fr"))
+    response = HttpResponse(pdf_bytes, content_type="application/pdf")
+    response["Content-Disposition"] = f'attachment; filename="{filename}-{advance.id}.pdf"'
+    return response
+
+
 class SupplierAdvanceViewSet(viewsets.ModelViewSet):
     queryset = SupplierAdvance.objects.select_related("supplier", "bank_account", "cash_account").all()
     serializer_class = SupplierAdvanceSerializer
@@ -245,6 +275,11 @@ class SupplierAdvanceViewSet(viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         raise MethodNotAllowed("DELETE", detail=_NO_HARD_DELETE_DETAIL)
+
+    @action(detail=True, methods=["get"], url_path="pdf")
+    def pdf(self, request, pk=None):
+        """GET /api/supplier-advances/{id}/pdf/?lang=fr|en|ar"""
+        return _advance_pdf_response(self.get_object(), request, "avance-fournisseur")
 
 
 class TransporterAdvanceViewSet(viewsets.ModelViewSet):
@@ -259,6 +294,33 @@ class TransporterAdvanceViewSet(viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         raise MethodNotAllowed("DELETE", detail=_NO_HARD_DELETE_DETAIL)
+
+    @action(detail=True, methods=["get"], url_path="pdf")
+    def pdf(self, request, pk=None):
+        """GET /api/transporter-advances/{id}/pdf/?lang=fr|en|ar"""
+        return _advance_pdf_response(self.get_object(), request, "avance-transporteur")
+
+
+class OpeningDebtViewSet(viewsets.ModelViewSet):
+    """"Nouvelle dette" (2026-10-11): a customer/supplier/transporter debt
+    from before the app. Created from the party's ledger; never edited or
+    deleted, only cancelled (POST /cancel/) while nothing paid it."""
+
+    queryset = OpeningDebt.objects.select_related("document").all()
+    serializer_class = OpeningDebtSerializer
+    filterset_fields = ["customer", "supplier", "transporter"]
+    permission_classes = [HasModulePermission]
+    module = "finance"
+    http_method_names = ["get", "post", "head", "options"]
+
+    @action(detail=True, methods=["post"])
+    def cancel(self, request, pk=None):
+        """POST /api/opening-debts/{id}/cancel/"""
+        try:
+            debt = OpeningDebtService.cancel(self.get_object(), request.user)
+        except OpeningDebtError as exc:
+            return Response({"detail": str(exc)}, status=http_status.HTTP_400_BAD_REQUEST)
+        return Response(OpeningDebtSerializer(debt, context={"request": request}).data)
 
 
 class TransportPaymentViewSet(viewsets.ModelViewSet):

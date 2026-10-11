@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 import CustomerLedgerView from '../CustomerLedgerView.vue'
 
 const fetchCustomerLedger = vi.fn()
@@ -17,6 +18,9 @@ vi.mock('../api', () => ({
   fetchCustomerLedger: (...args: unknown[]) => fetchCustomerLedger(...args),
   exportLedgerPdf: (...args: unknown[]) => exportLedgerPdf(...args),
   exportCustomerPaymentPdf: (...args: unknown[]) => exportCustomerPaymentPdf(...args),
+  cancelCustomerPayment: vi.fn(),
+  createOpeningDebt: vi.fn(),
+  cancelOpeningDebt: vi.fn(),
 }))
 
 vi.mock('@/modules/sales/api', () => ({
@@ -26,6 +30,8 @@ vi.mock('@/modules/sales/api', () => ({
 describe('CustomerLedgerView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // The payment "Annuler" action is gated on the finance cancel right.
+    setActivePinia(createPinia())
     fetchCustomerLedger.mockResolvedValue({
       customer: { id: 1, name: 'Client X', company_name: '' },
       outstanding_balance: '0.00',
@@ -257,5 +263,77 @@ describe('CustomerLedgerView', () => {
 
     expect(wrapper.find('[data-test="customer-new-payment"]').text()).toBe('Nouveau paiement')
     expect(wrapper.find('[data-test="customer-new-payment"]').classes()).toContain('bg-orange')
+  })
+
+  it('offers "Nouvelle dette" next to the payment button and opens its form', async () => {
+    const wrapper = mount(CustomerLedgerView, { attachTo: document.body })
+    await flushPromises()
+
+    const button = wrapper.find('[data-test="customer-new-debt"]')
+    expect(button.text()).toBe('Nouvelle dette')
+    expect(button.classes()).toContain('bg-bitume')
+    await button.trigger('click')
+    await flushPromises()
+
+    expect(document.body.querySelector('[data-test="opening-debt-form"]')).not.toBeNull()
+    wrapper.unmount()
+  })
+
+  it('lists prior debts and counts them in the total invoiced', async () => {
+    fetchCustomerLedger.mockResolvedValueOnce({
+      customer: { id: 1, name: 'DAHMA', company_name: '' },
+      outstanding_balance: '69765000.00',
+      available_credit: '0.00',
+      invoices: [],
+      opening_debts: [
+        {
+          id: 3,
+          customer: 1,
+          supplier: null,
+          transporter: null,
+          party_type: 'customer',
+          amount: '69765000.00',
+          date: '2025-12-31',
+          reference: 'Najah',
+          notes: '',
+          proof_url: null,
+          paid_amount: '0.00',
+          remaining_amount: '69765000.00',
+          status: 'UNPAID',
+          cancelled_at: null,
+          created_at: '',
+        },
+      ],
+      payments: [],
+    })
+    const wrapper = mount(CustomerLedgerView)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Dettes antérieures')
+    expect(wrapper.find('[data-test="opening-debts-table"]').text()).toContain('Najah')
+    expect(wrapper.find('[data-test="customer-opening-debts-included"]').exists()).toBe(true)
+  })
+
+  it('shows advances in their own section, not among the payments', async () => {
+    const base = await fetchCustomerLedger()
+    fetchCustomerLedger.mockResolvedValueOnce({
+      ...base,
+      payments: [
+        {
+          ...base.payments[0],
+          id: 9,
+          reference: 'AV-9',
+          is_advance: true,
+          unallocated_amount: '150000.00',
+        },
+      ],
+    })
+    const wrapper = mount(CustomerLedgerView)
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="advances-table"]').text()).toContain('AV-9')
+    expect(wrapper.text()).toContain('Aucun paiement')
+    await wrapper.find('[data-test="advance-pdf"]').trigger('click')
+    expect(exportCustomerPaymentPdf).toHaveBeenCalledWith(9, 'fr')
   })
 })

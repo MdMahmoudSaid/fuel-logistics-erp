@@ -7,7 +7,7 @@
 # PaymentAllocationService.get_customer_outstanding()'s "total invoiced -
 # total received" formula one line at a time instead of as a single total.
 
-from apps.finance.models import CustomerPayment
+from apps.finance.models import CustomerPayment, OpeningDebt
 from apps.reports.queries.statement_common import opening_balance, statement_rows
 from apps.sales.models import Invoice
 
@@ -24,7 +24,18 @@ class CustomerStatementQuery:
             status=Invoice.Status.CANCELLED
         )
         payments = CustomerPayment.objects.filter(customer_id=customer_id)
+        opening_debts = OpeningDebt.objects.filter(customer_id=customer_id, cancelled_at__isnull=True)
         return [
+            {
+                "date": debt.date,
+                "type": "OPENING_DEBT",
+                "reference": debt.reference or f"DET-{debt.id}",
+                "debit": debt.amount,
+                "credit": None,
+                "sort_key": (debt.date, -1, debt.id),
+            }
+            for debt in opening_debts
+        ] + [
             {
                 "date": invoice.issued_date,
                 "type": "INVOICE",
