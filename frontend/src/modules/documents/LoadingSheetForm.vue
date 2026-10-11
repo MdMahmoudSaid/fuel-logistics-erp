@@ -169,7 +169,7 @@ function onSubmit() {
     <div class="flex gap-2 text-sm">
       <button
         type="button"
-        class="rounded-full px-3 py-1"
+        class="h-10 rounded-full px-4"
         :class="step === 1 ? 'bg-bitume text-white' : 'bg-sable'"
         @click="step = 1"
       >
@@ -177,7 +177,7 @@ function onSubmit() {
       </button>
       <button
         type="button"
-        class="rounded-full px-3 py-1"
+        class="h-10 rounded-full px-4"
         :class="step === 2 ? 'bg-bitume text-white' : 'bg-sable'"
         :disabled="!form.supplier && !form.supplier_name"
         @click="step = 2"

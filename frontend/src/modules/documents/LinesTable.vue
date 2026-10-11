@@ -72,7 +72,7 @@ const inputClass =
           <div class="flex justify-end md:hidden">
             <button
               type="button"
-              class="h-9 rounded-md px-2 text-sm text-red-700"
+              class="flex h-10 w-10 items-center justify-center rounded-md text-sm text-red-700"
               :aria-label="t('documents.common.removeLine')"
               @click="remove(index)"
             >

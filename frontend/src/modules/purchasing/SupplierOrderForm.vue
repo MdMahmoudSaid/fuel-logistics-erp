@@ -496,7 +496,7 @@ function goToNewCession() {
           type="file"
           multiple
           :accept="IMAGE_UPLOAD_ACCEPT"
-          class="text-texte-2 text-sm"
+          class="border-ligne-forte text-texte-2 w-full rounded-lg border bg-white px-3 py-2.5 text-sm"
           @change="onFileChange"
         />
         <Button
@@ -527,7 +527,9 @@ function goToNewCession() {
         <table class="w-full text-left text-sm">
           <thead>
             <tr class="border-ligne text-texte-2 border-b">
-              <th class="px-2 py-1.5 font-medium">{{ t('purchasing.orderForm.table.reference') }}</th>
+              <th class="px-2 py-1.5 font-medium">
+                {{ t('purchasing.orderForm.table.reference') }}
+              </th>
               <th class="px-2 py-1.5 font-medium text-right">
                 {{ t('purchasing.orderForm.table.authorized') }}
               </th>

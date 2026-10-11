@@ -853,29 +853,25 @@ const compactEnRouteTrips = computed(() => enRouteTrips.value.slice(0, 5))
           </RouterLink>
         </div>
         <div v-if="enRouteTrips.length" class="overflow-x-auto">
-          <table class="min-w-full text-sm">
-            <tbody class="divide-ligne divide-y">
-              <tr v-for="trip in compactEnRouteTrips" :key="trip.id">
-                <td class="py-2 pe-3">
-                  <RouterLink
-                    :to="{ name: 'trip-detail', params: { id: trip.id } }"
-                    class="text-texte hover:text-orange-fonce font-mono font-semibold tabular-nums"
-                  >
-                    {{ trip.reference }}
-                  </RouterLink>
-                </td>
-                <td class="text-texte-2 px-3 py-2">
-                  {{ trip.truck_detail?.internal_id ?? '—' }}
-                </td>
-                <td class="text-texte-2 px-3 py-2">
-                  {{ trip.transporter_detail?.name ?? '—' }}
-                </td>
-                <td class="py-2 ps-3 text-end">
-                  <MonoValue v-bind="formatQuantityParts(trip.quantity_loaded)" />
-                </td>
-              </tr>
-            </tbody>
-          </table>
+          <ul class="divide-ligne divide-y text-sm">
+            <li
+              v-for="trip in compactEnRouteTrips"
+              :key="trip.id"
+              class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 py-2"
+            >
+              <RouterLink
+                :to="{ name: 'trip-detail', params: { id: trip.id } }"
+                class="text-texte hover:text-orange-fonce font-mono font-semibold tabular-nums"
+              >
+                {{ trip.reference }}
+              </RouterLink>
+              <MonoValue class="sm:order-last" v-bind="formatQuantityParts(trip.quantity_loaded)" />
+              <span class="text-texte-2 w-full min-w-0 sm:w-auto sm:flex-1">
+                {{ trip.truck_detail?.internal_id ?? '—' }} ·
+                {{ trip.transporter_detail?.name ?? '—' }}
+              </span>
+            </li>
+          </ul>
         </div>
         <p
           v-else

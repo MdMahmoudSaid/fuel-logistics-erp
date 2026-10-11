@@ -45,7 +45,29 @@ function setName(value: string) {
       />
     </div>
 
-    <div class="border-ligne overflow-x-auto rounded-xl border">
+    <!-- Téléphone : un bloc par module, cases à cocher étiquetées. -->
+    <div class="border-ligne divide-ligne divide-y rounded-xl border md:hidden">
+      <div v-for="module in MODULES" :key="`m-${module}`" class="p-3">
+        <p class="text-texte mb-2 text-sm font-medium">{{ t(`roles.modules.${module}`) }}</p>
+        <div class="grid grid-cols-2 gap-x-3 gap-y-1">
+          <label
+            v-for="action in ACTIONS"
+            :key="action"
+            class="text-texte-2 flex h-10 items-center gap-2 text-sm"
+          >
+            <input
+              type="checkbox"
+              class="border-ligne-forte accent-orange h-5 w-5 rounded"
+              :checked="isChecked(module, action)"
+              @change="toggle(module, action)"
+            />
+            {{ t(`roles.actions.${action}`) }}
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div class="border-ligne hidden overflow-x-auto rounded-xl border md:block">
       <table class="w-full text-left text-sm">
         <thead>
           <tr class="border-ligne text-texte-2 border-b">
@@ -72,7 +94,9 @@ function setName(value: string) {
     </div>
 
     <div class="flex justify-end gap-2 pt-2">
-      <Button type="button" variant="ghost" @click="$emit('cancel')">{{ t('common.cancel') }}</Button>
+      <Button type="button" variant="ghost" @click="$emit('cancel')">{{
+        t('common.cancel')
+      }}</Button>
       <Button type="submit" variant="primary">{{ t('common.save') }}</Button>
     </div>
   </form>

@@ -150,7 +150,7 @@ describe('AppShell mobile navigation', () => {
     const bottomNav = wrapper.find('[data-test="mobile-bottom-nav"]')
     expect(bottomNav.exists()).toBe(true)
     expect(bottomNav.classes()).toContain('md:hidden')
-    expect(bottomNav.text()).toContain('Tableau de bord')
+    expect(bottomNav.text()).toContain('Accueil')
     expect(bottomNav.text()).toContain('Trajets')
     expect(bottomNav.text()).toContain('Ventes')
     expect(bottomNav.text()).toContain('Rapports')

@@ -375,7 +375,13 @@ onUnmounted(() => {
         :class="isNavActive(item.to) ? '!text-orange' : ''"
       >
         <Icon :name="NAV_ICONS[item.to] ?? 'route'" :size="20" />
-        {{ item.to === 'trips' ? t('navigation.tripsShort') : t(item.labelKey) }}
+        {{
+          item.to === 'trips'
+            ? t('navigation.tripsShort')
+            : item.to === 'home'
+              ? t('navigation.dashboardShort')
+              : t(item.labelKey)
+        }}
       </RouterLink>
       <button
         v-if="bottomOverflowItems.length"

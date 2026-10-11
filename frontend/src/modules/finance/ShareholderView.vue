@@ -662,7 +662,7 @@ async function onWithdrawalShareholderChange() {
       </div>
     </div>
 
-    <div class="border-ligne flex gap-2 overflow-x-auto border-b pb-2">
+    <div class="border-ligne flex flex-wrap gap-2 border-b pb-2">
       <button
         v-for="tab in tabs"
         :key="tab.key"

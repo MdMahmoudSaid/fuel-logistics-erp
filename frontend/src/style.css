@@ -167,3 +167,16 @@
     white-space: nowrap;
   }
 }
+
+/* Téléphone : zone tactile d'au moins 40px pour les petits boutons-texte
+   (actions dans les tableaux, liens soulignés) - même rendu visuel. */
+@media (max-width: 767px) {
+  td button:not(.hidden),
+  button.underline:not(.hidden) {
+    min-height: 2.5rem;
+    min-width: 2.5rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+}

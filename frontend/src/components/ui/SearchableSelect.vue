@@ -83,7 +83,7 @@ function clear() {
     <button
       v-if="modelValue"
       type="button"
-      class="text-texte-3 hover:text-texte-2 absolute end-2 top-1/2 -translate-y-1/2"
+      class="text-texte-3 hover:text-texte-2 absolute end-1 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center text-lg"
       tabindex="-1"
       @mousedown.prevent="clear"
     >

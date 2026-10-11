@@ -477,12 +477,16 @@ async function onSubmit() {
             <button
               type="button"
               data-test="auto-allocate"
-              class="text-texte-2 hover:text-texte text-sm"
+              class="text-texte-2 hover:text-texte h-10 text-sm"
               @click="autoAllocate"
             >
               {{ t('finance.payment.autoAllocate') }}
             </button>
-            <button type="button" class="text-texte-2 hover:text-texte text-sm" @click="addLine">
+            <button
+              type="button"
+              class="text-texte-2 hover:text-texte h-10 text-sm"
+              @click="addLine"
+            >
               {{ t('finance.payment.addLine') }}
             </button>
           </div>
@@ -534,7 +538,7 @@ async function onSubmit() {
           />
           <button
             type="button"
-            class="text-critique text-sm hover:brightness-90"
+            class="text-critique h-10 text-sm hover:brightness-90"
             @click="removeLine(index)"
           >
             {{ t('finance.payment.remove') }}

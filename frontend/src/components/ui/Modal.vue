@@ -26,7 +26,7 @@ const emit = defineEmits<{ close: [] }>()
         <h2 class="font-display text-lg leading-none font-semibold uppercase">{{ title }}</h2>
         <button
           type="button"
-          class="text-texte-2 hover:text-texte flex h-8 w-8 items-center justify-center rounded-lg text-xl leading-none"
+          class="text-texte-2 hover:text-texte -me-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-2xl leading-none"
           :aria-label="$t('common.close')"
           @click="emit('close')"
         >

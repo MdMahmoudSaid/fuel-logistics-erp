@@ -195,7 +195,10 @@ async function onUploadDocument() {
 
     <AppAlert v-if="error" :message="error" />
 
-    <form class="border-ligne space-y-4 rounded-xl border bg-surface p-6" @submit.prevent="onSubmit">
+    <form
+      class="border-ligne space-y-4 rounded-xl border bg-surface p-6"
+      @submit.prevent="onSubmit"
+    >
       <div class="space-y-1.5">
         <label class="text-texte-2 text-sm font-medium" for="reference">{{
           t('purchasing.cessionForm.reference')
@@ -275,7 +278,9 @@ async function onUploadDocument() {
           }}
         </p>
         <p v-else class="text-texte-2 text-sm">
-          {{ t('purchasing.cessionForm.wouldRemain', { amount: formatQuantity(remainingAfterThis) }) }}
+          {{
+            t('purchasing.cessionForm.wouldRemain', { amount: formatQuantity(remainingAfterThis) })
+          }}
         </p>
       </div>
 
@@ -387,7 +392,7 @@ async function onUploadDocument() {
         <input
           type="file"
           :accept="IMAGE_UPLOAD_ACCEPT"
-          class="text-texte-2 text-sm"
+          class="border-ligne-forte text-texte-2 w-full rounded-lg border bg-white px-3 py-2.5 text-sm"
           @change="onFileChange"
         />
         <Button
@@ -397,7 +402,11 @@ async function onUploadDocument() {
           :disabled="!documentFile || uploadingDoc"
           @click="onUploadDocument"
         >
-          {{ uploadingDoc ? t('purchasing.cessionForm.uploading') : t('purchasing.cessionForm.upload') }}
+          {{
+            uploadingDoc
+              ? t('purchasing.cessionForm.uploading')
+              : t('purchasing.cessionForm.upload')
+          }}
         </Button>
       </div>
     </section>
