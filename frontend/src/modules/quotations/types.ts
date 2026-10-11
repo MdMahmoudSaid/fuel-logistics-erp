@@ -48,8 +48,10 @@ export interface Quotation {
   currency: string
   total_amount: string
   notes: string
-  payment_terms: string
-  show_bank_accounts: boolean
+  // Optional: older Quotation fixtures (incl. test files still on the
+  // server, which fuel-deploy cannot delete) predate the proforma fields.
+  payment_terms?: string
+  show_bank_accounts?: boolean
   lines: QuotationLine[]
   created_by: number
   created_at: string
