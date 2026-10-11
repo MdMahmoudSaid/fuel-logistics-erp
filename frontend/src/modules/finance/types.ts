@@ -533,18 +533,43 @@ export interface ShareholderProfitPeriod {
 
 export type ShareholderLoanStatus = 'OPEN' | 'PARTIALLY_REPAID' | 'REPAID'
 
+// Client request 2026-10-11: an advance comes from another associate
+// (SHAREHOLDER, no treasury movement) or from the company treasury
+// (COMPANY, deducted from the borrower's next validated profit share).
+export type ShareholderLoanSource = 'SHAREHOLDER' | 'COMPANY'
+export type ShareholderLoanRepaymentMethod = 'DIRECT' | 'TREASURY' | 'PROFIT_SHARE' | 'CANCEL'
+
+export interface ShareholderLoanRepayment {
+  id: number
+  method: ShareholderLoanRepaymentMethod
+  amount: string
+  date: string
+  account_name: string | null
+  distribution_period: string | null
+  notes: string
+}
+
 export interface ShareholderLoan {
   id: number
+  source: ShareholderLoanSource
   borrower: number
   borrower_detail: ShareholderBrief | null
-  lender: number
+  lender: number | null
   lender_detail: ShareholderBrief | null
   amount: string
   date: string
   status: ShareholderLoanStatus
   amount_repaid: string
   remaining_amount: string
+  // COMPANY only: withdrawn so far, cancelled before any withdrawal, still
+  // withdrawable, and cash really out and still owed (the most a treasury
+  // repayment may bring back).
+  amount_drawn: string
+  amount_cancelled: string
+  undrawn_amount: string
+  cash_outstanding: string
   notes: string
+  repayments: ShareholderLoanRepayment[]
   created_at: string
   updated_at: string
 }
@@ -552,6 +577,7 @@ export interface ShareholderLoan {
 export interface ShareholderWithdrawalAllocation {
   profit_share: number | null
   contribution: number | null
+  advance?: number | null
   amount: string
 }
 
@@ -604,13 +630,18 @@ export interface ShareholderLedgerShare {
 
 export interface ShareholderLedgerLoan {
   id: number
+  source: ShareholderLoanSource
+  amount_drawn: string
+  undrawn_amount: string
   amount: string
   amount_repaid: string
   remaining_amount: string
   status: ShareholderLoanStatus
   date: string
-  lender_id?: number
-  lender_name?: string
+  notes: string
+  repayments: ShareholderLoanRepayment[]
+  lender_id?: number | null
+  lender_name?: string | null
   borrower_id?: number
   borrower_name?: string
 }
@@ -654,6 +685,15 @@ export interface ShareholderLedger {
   loans_borrowed: ShareholderLedgerLoan[]
   loans_lent: ShareholderLedgerLoan[]
   net_loan_balance: string
+  // Outstanding company advances (deducted from the next profit share),
+  // what he owes other associates, and what they owe him.
+  company_advance_debt: string
+  // Company advances granted and not yet withdrawn, and what he can
+  // withdraw now (balance + company advance still owed).
+  company_advance_undrawn: string
+  withdrawable_balance: string
+  shareholder_loan_debt: string
+  shareholder_loan_receivable: string
   withdrawals: ShareholderLedgerWithdrawal[]
 }
 

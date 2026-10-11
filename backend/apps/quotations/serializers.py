@@ -65,6 +65,8 @@ class QuotationSerializer(serializers.ModelSerializer):
             "currency",
             "total_amount",
             "notes",
+            "payment_terms",
+            "show_bank_accounts",
             "lines",
             "created_by",
             "created_at",

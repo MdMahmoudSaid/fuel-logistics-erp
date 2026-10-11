@@ -95,6 +95,12 @@
     display: none !important;
   }
 
+  /* Grands livres : les actions des lignes (PDF, Annuler, Voir justificatif)
+     n'ont pas de sens sur papier. */
+  .ledger-page td button {
+    display: none !important;
+  }
+
   main {
     padding: 0 !important;
   }

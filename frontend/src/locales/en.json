@@ -40,7 +40,7 @@
     "lossesToReview": "Losses to Review",
     "sales": "Sales",
     "invoices": "Invoices",
-    "quotations": "Commercial offers",
+    "quotations": "Proformas",
     "transporters": "Transporters",
     "drivers": "Drivers",
     "trucks": "Trucks",
@@ -61,11 +61,17 @@
       "results": "Results & Associates",
       "logistics": "Logistics",
       "fleet": "Logistics",
-      "settings": "Settings"
+      "settings": "Settings",
+      "documents": "Documents"
     },
     "shareholders": "Shareholders / Associates",
     "profit": "Profit",
-    "tripsShort": "Trips"
+    "tripsShort": "Trips",
+    "companySettings": "Company details",
+    "proformas": "Proformas",
+    "deliveryNotes": "Delivery notes",
+    "loadingSheets": "Loading sheets",
+    "purchaseOrders": "Purchase orders"
   },
   "header": {
     "logout": "Log out",
@@ -532,6 +538,51 @@
       "history": "Correction history",
       "noHistory": "No correction.",
       "correctedFrom": "Received quantity corrected from {previous} L to {next} L"
+    },
+    "customerRefusal": {
+      "open": "Customer refuses",
+      "title": "Customer refusal",
+      "currentCustomer": "Current customer:",
+      "question": "What should happen to this trip?",
+      "stockTitle": "Return to company stock",
+      "stockText": "The trip is no longer assigned to this customer and heads to the company stock.",
+      "stockDisabled": "Not possible: the trip is already delivered. Choose another customer.",
+      "changeTitle": "Assign to another customer",
+      "changeText": "The trip moves to the new customer; it will be billed to them on delivery.",
+      "changeTextDelivered": "The trip, its sale and its invoice move to the new customer.",
+      "newCustomer": "New customer",
+      "selectCustomer": "Choose the customer taking over the trip…",
+      "unitPrice": "Unit selling price",
+      "priceHint": "Current price: {current} · last price for {name}: {suggested}",
+      "from": "Former customer",
+      "to": "New customer",
+      "balanceBefore": "Current balance",
+      "balanceAfter": "Balance after",
+      "stockEffect": "{name} no longer has this trip: it no longer counts among their trips or orders.",
+      "statusEffect": "Status: {from} → {to}.",
+      "routeEffect": "The trip will follow the company stock route (instead of the customer).",
+      "noInvoiceEffect": "No invoice exists yet for this trip: nothing to cancel.",
+      "invoiceEffect": "Invoice {invoice} moves to {name} (recomputed at the new price).",
+      "groupedEffect": "The trip leaves grouped invoice {invoice} and gets its own invoice for the new customer.",
+      "waitingGroupEffect": "The trip leaves its billing group and gets its own invoice.",
+      "beforeDeliveryEffect": "The trip will be delivered and billed to {name}.",
+      "released": "{amount} already paid by {name} go back to them as an advance (redistributed on their other debts).",
+      "creditApplied": "{amount} of {name}'s advance will settle this invoice automatically.",
+      "oldNothing": "{name} keeps neither this trip nor any invoice for it.",
+      "reason": "Reason for the refusal",
+      "reasonPlaceholder": "E.g. the customer no longer wants this product",
+      "audit": "The refusal is recorded in the trip (and invoice) history: user, date, reason.",
+      "submitStock": "Return to stock",
+      "submitChange": "Change customer",
+      "confirmStock": "Return trip {trip} to the company stock (refused by {name})?",
+      "confirmChange": "Assign trip {trip} to {to} instead of {from}?",
+      "loadError": "Unable to load customers.",
+      "previewError": "Unable to compute the impact of this refusal.",
+      "saveError": "Unable to record this refusal.",
+      "historyTitle": "Customer refusals",
+      "historyStock": "Refused by {from} — returned to stock",
+      "historyChange": "Refused by {from} — assigned to {to}",
+      "historyReleased": "{amount} returned as an advance"
     }
   },
   "invoiceStatus": {
@@ -594,7 +645,15 @@
     "WITHDRAWAL": "Withdrawal",
     "LOAN_GIVEN": "Loan given",
     "LOAN_RECEIVED": "Loan received",
-    "OPENING_DEBT": "Prior debt"
+    "COMPANY_ADVANCE": "Company advance",
+    "LOAN_REPAYMENT": "Advance repayment",
+    "LOAN_REPAYMENT_RECEIVED": "Repayment received",
+    "OPENING_DEBT": "Prior debt",
+    "ADVANCE_RECEIVED": "Advance received",
+    "ADVANCE_PAID": "Advance paid",
+    "SETTLEMENT": "Trip settlement",
+    "ADVANCE_DEDUCTION": "Advance deducted from the share",
+    "ADVANCE_CANCELLED": "Advance cancelled (never withdrawn)"
   },
   "expenseCategory": {
     "customs": "Customs",
@@ -1091,7 +1150,10 @@
         "reason": "Reason for reopening",
         "history": "Period history",
         "lastReopen": "Latest reopening reason",
-        "statusValues": { "OPEN": "Open", "CLOSED": "Closed" }
+        "statusValues": {
+          "OPEN": "Open",
+          "CLOSED": "Closed"
+        }
       },
       "loan": {
         "title": "Advances between associates",
@@ -1114,7 +1176,7 @@
       "withdrawal": {
         "title": "Shareholder withdrawal",
         "shareholder": "Shareholder",
-        "availableBalanceHint": "Available balance for this withdrawal",
+        "availableBalanceHint": "Withdrawable amount",
         "amount": "Amount",
         "date": "Date",
         "accountType": "Account type",
@@ -1122,7 +1184,8 @@
         "record": "Record withdrawal",
         "saveError": "Could not save this withdrawal — check the fields.",
         "sourceProfitShare": "profit",
-        "sourceCapital": "capital"
+        "sourceCapital": "capital",
+        "sourceAdvance": "company advance"
       },
       "ledger": {
         "title": "Shareholder ledger",
@@ -1134,7 +1197,9 @@
         "netLoanBalance": "Net loan balance",
         "loansLent": "Loans lent",
         "loansBorrowed": "Loans borrowed",
-        "availableBalance": "Available balance"
+        "availableBalance": "Available balance",
+        "downloadPdf": "Download the statement (PDF)",
+        "exportError": "Could not download the statement."
       },
       "totalContributed": "Capital contributed",
       "capital": {
@@ -1159,6 +1224,80 @@
         "alreadyValidatedEngagements": "Distributions already validated",
         "remainingDistributable": "Profit left to distribute",
         "noneAvailable": "Nothing available for now (no net profit on the period)."
+      },
+      "activeCount": "Active ({n})",
+      "inactiveCount": "Inactive ({n})",
+      "inactiveNotice": "Archived associates: they no longer appear in distributions, advances, withdrawals or the ledger. Reactivate one with “Edit”.",
+      "formNew": "New shareholder",
+      "formEdit": "Edit shareholder",
+      "advance": {
+        "title": "Advances to associates",
+        "question": "Where does the advance come from?",
+        "sourceCompany": "Company advance",
+        "sourceCompanyText": "An advance on their profit: it shows in their ledger and cash only moves when they withdraw it. Deducted from their next share.",
+        "sourceAssociate": "From another associate",
+        "sourceAssociateText": "Part of the lender's balance moves to the receiving associate, who can withdraw it. Cash only moves on withdrawal.",
+        "borrower": "Receiving associate",
+        "lender": "Lending associate",
+        "lenderAvailable": "Lender's available balance",
+        "notesPlaceholder": "Reason for the advance (optional)",
+        "effectTitle": "What will be recorded",
+        "effectCompanyDebt": "{name} receives an advance of {amount}: they can withdraw it (Withdrawals tab) and owe it to the company.",
+        "effectDeduction": "This amount will be deducted automatically from their next validated profit share.",
+        "effectAssociateDebt": "{lender}'s balance goes down by {amount} and {name}'s goes up by {amount}: they can withdraw it (Withdrawals tab).",
+        "effectNoTreasury": "No bank or cash movement now: money only goes out on withdrawal.",
+        "effectRepayAssociate": "The repayment moves the amount back from their account to the lender's (“Repay” button).",
+        "lenderTooLow": "The lender's available balance is too low for this advance.",
+        "confirmCompany": "Grant an advance of {amount} to {name}? It will be deducted from their next profit share.",
+        "confirmAssociate": "Record an advance of {amount} from {lender} to {name}?",
+        "openCompany": "Owed to the company (open)",
+        "openAssociate": "Owed between associates (open)",
+        "listTitle": "Recorded advances",
+        "filterOpen": "Open ({n})",
+        "filterAll": "All ({n})",
+        "fromAssociate": "Lent by {name}",
+        "repaid": "Repaid",
+        "autoDeductionHint": "Will be deducted automatically from their next validated profit share.",
+        "repay": "Repay",
+        "repayTitle": "Advance repayment",
+        "repayCompanyHelp": "The part never withdrawn is simply cancelled (cash does not move). Only what they really withdrew comes back into an account. Otherwise the advance is deducted from their next profit share.",
+        "repayAssociateHelp": "The amount moves back from {name}'s balance to {lender}'s, with no bank or cash movement.",
+        "repayAccount": "Paid into",
+        "repayTooHigh": "The amount exceeds what is left to repay.",
+        "repaySubmit": "Record the repayment",
+        "empty": "No open advance.",
+        "history": {
+          "toggle": "History ({n})",
+          "deducted": "Deducted from the {period} distribution",
+          "treasury": "Repaid into {account}",
+          "direct": "Repaid to {name}",
+          "cancelled": "Cancelled (never withdrawn, no cash movement)"
+        },
+        "effectNoTreasuryYet": "No bank or cash movement now: money only goes out when they make the withdrawal.",
+        "fromCompany": "Company advance",
+        "drawn": "Already withdrawn",
+        "undrawn": "Left to withdraw",
+        "effectAssociateOwes": "{name} owes {amount} to {lender}: a debt in their ledger, a claim in {lender}'s.",
+        "repaySplitCancel": "{amount} never withdrawn: cancelled, no cash movement.",
+        "repaySplitCash": "{amount} withdrawn earlier: paid back into cash or bank."
+      },
+      "debts": {
+        "title": "Advances and debts",
+        "companyDebt": "Owed to the company",
+        "companyDebtHelp": "Company advances, deducted from their next profit share.",
+        "associateDebt": "Owed to associates",
+        "associateDebtHelp": "Received from other associates: give it back with “Repay”.",
+        "receivable": "Owed by associates",
+        "receivableHelp": "Lent to other associates: comes back to their balance when repaid.",
+        "company": "Company",
+        "kind": {
+          "company": "Company advance",
+          "owed": "Advance received",
+          "receivable": "Advance lent"
+        },
+        "repaidToYou": "Repaid by {name}",
+        "empty": "No advance.",
+        "undrawn": "Of which {amount} not yet withdrawn."
       }
     },
     "profit": {
@@ -1530,7 +1669,9 @@
       "correctionFields": {
         "unit_selling_price": "Unit selling price",
         "total_amount": "Total amount",
-        "delivered_quantity": "Delivered quantity"
+        "delivered_quantity": "Delivered quantity",
+        "customer": "Customer",
+        "trip_removed": "Trip removed from the invoice"
       },
       "trip": "Trip",
       "truckPlates": "Truck (plates)",
@@ -1956,6 +2097,34 @@
       "notConfigured": "Not yet configured — showing the spec default (100 L).",
       "saving": "Saving…",
       "save": "Save"
+    },
+    "company": {
+      "title": "Company details",
+      "description": "These details appear on proformas, delivery notes, loading sheets and purchase orders.",
+      "contact": "Contact details",
+      "name": "Company name",
+      "tagline": "Tagline",
+      "taxId": "Tax ID",
+      "tradeRegister": "Trade register",
+      "address": "Address",
+      "city": "City",
+      "phone": "Phone",
+      "email": "Email",
+      "website": "Website",
+      "banks": "Printed bank accounts",
+      "banksHelp": "Shown on proformas. Not linked to the treasury accounts.",
+      "bank": "Bank",
+      "swift": "SWIFT code",
+      "accountNumber": "Account number",
+      "active": "Shown",
+      "addBank": "+ Add an account",
+      "removeBank": "Remove",
+      "noBanks": "No bank account.",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Details saved.",
+      "loadError": "Unable to load the company details.",
+      "saveError": "Unable to save — check the fields."
     }
   },
   "errors": {
@@ -1974,13 +2143,13 @@
   },
   "quotations": {
     "list": {
-      "title": "Commercial offers",
-      "new": "New offer",
+      "title": "Proformas",
+      "new": "New proforma",
       "allStatuses": "All statuses",
       "duplicate": "Duplicate",
-      "duplicateError": "Could not duplicate the offer.",
-      "loadError": "Could not load commercial offers.",
-      "noQuotations": "No commercial offers.",
+      "duplicateError": "Unable to duplicate the proforma.",
+      "loadError": "Unable to load proformas.",
+      "noQuotations": "No proforma.",
       "table": {
         "reference": "Reference",
         "customer": "Customer",
@@ -1990,8 +2159,8 @@
       }
     },
     "form": {
-      "newTitle": "New commercial offer",
-      "editTitle": "Offer {reference}",
+      "newTitle": "New proforma",
+      "editTitle": "Proforma {reference}",
       "customer": "Existing customer",
       "selectCustomer": "Search for a customer…",
       "noExistingCustomer": "No existing customer",
@@ -2012,7 +2181,117 @@
       "back": "Back",
       "save": "Save",
       "saving": "Saving…",
-      "saveError": "Could not save the commercial offer."
+      "saveError": "Unable to save the proforma.",
+      "paymentTerms": "Payment terms",
+      "paymentTermsPlaceholder": "E.g. 30% advance required",
+      "showBankAccounts": "Show bank accounts on the PDF"
+    }
+  },
+  "documents": {
+    "common": {
+      "reference": "Reference",
+      "date": "Date",
+      "amount": "Amount",
+      "litres": "Litres",
+      "status": "Status",
+      "actions": "Actions",
+      "open": "Open",
+      "pdf": "PDF",
+      "print": "Print",
+      "duplicate": "Duplicate",
+      "delete": "Delete",
+      "deleteConfirm": "Delete document {reference}?",
+      "deleteError": "Unable to delete this document.",
+      "loadError": "Unable to load the documents.",
+      "exportError": "Unable to generate the PDF.",
+      "allStatuses": "All statuses",
+      "save": "Save",
+      "saving": "Saving…",
+      "saveError": "Unable to save — check the fields.",
+      "back": "Back",
+      "notes": "Remarks",
+      "addLine": "+ Add a line",
+      "removeLine": "Remove line",
+      "total": "Total",
+      "lines": "Lines",
+      "noLines": "No line.",
+      "loading": "Loading…"
+    },
+    "proforma": {
+      "title": "Proformas",
+      "new": "New proforma",
+      "partner": "Customer",
+      "empty": "No proforma."
+    },
+    "delivery": {
+      "title": "Delivery notes",
+      "new": "New delivery note",
+      "edit": "Delivery note {reference}",
+      "partner": "Customer",
+      "empty": "No delivery note.",
+      "customer": "Customer",
+      "selectCustomer": "Choose the customer…",
+      "place": "Place",
+      "deliveryAddress": "Delivery address",
+      "tripsTitle": "Delivered trips",
+      "tripsHint": "Tick the trips to include: the lines fill in automatically.",
+      "noTrips": "No delivered trip for this customer.",
+      "alreadyOn": "Already on {refs}"
+    },
+    "loading": {
+      "title": "Loading sheets",
+      "new": "New loading sheet",
+      "edit": "Loading sheet {reference}",
+      "partner": "Supplier / depot",
+      "empty": "No loading sheet.",
+      "stepInfo": "1. Details",
+      "stepTrucks": "2. Trucks",
+      "next": "Next",
+      "supplier": "Loading supplier / depot",
+      "otherSupplier": "Other (free text)",
+      "supplierName": "Supplier / depot name",
+      "onBehalfOf": "On behalf of",
+      "sourceReference": "Reference (cession, order…)",
+      "productName": "Product",
+      "route": "Route / destination",
+      "searchTrucks": "Search a tractor or tanker…",
+      "noTrucks": "No active truck.",
+      "trucksCount": "{count} truck(s) · {litres}"
+    },
+    "purchase": {
+      "title": "Purchase orders",
+      "new": "New purchase order",
+      "edit": "Purchase order {reference}",
+      "partner": "Supplier",
+      "empty": "No purchase order.",
+      "supplier": "Supplier",
+      "selectSupplier": "Choose the supplier…",
+      "prefill": "Pre-fill from a supplier order",
+      "noPrefill": "— None —",
+      "deliveryPlace": "Delivery place",
+      "deliveryDate": "Requested delivery date",
+      "paymentTerms": "Payment terms",
+      "currency": "Currency",
+      "statuses": {
+        "DRAFT": "Draft",
+        "SENT": "Sent"
+      }
+    },
+    "lines": {
+      "designation": "Description",
+      "quantity": "Quantity",
+      "tanker": "Tanker",
+      "tractor": "Tractor",
+      "missing": "Shortage",
+      "observation": "Remark",
+      "capacity": "Capacity (L)",
+      "product": "Product",
+      "be": "Loading order no.",
+      "route": "Route",
+      "description": "Description",
+      "unit": "Unit",
+      "unitPrice": "Unit price",
+      "amount": "Amount"
     }
   }
 }

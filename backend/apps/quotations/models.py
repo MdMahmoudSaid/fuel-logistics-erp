@@ -47,6 +47,9 @@ class Quotation(TimeStampedModel):
         max_digits=16, decimal_places=2, editable=False, default=Decimal("0.00")
     )
     notes = models.TextField(blank=True)
+    # Proforma (spec 2026-10-11 documents-commerciaux §3).
+    payment_terms = models.CharField(max_length=255, blank=True)
+    show_bank_accounts = models.BooleanField(default=True)
     created_by = models.ForeignKey(
         "accounts.User", on_delete=models.PROTECT, related_name="quotations"
     )

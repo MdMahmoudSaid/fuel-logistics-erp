@@ -113,6 +113,12 @@ def test_backfill_migration_creates_one_allocation_per_existing_withdrawal():
     shareholder = _make_shareholder("BACKFILL-1")
     cash = CashAccount.objects.create(name="Backfill Cash", opening_balance=Decimal("1000000.00"))
 
+    # Rolling back 0029 drops foreign keys to accounts_user, which the
+    # pending (deferred) FK check of the user created above would block -
+    # same fix as before the forward migrate below.
+    with connection.cursor() as cursor:
+        cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
+
     executor = MigrationExecutor(connection)
     executor.migrate([("finance", "0023_shareholderwithdrawalallocation")])
     old_apps = executor.loader.project_state(
@@ -350,10 +356,10 @@ def test_withdrawal_never_touches_another_shareholders_capital():
 
 
 @pytest.mark.django_db
-def test_withdrawal_rejects_amount_exceeding_profit_plus_capital_even_with_loan_credit():
-    """Second ceiling from the design doc: loans_given_remaining inflates
-    available_balance but is never an allocatable source, so a withdrawal
-    request that only fits because of loan credit must still be rejected."""
+def test_lender_cannot_withdraw_what_he_advanced_but_the_borrower_can():
+    """Client correction 2026-10-11: an associate advance moves part of the
+    lender's balance to the borrower - the lender can no longer withdraw
+    it, the borrower can."""
     lender = _make_shareholder("CEILING-LENDER")
     borrower = _make_shareholder("CEILING-BORROWER", percent=Decimal("0.00"))
     actor = _make_admin("CEILING")
@@ -368,10 +374,16 @@ def test_withdrawal_rejects_amount_exceeding_profit_plus_capital_even_with_loan_
     )
     cash = CashAccount.objects.create(name="Cash Ceiling", opening_balance=Decimal("1000000.00"))
 
-    assert ShareholderLedgerService.get_available_balance(lender.id) == Decimal("150000.00")
+    assert ShareholderLedgerService.get_available_balance(lender.id) == Decimal("50000.00")
+    assert ShareholderLedgerService.get_available_balance(borrower.id) == Decimal("50000.00")
 
     with pytest.raises(ShareholderWithdrawalError):
         ShareholderWithdrawalService.record_withdrawal(
-            shareholder_id=lender.id, amount=Decimal("120000.00"), date="2026-08-02",
+            shareholder_id=lender.id, amount=Decimal("50000.01"), date="2026-08-02",
             cash_account_id=cash.id, actor=actor,
         )
+    ShareholderWithdrawalService.record_withdrawal(
+        shareholder_id=borrower.id, amount=Decimal("50000.00"), date="2026-08-02",
+        cash_account_id=cash.id, actor=actor,
+    )
+    assert ShareholderLedgerService.get_available_balance(borrower.id) == Decimal("0.00")

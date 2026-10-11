@@ -3,8 +3,8 @@ from rest_framework.permissions import SAFE_METHODS, IsAuthenticated
 
 from apps.accounts.permissions import HasModulePermission
 
-from .models import LossToleranceConfig, Product
-from .serializers import LossToleranceConfigSerializer, ProductSerializer
+from .models import CompanyProfile, LossToleranceConfig, Product
+from .serializers import CompanyProfileSerializer, LossToleranceConfigSerializer, ProductSerializer
 
 
 class ProductViewSet(viewsets.ModelViewSet):
@@ -61,3 +61,15 @@ class LossToleranceConfigView(generics.RetrieveUpdateAPIView):
 
     def perform_update(self, serializer):
         serializer.save(updated_by=self.request.user)
+
+
+class CompanyProfileView(LossToleranceConfigView):
+    """GET|PATCH /api/settings/company/ - the singleton CompanyProfile,
+    admin module (spec 2026-10-11 documents-commerciaux §2)."""
+
+    serializer_class = CompanyProfileSerializer
+
+    def get_object(self):
+        profile = CompanyProfile.load()
+        self.check_object_permissions(self.request, profile)
+        return profile

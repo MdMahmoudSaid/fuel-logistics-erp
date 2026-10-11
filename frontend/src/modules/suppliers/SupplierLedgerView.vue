@@ -167,7 +167,7 @@ function proofUrl(order: SupplierLedger['orders'][number]) {
 </script>
 
 <template>
-  <div class="max-w-4xl space-y-6">
+  <div class="ledger-page max-w-4xl space-y-6">
     <!-- Print-only branding (client feedback 2026-09-06): window.print()
     prints this page's own content, not a generated PDF - it had no logo/
     company name of its own (only whatever the browser's own optional

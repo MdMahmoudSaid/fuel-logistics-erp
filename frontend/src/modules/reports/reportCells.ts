@@ -94,7 +94,9 @@ const MONEY_TONE: Record<string, 'emerald' | 'rose' | 'auto'> = {
   'customer-outstanding.outstanding': 'emerald',
   'supplier-outstanding.outstanding': 'rose',
   'transporter-outstanding.outstanding': 'rose',
-  'transporter-statement.net_amount': 'rose',
+  'transporter-statement.debit': 'rose',
+  'transporter-statement.credit': 'emerald',
+  'transporter-statement.balance': 'rose',
 }
 
 export function moneyToneClass(

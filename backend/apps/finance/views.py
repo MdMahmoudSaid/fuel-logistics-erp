@@ -914,9 +914,12 @@ class ShareholderProfitPeriodViewSet(viewsets.ModelViewSet):
 
 
 class ShareholderLoanViewSet(viewsets.ModelViewSet):
-    queryset = ShareholderLoan.objects.select_related("borrower", "lender").all()
+    queryset = ShareholderLoan.objects.select_related("borrower", "lender").prefetch_related(
+        "repayments__bank_account", "repayments__cash_account",
+        "repayments__profit_share__distribution",
+    ).all()
     serializer_class = ShareholderLoanSerializer
-    filterset_fields = ["borrower", "lender", "status"]
+    filterset_fields = ["borrower", "lender", "status", "source"]
     permission_classes = [HasModulePermission]
     module = "shareholders"
 
@@ -931,19 +934,46 @@ class ShareholderLoanViewSet(viewsets.ModelViewSet):
         through this atomic increment instead of a client-computed
         absolute total that could silently overwrite a concurrent one.
 
-        POST /api/shareholder-loans/{id}/record-repayment/  body: {amount}
+        POST /api/shareholder-loans/{id}/record-repayment/
+             body: {amount, date?, bank_account?, cash_account?, notes?}
+        (a company advance is repaid into one bank/cash account; an
+        associate advance directly to the lender, with no account.)
         """
+        class RepaymentInput(serializers.Serializer):
+            amount = serializers.CharField()
+            date = serializers.DateField(required=False)
+            bank_account = serializers.IntegerField(required=False, allow_null=True)
+            cash_account = serializers.IntegerField(required=False, allow_null=True)
+            notes = serializers.CharField(required=False, allow_blank=True, max_length=1000)
+
         loan = self.get_object()
-        amount = request.data.get("amount")
-        if amount in (None, ""):
+        if request.data.get("amount") in (None, ""):
             return Response(
                 {"detail": "amount est requis."}, status=http_status.HTTP_400_BAD_REQUEST
             )
+        payload = RepaymentInput(data=request.data)
+        payload.is_valid(raise_exception=True)
+        data = payload.validated_data
         try:
-            loan = ShareholderLoanService.record_repayment(loan.id, amount)
+            ShareholderLoanService.record_repayment(
+                loan.id,
+                data["amount"],
+                date=data.get("date"),
+                bank_account_id=data.get("bank_account"),
+                cash_account_id=data.get("cash_account"),
+                notes=data.get("notes", ""),
+                actor=request.user,
+            )
         except ShareholderLoanError as exc:
             return Response({"detail": str(exc)}, status=http_status.HTTP_400_BAD_REQUEST)
-        return Response(ShareholderLoanSerializer(loan, context={"request": request}).data)
+        except (BankAccount.DoesNotExist, CashAccount.DoesNotExist):
+            return Response(
+                {"detail": "Compte de tresorerie introuvable."},
+                status=http_status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(
+            ShareholderLoanSerializer(self.get_queryset().get(pk=loan.id), context={"request": request}).data
+        )
 
 
 class ShareholderWithdrawalViewSet(viewsets.ModelViewSet):

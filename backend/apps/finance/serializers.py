@@ -29,6 +29,7 @@ from .models import (
     Shareholder,
     ShareholderContribution,
     ShareholderLoan,
+    ShareholderLoanRepayment,
     ShareholderProfitDistribution,
     ShareholderProfitPeriod,
     ShareholderProfitShare,
@@ -1261,6 +1262,19 @@ class ShareholderSerializer(serializers.ModelSerializer):
                 ShareholderService.validate_total_participation(percent, exclude_id=exclude_id)
             except ShareholderParticipationError as exc:
                 raise serializers.ValidationError({"participation_percent": str(exc)})
+        # Client request 2026-10-11: an inactive associate is archived and
+        # disappears from advances/distributions - his open advances would
+        # never be settled, so he must clear them first.
+        if (
+            self.instance is not None
+            and self.instance.is_active
+            and not is_active
+            and ShareholderLoanService.open_advances_exist(self.instance.id)
+        ):
+            raise serializers.ValidationError(
+                {"is_active": "Cet associe a encore une avance non remboursee : "
+                 "soldez-la avant de le rendre inactif."}
+            )
         return data
 
 
@@ -1391,17 +1405,42 @@ class ShareholderProfitPeriodSerializer(serializers.ModelSerializer):
         )
 
 
+class ShareholderLoanRepaymentSerializer(serializers.ModelSerializer):
+    """Read-only history - rows are only created by ShareholderLoanService."""
+
+    account_name = serializers.SerializerMethodField()
+    distribution_period = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ShareholderLoanRepayment
+        fields = ["id", "method", "amount", "date", "account_name", "distribution_period", "notes"]
+
+    def get_account_name(self, obj):
+        account = obj.bank_account or obj.cash_account
+        return account.name if account else None
+
+    def get_distribution_period(self, obj):
+        if not obj.profit_share_id:
+            return None
+        distribution = obj.profit_share.distribution
+        return f"{distribution.period_start} - {distribution.period_end}"
+
+
 class ShareholderLoanSerializer(serializers.ModelSerializer):
     borrower_detail = ShareholderBriefSerializer(source="borrower", read_only=True)
     lender_detail = ShareholderBriefSerializer(source="lender", read_only=True)
     remaining_amount = serializers.DecimalField(max_digits=16, decimal_places=2, read_only=True)
+    undrawn_amount = serializers.DecimalField(max_digits=16, decimal_places=2, read_only=True)
+    cash_outstanding = serializers.DecimalField(max_digits=16, decimal_places=2, read_only=True)
+    repayments = ShareholderLoanRepaymentSerializer(many=True, read_only=True)
 
     class Meta:
         model = ShareholderLoan
         fields = [
-            "id", "borrower", "borrower_detail", "lender", "lender_detail",
-            "amount", "date", "status", "amount_repaid", "remaining_amount", "notes",
-            "created_at", "updated_at",
+            "id", "source", "borrower", "borrower_detail", "lender", "lender_detail",
+            "amount", "date", "status", "amount_repaid", "remaining_amount",
+            "amount_drawn", "amount_cancelled", "undrawn_amount", "cash_outstanding", "notes",
+            "repayments", "created_at", "updated_at",
         ]
         # status is derived in ShareholderLoan.save() from amount_repaid vs
         # amount - never a direct client write (same convention as
@@ -1413,12 +1452,24 @@ class ShareholderLoanSerializer(serializers.ModelSerializer):
         # ShareholderLoanService.record_repayment() via the dedicated
         # record-repayment action, which increments it under
         # select_for_update().
-        read_only_fields = ["id", "status", "amount_repaid", "created_at", "updated_at"]
+        read_only_fields = [
+            "id", "status", "amount_repaid", "amount_drawn", "amount_cancelled",
+            "created_at", "updated_at",
+        ]
 
     def validate(self, data):
-        borrower = data.get("borrower", getattr(self.instance, "borrower", None))
-        lender = data.get("lender", getattr(self.instance, "lender", None))
+        if self.instance is not None:
+            # An advance is a money movement: once recorded, only its notes
+            # change; repayments go through record-repayment.
+            locked = set(data) - {"notes"}
+            if locked:
+                raise serializers.ValidationError(
+                    "Une avance enregistree ne peut plus etre modifiee (seule la note le peut)."
+                )
+            return data
 
+        borrower = data.get("borrower")
+        lender = data.get("lender")
         if borrower and lender and borrower.id == lender.id:
             raise serializers.ValidationError(
                 "L'emprunteur et le preteur ne peuvent pas etre le meme actionnaire."
@@ -1426,13 +1477,16 @@ class ShareholderLoanSerializer(serializers.ModelSerializer):
         return data
 
     def create(self, validated_data):
+        lender = validated_data.get("lender")
         try:
             return ShareholderLoanService.create_loan(
                 borrower_id=validated_data["borrower"].id,
-                lender_id=validated_data["lender"].id,
+                lender_id=lender.id if lender else None,
                 amount=validated_data["amount"],
                 date=validated_data["date"],
                 notes=validated_data.get("notes", ""),
+                source=validated_data.get("source", ShareholderLoan.Source.SHAREHOLDER),
+                actor=self.context["request"].user,
             )
         except ShareholderLoanError as exc:
             raise serializers.ValidationError(str(exc))
@@ -1445,7 +1499,7 @@ class ShareholderWithdrawalAllocationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ShareholderWithdrawalAllocation
-        fields = ["profit_share", "contribution", "amount"]
+        fields = ["profit_share", "contribution", "advance", "amount"]
 
 
 class ShareholderWithdrawalSerializer(serializers.ModelSerializer):

@@ -1,7 +1,7 @@
 # Building blocks shared by every PDF this app renders (docs/superpowers/
 # specs/2026-09-23-rapports-document-comptable-design.md, section pdf_template):
 # company constant, logo, free-text escaping and the logo + company + title
-# masthead. ledger_pdf, profit_pdf, quotation_pdf and report_pdf all import
+# masthead. ledger_pdf, profit_pdf, proforma_pdf and report_pdf all import
 # from here instead of each carrying its own copy.
 
 import re

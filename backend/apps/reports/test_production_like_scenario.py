@@ -671,8 +671,9 @@ def test_scenario_complet_production_like(capsys):
     report.check("15. Grands livres", "compte fournisseur total achete", "supplier ledger debit", money(50000000), sum((row["debit"] or money(0)) for row in SupplierStatementQuery.run(supplier_id=supplier.id)))
     report.check("15. Grands livres", "compte fournisseur total paye", "supplier ledger credit", money(50000000), sum((row["credit"] or money(0)) for row in SupplierStatementQuery.run(supplier_id=supplier.id)))
     transporter_rows = TransporterStatementQuery.run(transporter_id=transporter.id)
-    report.check("15. Grands livres", "grand livre transporteur deduction", "deduction_amount", money(45000), transporter_rows[0]["deduction_amount"])
-    report.check("15. Grands livres", "grand livre transporteur net", "net_amount", money(2880000), transporter_rows[0]["net_amount"])
+    settlement_rows = [row for row in transporter_rows if row["type"] == "SETTLEMENT"]
+    report.check("15. Grands livres", "releve transporteur reglement", "brut - deduction", money(2880000), settlement_rows[0]["debit"])
+    report.check("15. Grands livres", "releve transporteur solde", "= total du - avances", -ControlledDebtPaymentService.describe_transporter_balance(transporter)["net_balance"], transporter_rows[-1]["balance"])
     report.check("15. Grands livres", "journal tresorerie banque final", "dernier solde", money(175910000), TreasuryStatementQuery.run(bank_account_id=bank.id)[-1]["balance"])
 
     def rejected(label, fn, exc_type=Exception):

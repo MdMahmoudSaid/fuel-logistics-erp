@@ -21,13 +21,14 @@ from apps.core.request_cache import memoize_per_request
 from apps.core.models import LossToleranceConfig
 from apps.core.reference import generate_monthly_reference
 from apps.finance.models import Expense, ExpenseAllocation, TransportDeduction, TransportPayment
-from apps.sales.models import Invoice, ProductSellingPriceHistory, Sale
+from apps.sales.models import Invoice, InvoiceCorrection, ProductSellingPriceHistory, Sale
 from apps.sales.services import CustomerOrderService, InvoiceService
 from apps.transport.models import Transporter, Truck
 from apps.trips.models import (
     ClientVerificationCorrection,
     DeliveryControl,
     Trip,
+    TripCustomerRefusal,
     TripStatusHistory,
 )
 
@@ -572,6 +573,14 @@ class TripWorkflowService:
         if trip.customer_order_id:
             CustomerOrderService.recompute_status(trip.customer_order)
 
+        # Client request 2026-10-11: a completed trip's invoice is validated
+        # (payable) at once instead of lingering as DRAFT.
+        if target_status == Trip.Status.COMPLETED:
+            sale = Sale.objects.filter(trip=trip).first()
+            invoice = sale.billing_invoice if sale else None
+            if invoice is not None:
+                InvoiceService.validate_if_trips_completed(invoice.id, actor)
+
         # A cancelled trip no longer holds back its group's invoice: if the
         # other trips were all delivered already, bill them now.
         if target_status == Trip.Status.CANCELLED and trip.invoice_group and trip.client_id:
@@ -683,9 +692,12 @@ class DeliveryService:
         )
         if not unbilled:
             return None
-        return DeliveryService._create_invoice(
+        invoice = DeliveryService._create_invoice(
             unbilled[0], issued_date, extra_sales=unbilled[1:]
         )
+        # Billed after a trip of the group was cancelled: the remaining
+        # trips may all be COMPLETED already.
+        return InvoiceService.validate_if_trips_completed(invoice.id, None) or invoice
 
     @staticmethod
     @transaction.atomic
@@ -1093,3 +1105,351 @@ class DeliveryService:
         for payment in TransportPayment.objects.select_for_update().filter(trip=trip):
             payment.deduction_amount = total_deduction
             payment.save(update_fields=["deduction_amount", "net_amount", "updated_at"])
+
+
+def _money(value: Decimal) -> str:
+    return f"{value:,.2f}".replace(",", " ").replace(".00", "") + " XOF"
+
+
+class TripCustomerRefusalService:
+    """The customer a trip was assigned to does not want it (client request
+    2026-10-11). Two outcomes, both recorded as a TripCustomerRefusal:
+
+    - RETURN_TO_STOCK (only before delivery - no sale, no invoice yet): the
+      trip loses its customer and heads for / stays in the company stock;
+    - CHANGE_CUSTOMER: the trip is handed to another customer. Once
+      delivered, its sale and invoice follow it at the new customer's price,
+      so the former customer keeps neither the trip nor any invoice for it:
+      his receipts imputed on it come back to him as open credit, which is
+      redistributed on his own open debts (no treasury row moves - the cash
+      came in once). An invoice that grouped several trips is split: the
+      refused trip leaves it for an invoice of its own.
+    """
+
+    @staticmethod
+    def current_customer(trip: Trip):
+        if trip.client_id:
+            return trip.client
+        return trip.customer_order.customer if trip.customer_order_id else None
+
+    @staticmethod
+    def _checked(trip: Trip, action, customer_id):
+        """Shared guards: returns (old customer, new customer or None, sale
+        or None) or raises ValueError."""
+        from apps.customers.models import Customer
+
+        old_customer = TripCustomerRefusalService.current_customer(trip)
+        if old_customer is None:
+            raise ValueError(f"Le trajet {trip.reference} n'est attribué à aucun client.")
+        if trip.status == Trip.Status.CANCELLED:
+            raise ValueError(f"Le trajet {trip.reference} est annulé.")
+        if trip.status == Trip.Status.BLOCKED:
+            raise ValueError(
+                f"Le trajet {trip.reference} est bloqué ; débloquez-le avant de traiter le refus."
+            )
+        sale = Sale.objects.filter(trip=trip).first()
+        if action == TripCustomerRefusal.Action.RETURN_TO_STOCK:
+            if sale is not None:
+                raise ValueError(
+                    f"Le trajet {trip.reference} est déjà livré : il ne peut plus revenir au "
+                    "stock, seul un changement de client est possible."
+                )
+            return old_customer, None, None
+        if action != TripCustomerRefusal.Action.CHANGE_CUSTOMER:
+            raise ValueError("Action de refus inconnue.")
+        try:
+            new_customer = Customer.objects.get(pk=int(customer_id))
+        except (Customer.DoesNotExist, TypeError, ValueError):
+            raise ValueError("Choisissez le nouveau client.")
+        if new_customer.id == old_customer.id:
+            raise ValueError("Choisissez un client différent du client actuel.")
+        if not new_customer.is_active:
+            raise ValueError(f"Le client {new_customer.name} est inactif.")
+        if sale is not None:
+            invoice = sale.billing_invoice
+            if invoice is not None and invoice.status == Invoice.Status.CANCELLED:
+                raise ValueError(f"La facture {invoice.invoice_number} de ce trajet est annulée.")
+        return old_customer, new_customer, sale
+
+    @staticmethod
+    def _price(value, fallback: Decimal) -> Decimal:
+        if value in (None, ""):
+            return fallback
+        try:
+            price = Decimal(str(value)).quantize(_UNIT)
+        except (ArithmeticError, ValueError):
+            raise ValueError("Le prix de vente unitaire est invalide.")
+        if price < 0:
+            raise ValueError("Le prix de vente unitaire ne peut pas être négatif.")
+        return price
+
+    @staticmethod
+    def _paid_on(invoice) -> Decimal:
+        if invoice is None:
+            return _ZERO
+        return (
+            invoice.allocations.filter(payment__is_reversed=False).aggregate(t=Sum("amount"))["t"]
+            or _ZERO
+        )
+
+    @staticmethod
+    def preview(trip_id, action, customer_id=None, unit_selling_price=None) -> dict:
+        """What refuse() would do, without doing it (balances: positive =
+        owed to us) - shown to the operator before he confirms."""
+        from apps.finance.services import PaymentAllocationService
+
+        trip = Trip.objects.get(pk=trip_id)
+        old_customer, new_customer, sale = TripCustomerRefusalService._checked(
+            trip, action, customer_id
+        )
+        old_balance = PaymentAllocationService.get_customer_outstanding(old_customer)
+        result = {
+            "trip_reference": trip.reference,
+            "action": action,
+            "delivered": sale is not None,
+            "status_after": TripCustomerRefusalService._status_after(trip, action),
+            "invoice_number": None,
+            "grouped": False,
+            "quantity": None,
+            "current_unit_price": None,
+            "suggested_unit_price": None,
+            "unit_price": None,
+            "old_amount": "0.00",
+            "new_amount": "0.00",
+            "released_payments": "0.00",
+            "old_customer": {
+                "id": old_customer.id,
+                "name": old_customer.name,
+                "balance_before": str(old_balance),
+                "balance_after": str(old_balance),
+            },
+            "new_customer": None,
+        }
+        if new_customer is None:
+            return result
+        suggested = DeliveryService.get_latest_selling_price(trip.product_id, new_customer.id)
+        new_balance = PaymentAllocationService.get_customer_outstanding(new_customer)
+        new_side = {
+            "id": new_customer.id,
+            "name": new_customer.name,
+            "balance_before": str(new_balance),
+            "balance_after": str(new_balance),
+            "credit_applied": "0.00",
+        }
+        result["new_customer"] = new_side
+        result["suggested_unit_price"] = str(suggested) if suggested is not None else None
+        if sale is None:
+            return result
+
+        invoice = sale.billing_invoice
+        price = TripCustomerRefusalService._price(
+            unit_selling_price, suggested if suggested is not None else sale.unit_selling_price
+        )
+        new_amount = (sale.delivered_quantity * price).quantize(Decimal("0.01"))
+        old_amount = sale.subtotal if invoice is not None else _ZERO
+        group_total_after = (invoice.total_amount - sale.subtotal) if invoice else _ZERO
+        released = max(_ZERO, TripCustomerRefusalService._paid_on(invoice) - group_total_after)
+        payable = (
+            invoice is not None and invoice.status != Invoice.Status.DRAFT
+        ) or trip.status == Trip.Status.COMPLETED
+        credit = PaymentAllocationService.get_customer_available_credit(new_customer)
+        result.update(
+            invoice_number=invoice.invoice_number if invoice else None,
+            grouped=invoice is not None and len(invoice.all_sales) > 1,
+            quantity=str(sale.delivered_quantity),
+            current_unit_price=str(sale.unit_selling_price),
+            unit_price=str(price),
+            old_amount=str(old_amount),
+            new_amount=str(new_amount),
+            released_payments=str(released),
+        )
+        result["old_customer"]["balance_after"] = str(old_balance - old_amount)
+        new_side["balance_after"] = str(new_balance + new_amount)
+        new_side["credit_applied"] = str(min(credit, new_amount) if payable else _ZERO)
+        return result
+
+    @staticmethod
+    def _status_after(trip: Trip, action) -> str:
+        if action == TripCustomerRefusal.Action.RETURN_TO_STOCK and trip.status in (
+            Trip.Status.ARRIVED_AT_CLIENT,
+            Trip.Status.QUANTITY_CONTROL,
+        ):
+            return Trip.Status.ARRIVED_AT_COMPANY_STOCK
+        return trip.status
+
+    @staticmethod
+    @transaction.atomic
+    def refuse(trip_id, action, reason, actor, customer_id=None, unit_selling_price=None) -> Trip:
+        from apps.finance.services import PaymentAllocationService
+
+        trip = Trip.objects.select_for_update().get(pk=trip_id)
+        if not str(reason or "").strip():
+            raise ValueError("Le motif du refus est obligatoire.")
+        old_customer, new_customer, sale = TripCustomerRefusalService._checked(
+            trip, action, customer_id
+        )
+        old_order = trip.customer_order if trip.customer_order_id else None
+        old_group = trip.invoice_group
+        refusal = TripCustomerRefusal(
+            trip=trip,
+            action=action,
+            previous_customer=old_customer,
+            new_customer=new_customer,
+            reason=reason,
+            recorded_by=actor,
+        )
+
+        if sale is not None:
+            TripCustomerRefusalService._move_sale(
+                trip, sale, old_customer, new_customer, reason, actor, unit_selling_price, refusal
+            )
+
+        if new_customer is None:
+            trip.client = None
+            trip.customer_order = None
+            trip.destination_type = Trip.DestinationType.COMPANY_STOCK
+        else:
+            trip.client = new_customer
+            trip.destination_type = Trip.DestinationType.CUSTOMER
+            if old_order is not None and old_order.customer_id != new_customer.id:
+                trip.customer_order = None
+        trip.invoice_group = ""
+        previous_status = trip.status
+        trip.status = TripCustomerRefusalService._status_after(trip, action)
+        trip.save(
+            update_fields=[
+                "client", "customer_order", "destination_type", "invoice_group", "status",
+                "updated_at",
+            ]
+        )
+        if trip.status != previous_status:
+            TripStatusHistory.objects.create(
+                trip=trip,
+                previous_status=previous_status,
+                new_status=trip.status,
+                changed_by=actor,
+                notes=f"Refus du client {old_customer.name} : retour au stock",
+            )
+        if old_order is not None and trip.customer_order_id != old_order.id:
+            CustomerOrderService.recompute_status(old_order)
+
+        # The trips left in the refused trip's group may now all be
+        # delivered: their invoice no longer waits for this one.
+        if old_group:
+            DeliveryService.bill_group_if_complete(
+                old_group, old_customer, issued_date=timezone.localdate()
+            )
+
+        PaymentAllocationService.apply_customer_credit_to_open_invoices(old_customer)
+        if new_customer is not None:
+            PaymentAllocationService.apply_customer_credit_to_open_invoices(new_customer)
+
+        refusal.save()
+        return trip
+
+    @staticmethod
+    def _move_sale(trip, sale, old_customer, new_customer, reason, actor, unit_price, refusal):
+        """Hand a delivered trip's Sale (and its invoice amount) to
+        `new_customer`. A single-trip invoice moves as a whole; a grouped
+        invoice is split, the refused trip getting an invoice of its own."""
+        sale = Sale.objects.select_for_update().get(pk=sale.pk)
+        invoice = sale.billing_invoice
+        if invoice is not None:
+            invoice = Invoice.objects.select_for_update().get(pk=invoice.pk)
+        suggested = DeliveryService.get_latest_selling_price(trip.product_id, new_customer.id)
+        price = TripCustomerRefusalService._price(
+            unit_price, suggested if suggested is not None else sale.unit_selling_price
+        )
+        previous_price = sale.unit_selling_price
+        refusal.previous_unit_price = previous_price
+        refusal.new_unit_price = price
+
+        # The former customer's receipts on the invoice become open credit
+        # again; whatever the invoice still needs is re-imputed afterwards.
+        released = []
+        if invoice is not None:
+            released = list(invoice.allocations.filter(payment__is_reversed=False).select_for_update())
+        paid = sum((a.amount for a in released), _ZERO)
+        for allocation in released:
+            allocation.invoice = None
+            allocation.save(update_fields=["invoice", "updated_at"])
+
+        grouped = invoice is None or len(invoice.all_sales) > 1
+        if invoice is not None and grouped:
+            others = [s for s in invoice.all_sales if s.id != sale.id]
+            if invoice.sale_id == sale.id:
+                successor = others[0]
+                successor.grouped_invoice = None
+                successor.save(update_fields=["grouped_invoice", "updated_at"])
+                invoice.sale = successor
+                invoice.save(update_fields=["sale", "updated_at"])
+            else:
+                sale.grouped_invoice = None
+                sale.save(update_fields=["grouped_invoice", "updated_at"])
+            invoice.recompute_total()
+            TripCustomerRefusalService._reopen(invoice)
+            InvoiceCorrection.objects.create(
+                invoice=invoice,
+                field_name="trip_removed",
+                previous_value=trip.reference,
+                new_value=new_customer.name[:100],
+                corrected_by=actor,
+                reason=reason,
+            )
+            refusal.released_amount = max(_ZERO, paid - invoice.total_amount)
+        else:
+            refusal.released_amount = paid
+
+        sale.customer = new_customer
+        sale.unit_selling_price = price
+        sale.save()  # recomputes subtotal
+
+        if grouped:
+            # A trip still waiting for its group (no invoice yet) or split
+            # off one: it is billed on its own now that it left the group.
+            target = DeliveryService._create_invoice(sale, timezone.localdate())
+            was_payable = invoice is not None and invoice.status != Invoice.Status.DRAFT
+            if was_payable or trip.status == Trip.Status.COMPLETED:
+                InvoiceService.validate_invoice(target.id, actor)
+        else:
+            # Reloaded: `invoice.sale` still holds the pre-move Sale.
+            target = Invoice.objects.select_for_update().get(pk=invoice.pk)
+            target.recompute_total()
+            TripCustomerRefusalService._reopen(target)
+        refusal.invoice_number = target.invoice_number
+
+        note = reason
+        if refusal.released_amount > _ZERO:
+            note = (
+                f"{reason}\n(paiements de {old_customer.name} libérés en avance : "
+                f"{_money(refusal.released_amount)})"
+            )
+        InvoiceCorrection.objects.create(
+            invoice=target,
+            field_name="customer",
+            previous_value=old_customer.name[:100],
+            new_value=new_customer.name[:100],
+            corrected_by=actor,
+            reason=note,
+        )
+        if price != previous_price:
+            InvoiceCorrection.objects.create(
+                invoice=target,
+                field_name="unit_selling_price",
+                previous_value=str(previous_price),
+                new_value=str(price),
+                corrected_by=actor,
+                reason=reason,
+            )
+            if DeliveryService.get_latest_selling_price(trip.product_id, new_customer.id) != price:
+                ProductSellingPriceHistory.objects.create(
+                    product=trip.product, customer=new_customer, price=price, changed_by=actor
+                )
+
+    @staticmethod
+    def _reopen(invoice) -> None:
+        """A (partly) paid invoice whose receipts were just released is owed
+        again in full until credit is re-imputed on it."""
+        if invoice.status in (Invoice.Status.PARTIALLY_PAID, Invoice.Status.PAID):
+            invoice.status = Invoice.Status.VALIDATED
+            invoice.save(update_fields=["status", "updated_at"])

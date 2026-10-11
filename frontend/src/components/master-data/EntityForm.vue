@@ -36,7 +36,9 @@ const editableFields = computed(() => props.fields.filter((field) => !field.read
 // ouverte) prennent toute la ligne, une case à cocher tient sur une ligne.
 function fieldClass(field: FieldSchema): string {
   if (field.type === 'checkbox') return 'flex items-center gap-2 md:pt-7'
-  if (field.type === 'textarea' || quickCreateOpen.value[field.key])
+  // Le téléphone (indicatif + numéro) a besoin de la ligne entière pour
+  // rester lisible (recette 2026-10-11).
+  if (field.type === 'textarea' || field.type === 'phone' || quickCreateOpen.value[field.key])
     return 'space-y-1 md:col-span-2'
   return 'space-y-1'
 }

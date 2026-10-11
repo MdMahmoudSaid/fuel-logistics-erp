@@ -182,7 +182,8 @@ class TransporterViewSet(viewsets.ModelViewSet):
         no new calculation.
         """
         from apps.finance.models import TransportPayment
-        from apps.finance.services import TransporterLedgerService
+        from apps.finance.services import OpeningDebtService, TransporterLedgerService
+        from apps.reports.services.ledger_pdf import advance_section_rows, opening_debt_section_rows
 
         transporter = self.get_object()
         ledger_data = TransporterLedgerService.get_ledger(transporter)
@@ -210,16 +211,21 @@ class TransporterViewSet(viewsets.ModelViewSet):
             for payment in payments
         ]
 
-        advances = transporter.advances.all()
-        advances_section = [
-            {
-                "date": advance.date,
-                "reference": advance.reference,
-                "settled": advance.settled,
-                "amount": advance.amount,
-            }
-            for advance in advances
-        ]
+        # Same "Avances" section as the ledger page (2026-10-11).
+        advances_section = advance_section_rows(
+            (
+                advance.date,
+                advance.reference,
+                (advance.bank_account or advance.cash_account).name
+                if (advance.bank_account_id or advance.cash_account_id)
+                else None,
+                advance.amount,
+                advance.remaining_amount,
+                False,
+            )
+            for advance in transporter.advances.select_related("bank_account", "cash_account").order_by("date", "id")
+        )
+        labels = get_ledger_pdf_labels(lang)
 
         pdf_bytes = render_ledger_pdf(
             company_name=DEFAULT_COMPANY_NAME,
@@ -230,12 +236,13 @@ class TransporterViewSet(viewsets.ModelViewSet):
             rows=ledger_data["entries"],
             lang=lang,
             extra_sections=[
-                {"title": get_ledger_pdf_labels(lang)["trucks_section"], "rows": trucks_section},
                 {
-                    "title": get_ledger_pdf_labels(lang)["settlements_section"],
-                    "rows": settlements_section,
+                    "title": labels["opening_debts_section"],
+                    "rows": opening_debt_section_rows(OpeningDebtService.active(transporter=transporter)),
                 },
-                {"title": get_ledger_pdf_labels(lang)["advances_section"], "rows": advances_section},
+                {"title": labels["trucks_section"], "rows": trucks_section},
+                {"title": labels["settlements_section"], "rows": settlements_section},
+                {"title": labels["advances_section"], "rows": advances_section},
             ],
         )
         response = HttpResponse(pdf_bytes, content_type="application/pdf")

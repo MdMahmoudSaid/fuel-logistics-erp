@@ -10,6 +10,8 @@ import {
   fetchTripHistory,
   fetchTripMargin,
   postTripStatus,
+  fetchCustomerRefusals,
+  type CustomerRefusalEntry,
 } from './api'
 import { translateApiError } from '@/i18n/apiErrors'
 import { confirmDialog } from '@/composables/useConfirmDialog'
@@ -32,6 +34,7 @@ import { cancelTransportPayment, transportPaymentResource } from '@/modules/fina
 import ExpenseForm from '@/modules/finance/ExpenseForm.vue'
 import TransportPaymentForm from '@/modules/finance/TransportPaymentForm.vue'
 import AssignCustomerForm from './AssignCustomerForm.vue'
+import TripCustomerRefusal from './TripCustomerRefusal.vue'
 import type { Expense } from '@/modules/finance/types'
 import type { ExpenseCategory, TransportPayment } from '@/modules/finance/types'
 import { formatMoney, formatUnitMoney, formatQuantity } from '@/utils/currency'
@@ -194,6 +197,46 @@ const canShowAssignCustomer = computed(
     canAssignCustomer.value &&
     noSaleYet.value,
 )
+
+// Customer refusal (client request 2026-10-11): the assigned customer does
+// not want the trip - back to stock (before delivery) or another customer.
+// Once invoiced, it rewrites an invoice: the sales "validate" tier is then
+// also required (backend TripViewSet._refusal_forbidden).
+const showRefusal = ref(false)
+const refusals = ref<CustomerRefusalEntry[]>([])
+const hasCustomer = computed(() => !!(trip.value?.client || trip.value?.customer_order))
+const tripDelivered = computed(() => margin.value?.available === true)
+const refusingCustomerName = computed(
+  () =>
+    trip.value?.client_detail?.name ??
+    (trip.value?.customer_order
+      ? `${t('trips.detail.customerOrder')} #${trip.value.customer_order}`
+      : ''),
+)
+const canShowRefusal = computed(
+  () =>
+    hasCustomer.value &&
+    margin.value !== null &&
+    !!trip.value &&
+    !['CANCELLED', 'BLOCKED'].includes(trip.value.status) &&
+    canAssignCustomer.value &&
+    (!tripDelivered.value || auth.can('sales', 'validate')),
+)
+
+async function loadRefusals() {
+  try {
+    refusals.value = await fetchCustomerRefusals(tripId.value)
+  } catch {
+    refusals.value = []
+  }
+}
+onMounted(loadRefusals)
+
+async function onRefusalDone() {
+  showRefusal.value = false
+  await Promise.all([load(), loadMargin(), loadRefusals()])
+  await loadAllowedStatuses()
+}
 
 async function onCustomerAssigned() {
   showAssignCustomerForm.value = false
@@ -653,6 +696,15 @@ const cessionProofUrl = computed(
           >
             {{ t('trips.detail.assignCustomer') }}
           </Button>
+          <Button
+            v-if="canShowRefusal"
+            variant="ghost"
+            class="mt-1"
+            data-test="open-customer-refusal"
+            @click="showRefusal = true"
+          >
+            {{ t('trips.customerRefusal.open') }}
+          </Button>
         </div>
         <div v-if="trip.customer_order">
           <span class="text-texte-2">{{ t('trips.detail.customerOrder') }}</span>
@@ -670,6 +722,51 @@ const cessionProofUrl = computed(
           <p class="text-texte font-medium">{{ trip.notes }}</p>
         </div>
       </section>
+
+      <Card
+        v-if="refusals.length"
+        :title="t('trips.customerRefusal.historyTitle')"
+        data-test="customer-refusals"
+      >
+        <ol class="border-ligne space-y-3 border-s ps-4">
+          <li v-for="entry in refusals" :key="entry.id" class="relative text-sm">
+            <span class="bg-texte-3 absolute -start-[21px] top-1 h-2 w-2 rounded-full" />
+            <p class="text-texte font-medium">
+              {{
+                entry.action === 'RETURN_TO_STOCK'
+                  ? t('trips.customerRefusal.historyStock', { from: entry.previous_customer })
+                  : t('trips.customerRefusal.historyChange', {
+                      from: entry.previous_customer,
+                      to: entry.new_customer,
+                    })
+              }}
+            </p>
+            <p
+              v-if="entry.invoice_number || Number(entry.released_amount) > 0"
+              class="text-texte-2 text-xs"
+            >
+              <span v-if="entry.invoice_number">{{ entry.invoice_number }}</span>
+              <span
+                v-if="entry.new_unit_price && entry.new_unit_price !== entry.previous_unit_price"
+              >
+                · {{ entry.previous_unit_price }} → {{ entry.new_unit_price }}
+              </span>
+              <span v-if="Number(entry.released_amount) > 0">
+                ·
+                {{
+                  t('trips.customerRefusal.historyReleased', {
+                    amount: formatMoney(entry.released_amount),
+                  })
+                }}
+              </span>
+            </p>
+            <p class="text-texte-2 text-xs">
+              {{ new Date(entry.recorded_at).toLocaleString() }} · {{ entry.recorded_by }}
+            </p>
+            <p class="text-texte-2 whitespace-pre-line">{{ entry.reason }}</p>
+          </li>
+        </ol>
+      </Card>
 
       <Card v-if="canChangeStatus" :title="t('trips.detail.changeStatus')">
         <div class="space-y-3">
@@ -1160,7 +1257,7 @@ const cessionProofUrl = computed(
             @select-commission="onSelectCommission"
             @success="onExpenseSaved"
             @cancel="onExpenseCancel"
-         >
+          >
             <template v-if="inFeeQueue && feeQueue.length" #extra-actions>
               <Button
                 variant="ghost"
@@ -1195,7 +1292,7 @@ const cessionProofUrl = computed(
             :cancel-label="inFeeQueue ? t('trips.detail.skipFee') : undefined"
             @success="onTransportPaymentSaved"
             @cancel="onTransportPaymentCancel"
-         >
+          >
             <template v-if="inFeeQueue && feeQueue.length" #extra-actions>
               <Button
                 variant="ghost"
@@ -1224,6 +1321,15 @@ const cessionProofUrl = computed(
           />
         </div>
       </div>
+
+      <TripCustomerRefusal
+        v-if="showRefusal"
+        :trip="trip"
+        :customer-name="refusingCustomerName"
+        :delivered="tripDelivered"
+        @done="onRefusalDone"
+        @close="showRefusal = false"
+      />
 
       <Modal
         v-if="previewUrl"

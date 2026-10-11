@@ -133,9 +133,10 @@ function onDropdownBlur() {
   <div class="space-y-1.5">
     <label v-if="label" :for="id" class="text-texte-2 text-sm font-medium">{{ label }}</label>
     <div class="flex gap-2">
-      <div class="relative w-36 shrink-0">
+      <div class="relative w-44 shrink-0">
         <input
           type="text"
+          autocomplete="off"
           :value="open ? query : `${countryName(selectedIso2)} (${selectedCountry.dialCode})`"
           class="border-ligne-forte text-texte placeholder:text-texte-3 focus-visible:outline-bitume h-12 w-full rounded-lg border bg-white px-2.5 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           :placeholder="t('common.search')"
@@ -167,6 +168,7 @@ function onDropdownBlur() {
         ref="numberInput"
         type="text"
         inputmode="numeric"
+        autocomplete="off"
         :value="nationalNumber"
         :required="required"
         :disabled="disabled"
@@ -174,7 +176,7 @@ function onDropdownBlur() {
         :maxlength="digitRule.max"
         :pattern="`\\d{${digitRule.min},${digitRule.max}}`"
         :aria-invalid="!!error"
-        class="border-ligne-forte text-texte placeholder:text-texte-3 focus-visible:outline-bitume h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+        class="border-ligne-forte text-texte placeholder:text-texte-3 focus-visible:outline-bitume h-12 min-w-0 flex-1 rounded-lg border bg-white px-3.5 font-mono tracking-wide focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
         :class="error ? 'border-critique' : ''"
         @beforeinput="blockNonDigitInput"
         @input="onNumberInput"

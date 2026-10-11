@@ -58,7 +58,7 @@ def test_create_quotation_with_lines_computes_total_and_generates_reference():
     )
 
     assert response.status_code == 201, response.data
-    assert response.data["reference"].startswith("DEV-")
+    assert response.data["reference"].startswith("PF-")
     assert response.data["status"] == "DRAFT"
     # 1000 * 650 + 1 * 50000 = 650000 + 50000 = 700000
     assert response.data["total_amount"] == "700000.00"
@@ -327,3 +327,87 @@ def test_non_sales_role_cannot_access_quotations():
     response = client.get("/api/quotations/")
 
     assert response.status_code == 403
+
+
+# --- Proforma (spec 2026-10-11 documents-commerciaux §3) ----------------------
+
+
+@pytest.mark.django_db
+def test_new_proforma_reference_uses_pf_prefix_and_terms():
+    client, _ = _sales_client("PF1")
+    response = client.post(
+        "/api/quotations/",
+        {
+            "customer_name": "SAHEL COMMERCE",
+            "issue_date": "2026-09-24",
+            "payment_terms": "Avance de 30% obligatoire",
+            "show_bank_accounts": True,
+            "lines": [{"description": "Gasoil export", "quantity": "500", "unit": "M3", "unit_price": "775000"}],
+        },
+        format="json",
+    )
+    assert response.status_code == 201, response.data
+    assert response.data["reference"].startswith("PF-")
+    assert response.data["payment_terms"] == "Avance de 30% obligatoire"
+    assert response.data["total_amount"] == "387500000.00"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("lang", ["fr", "en", "ar"])
+def test_proforma_pdf_in_every_language(lang):
+    from apps.core.models import CompanyBankAccount, CompanyProfile
+    from apps.reports.services.proforma_pdf import build_proforma_document
+
+    CompanyBankAccount.objects.create(profile=CompanyProfile.load(), bank="ECOBANK", account_number="SN094")
+    client, _ = _sales_client(f"PF{lang}")
+    created = client.post(
+        "/api/quotations/",
+        {
+            "customer_name": "SAHEL", "issue_date": "2026-09-24", "payment_terms": "Avance de 30%",
+            "lines": [{"description": "Gasoil", "quantity": "500", "unit": "M3", "unit_price": "775000"}],
+        },
+        format="json",
+    ).data
+    document, rows = build_proforma_document(Quotation.objects.get(pk=created["id"]), lang)
+    lines = [r for r in rows if r["section"] == "lines"]
+    assert lines[0]["amount"] == Decimal("387500000.00")
+    assert [r["bank"] for r in rows if r["section"] == "banks"] == ["ECOBANK"]
+    words = {"fr": "millions", "en": "million", "ar": "مليون"}[lang]
+    assert words in document["blocks"][0]["text"]
+    assert document["summary"][0]["value"] == Decimal("387500000.00")
+
+    pdf = client.get(f"/api/quotations/{created['id']}/pdf/?lang={lang}")
+    assert pdf.status_code == 200 and pdf.content.startswith(b"%PDF")
+    assert "proforma-" in pdf["Content-Disposition"]
+
+
+@pytest.mark.django_db
+def test_proforma_without_bank_accounts_shows_no_bank_table():
+    from apps.core.models import CompanyBankAccount, CompanyProfile
+    from apps.reports.services.proforma_pdf import build_proforma_document
+
+    CompanyBankAccount.objects.create(profile=CompanyProfile.load(), bank="BOA", account_number="SN100")
+    client, _ = _sales_client("PFNB")
+    created = client.post(
+        "/api/quotations/",
+        {"customer_name": "X", "issue_date": "2026-09-24", "show_bank_accounts": False,
+         "lines": [{"description": "Gasoil", "quantity": "1", "unit_price": "1"}]},
+        format="json",
+    ).data
+    document, rows = build_proforma_document(Quotation.objects.get(pk=created["id"]), "fr")
+    assert len(document["tables"]) == 1
+    assert not [r for r in rows if r["section"] == "banks"]
+
+
+@pytest.mark.django_db
+def test_duplicate_keeps_payment_terms_and_bank_choice():
+    client, _ = _sales_client("PFDUP")
+    created = client.post(
+        "/api/quotations/",
+        {"customer_name": "X", "issue_date": "2026-09-24", "payment_terms": "30%",
+         "show_bank_accounts": False, "lines": [{"description": "Gasoil", "quantity": "1", "unit_price": "1"}]},
+        format="json",
+    ).data
+    copy = client.post(f"/api/quotations/{created['id']}/duplicate/").data
+    assert copy["payment_terms"] == "30%"
+    assert copy["show_bank_accounts"] is False

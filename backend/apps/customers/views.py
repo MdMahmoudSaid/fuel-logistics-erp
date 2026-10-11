@@ -105,16 +105,32 @@ class CustomerViewSet(viewsets.ModelViewSet):
         chronological `rows` (unchanged from the original pass) stays the
         "Historique complet" section.
         """
-        from apps.finance.services import PaymentAllocationService
+        from apps.finance.services import OpeningDebtService, PaymentAllocationService
+        from apps.reports.services.ledger_pdf import advance_section_rows, opening_debt_section_rows
         from apps.sales.models import Invoice
 
         customer = self.get_object()
         invoices = list(Invoice.objects.filter(sale__customer=customer).select_related("sale__trip"))
-        payments = list(customer.payments.all())
+        all_payments = list(
+            customer.payments.select_related("bank_account", "cash_account").prefetch_related("allocations")
+        )
+        # A cancelled receipt (contre-passation, 2026-10-11) never really came
+        # in: out of the totals and the history, still listed with its status.
+        payments = [payment for payment in all_payments if not payment.is_reversed]
+        opening_debts = list(OpeningDebtService.active(customer=customer))
         outstanding_balance = PaymentAllocationService.get_customer_outstanding(customer)
         lang = request.query_params.get("lang", "fr")
 
         rows = [
+            {
+                "date": debt.date,
+                "type": "opening_debt",
+                "reference": debt.reference or f"DET-{debt.id}",
+                "amount": debt.amount,
+                "status": OpeningDebtService.describe(debt)["status"],
+            }
+            for debt in opening_debts
+        ] + [
             {
                 "date": invoice.issued_date,
                 "type": "invoice",
@@ -126,7 +142,7 @@ class CustomerViewSet(viewsets.ModelViewSet):
         ] + [
             {
                 "date": payment.payment_date,
-                "type": "payment",
+                "type": "advance_received" if payment.is_advance else "payment",
                 "reference": payment.reference or f"PAY-{payment.id}",
                 "amount": payment.amount,
                 "status": payment.method,
@@ -135,7 +151,10 @@ class CustomerViewSet(viewsets.ModelViewSet):
         ]
         rows.sort(key=lambda row: row["date"])
 
-        total_invoiced = sum((invoice.total_amount for invoice in invoices), Decimal("0.00"))
+        # Same figures as CustomerLedgerView.vue's cards.
+        total_invoiced = sum((invoice.total_amount for invoice in invoices), Decimal("0.00")) + sum(
+            (debt.amount for debt in opening_debts), Decimal("0.00")
+        )
         total_received = sum((payment.amount for payment in payments), Decimal("0.00"))
         open_invoices = [
             invoice
@@ -163,9 +182,31 @@ class CustomerViewSet(viewsets.ModelViewSet):
                 "method": payment.method,
                 "reference": payment.reference or f"PAY-{payment.id}",
                 "amount": payment.amount,
+                "unallocated_amount": (
+                    Decimal("0.00")
+                    if payment.is_reversed
+                    else PaymentAllocationService.get_payment_unallocated_amount(payment)
+                ),
+                "status": "CANCELLED" if payment.is_reversed else None,
             }
-            for payment in payments
+            for payment in all_payments
+            if not payment.is_advance
         ]
+        advances_section = advance_section_rows(
+            (
+                payment.payment_date,
+                payment.reference,
+                (payment.bank_account or payment.cash_account).name
+                if (payment.bank_account_id or payment.cash_account_id)
+                else None,
+                payment.amount,
+                PaymentAllocationService.get_payment_unallocated_amount(payment),
+                payment.is_reversed,
+            )
+            for payment in all_payments
+            if payment.is_advance
+        )
+        labels = get_ledger_pdf_labels(lang)
 
         pdf_bytes = render_ledger_pdf(
             company_name=DEFAULT_COMPANY_NAME,
@@ -176,14 +217,17 @@ class CustomerViewSet(viewsets.ModelViewSet):
                 "total_invoiced": total_invoiced,
                 "total_received": total_received,
                 "outstanding_balance": outstanding_balance,
+                "available_credit": PaymentAllocationService.get_customer_available_credit(customer),
                 "open_invoices": len(open_invoices),
                 "last_payment": last_payment.amount if last_payment else None,
             },
             rows=rows,
             lang=lang,
             extra_sections=[
-                {"title": get_ledger_pdf_labels(lang)["invoices_section"], "rows": invoices_section},
-                {"title": get_ledger_pdf_labels(lang)["payments_section"], "rows": payments_section},
+                {"title": labels["opening_debts_section"], "rows": opening_debt_section_rows(opening_debts)},
+                {"title": labels["invoices_section"], "rows": invoices_section},
+                {"title": labels["payments_section"], "rows": payments_section},
+                {"title": labels["advances_section"], "rows": advances_section},
             ],
         )
         response = HttpResponse(pdf_bytes, content_type="application/pdf")

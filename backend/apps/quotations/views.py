@@ -15,7 +15,7 @@ from .models import Quotation, QuotationLine
 from .serializers import QuotationSerializer
 
 _MAX_REFERENCE_ATTEMPTS = 5
-_REFERENCE_PREFIX = "DEV"
+_REFERENCE_PREFIX = "PF"  # proforma; older DEV-... references stay valid
 
 
 def _next_reference() -> str:
@@ -78,6 +78,8 @@ class QuotationViewSet(viewsets.ModelViewSet):
                         validity_date=original.validity_date,
                         currency=original.currency,
                         notes=original.notes,
+                        payment_terms=original.payment_terms,
+                        show_bank_accounts=original.show_bank_accounts,
                         created_by=request.user,
                     )
                     for line in original.lines.all():
@@ -109,13 +111,13 @@ class QuotationViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"], url_path="pdf")
     def pdf(self, request, pk=None):
         """GET /api/quotations/{id}/pdf/?lang=fr|en|ar"""
-        from apps.reports.services.quotation_pdf import render_quotation_pdf
+        from apps.reports.services.proforma_pdf import render_proforma_pdf
 
         quotation = self.get_object()
         lang = request.query_params.get("lang", "fr")
-        pdf_bytes = render_quotation_pdf(quotation, lang=lang)
+        pdf_bytes = render_proforma_pdf(quotation, lang=lang)
         response = HttpResponse(pdf_bytes, content_type="application/pdf")
         response["Content-Disposition"] = (
-            f'attachment; filename="devis-{quotation.reference}.pdf"'
+            f'attachment; filename="proforma-{quotation.reference}.pdf"'
         )
         return response

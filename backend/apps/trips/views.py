@@ -14,7 +14,7 @@ from apps.core.reference import generate_monthly_reference
 from apps.reports.serialization import decimals_to_str
 from apps.reports.services.profit import TripProfitService
 
-from .models import Trip
+from .models import Trip, TripCustomerRefusal
 from .serializers import (
     AssignCustomerRequestSerializer,
     AssignCustomersRequestSerializer,
@@ -33,6 +33,7 @@ from .services import (
     InvalidTripTransition,
     SaleBelowCostConfirmationRequired,
     TripCostService,
+    TripCustomerRefusalService,
     TripWorkflowService,
 )
 
@@ -277,6 +278,93 @@ class TripViewSet(viewsets.ModelViewSet):
             )
 
         return Response(TripSerializer(trip, context={"request": request}).data)
+
+    def _refusal_forbidden(self, request, trip):
+        """Once the trip is invoiced, a refusal rewrites an invoice: it
+        then also needs the sales "validate" tier (same bar as an invoice
+        correction)."""
+        if request.user.is_superuser or not hasattr(trip, "sale"):
+            return None
+        role = request.user.role
+        if role is not None and role.has_permission("sales", "validate"):
+            return None
+        return Response(
+            {"detail": "Ce trajet est déjà facturé : il faut le droit de valider les ventes."},
+            status=http_status.HTTP_403_FORBIDDEN,
+        )
+
+    @action(detail=True, methods=["get"], url_path="customer-refusal-preview")
+    def customer_refusal_preview(self, request, pk=None):
+        """Impact of a customer refusal, before confirming it.
+
+        GET /api/trips/{id}/customer-refusal-preview/?action=&customer=&unit_selling_price=
+        """
+        trip = self.get_object()
+        forbidden = self._refusal_forbidden(request, trip)
+        if forbidden:
+            return forbidden
+        params = request.query_params
+        try:
+            preview = TripCustomerRefusalService.preview(
+                trip.id, params.get("action"), params.get("customer"),
+                params.get("unit_selling_price"),
+            )
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=http_status.HTTP_400_BAD_REQUEST)
+        return Response(preview)
+
+    @action(detail=True, methods=["post"], url_path="customer-refusal")
+    def customer_refusal(self, request, pk=None):
+        """The trip's customer does not want it: send it back to the
+        company stock (before delivery) or hand it to another customer.
+
+        POST /api/trips/{id}/customer-refusal/
+             body: {action, reason, customer?, unit_selling_price?}
+        """
+        trip = self.get_object()
+        forbidden = self._refusal_forbidden(request, trip)
+        if forbidden:
+            return forbidden
+        data = request.data
+        try:
+            trip = TripCustomerRefusalService.refuse(
+                trip.id, data.get("action"), data.get("reason"), request.user,
+                customer_id=data.get("customer"),
+                unit_selling_price=data.get("unit_selling_price"),
+            )
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=http_status.HTTP_400_BAD_REQUEST)
+        return Response(TripSerializer(trip, context={"request": request}).data)
+
+    @action(detail=True, methods=["get"], url_path="customer-refusals")
+    def customer_refusals(self, request, pk=None):
+        """GET /api/trips/{id}/customer-refusals/ - refusal history."""
+        trip = self.get_object()
+        rows = TripCustomerRefusal.objects.filter(trip=trip).select_related(
+            "previous_customer", "new_customer", "recorded_by"
+        )
+        return Response(
+            [
+                {
+                    "id": r.id,
+                    "action": r.action,
+                    "previous_customer": r.previous_customer.name,
+                    "new_customer": r.new_customer.name if r.new_customer_id else None,
+                    "invoice_number": r.invoice_number,
+                    "previous_unit_price": (
+                        str(r.previous_unit_price) if r.previous_unit_price is not None else None
+                    ),
+                    "new_unit_price": (
+                        str(r.new_unit_price) if r.new_unit_price is not None else None
+                    ),
+                    "released_amount": str(r.released_amount),
+                    "reason": r.reason,
+                    "recorded_by": getattr(r.recorded_by, "email", "") or str(r.recorded_by),
+                    "recorded_at": r.recorded_at.isoformat(),
+                }
+                for r in rows
+            ]
+        )
 
     @action(detail=False, methods=["post"], url_path="assign-customers")
     def assign_customers(self, request):

@@ -12,6 +12,7 @@ import { createResourceApi } from '@/api/resource'
 import { translateApiError, extractFieldErrors } from '@/i18n/apiErrors'
 import { formatMoney } from '@/utils/currency'
 import { quotationResource, duplicateQuotation, exportQuotationPdf } from './api'
+import { printDocumentPdf } from '@/modules/documents/api'
 import { QUOTATION_STATUSES } from './types'
 import type { Quotation, QuotationLineInput, QuotationStatus } from './types'
 import type { CustomerBrief, ProductBrief } from '@/modules/sales/types'
@@ -42,6 +43,8 @@ const form = ref({
   issue_date: new Date().toISOString().slice(0, 10),
   validity_date: '',
   notes: '',
+  payment_terms: '',
+  show_bank_accounts: true,
   lines: [emptyLine()] as QuotationLineInput[],
 })
 
@@ -69,6 +72,8 @@ async function loadQuotation() {
     issue_date: quotation.value.issue_date,
     validity_date: quotation.value.validity_date ?? '',
     notes: quotation.value.notes,
+    payment_terms: quotation.value.payment_terms ?? '',
+    show_bank_accounts: quotation.value.show_bank_accounts ?? true,
     lines: quotation.value.lines.map((l) => ({
       product: l.product,
       description: l.description,
@@ -119,6 +124,8 @@ async function onSubmit() {
     issue_date: form.value.issue_date,
     validity_date: form.value.validity_date || null,
     notes: form.value.notes,
+    payment_terms: form.value.payment_terms,
+    show_bank_accounts: form.value.show_bank_accounts,
     lines: form.value.lines.map((line) => ({
       product: line.product,
       description: line.description,
@@ -182,8 +189,14 @@ async function onExportPdf() {
   }
 }
 
-function printQuotation() {
-  window.print()
+// Prints the designed proforma PDF, not the edit form.
+async function printQuotation() {
+  if (!quotation.value) return
+  try {
+    await printDocumentPdf('/quotations/', quotation.value.id, locale.value)
+  } catch {
+    error.value = t('reports.exportError')
+  }
 }
 </script>
 
@@ -376,6 +389,23 @@ function printQuotation() {
       </div>
 
       <div class="col-span-full space-y-1.5">
+        <label class="text-texte-2 text-sm font-medium" for="payment_terms">
+          {{ t('quotations.form.paymentTerms') }}
+        </label>
+        <input
+          id="payment_terms"
+          v-model="form.payment_terms"
+          type="text"
+          :placeholder="t('quotations.form.paymentTermsPlaceholder')"
+          class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+        />
+        <label class="text-texte-2 flex items-center gap-2 pt-1 text-sm">
+          <input id="show_bank_accounts" v-model="form.show_bank_accounts" type="checkbox" />
+          {{ t('quotations.form.showBankAccounts') }}
+        </label>
+      </div>
+
+      <div class="col-span-full space-y-1.5">
         <label class="text-texte-2 text-sm font-medium" for="notes">
           {{ t('quotations.form.notes') }}
         </label>
@@ -389,7 +419,7 @@ function printQuotation() {
       </div>
 
       <div class="no-print col-span-full flex justify-end gap-2 pt-2">
-        <Button variant="ghost" type="button" @click="router.push({ name: 'quotations' })">
+        <Button variant="ghost" type="button" @click="router.push({ name: 'proformas' })">
           {{ t('quotations.form.back') }}
         </Button>
         <Button type="submit" variant="primary" :loading="saving">

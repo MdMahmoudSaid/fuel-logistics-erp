@@ -289,7 +289,9 @@ async function onExportPdf() {
               class="text-texte-3 mt-1 text-xs"
             >
               {{ t('finance.profit.distributionsSinceClosure') }} :
-              <span class="font-mono">{{ formatMoney(-Number(preview.distributions_since_closure)) }}</span>
+              <span class="font-mono">{{
+                formatMoney(-Number(preview.distributions_since_closure))
+              }}</span>
             </p>
           </div>
         </div>

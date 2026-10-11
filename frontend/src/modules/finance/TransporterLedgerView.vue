@@ -145,7 +145,7 @@ function badgeVariant(status: string) {
 </script>
 
 <template>
-  <div class="max-w-4xl space-y-6">
+  <div class="ledger-page max-w-4xl space-y-6">
     <!-- Print-only branding + hidden action row, see SupplierLedgerView.vue
     for the full rationale (client feedback 2026-09-06). -->
     <div class="hidden items-center gap-2.5 print:mb-2 print:flex">

@@ -17,6 +17,8 @@ function makeQuotation(overrides: Partial<Quotation> = {}): Quotation {
     currency: 'XOF',
     total_amount: '700000.00',
     notes: 'Conditions',
+    payment_terms: '',
+    show_bank_accounts: true,
     lines: [
       {
         id: 1,
@@ -51,9 +53,7 @@ function paginated<T>(results: T[]) {
 }
 
 const customerList = vi.fn(async () => paginated([{ id: 1, name: 'Client X', company_name: '' }]))
-const productList = vi.fn(async () =>
-  paginated([{ id: 1, name: 'Gasoil', code: 'gasoil' }]),
-)
+const productList = vi.fn(async () => paginated([{ id: 1, name: 'Gasoil', code: 'gasoil' }]))
 
 vi.mock('@/api/resource', () => ({
   createResourceApi: (path: string) => {
@@ -73,7 +73,9 @@ const updateQuotation = vi.fn(async (_id: number, payload: Record<string, unknow
   ...payload,
 }))
 const duplicateQuotation = vi.fn(async (_id: number) => ({ ...quotationToReturn, id: 100 }))
-const exportQuotationPdf = vi.fn(async (_id: number, _reference: string, _lang: string) => undefined)
+const exportQuotationPdf = vi.fn(
+  async (_id: number, _reference: string, _lang: string) => undefined,
+)
 
 vi.mock('../api', () => ({
   quotationResource: {
@@ -116,6 +118,8 @@ describe('QuotationForm', () => {
     const lineRows = wrapper.findAll('[data-test="quotation-line"]')
     await lineRows[0]!.find('input[type="number"][step="0.01"]').setValue('1000')
     await lineRows[0]!.find('input[type="number"][step="0.0001"]').setValue('650')
+    await wrapper.find('#payment_terms').setValue('Avance de 30% obligatoire')
+    await wrapper.find('#show_bank_accounts').setValue(false)
 
     await wrapper.find('form').trigger('submit.prevent')
     await flushPromises()
@@ -123,6 +127,8 @@ describe('QuotationForm', () => {
     expect(createQuotation).toHaveBeenCalledWith(
       expect.objectContaining({
         customer_name: 'Prospect ABC',
+        payment_terms: 'Avance de 30% obligatoire',
+        show_bank_accounts: false,
         lines: [expect.objectContaining({ quantity: '1000', unit_price: '650' })],
       }),
     )

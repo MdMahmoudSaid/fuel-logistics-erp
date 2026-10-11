@@ -159,3 +159,89 @@ export function fetchSuggestedSellingPrice(tripId: number): Promise<string | nul
     .get<{ price: string | null }>(`/trips/${tripId}/suggested-selling-price/`)
     .then((r) => r.data.price)
 }
+
+// --- Customer refusal (client request 2026-10-11) ---
+
+export type CustomerRefusalAction = 'RETURN_TO_STOCK' | 'CHANGE_CUSTOMER'
+
+export interface RefusalSide {
+  id: number
+  name: string
+  balance_before: string
+  balance_after: string
+}
+
+// GET /trips/{id}/customer-refusal-preview/ (balances: positive = owed).
+export interface CustomerRefusalPreview {
+  trip_reference: string
+  action: CustomerRefusalAction
+  delivered: boolean
+  status_after: TripStatus
+  invoice_number: string | null
+  grouped: boolean
+  quantity: string | null
+  current_unit_price: string | null
+  suggested_unit_price: string | null
+  unit_price: string | null
+  old_amount: string
+  new_amount: string
+  released_payments: string
+  old_customer: RefusalSide
+  new_customer: (RefusalSide & { credit_applied: string }) | null
+}
+
+export interface CustomerRefusalEntry {
+  id: number
+  action: CustomerRefusalAction
+  previous_customer: string
+  new_customer: string | null
+  invoice_number: string
+  previous_unit_price: string | null
+  new_unit_price: string | null
+  released_amount: string
+  reason: string
+  recorded_by: string
+  recorded_at: string
+}
+
+export function fetchCustomerRefusalPreview(
+  tripId: number,
+  params: { action: CustomerRefusalAction; customer?: number; unit_selling_price?: string },
+): Promise<CustomerRefusalPreview> {
+  return apiClient
+    .get<CustomerRefusalPreview>(`/trips/${tripId}/customer-refusal-preview/`, { params })
+    .then((r) => r.data)
+}
+
+export function refuseTripCustomer(
+  tripId: number,
+  payload: {
+    action: CustomerRefusalAction
+    reason: string
+    customer?: number
+    unit_selling_price?: string
+  },
+): Promise<Trip> {
+  return apiClient.post<Trip>(`/trips/${tripId}/customer-refusal/`, payload).then((r) => r.data)
+}
+
+export function fetchCustomerRefusals(tripId: number): Promise<CustomerRefusalEntry[]> {
+  return apiClient
+    .get<CustomerRefusalEntry[]>(`/trips/${tripId}/customer-refusals/`)
+    .then((r) => r.data)
+}
+
+// Every customer, across the API's pages (the picker must list them all).
+export async function listAllCustomers(): Promise<
+  { id: number; name: string; is_active?: boolean }[]
+> {
+  const all: { id: number; name: string; is_active?: boolean }[] = []
+  for (let page = 1; ; page++) {
+    const { data } = await apiClient.get<{
+      next: string | null
+      results: { id: number; name: string; is_active?: boolean }[]
+    }>('/customers/', { params: { page } })
+    all.push(...data.results)
+    if (!data.next) return all
+  }
+}

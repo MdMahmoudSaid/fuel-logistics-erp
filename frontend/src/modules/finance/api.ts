@@ -560,11 +560,20 @@ export function cancelShareholderDistribution(
 // server-side, so this takes the INCREMENT amount, never a client-computed
 // absolute total (amount_repaid is read-only on the plain update endpoint
 // precisely to force every repayment through this atomic path).
+export interface ShareholderLoanRepaymentInput {
+  amount: string
+  date?: string
+  bank_account?: number | null
+  cash_account?: number | null
+  notes?: string
+}
+
 export function recordShareholderLoanRepayment(
   loanId: number,
-  amount: string,
+  input: string | ShareholderLoanRepaymentInput,
 ): Promise<ShareholderLoan> {
+  const body = typeof input === 'string' ? { amount: input } : input
   return apiClient
-    .post<ShareholderLoan>(`/shareholder-loans/${loanId}/record-repayment/`, { amount })
+    .post<ShareholderLoan>(`/shareholder-loans/${loanId}/record-repayment/`, body)
     .then((r) => r.data)
 }

@@ -161,7 +161,8 @@ class SupplierViewSet(viewsets.ModelViewSet):
         `ledger` action above already exposes - no new calculation.
         """
         from apps.purchasing.models import SupplierOrder
-        from apps.finance.services import SupplierLedgerService
+        from apps.finance.services import OpeningDebtService, SupplierLedgerService
+        from apps.reports.services.ledger_pdf import advance_section_rows, opening_debt_section_rows
 
         supplier = self.get_object()
         lang = request.query_params.get("lang", "fr")
@@ -197,9 +198,26 @@ class SupplierViewSet(viewsets.ModelViewSet):
                 "reference": payment.reference,
                 "is_advance": payment.is_advance,
                 "amount": payment.amount,
+                # A cancelled payment stays listed (audit trail), flagged.
+                "status": "CANCELLED" if payment.is_reversed else None,
             }
             for payment in payments
         ]
+        # Same "Avances" section as the ledger page (2026-10-11).
+        advances_section = advance_section_rows(
+            (
+                advance.date,
+                advance.reference,
+                (advance.bank_account or advance.cash_account).name
+                if (advance.bank_account_id or advance.cash_account_id)
+                else None,
+                advance.amount,
+                advance.remaining_amount,
+                False,
+            )
+            for advance in supplier.advances.select_related("bank_account", "cash_account").order_by("date", "id")
+        )
+        labels = get_ledger_pdf_labels(lang)
 
         pdf_bytes = render_ledger_pdf(
             company_name=DEFAULT_COMPANY_NAME,
@@ -210,15 +228,14 @@ class SupplierViewSet(viewsets.ModelViewSet):
             rows=ledger_data["entries"],
             lang=lang,
             extra_sections=[
-                {"title": get_ledger_pdf_labels(lang)["reliquat_section"], "rows": reliquat_section},
                 {
-                    "title": get_ledger_pdf_labels(lang)["purchase_history_section"],
-                    "rows": purchase_history_section,
+                    "title": labels["opening_debts_section"],
+                    "rows": opening_debt_section_rows(OpeningDebtService.active(supplier=supplier)),
                 },
-                {
-                    "title": get_ledger_pdf_labels(lang)["payments_advances_section"],
-                    "rows": payments_advances_section,
-                },
+                {"title": labels["reliquat_section"], "rows": reliquat_section},
+                {"title": labels["purchase_history_section"], "rows": purchase_history_section},
+                {"title": labels["payments_section"], "rows": payments_advances_section},
+                {"title": labels["advances_section"], "rows": advances_section},
             ],
         )
         response = HttpResponse(pdf_bytes, content_type="application/pdf")

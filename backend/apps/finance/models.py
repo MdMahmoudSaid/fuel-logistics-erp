@@ -1258,8 +1258,13 @@ class ShareholderProfitShare(TimeStampedModel):
         way this field is ever written, so it can never drift from
         withdrawal history (Task 7, client modifications plan: "avoid a
         field that can silently drift")."""
+        # A company advance deducted from this share consumes it exactly
+        # like a withdrawal (client request 2026-10-11).
         total = (
             self.withdrawal_allocations.aggregate(total=models.Sum("amount"))["total"]
+            or Decimal("0.00")
+        ) + (
+            self.advance_deductions.aggregate(total=models.Sum("amount"))["total"]
             or Decimal("0.00")
         )
         self.amount_withdrawn = total
@@ -1268,10 +1273,27 @@ class ShareholderProfitShare(TimeStampedModel):
 
 
 class ShareholderLoan(TimeStampedModel):
-    """An advance/debt between two associates, tracked separately from
-    company treasury - money that moves shareholder-to-shareholder never
-    creates a TreasuryTransaction (Task 7, client modifications plan: only
-    money entering/leaving company bank/cash does).
+    """An advance taken by an associate (the borrower), from one of two
+    sources (client request 2026-10-11):
+
+    - SHAREHOLDER: another associate (the lender) advances part of his
+      own balance (client correction 2026-10-11): the lender's balance
+      goes down and the borrower's goes up by the amount - the borrower
+      can withdraw it - while the debt/claim is tracked here. A repayment
+      moves the money back from the borrower's balance to the lender's.
+      Recording it never touches treasury; only a withdrawal does.
+    - COMPANY: the company grants him an advance on his future profit.
+      Like a profit distribution it moves no treasury when recorded: it is
+      shown in his grand livre and becomes withdrawable - money only
+      leaves treasury when he actually withdraws it (a
+      ShareholderWithdrawal allocated against this advance, tracked by
+      `amount_drawn`). It is a debt of the borrower to the company,
+      deducted automatically from his next VALIDATED profit share
+      (ShareholderLoanService.apply_advances_to_distribution) or repaid
+      into a treasury account.
+
+    Every repayment is a ShareholderLoanRepayment row; `amount_repaid` is
+    their running total, only ever moved under this row's lock.
 
     `status` is derived in save() from amount_repaid vs amount (same
     "computed on save" convention as TransportPayment.net_amount) rather
@@ -1284,17 +1306,36 @@ class ShareholderLoan(TimeStampedModel):
         PARTIALLY_REPAID = "PARTIALLY_REPAID", "Partially repaid"
         REPAID = "REPAID", "Repaid"
 
+    class Source(models.TextChoices):
+        SHAREHOLDER = "SHAREHOLDER", "Shareholder"
+        COMPANY = "COMPANY", "Company"
+
+    source = models.CharField(max_length=20, choices=Source.choices, default=Source.SHAREHOLDER)
     borrower = models.ForeignKey(
         Shareholder, on_delete=models.PROTECT, related_name="loans_borrowed"
     )
     lender = models.ForeignKey(
-        Shareholder, on_delete=models.PROTECT, related_name="loans_lent"
+        Shareholder, on_delete=models.PROTECT, null=True, blank=True, related_name="loans_lent"
     )
     amount = models.DecimalField(max_digits=16, decimal_places=2)
     date = models.DateField()
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.OPEN)
     amount_repaid = models.DecimalField(max_digits=16, decimal_places=2, default=0)
+    # How much of the advance the borrower has actually withdrawn
+    # (recomputed from ShareholderWithdrawalAllocation rows only).
+    amount_drawn = models.DecimalField(
+        max_digits=16, decimal_places=2, default=0, editable=False
+    )
+    # COMPANY only: part given back before ever being withdrawn - a
+    # cancellation of the credit, which never touches treasury.
+    amount_cancelled = models.DecimalField(
+        max_digits=16, decimal_places=2, default=0, editable=False
+    )
     notes = models.TextField(blank=True)
+    recorded_by = models.ForeignKey(
+        "accounts.User", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="shareholder_loans_recorded",
+    )
 
     class Meta:
         ordering = ["-date", "-id"]
@@ -1315,6 +1356,24 @@ class ShareholderLoan(TimeStampedModel):
                 condition=~models.Q(borrower=models.F("lender")),
                 name="finance_shareholderloan_borrower_not_lender",
             ),
+            # An associate advance has a lender; a company advance has none.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(source="SHAREHOLDER", lender__isnull=False)
+                    | models.Q(source="COMPANY", lender__isnull=True)
+                ),
+                name="finance_shareholderloan_source_consistent",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(amount_drawn__gte=0)
+                & models.Q(amount_drawn__lte=models.F("amount")),
+                name="finance_shareholderloan_drawn_within_amount",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(amount_cancelled__gte=0)
+                & models.Q(amount_cancelled__lte=models.F("amount") - models.F("amount_drawn")),
+                name="finance_shareholderloan_cancelled_within_undrawn",
+            ),
         ]
         indexes = [
             models.Index(fields=["status"], name="finance_shrloan_status_idx"),
@@ -1322,11 +1381,45 @@ class ShareholderLoan(TimeStampedModel):
         ]
 
     def __str__(self) -> str:
-        return f"{self.lender} -> {self.borrower}: {self.amount}"
+        return f"{self.lender or 'Entreprise'} -> {self.borrower}: {self.amount}"
 
     @property
     def remaining_amount(self) -> Decimal:
         return self.amount - self.amount_repaid
+
+    @property
+    def undrawn_amount(self) -> Decimal:
+        """Part of the advance the borrower can still withdraw. A company
+        advance stays withdrawable until drawn (its debt is separate); an
+        associate advance stops being withdrawable once given back."""
+        if self.source == self.Source.COMPANY:
+            return self.amount - self.amount_drawn - self.amount_cancelled
+        return max(Decimal("0.00"), self.amount - self.amount_drawn - self.amount_repaid)
+
+    @property
+    def cash_outstanding(self) -> Decimal:
+        """COMPANY only: money that really left treasury for this advance
+        and has not come back yet (neither repaid in cash nor deducted from
+        a profit share) - the most a treasury repayment may bring back."""
+        if self.source != self.Source.COMPANY:
+            return Decimal("0.00")
+        return max(Decimal("0.00"), self.remaining_amount - self.undrawn_amount)
+
+    @property
+    def borrower_balance_effect(self) -> Decimal:
+        """What an associate advance adds to the borrower's balance: what
+        he received, minus what he withdrew from it and what he gave back
+        (negative once he repays more than he still holds of it)."""
+        return self.amount - self.amount_drawn - self.amount_repaid
+
+    def sync_amount_drawn(self) -> Decimal:
+        total = (
+            self.withdrawal_allocations.aggregate(total=models.Sum("amount"))["total"]
+            or Decimal("0.00")
+        )
+        self.amount_drawn = total
+        self.save(update_fields=["amount_drawn", "updated_at"])
+        return total
 
     def save(self, *args, **kwargs):
         if self.amount_repaid <= 0:
@@ -1336,6 +1429,77 @@ class ShareholderLoan(TimeStampedModel):
         else:
             self.status = self.Status.REPAID
         super().save(*args, **kwargs)
+
+
+class ShareholderLoanRepayment(TimeStampedModel):
+    """One repayment of a ShareholderLoan (client request 2026-10-11):
+
+    - DIRECT: an associate advance repaid by the borrower to the lender,
+      outside company treasury.
+    - TREASURY: a company advance repaid into a bank/cash account (one
+      TreasuryTransaction MONEY_IN).
+    - CANCEL: the part of a company advance given back before it was ever
+      withdrawn - the credit is cancelled, no money moves (client
+      correction 2026-10-11: treasury only moves for real money).
+    - PROFIT_SHARE: a company advance deducted automatically from the
+      borrower's VALIDATED profit share - that share is consumed by the
+      deduction (ShareholderProfitShare.sync_amount_withdrawn counts it),
+      since the money already left treasury when the advance was paid.
+      Removed again if that distribution is cancelled.
+    """
+
+    class Method(models.TextChoices):
+        DIRECT = "DIRECT", "Direct"
+        TREASURY = "TREASURY", "Treasury"
+        PROFIT_SHARE = "PROFIT_SHARE", "Profit share"
+        CANCEL = "CANCEL", "Cancelled (never withdrawn)"
+
+    loan = models.ForeignKey(ShareholderLoan, on_delete=models.CASCADE, related_name="repayments")
+    method = models.CharField(max_length=20, choices=Method.choices)
+    amount = models.DecimalField(max_digits=16, decimal_places=2)
+    date = models.DateField()
+    bank_account = models.ForeignKey(
+        BankAccount, on_delete=models.PROTECT, null=True, blank=True,
+        related_name="shareholder_advance_repayments",
+    )
+    cash_account = models.ForeignKey(
+        CashAccount, on_delete=models.PROTECT, null=True, blank=True,
+        related_name="shareholder_advance_repayments",
+    )
+    profit_share = models.ForeignKey(
+        ShareholderProfitShare, on_delete=models.PROTECT, null=True, blank=True,
+        related_name="advance_deductions",
+    )
+    notes = models.TextField(blank=True)
+    recorded_by = models.ForeignKey(
+        "accounts.User", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="shareholder_loan_repayments_recorded",
+    )
+
+    class Meta:
+        ordering = ["date", "id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0),
+                name="finance_shrloanrepayment_amount_positive",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(method__in=["DIRECT", "CANCEL"], profit_share__isnull=True,
+                             bank_account__isnull=True, cash_account__isnull=True)
+                    | models.Q(method="PROFIT_SHARE", profit_share__isnull=False,
+                               bank_account__isnull=True, cash_account__isnull=True)
+                    | models.Q(method="TREASURY", profit_share__isnull=True,
+                               bank_account__isnull=False, cash_account__isnull=True)
+                    | models.Q(method="TREASURY", profit_share__isnull=True,
+                               bank_account__isnull=True, cash_account__isnull=False)
+                ),
+                name="finance_shrloanrepayment_method_consistent",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"LOAN-{self.loan_id}: {self.amount} ({self.method})"
 
 
 class ShareholderWithdrawal(AuditableModel, TimeStampedModel):
@@ -1519,6 +1683,14 @@ class ShareholderWithdrawalAllocation(TimeStampedModel):
         blank=True,
         related_name="withdrawal_allocations",
     )
+    # A company advance being withdrawn (client request 2026-10-11).
+    advance = models.ForeignKey(
+        ShareholderLoan,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="withdrawal_allocations",
+    )
     amount = models.DecimalField(max_digits=16, decimal_places=2)
 
     class Meta:
@@ -1530,8 +1702,12 @@ class ShareholderWithdrawalAllocation(TimeStampedModel):
             ),
             models.CheckConstraint(
                 condition=(
-                    models.Q(profit_share__isnull=False, contribution__isnull=True)
-                    | models.Q(profit_share__isnull=True, contribution__isnull=False)
+                    models.Q(profit_share__isnull=False, contribution__isnull=True,
+                             advance__isnull=True)
+                    | models.Q(profit_share__isnull=True, contribution__isnull=False,
+                               advance__isnull=True)
+                    | models.Q(profit_share__isnull=True, contribution__isnull=True,
+                               advance__isnull=False)
                 ),
                 name="finance_shrwithdrawalalloc_exactly_one_source",
             ),
@@ -1541,5 +1717,10 @@ class ShareholderWithdrawalAllocation(TimeStampedModel):
         ]
 
     def __str__(self) -> str:
-        source = self.profit_share_id and f"share {self.profit_share_id}" or f"contribution {self.contribution_id}"
+        if self.profit_share_id:
+            source = f"share {self.profit_share_id}"
+        elif self.contribution_id:
+            source = f"contribution {self.contribution_id}"
+        else:
+            source = f"advance {self.advance_id}"
         return f"WD-{self.withdrawal_id}: {self.amount} from {source}"

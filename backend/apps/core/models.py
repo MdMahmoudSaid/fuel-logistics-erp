@@ -97,3 +97,65 @@ class LossToleranceConfig(TimeStampedModel):
         """
         config = cls.objects.first()
         return config.tolerance_litres if config else cls.DEFAULT_TOLERANCE
+
+
+class CompanyProfile(TimeStampedModel):
+    """Company details printed on the commercial documents (proforma,
+    delivery note, loading sheet, purchase order - spec 2026-10-11
+    documents-commerciaux §2). Singleton (pk=1), like LossToleranceConfig."""
+
+    name = models.CharField(max_length=150, blank=True)
+    tagline = models.CharField(max_length=150, blank=True)
+    tax_id = models.CharField(max_length=50, blank=True)
+    trade_register = models.CharField(max_length=80, blank=True)
+    address = models.CharField(max_length=255, blank=True)
+    city = models.CharField(max_length=100, blank=True)
+    phone = models.CharField(max_length=60, blank=True)
+    email = models.CharField(max_length=150, blank=True)
+    website = models.CharField(max_length=150, blank=True)
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def load(cls) -> "CompanyProfile":
+        return cls.objects.get_or_create(pk=1)[0]
+
+    def pdf_company(self) -> dict:
+        """The `company` block of a document PDF; empty lines are dropped and
+        the name falls back to the app's default."""
+        from apps.reports.services.pdf_template import DEFAULT_COMPANY_NAME
+
+        def join(*parts):
+            return " · ".join(p for p in parts if p)
+
+        lines = [
+            join(self.address, self.city),
+            join(self.phone and f"Tél. : {self.phone}", self.email, self.website),
+            join(self.tax_id and f"NIF : {self.tax_id}", self.trade_register and f"RC : {self.trade_register}"),
+        ]
+        return {
+            "name": self.name or DEFAULT_COMPANY_NAME,
+            "tagline": self.tagline,
+            "lines": [line for line in lines if line],
+            "banks": [
+                {"bank": b.bank, "swift": b.swift, "account": b.account_number}
+                for b in self.bank_accounts.filter(is_active=True)
+            ],
+        }
+
+
+class CompanyBankAccount(models.Model):
+    """A bank account printed on the documents - informational only, not
+    linked to the treasury BankAccount."""
+
+    profile = models.ForeignKey(CompanyProfile, on_delete=models.CASCADE, related_name="bank_accounts")
+    bank = models.CharField(max_length=100)
+    swift = models.CharField(max_length=30, blank=True)
+    account_number = models.CharField(max_length=80)
+    position = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["position", "id"]

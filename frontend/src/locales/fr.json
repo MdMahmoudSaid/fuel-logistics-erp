@@ -40,7 +40,7 @@
     "lossesToReview": "Écarts à traiter",
     "sales": "Ventes",
     "invoices": "Factures",
-    "quotations": "Offres commerciales",
+    "quotations": "Proformas",
     "transporters": "Transporteurs",
     "drivers": "Chauffeurs",
     "trucks": "Camions",
@@ -61,11 +61,17 @@
       "results": "Résultats & associés",
       "logistics": "Logistique",
       "fleet": "Logistique",
-      "settings": "Paramètres"
+      "settings": "Paramètres",
+      "documents": "Documents"
     },
     "shareholders": "Actionnaires / Associés",
     "profit": "Bénéfices",
-    "tripsShort": "Trajets"
+    "tripsShort": "Trajets",
+    "companySettings": "Informations de l'entreprise",
+    "proformas": "Proformas",
+    "deliveryNotes": "Bons de livraison",
+    "loadingSheets": "Bons de chargement",
+    "purchaseOrders": "Bons de commande"
   },
   "header": {
     "logout": "Déconnexion",
@@ -534,6 +540,51 @@
       "history": "Historique des corrections",
       "noHistory": "Aucune correction.",
       "correctedFrom": "Quantité reçue corrigée de {previous} L à {next} L"
+    },
+    "customerRefusal": {
+      "open": "Le client refuse",
+      "title": "Refus du client",
+      "currentCustomer": "Client actuel :",
+      "question": "Que faire de ce trajet ?",
+      "stockTitle": "Remettre au stock de l'entreprise",
+      "stockText": "Le trajet n'est plus attribué à ce client et part vers le stock de l'entreprise.",
+      "stockDisabled": "Impossible : le trajet est déjà livré. Choisissez un autre client.",
+      "changeTitle": "Attribuer à un autre client",
+      "changeText": "Le trajet passe au nouveau client ; il sera facturé à lui à la livraison.",
+      "changeTextDelivered": "Le trajet, sa vente et sa facture passent au nouveau client.",
+      "newCustomer": "Nouveau client",
+      "selectCustomer": "Choisir le client qui reprend le trajet…",
+      "unitPrice": "Prix de vente unitaire",
+      "priceHint": "Prix actuel : {current} · dernier prix pour {name} : {suggested}",
+      "from": "Ancien client",
+      "to": "Nouveau client",
+      "balanceBefore": "Solde actuel",
+      "balanceAfter": "Solde après",
+      "stockEffect": "{name} n'aura plus ce trajet : il ne compte plus parmi ses trajets ni ses commandes.",
+      "statusEffect": "Statut : {from} → {to}.",
+      "routeEffect": "Le trajet suivra la route du stock de l'entreprise (au lieu du client).",
+      "noInvoiceEffect": "Aucune facture n'existe encore pour ce trajet : rien à annuler.",
+      "invoiceEffect": "La facture {invoice} passe à {name} (recalculée au nouveau prix).",
+      "groupedEffect": "Le trajet sort de la facture groupée {invoice} et reçoit sa propre facture au nom du nouveau client.",
+      "waitingGroupEffect": "Le trajet quitte son groupe de facturation et reçoit sa propre facture.",
+      "beforeDeliveryEffect": "Le trajet sera livré et facturé à {name}.",
+      "released": "{amount} déjà payés par {name} lui reviennent en avance (redistribuée sur ses autres dettes).",
+      "creditApplied": "{amount} de l'avance de {name} régleront cette facture automatiquement.",
+      "oldNothing": "{name} ne garde ni ce trajet ni aucune facture pour lui.",
+      "reason": "Motif du refus",
+      "reasonPlaceholder": "Ex. : le client ne veut plus ce produit",
+      "audit": "Le refus est enregistré dans l'historique du trajet (et de la facture) : utilisateur, date, motif.",
+      "submitStock": "Remettre au stock",
+      "submitChange": "Changer le client",
+      "confirmStock": "Remettre le trajet {trip} au stock de l'entreprise (refusé par {name}) ?",
+      "confirmChange": "Attribuer le trajet {trip} à {to} au lieu de {from} ?",
+      "loadError": "Impossible de charger les clients.",
+      "previewError": "Impossible de calculer l'impact de ce refus.",
+      "saveError": "Impossible d'enregistrer ce refus.",
+      "historyTitle": "Refus du client",
+      "historyStock": "Refusé par {from} — remis au stock",
+      "historyChange": "Refusé par {from} — attribué à {to}",
+      "historyReleased": "{amount} rendus en avance"
     }
   },
   "invoiceStatus": {
@@ -596,7 +647,15 @@
     "WITHDRAWAL": "Retrait",
     "LOAN_GIVEN": "Avance donnée",
     "LOAN_RECEIVED": "Avance reçue",
-    "OPENING_DEBT": "Dette antérieure"
+    "COMPANY_ADVANCE": "Avance de l'entreprise",
+    "LOAN_REPAYMENT": "Remboursement d'avance",
+    "LOAN_REPAYMENT_RECEIVED": "Remboursement reçu",
+    "OPENING_DEBT": "Dette antérieure",
+    "ADVANCE_RECEIVED": "Avance reçue",
+    "ADVANCE_PAID": "Avance versée",
+    "SETTLEMENT": "Règlement trajet",
+    "ADVANCE_DEDUCTION": "Avance déduite de la part",
+    "ADVANCE_CANCELLED": "Avance annulée (jamais retirée)"
   },
   "expenseCategory": {
     "customs": "Douane",
@@ -1093,7 +1152,10 @@
         "reason": "Motif de la réouverture",
         "history": "Historique des périodes",
         "lastReopen": "Dernier motif de réouverture",
-        "statusValues": { "OPEN": "Ouverte", "CLOSED": "Clôturée" }
+        "statusValues": {
+          "OPEN": "Ouverte",
+          "CLOSED": "Clôturée"
+        }
       },
       "loan": {
         "title": "Avances entre associés",
@@ -1116,7 +1178,7 @@
       "withdrawal": {
         "title": "Retrait d'argent de l'associé",
         "shareholder": "Actionnaire",
-        "availableBalanceHint": "Solde disponible pour ce retrait",
+        "availableBalanceHint": "Montant retirable",
         "amount": "Montant",
         "date": "Date",
         "accountType": "Type de compte",
@@ -1124,7 +1186,8 @@
         "record": "Enregistrer le retrait",
         "saveError": "Impossible d'enregistrer ce retrait — vérifiez les champs.",
         "sourceProfitShare": "bénéfices",
-        "sourceCapital": "capital"
+        "sourceCapital": "capital",
+        "sourceAdvance": "avance de l'entreprise"
       },
       "ledger": {
         "title": "Compte de l'actionnaire",
@@ -1136,7 +1199,9 @@
         "netLoanBalance": "Solde net des avances",
         "loansLent": "Avances prêtées",
         "loansBorrowed": "Avances empruntées",
-        "availableBalance": "Solde disponible"
+        "availableBalance": "Solde disponible",
+        "downloadPdf": "Télécharger le relevé (PDF)",
+        "exportError": "Impossible de télécharger le relevé."
       },
       "totalContributed": "Capital apporté",
       "capital": {
@@ -1161,6 +1226,80 @@
         "alreadyValidatedEngagements": "Répartitions déjà validées",
         "remainingDistributable": "Bénéfice à distribuer",
         "noneAvailable": "Aucun montant disponible pour le moment (aucun bénéfice net sur la période)."
+      },
+      "activeCount": "Actifs ({n})",
+      "inactiveCount": "Inactifs ({n})",
+      "inactiveNotice": "Associés archivés : ils n'apparaissent plus dans les répartitions, les avances, les retraits ni le grand livre. Réactivez-en un via « Modifier ».",
+      "formNew": "Nouvel actionnaire",
+      "formEdit": "Modifier l'actionnaire",
+      "advance": {
+        "title": "Avances aux associés",
+        "question": "D'où vient l'avance ?",
+        "sourceCompany": "Avance de l'entreprise",
+        "sourceCompanyText": "Une avance sur ses bénéfices : elle s'affiche dans son grand livre et la caisse ne bouge qu'au retrait. Déduite de sa prochaine part.",
+        "sourceAssociate": "D'un autre associé",
+        "sourceAssociateText": "Une partie du solde du prêteur passe sur le compte du bénéficiaire, qui peut la retirer. La caisse ne bouge qu'au retrait.",
+        "borrower": "Associé bénéficiaire",
+        "lender": "Associé prêteur",
+        "lenderAvailable": "Solde disponible du prêteur",
+        "notesPlaceholder": "Motif de l'avance (facultatif)",
+        "effectTitle": "Ce qui sera enregistré",
+        "effectCompanyDebt": "{name} reçoit une avance de {amount} : il pourra la retirer (onglet Retraits) et la doit à l'entreprise.",
+        "effectDeduction": "Ce montant sera déduit automatiquement de sa prochaine part de bénéfices validée.",
+        "effectAssociateDebt": "Le solde de {lender} baisse de {amount} et celui de {name} monte de {amount} : il peut le retirer (onglet Retraits).",
+        "effectNoTreasury": "Aucun mouvement de banque ni de caisse maintenant : l'argent sort seulement au retrait.",
+        "effectRepayAssociate": "Le remboursement fait revenir le montant de son compte vers celui du prêteur (bouton « Rembourser »).",
+        "lenderTooLow": "Le solde disponible du prêteur est insuffisant pour cette avance.",
+        "confirmCompany": "Accorder une avance de {amount} à {name} ? Elle sera déduite de sa prochaine part de bénéfices.",
+        "confirmAssociate": "Enregistrer une avance de {amount} de {lender} à {name} ?",
+        "openCompany": "Dû à l'entreprise (en cours)",
+        "openAssociate": "Dû entre associés (en cours)",
+        "listTitle": "Avances enregistrées",
+        "filterOpen": "En cours ({n})",
+        "filterAll": "Toutes ({n})",
+        "fromAssociate": "Prêtée par {name}",
+        "repaid": "Remboursé",
+        "autoDeductionHint": "Sera déduite automatiquement de sa prochaine part de bénéfices validée.",
+        "repay": "Rembourser",
+        "repayTitle": "Remboursement d'avance",
+        "repayCompanyHelp": "La partie jamais retirée est simplement annulée (la caisse ne bouge pas). Seul ce qu'il a réellement retiré revient dans un compte. Sinon, l'avance sera déduite de sa prochaine part de bénéfices.",
+        "repayAssociateHelp": "Le montant repasse du solde de {name} vers celui de {lender}, sans mouvement de banque ni de caisse.",
+        "repayAccount": "Versé dans",
+        "repayTooHigh": "Le montant dépasse le reste à rembourser.",
+        "repaySubmit": "Enregistrer le remboursement",
+        "empty": "Aucune avance en cours.",
+        "history": {
+          "toggle": "Historique ({n})",
+          "deducted": "Déduit de la répartition {period}",
+          "treasury": "Remboursé en {account}",
+          "direct": "Remboursé à {name}",
+          "cancelled": "Annulée (jamais retirée, aucun mouvement de caisse)"
+        },
+        "effectNoTreasuryYet": "Aucun mouvement de banque ni de caisse maintenant : l'argent sort seulement quand il fait le retrait.",
+        "fromCompany": "Avance de l'entreprise",
+        "drawn": "Déjà retiré",
+        "undrawn": "Reste à retirer",
+        "effectAssociateOwes": "{name} doit {amount} à {lender} : dette dans son grand livre, créance dans celui de {lender}.",
+        "repaySplitCancel": "{amount} jamais retirés : annulés, aucun mouvement de caisse.",
+        "repaySplitCash": "{amount} retirés auparavant : rendus en caisse ou en banque."
+      },
+      "debts": {
+        "title": "Avances et dettes",
+        "companyDebt": "Dette envers l'entreprise",
+        "companyDebtHelp": "Avances de l'entreprise, déduites de sa prochaine part de bénéfices.",
+        "associateDebt": "Dette envers les associés",
+        "associateDebtHelp": "Reçu d'autres associés : à leur rendre avec « Rembourser ».",
+        "receivable": "Créances sur les associés",
+        "receivableHelp": "Prêté à d'autres associés : revient sur son solde quand ils remboursent.",
+        "company": "Entreprise",
+        "kind": {
+          "company": "Avance de l'entreprise",
+          "owed": "Avance reçue",
+          "receivable": "Avance prêtée"
+        },
+        "repaidToYou": "Remboursé par {name}",
+        "empty": "Aucune avance.",
+        "undrawn": "Dont {amount} pas encore retirés."
       }
     },
     "profit": {
@@ -1534,7 +1673,9 @@
       "correctionFields": {
         "unit_selling_price": "Prix de vente unitaire",
         "total_amount": "Montant total",
-        "delivered_quantity": "Quantité livrée"
+        "delivered_quantity": "Quantité livrée",
+        "customer": "Client",
+        "trip_removed": "Trajet retiré de la facture"
       },
       "trip": "Trajet",
       "truckPlates": "Camion (immatriculations)",
@@ -1960,6 +2101,34 @@
       "notConfigured": "Non encore configuré — valeur par défaut de la spécification affichée (100 L).",
       "saving": "Enregistrement…",
       "save": "Enregistrer"
+    },
+    "company": {
+      "title": "Informations de l'entreprise",
+      "description": "Ces informations apparaissent sur les proformas, bons de livraison, de chargement et de commande.",
+      "contact": "Coordonnées",
+      "name": "Nom de l'entreprise",
+      "tagline": "Slogan",
+      "taxId": "NIF",
+      "tradeRegister": "RC (registre du commerce)",
+      "address": "Adresse",
+      "city": "Ville",
+      "phone": "Téléphone",
+      "email": "E-mail",
+      "website": "Site web",
+      "banks": "Comptes bancaires imprimés",
+      "banksHelp": "Affichés sur les proformas. Sans lien avec les comptes de trésorerie.",
+      "bank": "Banque",
+      "swift": "Code SWIFT",
+      "accountNumber": "Numéro de compte",
+      "active": "Affiché",
+      "addBank": "+ Ajouter un compte",
+      "removeBank": "Retirer",
+      "noBanks": "Aucun compte bancaire.",
+      "save": "Enregistrer",
+      "saving": "Enregistrement…",
+      "saved": "Informations enregistrées.",
+      "loadError": "Impossible de charger les informations de l'entreprise.",
+      "saveError": "Impossible d'enregistrer — vérifiez les champs."
     }
   },
   "errors": {
@@ -1978,13 +2147,13 @@
   },
   "quotations": {
     "list": {
-      "title": "Offres commerciales",
-      "new": "Nouvelle offre",
+      "title": "Proformas",
+      "new": "Nouvelle proforma",
       "allStatuses": "Tous les statuts",
       "duplicate": "Dupliquer",
-      "duplicateError": "Impossible de dupliquer l'offre.",
-      "loadError": "Impossible de charger les offres commerciales.",
-      "noQuotations": "Aucune offre commerciale.",
+      "duplicateError": "Impossible de dupliquer la proforma.",
+      "loadError": "Impossible de charger les proformas.",
+      "noQuotations": "Aucune proforma.",
       "table": {
         "reference": "Référence",
         "customer": "Client",
@@ -1994,8 +2163,8 @@
       }
     },
     "form": {
-      "newTitle": "Nouvelle offre commerciale",
-      "editTitle": "Offre {reference}",
+      "newTitle": "Nouvelle proforma",
+      "editTitle": "Proforma {reference}",
       "customer": "Client existant",
       "selectCustomer": "Rechercher un client…",
       "noExistingCustomer": "Aucun client existant",
@@ -2016,7 +2185,117 @@
       "back": "Retour",
       "save": "Enregistrer",
       "saving": "Enregistrement…",
-      "saveError": "Impossible d'enregistrer l'offre commerciale."
+      "saveError": "Impossible d'enregistrer la proforma.",
+      "paymentTerms": "Conditions de paiement",
+      "paymentTermsPlaceholder": "Ex. : Avance de 30 % obligatoire",
+      "showBankAccounts": "Afficher les comptes bancaires sur le PDF"
+    }
+  },
+  "documents": {
+    "common": {
+      "reference": "Référence",
+      "date": "Date",
+      "amount": "Montant",
+      "litres": "Litres",
+      "status": "Statut",
+      "actions": "Actions",
+      "open": "Ouvrir",
+      "pdf": "PDF",
+      "print": "Imprimer",
+      "duplicate": "Dupliquer",
+      "delete": "Supprimer",
+      "deleteConfirm": "Supprimer le document {reference} ?",
+      "deleteError": "Impossible de supprimer ce document.",
+      "loadError": "Impossible de charger les documents.",
+      "exportError": "Impossible de générer le PDF.",
+      "allStatuses": "Tous les statuts",
+      "save": "Enregistrer",
+      "saving": "Enregistrement…",
+      "saveError": "Impossible d'enregistrer — vérifiez les champs.",
+      "back": "Retour",
+      "notes": "Observations",
+      "addLine": "+ Ajouter une ligne",
+      "removeLine": "Retirer la ligne",
+      "total": "Total",
+      "lines": "Lignes",
+      "noLines": "Aucune ligne.",
+      "loading": "Chargement…"
+    },
+    "proforma": {
+      "title": "Proformas",
+      "new": "Nouvelle proforma",
+      "partner": "Client",
+      "empty": "Aucune proforma."
+    },
+    "delivery": {
+      "title": "Bons de livraison",
+      "new": "Nouveau bon de livraison",
+      "edit": "Bon de livraison {reference}",
+      "partner": "Client",
+      "empty": "Aucun bon de livraison.",
+      "customer": "Client",
+      "selectCustomer": "Choisir le client…",
+      "place": "Lieu",
+      "deliveryAddress": "Adresse de livraison",
+      "tripsTitle": "Trajets livrés",
+      "tripsHint": "Cochez les trajets à inclure : les lignes se remplissent automatiquement.",
+      "noTrips": "Aucun trajet livré pour ce client.",
+      "alreadyOn": "Déjà sur {refs}"
+    },
+    "loading": {
+      "title": "Bons de chargement",
+      "new": "Nouveau bon de chargement",
+      "edit": "Bon de chargement {reference}",
+      "partner": "Fournisseur / dépôt",
+      "empty": "Aucun bon de chargement.",
+      "stepInfo": "1. Informations",
+      "stepTrucks": "2. Camions",
+      "next": "Suivant",
+      "supplier": "Fournisseur / dépôt de chargement",
+      "otherSupplier": "Autre (saisie libre)",
+      "supplierName": "Nom du fournisseur / dépôt",
+      "onBehalfOf": "Au compte de",
+      "sourceReference": "Référence (cession, commande…)",
+      "productName": "Produit",
+      "route": "Axe / destination",
+      "searchTrucks": "Rechercher un tracteur ou une citerne…",
+      "noTrucks": "Aucun camion actif.",
+      "trucksCount": "{count} camion(s) · {litres}"
+    },
+    "purchase": {
+      "title": "Bons de commande",
+      "new": "Nouveau bon de commande",
+      "edit": "Bon de commande {reference}",
+      "partner": "Fournisseur",
+      "empty": "Aucun bon de commande.",
+      "supplier": "Fournisseur",
+      "selectSupplier": "Choisir le fournisseur…",
+      "prefill": "Pré-remplir depuis une commande fournisseur",
+      "noPrefill": "— Aucune —",
+      "deliveryPlace": "Lieu de livraison",
+      "deliveryDate": "Date de livraison souhaitée",
+      "paymentTerms": "Conditions de paiement",
+      "currency": "Devise",
+      "statuses": {
+        "DRAFT": "Brouillon",
+        "SENT": "Envoyé"
+      }
+    },
+    "lines": {
+      "designation": "Désignation",
+      "quantity": "Quantité",
+      "tanker": "Citerne",
+      "tractor": "Tracteur",
+      "missing": "Manquant",
+      "observation": "Observation",
+      "capacity": "Capacité (L)",
+      "product": "Produit",
+      "be": "N° BE",
+      "route": "Axe",
+      "description": "Désignation",
+      "unit": "Unité",
+      "unitPrice": "Prix unitaire",
+      "amount": "Montant"
     }
   }
 }

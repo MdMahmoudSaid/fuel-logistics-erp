@@ -348,3 +348,46 @@ class ClientVerificationCorrection(models.Model):
             f"{self.trip.reference}: {self.previous_received_quantity} -> "
             f"{self.new_received_quantity}"
         )
+
+
+class TripCustomerRefusal(models.Model):
+    """Append-only record of a customer refusing a trip assigned to him
+    (client request 2026-10-11): the trip either went back to the company
+    stock (only before delivery) or was handed to another customer, in
+    which case its sale and invoice followed it. Written exclusively by
+    TripCustomerRefusalService.refuse() under the Trip row lock."""
+
+    class Action(models.TextChoices):
+        RETURN_TO_STOCK = "RETURN_TO_STOCK", "Return to company stock"
+        CHANGE_CUSTOMER = "CHANGE_CUSTOMER", "Change customer"
+
+    trip = models.ForeignKey(Trip, on_delete=models.CASCADE, related_name="customer_refusals")
+    action = models.CharField(max_length=20, choices=Action.choices)
+    previous_customer = models.ForeignKey(
+        "customers.Customer", on_delete=models.PROTECT, related_name="refused_trips"
+    )
+    new_customer = models.ForeignKey(
+        "customers.Customer",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="taken_over_trips",
+    )
+    # Set only when the trip was already invoiced (delivered).
+    invoice_number = models.CharField(max_length=50, blank=True)
+    previous_unit_price = models.DecimalField(
+        max_digits=14, decimal_places=4, null=True, blank=True
+    )
+    new_unit_price = models.DecimalField(max_digits=14, decimal_places=4, null=True, blank=True)
+    released_amount = models.DecimalField(max_digits=16, decimal_places=2, default=0)
+    reason = models.TextField()
+    recorded_by = models.ForeignKey(
+        "accounts.User", on_delete=models.PROTECT, related_name="trip_customer_refusals"
+    )
+    recorded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-recorded_at", "-id"]
+
+    def __str__(self) -> str:
+        return f"{self.trip.reference}: {self.previous_customer} -> {self.action}"

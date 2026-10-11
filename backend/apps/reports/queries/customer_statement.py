@@ -23,7 +23,8 @@ class CustomerStatementQuery:
         invoices = Invoice.objects.filter(sale__customer_id=customer_id).exclude(
             status=Invoice.Status.CANCELLED
         )
-        payments = CustomerPayment.objects.filter(customer_id=customer_id)
+        # A cancelled receipt (is_reversed, 2026-10-11) never really came in.
+        payments = CustomerPayment.objects.filter(customer_id=customer_id, is_reversed=False)
         opening_debts = OpeningDebt.objects.filter(customer_id=customer_id, cancelled_at__isnull=True)
         return [
             {
@@ -48,7 +49,7 @@ class CustomerStatementQuery:
         ] + [
             {
                 "date": payment.payment_date,
-                "type": "PAYMENT",
+                "type": "ADVANCE_RECEIVED" if payment.is_advance else "PAYMENT",
                 "reference": payment.reference or f"PAY-{payment.id}",
                 "debit": None,
                 "credit": payment.amount,

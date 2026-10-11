@@ -95,7 +95,11 @@ async function load() {
       shareholderId.value = String(props.initialShareholderId)
     } else {
       const initial = shareholders.value.find((s) => s.id === props.initialShareholderId)
-      shareholderId.value = initial ? String(initial.id) : (shareholders.value[0]?.id ? String(shareholders.value[0].id) : '')
+      shareholderId.value = initial
+        ? String(initial.id)
+        : shareholders.value[0]?.id
+          ? String(shareholders.value[0].id)
+          : ''
     }
   } catch {
     error.value = t('finance.contributionForm.loadError')
@@ -163,14 +167,20 @@ onMounted(load)
 
     <template v-else>
       <label class="block space-y-1.5">
-        <span class="text-texte-2 text-sm font-medium">{{ t('finance.contributionForm.shareholder') }}</span>
+        <span class="text-texte-2 text-sm font-medium">{{
+          t('finance.contributionForm.shareholder')
+        }}</span>
         <select
           id="shareholder"
           v-model="shareholderId"
           class="border-ligne h-11 w-full rounded-lg border px-3 text-sm"
           :disabled="lockShareholder"
         >
-          <option v-for="shareholder in shareholders" :key="shareholder.id" :value="String(shareholder.id)">
+          <option
+            v-for="shareholder in shareholders"
+            :key="shareholder.id"
+            :value="String(shareholder.id)"
+          >
             {{ shareholder.name }}
           </option>
         </select>
@@ -178,21 +188,38 @@ onMounted(load)
 
       <div class="grid gap-4 sm:grid-cols-3">
         <label class="space-y-1.5">
-          <span class="text-texte-2 text-sm font-medium">{{ t('finance.contributionForm.accountKind') }}</span>
-          <select v-model="accountKind" class="border-ligne h-11 w-full rounded-lg border px-3 text-sm">
+          <span class="text-texte-2 text-sm font-medium">{{
+            t('finance.contributionForm.accountKind')
+          }}</span>
+          <select
+            v-model="accountKind"
+            class="border-ligne h-11 w-full rounded-lg border px-3 text-sm"
+          >
             <option value="bank">{{ t('finance.contributionForm.bank') }}</option>
             <option value="cash">{{ t('finance.contributionForm.cash') }}</option>
           </select>
         </label>
         <label v-if="accountKind === 'bank'" class="space-y-1.5 sm:col-span-2">
-          <span class="text-texte-2 text-sm font-medium">{{ t('finance.contributionForm.bank') }}</span>
-          <select v-model="bankAccountId" class="border-ligne h-11 w-full rounded-lg border px-3 text-sm">
-            <option v-for="bank in banks" :key="bank.id" :value="String(bank.id)">{{ bank.name }}</option>
+          <span class="text-texte-2 text-sm font-medium">{{
+            t('finance.contributionForm.bank')
+          }}</span>
+          <select
+            v-model="bankAccountId"
+            class="border-ligne h-11 w-full rounded-lg border px-3 text-sm"
+          >
+            <option v-for="bank in banks" :key="bank.id" :value="String(bank.id)">
+              {{ bank.name }}
+            </option>
           </select>
         </label>
         <label v-else class="space-y-1.5 sm:col-span-2">
-          <span class="text-texte-2 text-sm font-medium">{{ t('finance.contributionForm.cash') }}</span>
-          <select v-model="cashAccountId" class="border-ligne h-11 w-full rounded-lg border px-3 text-sm">
+          <span class="text-texte-2 text-sm font-medium">{{
+            t('finance.contributionForm.cash')
+          }}</span>
+          <select
+            v-model="cashAccountId"
+            class="border-ligne h-11 w-full rounded-lg border px-3 text-sm"
+          >
             <option v-for="account in cashAccounts" :key="account.id" :value="String(account.id)">
               {{ account.name }}
             </option>
@@ -202,7 +229,9 @@ onMounted(load)
 
       <div class="grid gap-4 sm:grid-cols-2">
         <label class="space-y-1.5">
-          <span class="text-texte-2 text-sm font-medium">{{ t('finance.contributionForm.amount') }}</span>
+          <span class="text-texte-2 text-sm font-medium">{{
+            t('finance.contributionForm.amount')
+          }}</span>
           <input
             id="amount"
             v-model="amount"
@@ -213,24 +242,43 @@ onMounted(load)
           />
         </label>
         <label class="space-y-1.5">
-          <span class="text-texte-2 text-sm font-medium">{{ t('finance.contributionForm.date') }}</span>
-          <input v-model="date" type="date" class="border-ligne h-11 w-full rounded-lg border px-3 text-sm" />
+          <span class="text-texte-2 text-sm font-medium">{{
+            t('finance.contributionForm.date')
+          }}</span>
+          <input
+            v-model="date"
+            type="date"
+            class="border-ligne h-11 w-full rounded-lg border px-3 text-sm"
+          />
         </label>
       </div>
 
       <div class="grid gap-4 sm:grid-cols-2">
         <label class="space-y-1.5">
-          <span class="text-texte-2 text-sm font-medium">{{ t('finance.contributionForm.reference') }}</span>
-          <input v-model="reference" class="border-ligne h-11 w-full rounded-lg border px-3 text-sm" />
+          <span class="text-texte-2 text-sm font-medium">{{
+            t('finance.contributionForm.reference')
+          }}</span>
+          <input
+            v-model="reference"
+            class="border-ligne h-11 w-full rounded-lg border px-3 text-sm"
+          />
         </label>
         <label class="space-y-1.5">
-          <span class="text-texte-2 text-sm font-medium">{{ t('finance.contributionForm.note') }}</span>
-          <textarea v-model="note" rows="2" class="border-ligne w-full rounded-lg border px-3 py-2 text-sm" />
+          <span class="text-texte-2 text-sm font-medium">{{
+            t('finance.contributionForm.note')
+          }}</span>
+          <textarea
+            v-model="note"
+            rows="2"
+            class="border-ligne w-full rounded-lg border px-3 py-2 text-sm"
+          />
         </label>
       </div>
 
       <label class="block space-y-1.5">
-        <span class="text-texte-2 text-sm font-medium">{{ t('finance.contributionForm.attachment') }}</span>
+        <span class="text-texte-2 text-sm font-medium">{{
+          t('finance.contributionForm.attachment')
+        }}</span>
         <input
           type="file"
           :accept="IMAGE_UPLOAD_ACCEPT"
@@ -242,7 +290,9 @@ onMounted(load)
       </label>
 
       <div class="flex justify-end gap-2">
-        <Button variant="ghost" type="button" @click="emit('cancel')">{{ t('common.cancel') }}</Button>
+        <Button variant="ghost" type="button" @click="emit('cancel')">{{
+          t('common.cancel')
+        }}</Button>
         <Button variant="primary" type="submit" :loading="saving">
           {{ t('finance.contributionForm.submit') }}
         </Button>

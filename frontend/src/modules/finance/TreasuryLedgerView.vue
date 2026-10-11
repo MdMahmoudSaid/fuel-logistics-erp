@@ -56,7 +56,7 @@ const error = ref('')
 const typeFilter = ref(
   route.query.type === 'in' || route.query.type === 'out' || route.query.type === 'transfer'
     ? (route.query.type as string)
-    : ''
+    : '',
 )
 const accountFilter = ref('')
 const proofFilter = ref('')
@@ -79,9 +79,7 @@ function accountLabel(txn: TreasuryTransaction): string {
 // fallback so the row never reads as a bare, unexplained movement.
 function sourceLabel(txn: TreasuryTransaction): string {
   if (txn.counterparty) return txn.counterparty
-  return txn.is_transfer
-    ? t('transactionType.TRANSFER')
-    : t(`transactionType.${txn.type}`)
+  return txn.is_transfer ? t('transactionType.TRANSFER') : t(`transactionType.${txn.type}`)
 }
 
 async function load() {
@@ -183,17 +181,28 @@ const filteredTransactions = computed(() =>
     </div>
 
     <div class="flex flex-wrap gap-2">
-      <select v-model="typeFilter" class="border-ligne-forte h-11 rounded-lg border bg-white px-3 text-sm">
+      <select
+        v-model="typeFilter"
+        class="border-ligne-forte h-11 rounded-lg border bg-white px-3 text-sm"
+      >
         <option value="">Tous les types</option>
         <option value="in">Entrée</option>
         <option value="out">Sortie</option>
         <option value="transfer">Transfert</option>
       </select>
-      <select v-model="accountFilter" class="border-ligne-forte h-11 rounded-lg border bg-white px-3 text-sm">
+      <select
+        v-model="accountFilter"
+        class="border-ligne-forte h-11 rounded-lg border bg-white px-3 text-sm"
+      >
         <option value="">Tous les comptes</option>
-        <option v-for="account in accountOptions" :key="account" :value="account">{{ account }}</option>
+        <option v-for="account in accountOptions" :key="account" :value="account">
+          {{ account }}
+        </option>
       </select>
-      <select v-model="proofFilter" class="border-ligne-forte h-11 rounded-lg border bg-white px-3 text-sm">
+      <select
+        v-model="proofFilter"
+        class="border-ligne-forte h-11 rounded-lg border bg-white px-3 text-sm"
+      >
         <option value="">Tous les justificatifs</option>
         <option value="with">Avec justificatif</option>
         <option value="without">Sans justificatif</option>

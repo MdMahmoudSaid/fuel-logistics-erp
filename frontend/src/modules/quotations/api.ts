@@ -22,10 +22,14 @@ function downloadBlob(blob: Blob, filename: string): void {
 // GET /api/quotations/{id}/pdf/?lang=fr|en|ar (backend/apps/quotations/
 // views.py QuotationViewSet.pdf) - mirrors modules/finance/api.ts's
 // exportLedgerPdf blob-download pattern.
-export async function exportQuotationPdf(id: number, reference: string, lang: string): Promise<void> {
+export async function exportQuotationPdf(
+  id: number,
+  reference: string,
+  lang: string,
+): Promise<void> {
   const response = await apiClient.get(`/quotations/${id}/pdf/`, {
     params: { lang },
     responseType: 'blob',
   })
-  downloadBlob(new Blob([response.data]), `devis-${reference}.pdf`)
+  downloadBlob(new Blob([response.data]), `proforma-${reference}.pdf`)
 }

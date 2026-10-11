@@ -5242,11 +5242,12 @@ def test_shareholder_loan_creation_rejected_via_api_when_lender_balance_insuffic
 
 
 @pytest.mark.django_db
-def test_get_available_balance_loan_given_increases_loan_received_decreases():
-    """Pins the sign convention explicitly requested during design review:
-    lending money out is a receivable (increases available_balance),
-    receiving an advance is a liability (decreases it) - easy to get
-    backwards, so this regression test locks it in."""
+def test_get_available_balance_loan_given_decreases_loan_received_increases():
+    """Pins the sign convention corrected by the client (2026-10-11): an
+    associate advance moves part of the lender's balance to the borrower -
+    lending decreases available_balance, receiving increases it (the
+    debt/claim is tracked separately). Easy to get backwards, so this
+    regression test locks it in."""
     a, b = _make_shareholders([Decimal("50"), Decimal("50")], prefix="SIGN")
     actor = _make_admin_user("SIGN")
     _seed_distributable()
@@ -5268,7 +5269,7 @@ def test_get_available_balance_loan_given_increases_loan_received_decreases():
 
     available = ShareholderLedgerService.get_available_balance(a.id)
 
-    assert available == Decimal("55000.00")  # 50000 + 10000 (given) - 5000 (received)
+    assert available == Decimal("45000.00")  # 50000 - 10000 (given) + 5000 (received)
 
 
 @pytest.mark.django_db
@@ -5712,9 +5713,10 @@ def test_shareholder_ledger_service_get_shareholder_summary():
     assert summary["remaining_due"] == Decimal("70000.00")
     assert len(summary["loans_lent"]) == 1
     assert summary["loans_lent"][0]["remaining_amount"] == Decimal("15000.00")
-    # available_balance = remaining_due (70000) + net_loan_balance (15000
-    # lent out, nothing borrowed) - a loan given increases it.
-    assert summary["available_balance"] == Decimal("85000.00")
+    # available_balance = remaining_due (70000) - 15000 still lent out to
+    # another associate (client correction 2026-10-11).
+    assert summary["available_balance"] == Decimal("55000.00")
+    assert summary["net_loan_balance"] == Decimal("-15000.00")
 
 
 @pytest.mark.django_db

@@ -129,20 +129,78 @@ const router = createRouter({
           name: 'invoice-detail',
           component: () => import('@/modules/sales/InvoiceDetail.vue'),
         },
+        // Documents section (spec 2026-10-11 documents-commerciaux §1): one
+        // generic list per kind; the proforma keeps the quotation form.
+        { path: 'quotations', redirect: { name: 'proformas' } },
+        { path: 'quotations/:id', redirect: (to) => `/documents/proformas/${to.params.id}` },
         {
-          path: 'quotations',
-          name: 'quotations',
-          component: () => import('@/modules/quotations/QuotationList.vue'),
+          path: 'documents/proformas',
+          name: 'proformas',
+          component: () => import('@/modules/documents/DocumentList.vue'),
+          props: { kind: 'proforma' },
         },
         {
-          path: 'quotations/new',
+          path: 'documents/proformas/new',
           name: 'quotation-new',
           component: () => import('@/modules/quotations/QuotationForm.vue'),
         },
         {
-          path: 'quotations/:id',
+          path: 'documents/proformas/:id',
           name: 'quotation-detail',
           component: () => import('@/modules/quotations/QuotationForm.vue'),
+        },
+        {
+          path: 'documents/delivery-notes',
+          name: 'delivery-notes',
+          component: () => import('@/modules/documents/DocumentList.vue'),
+          props: { kind: 'delivery' },
+        },
+        {
+          path: 'documents/delivery-notes/new',
+          name: 'delivery-note-new',
+          component: () => import('@/modules/documents/DeliveryNoteForm.vue'),
+        },
+        {
+          path: 'documents/delivery-notes/:id',
+          name: 'delivery-note-detail',
+          component: () => import('@/modules/documents/DeliveryNoteForm.vue'),
+        },
+        {
+          path: 'documents/loading-sheets',
+          name: 'loading-sheets',
+          component: () => import('@/modules/documents/DocumentList.vue'),
+          props: { kind: 'loading' },
+        },
+        {
+          path: 'documents/loading-sheets/new',
+          name: 'loading-sheet-new',
+          component: () => import('@/modules/documents/LoadingSheetForm.vue'),
+        },
+        {
+          path: 'documents/loading-sheets/:id',
+          name: 'loading-sheet-detail',
+          component: () => import('@/modules/documents/LoadingSheetForm.vue'),
+        },
+        {
+          path: 'documents/purchase-orders',
+          name: 'purchase-orders',
+          component: () => import('@/modules/documents/DocumentList.vue'),
+          props: { kind: 'purchase' },
+        },
+        {
+          path: 'documents/purchase-orders/new',
+          name: 'purchase-order-doc-new',
+          component: () => import('@/modules/documents/PurchaseOrderForm.vue'),
+        },
+        {
+          path: 'documents/purchase-orders/:id',
+          name: 'purchase-order-doc-detail',
+          component: () => import('@/modules/documents/PurchaseOrderForm.vue'),
+        },
+        {
+          path: 'settings/company',
+          name: 'company-settings',
+          component: () => import('@/modules/settings/CompanyProfileSettings.vue'),
         },
         {
           path: 'settings/loss-tolerance',

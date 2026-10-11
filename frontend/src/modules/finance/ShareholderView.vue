@@ -18,11 +18,9 @@ import {
   fetchShareholderBalancesSummary,
   fetchShareholderLedger,
   fetchShareholderProfitPreview,
-  recordShareholderLoanRepayment,
   shareholderContributionResource,
   shareholderDistributionResource,
   shareholderProfitPeriodResource,
-  shareholderLoanResource,
   shareholderResource,
   shareholderWithdrawalResource,
   validateShareholderDistribution,
@@ -33,7 +31,6 @@ import type {
   ShareholderBalancesSummary,
   ShareholderContribution,
   ShareholderLedger,
-  ShareholderLoan,
   ShareholderProfitDistribution,
   ShareholderProfitPeriod,
   ShareholderProfitPreview,
@@ -48,9 +45,17 @@ import MonoValue from '@/components/ui/MonoValue.vue'
 import EntityForm from '@/components/master-data/EntityForm.vue'
 import type { FieldSchema } from '@/components/master-data/types'
 import ContributionForm from './ContributionForm.vue'
+import ShareholderAdvancesPanel, {
+  type TreasuryAccountOption,
+} from './ShareholderAdvancesPanel.vue'
+import ShareholderDebtsSection from './ShareholderDebtsSection.vue'
 import { formatMoney } from '@/utils/currency'
+import { formatPhoneDisplay } from '@/data/countries'
+import { useAuthStore } from '@/stores/auth'
+import { downloadReportExport } from '@/modules/reports/api'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
+const auth = useAuthStore()
 
 type ShareholderTab =
   'summary' | 'associates' | 'distributions' | 'loans' | 'withdrawals' | 'ledger'
@@ -77,31 +82,56 @@ const today = () => new Date().toISOString().slice(0, 10)
 // --- Shared reference data -------------------------------------------------
 
 const shareholders = ref<Shareholder[]>([])
+// Client request 2026-10-11: an inactive associate is archived - he only
+// appears in the associates list's "Inactifs" view, never in a picker.
 const activeShareholders = computed(() => shareholders.value.filter((s) => s.is_active))
+const inactiveShareholders = computed(() => shareholders.value.filter((s) => !s.is_active))
+const showInactive = ref(false)
+const listedShareholders = computed(() =>
+  showInactive.value ? inactiveShareholders.value : activeShareholders.value,
+)
 
-const bankAccountResource = createResourceApi<{ id: number; name: string }>('/bank-accounts/')
-const cashAccountResource = createResourceApi<{ id: number; name: string }>('/cash-accounts/')
-const bankAccounts = ref<{ id: number; name: string }[]>([])
-const cashAccounts = ref<{ id: number; name: string }[]>([])
+const bankAccountResource = createResourceApi<TreasuryAccountOption>('/bank-accounts/')
+const cashAccountResource = createResourceApi<TreasuryAccountOption>('/cash-accounts/')
+const bankAccounts = ref<TreasuryAccountOption[]>([])
+const cashAccounts = ref<TreasuryAccountOption[]>([])
 
 async function loadShareholders() {
   const data = await shareholderResource.list()
   shareholders.value = [...data.results]
 }
 
+async function loadAccounts() {
+  await Promise.all([
+    bankAccountResource
+      .list({ is_active: true })
+      .then((r) => (bankAccounts.value = [...r.results])),
+    cashAccountResource
+      .list({ is_active: true })
+      .then((r) => (cashAccounts.value = [...r.results])),
+  ])
+}
+
 onMounted(async () => {
   await Promise.all([
     loadShareholders(),
-    bankAccountResource.list().then((r) => (bankAccounts.value = r.results)),
-    cashAccountResource.list().then((r) => (cashAccounts.value = r.results)),
+    loadAccounts(),
     loadDistributions(),
     loadPeriods(),
-    loadLoans(),
     loadWithdrawals(),
     loadPreview(),
     loadBalancesSummary(),
   ])
 })
+
+// An advance or a repayment moves balances, treasury and the open ledger.
+async function onAdvancesChanged() {
+  await Promise.all([
+    loadBalancesSummary(),
+    loadAccounts(),
+    ledger.value ? loadLedger(ledger.value.shareholder.id) : Promise.resolve(),
+  ])
+}
 
 // --- Live profit preview (read-only, indicative) ----------------------------
 // backend/apps/finance/services.py ShareholderProfitPreviewService - never
@@ -341,61 +371,7 @@ function toggleExpandDistribution(id: number) {
   expandedDistributionId.value = expandedDistributionId.value === id ? null : id
 }
 
-// --- Section 3: Loans between associates ------------------------------------
-
-const loans = ref<ShareholderLoan[]>([])
-const loanForm = ref({ borrower: '', lender: '', amount: '', date: today(), notes: '' })
-const loanError = ref('')
-const savingLoan = ref(false)
-const repaymentInput = ref<Record<number, string>>({})
-
-async function loadLoans() {
-  const data = await shareholderLoanResource.list()
-  loans.value = [...data.results]
-}
-
-async function onCreateLoan() {
-  savingLoan.value = true
-  loanError.value = ''
-  try {
-    await shareholderLoanResource.create({
-      borrower: Number(loanForm.value.borrower),
-      lender: Number(loanForm.value.lender),
-      amount: loanForm.value.amount,
-      date: loanForm.value.date,
-      notes: loanForm.value.notes,
-    })
-    loanForm.value = { borrower: '', lender: '', amount: '', date: today(), notes: '' }
-    await loadLoans()
-  } catch (e) {
-    loanError.value = extractErrorMessage(e, t('finance.shareholder.loan.saveError'))
-  } finally {
-    savingLoan.value = false
-  }
-}
-
-async function onRecordRepayment(loan: ShareholderLoan) {
-  const extra = Number(repaymentInput.value[loan.id] || '0')
-  if (!extra || extra <= 0) return
-  try {
-    // Send the increment, never a client-computed absolute total (Task 7
-    // fix: loan-repayment lost-update race) - the backend applies it
-    // under select_for_update() so two repayments entered close together
-    // (two tabs, two people) can never silently overwrite each other the
-    // way PATCHing `current + extra` from a stale read could.
-    await recordShareholderLoanRepayment(loan.id, extra.toFixed(2))
-    repaymentInput.value[loan.id] = ''
-    await loadLoans()
-  } catch (e) {
-    loanError.value = extractErrorMessage(e, t('finance.shareholder.loan.saveError'))
-  }
-}
-
-function loanStatusVariant(status: string) {
-  if (status === 'REPAID') return 'livre' as const
-  if (status === 'PARTIALLY_REPAID') return 'transit' as const
-  return 'neutre' as const
-}
+// --- Section 3: Advances - ShareholderAdvancesPanel.vue ---------------------
 
 // --- Section 1b: Capital contributions --------------------------------------
 // Opens Task 6's ContributionForm.vue in a Modal, either unlocked (from the
@@ -422,36 +398,36 @@ const withdrawalAccountOptions = computed(() =>
   withdrawalForm.value.account_type === 'bank' ? bankAccounts.value : cashAccounts.value,
 )
 
-// Available balance for the selected shareholder, shown as a hint next to
+// What the selected shareholder can withdraw now, shown as a hint next to
 // the amount field now that allocation is fully automatic (profit first,
-// then capital) - no more manual share picker.
+// then company advances, then capital) - no more manual share picker. It
+// includes a company advance not yet withdrawn (client decision
+// 2026-10-11: the treasury only moves when he withdraws it).
 const withdrawalAvailableBalance = computed(() => {
   const shareholderId = Number(withdrawalForm.value.shareholder)
   if (!shareholderId || !ledger.value || ledger.value.shareholder.id !== shareholderId) return null
-  return ledger.value.available_balance
+  return ledger.value.withdrawable_balance ?? ledger.value.available_balance
 })
 
-// Only withdrawals that actually touched capital get a breakdown line -
-// a pure-profit withdrawal (the overwhelming majority) shows nothing
-// extra, matching the existing single-amount display.
+// Only withdrawals that touched something other than profit (a company
+// advance or capital) get a breakdown line - a pure-profit withdrawal (the
+// overwhelming majority) shows nothing extra.
 function withdrawalAllocationSummary(w: {
   allocations: ShareholderWithdrawalAllocation[]
 }): string | null {
-  const capitalAllocations = w.allocations.filter((a) => a.contribution !== null)
-  if (capitalAllocations.length === 0) return null
-  const profitTotal = w.allocations
-    .filter((a) => a.profit_share !== null)
-    .reduce((sum, a) => sum + Number(a.amount), 0)
-  const capitalTotal = capitalAllocations.reduce((sum, a) => sum + Number(a.amount), 0)
+  const sum = (rows: ShareholderWithdrawalAllocation[]) =>
+    rows.reduce((total, a) => total + Number(a.amount), 0)
+  const profitTotal = sum(w.allocations.filter((a) => a.profit_share != null))
+  const advanceTotal = sum(w.allocations.filter((a) => a.advance != null))
+  const capitalTotal = sum(w.allocations.filter((a) => a.contribution != null))
+  if (advanceTotal === 0 && capitalTotal === 0) return null
   const parts: string[] = []
-  if (profitTotal > 0) {
-    parts.push(
-      `${formatMoney(String(profitTotal))} (${t('finance.shareholder.withdrawal.sourceProfitShare')})`,
-    )
+  const add = (amount: number, key: string) => {
+    if (amount > 0) parts.push(`${formatMoney(String(amount))} (${t(key)})`)
   }
-  parts.push(
-    `${formatMoney(String(capitalTotal))} (${t('finance.shareholder.withdrawal.sourceCapital')})`,
-  )
+  add(profitTotal, 'finance.shareholder.withdrawal.sourceProfitShare')
+  add(advanceTotal, 'finance.shareholder.withdrawal.sourceAdvance')
+  add(capitalTotal, 'finance.shareholder.withdrawal.sourceCapital')
   return parts.join(' + ')
 }
 
@@ -486,8 +462,12 @@ async function onCreateWithdrawal() {
       account_id: '',
       notes: '',
     }
-    await loadWithdrawals()
-    if (ledger.value) await loadLedger(ledger.value.shareholder.id)
+    await Promise.all([
+      loadWithdrawals(),
+      loadBalancesSummary(),
+      loadAccounts(),
+      ledger.value ? loadLedger(ledger.value.shareholder.id) : Promise.resolve(),
+    ])
   } catch (e) {
     withdrawalError.value = extractErrorMessage(e, t('finance.shareholder.withdrawal.saveError'))
   } finally {
@@ -534,6 +514,30 @@ async function loadLedger(shareholderId: number) {
     ledgerError.value = t('finance.shareholder.ledger.loadError')
   } finally {
     ledgerLoading.value = false
+  }
+}
+
+// The associate's statement as a PDF (Rapports > Relevé actionnaire, same
+// document): his whole history plus the advance cards of this tab.
+const canExportStatement = computed(() => auth.can('reports', 'export'))
+const exportingStatement = ref(false)
+const exportError = ref('')
+
+async function onDownloadStatement() {
+  if (!ledger.value) return
+  exportingStatement.value = true
+  exportError.value = ''
+  try {
+    await downloadReportExport(
+      'shareholder-statement',
+      'pdf',
+      { shareholder_id: String(ledger.value.shareholder.id) },
+      locale.value,
+    )
+  } catch {
+    exportError.value = t('finance.shareholder.ledger.exportError')
+  } finally {
+    exportingStatement.value = false
   }
 }
 
@@ -696,7 +700,30 @@ async function onWithdrawalShareholderChange() {
     <!-- Section 1: Shareholders -->
     <Card v-if="activeTab === 'associates'" :title="t('finance.shareholder.listTitle')">
       <template #actions>
-        <div class="flex gap-2">
+        <div class="flex flex-wrap items-center justify-end gap-2">
+          <div
+            data-test="associates-filter"
+            class="border-ligne flex rounded-lg border bg-white p-0.5 text-sm"
+          >
+            <button
+              type="button"
+              data-test="associates-active"
+              class="rounded-md px-3 py-1.5 whitespace-nowrap"
+              :class="!showInactive ? 'bg-bitume text-sable' : 'text-texte-2'"
+              @click="showInactive = false"
+            >
+              {{ t('finance.shareholder.activeCount', { n: activeShareholders.length }) }}
+            </button>
+            <button
+              type="button"
+              data-test="associates-inactive"
+              class="rounded-md px-3 py-1.5 whitespace-nowrap"
+              :class="showInactive ? 'bg-bitume text-sable' : 'text-texte-2'"
+              @click="showInactive = true"
+            >
+              {{ t('finance.shareholder.inactiveCount', { n: inactiveShareholders.length }) }}
+            </button>
+          </div>
           <Button
             data-testid="new-contribution-button"
             variant="secondary"
@@ -710,6 +737,13 @@ async function onWithdrawalShareholderChange() {
         </div>
       </template>
 
+      <p
+        v-if="showInactive"
+        data-test="inactive-notice"
+        class="border-ligne bg-sable text-texte-2 mb-3 rounded-lg border p-2.5 text-sm"
+      >
+        {{ t('finance.shareholder.inactiveNotice') }}
+      </p>
       <div class="overflow-x-auto">
         <table class="w-full text-start text-sm">
           <thead>
@@ -730,7 +764,13 @@ async function onWithdrawalShareholderChange() {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="s in shareholders" :key="s.id" class="border-ligne border-b last:border-0">
+            <tr
+              v-for="s in listedShareholders"
+              :key="s.id"
+              :data-test="`associate-row-${s.id}`"
+              class="border-ligne border-b last:border-0"
+              :class="s.is_active ? '' : 'text-texte-2'"
+            >
               <td class="px-3 py-2.5">{{ s.name }}</td>
               <td class="px-3 py-2.5 text-end">
                 <MonoValue :value="`${s.participation_percent}%`" />
@@ -741,7 +781,9 @@ async function onWithdrawalShareholderChange() {
               <td class="px-3 py-2.5 text-end">
                 <MonoValue :value="formatMoney(s.total_contributed)" />
               </td>
-              <td class="px-3 py-2.5">{{ s.phone || '—' }}</td>
+              <td class="px-3 py-2.5 whitespace-nowrap">
+                {{ s.phone ? formatPhoneDisplay(s.phone) : '—' }}
+              </td>
               <td class="px-3 py-2.5">
                 <Badge :variant="s.is_active ? 'livre' : 'neutre'">
                   {{ s.is_active ? t('masterData.statusActive') : t('masterData.statusInactive') }}
@@ -753,7 +795,7 @@ async function onWithdrawalShareholderChange() {
                 }}</Button>
               </td>
             </tr>
-            <tr v-if="shareholders.length === 0">
+            <tr v-if="listedShareholders.length === 0">
               <td colspan="7" class="text-texte-3 px-3 py-8 text-center">
                 {{ t('masterData.noRecords') }}
               </td>
@@ -1086,140 +1128,15 @@ async function onWithdrawalShareholderChange() {
       </div>
     </Card>
 
-    <!-- Section 3: Loans between associates -->
-    <Card v-if="activeTab === 'loans'" :title="t('finance.shareholder.loan.title')">
-      <AppAlert v-if="loanError" :message="loanError" />
-
-      <form class="mb-5 grid grid-cols-1 md:grid-cols-4 gap-3" @submit.prevent="onCreateLoan">
-        <div class="space-y-1.5">
-          <label class="text-texte-2 text-sm font-medium" for="lender">
-            {{ t('finance.shareholder.loan.lender') }}
-          </label>
-          <select
-            id="lender"
-            v-model="loanForm.lender"
-            required
-            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-          >
-            <option value="" disabled>{{ t('finance.shareholder.selectShareholder') }}</option>
-            <option v-for="s in shareholders" :key="s.id" :value="s.id">{{ s.name }}</option>
-          </select>
-        </div>
-        <div class="space-y-1.5">
-          <label class="text-texte-2 text-sm font-medium" for="borrower">
-            {{ t('finance.shareholder.loan.borrower') }}
-          </label>
-          <select
-            id="borrower"
-            v-model="loanForm.borrower"
-            required
-            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-          >
-            <option value="" disabled>{{ t('finance.shareholder.selectShareholder') }}</option>
-            <option v-for="s in shareholders" :key="s.id" :value="s.id">{{ s.name }}</option>
-          </select>
-        </div>
-        <div class="space-y-1.5">
-          <label class="text-texte-2 text-sm font-medium" for="loan_amount">
-            {{ t('finance.shareholder.loan.amount') }}
-          </label>
-          <input
-            id="loan_amount"
-            v-model="loanForm.amount"
-            type="number"
-            step="0.01"
-            min="0.01"
-            required
-            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-          />
-        </div>
-        <div class="space-y-1.5">
-          <label class="text-texte-2 text-sm font-medium" for="loan_date">
-            {{ t('finance.shareholder.loan.date') }}
-          </label>
-          <input
-            id="loan_date"
-            v-model="loanForm.date"
-            type="date"
-            required
-            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-          />
-        </div>
-        <div class="md:col-span-3 space-y-1.5">
-          <label class="text-texte-2 text-sm font-medium" for="loan_notes">
-            {{ t('masterData.fields.notes') }}
-          </label>
-          <input
-            id="loan_notes"
-            v-model="loanForm.notes"
-            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-          />
-        </div>
-        <div class="flex items-end">
-          <Button type="submit" variant="primary" class="w-full" :loading="savingLoan">
-            {{ t('finance.shareholder.loan.record') }}
-          </Button>
-        </div>
-      </form>
-
-      <div class="overflow-x-auto">
-        <table class="w-full text-start text-sm">
-          <thead>
-            <tr class="border-ligne text-texte-2 border-b">
-              <th class="px-3 py-2.5 font-medium">{{ t('finance.shareholder.loan.lender') }}</th>
-              <th class="px-3 py-2.5 font-medium">{{ t('finance.shareholder.loan.borrower') }}</th>
-              <th class="px-3 py-2.5 text-end font-medium">
-                {{ t('finance.shareholder.loan.amount') }}
-              </th>
-              <th class="px-3 py-2.5 text-end font-medium">
-                {{ t('finance.shareholder.loan.remaining') }}
-              </th>
-              <th class="px-3 py-2.5 font-medium">{{ t('finance.shareholder.loan.status') }}</th>
-              <th class="px-3 py-2.5 font-medium">
-                {{ t('finance.shareholder.loan.recordRepayment') }}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="loan in loans" :key="loan.id" class="border-ligne border-b last:border-0">
-              <td class="px-3 py-2.5">{{ loan.lender_detail?.name }}</td>
-              <td class="px-3 py-2.5">{{ loan.borrower_detail?.name }}</td>
-              <td class="px-3 py-2.5 text-end">
-                <MonoValue :value="formatMoney(loan.amount)" />
-              </td>
-              <td class="px-3 py-2.5 text-end">
-                <MonoValue :value="formatMoney(loan.remaining_amount)" />
-              </td>
-              <td class="px-3 py-2.5">
-                <Badge :variant="loanStatusVariant(loan.status)">
-                  {{ t(`finance.shareholder.loan.statusValues.${loan.status}`) }}
-                </Badge>
-              </td>
-              <td class="px-3 py-2.5">
-                <div v-if="loan.status !== 'REPAID'" class="flex items-center gap-2">
-                  <input
-                    v-model="repaymentInput[loan.id]"
-                    type="number"
-                    step="0.01"
-                    min="0.01"
-                    :placeholder="t('finance.shareholder.loan.repaymentAmount')"
-                    class="border-ligne-forte h-10 w-28 rounded-lg border bg-white px-2 text-sm focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-                  />
-                  <Button variant="ghost" @click="onRecordRepayment(loan)">
-                    {{ t('common.save') }}
-                  </Button>
-                </div>
-              </td>
-            </tr>
-            <tr v-if="loans.length === 0">
-              <td colspan="6" class="text-texte-3 px-3 py-8 text-center">
-                {{ t('masterData.noRecords') }}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </Card>
+    <!-- Section 3: Advances (from an associate or the company treasury) -->
+    <ShareholderAdvancesPanel
+      v-if="activeTab === 'loans'"
+      :shareholders="activeShareholders"
+      :balances="balancesSummary"
+      :bank-accounts="bankAccounts"
+      :cash-accounts="cashAccounts"
+      @changed="onAdvancesChanged"
+    />
 
     <!-- Section 4: Shareholder withdrawals -->
     <Card v-if="activeTab === 'withdrawals'" :title="t('finance.shareholder.withdrawal.title')">
@@ -1371,7 +1288,7 @@ async function onWithdrawalShareholderChange() {
             class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           >
             <option value="" disabled>{{ t('finance.shareholder.selectShareholder') }}</option>
-            <option v-for="s in shareholders" :key="s.id" :value="s.id">{{ s.name }}</option>
+            <option v-for="s in activeShareholders" :key="s.id" :value="s.id">{{ s.name }}</option>
           </select>
         </div>
         <Button variant="primary" @click="onViewLedger">{{
@@ -1383,7 +1300,17 @@ async function onWithdrawalShareholderChange() {
       <p v-else-if="ledgerLoading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
       <template v-else-if="ledger">
-        <div class="mb-4 flex justify-end">
+        <AppAlert v-if="exportError" :message="exportError" />
+        <div class="mb-4 flex flex-wrap justify-end gap-2">
+          <Button
+            v-if="canExportStatement"
+            data-test="download-shareholder-statement"
+            variant="ghost"
+            :loading="exportingStatement"
+            @click="onDownloadStatement"
+          >
+            {{ t('finance.shareholder.ledger.downloadPdf') }}
+          </Button>
           <Button
             data-testid="new-contribution-button-ledger"
             variant="secondary"
@@ -1519,74 +1446,21 @@ async function onWithdrawalShareholderChange() {
           </div>
         </section>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <h3 class="text-texte-2 mb-2 text-sm font-medium">
-              {{ t('finance.shareholder.ledger.loansLent') }}
-            </h3>
-            <div class="overflow-x-auto">
-              <table class="w-full text-start text-sm">
-                <tbody>
-                  <tr
-                    v-for="loan in ledger.loans_lent"
-                    :key="loan.id"
-                    class="border-ligne border-b"
-                  >
-                    <td class="px-2 py-1.5">{{ loan.borrower_name }}</td>
-                    <td class="px-2 py-1.5 text-end">
-                      <MonoValue :value="formatMoney(loan.remaining_amount)" />
-                    </td>
-                  </tr>
-                  <tr v-if="ledger.loans_lent.length === 0">
-                    <td class="text-texte-3 px-2 py-4 text-center">
-                      {{ t('masterData.noRecords') }}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-          <div>
-            <h3 class="text-texte-2 mb-2 text-sm font-medium">
-              {{ t('finance.shareholder.ledger.loansBorrowed') }}
-            </h3>
-            <div class="overflow-x-auto">
-              <table class="w-full text-start text-sm">
-                <tbody>
-                  <tr
-                    v-for="loan in ledger.loans_borrowed"
-                    :key="loan.id"
-                    class="border-ligne border-b"
-                  >
-                    <td class="px-2 py-1.5">{{ loan.lender_name }}</td>
-                    <td class="px-2 py-1.5 text-end">
-                      <MonoValue :value="formatMoney(loan.remaining_amount)" />
-                    </td>
-                  </tr>
-                  <tr v-if="ledger.loans_borrowed.length === 0">
-                    <td class="text-texte-3 px-2 py-4 text-center">
-                      {{ t('masterData.noRecords') }}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
+        <ShareholderDebtsSection :ledger="ledger" />
       </template>
     </Card>
 
-    <div
+    <Modal
       v-if="showShareholderForm"
-      class="fixed inset-0 z-30 flex items-center justify-center bg-black/40 p-4"
+      :title="
+        editingShareholderId === null
+          ? t('finance.shareholder.formNew')
+          : t('finance.shareholder.formEdit')
+      "
+      max-width="max-w-2xl"
+      @close="showShareholderForm = false"
     >
-      <div
-        class="bg-surface border-ligne max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl border p-6"
-      >
-        <h2 class="font-display mb-4 text-lg leading-none font-semibold uppercase">
-          {{ editingShareholderId === null ? t('masterData.new') : t('masterData.edit') }}
-          {{ t('finance.shareholder.listTitle') }}
-        </h2>
+      <div data-test="shareholder-form">
         <AppAlert v-if="shareholderError" :message="shareholderError" />
         <EntityForm
           v-model="shareholderFormValue"
@@ -1595,7 +1469,7 @@ async function onWithdrawalShareholderChange() {
           @cancel="showShareholderForm = false"
         />
       </div>
-    </div>
+    </Modal>
 
     <Modal
       v-if="showContributionForm"

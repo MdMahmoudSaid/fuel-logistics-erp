@@ -42,7 +42,18 @@ class TreasuryStatementQuery:
             balance = CashAccount.objects.get(pk=cash_account_id).opening_balance
         else:
             balance = Decimal("0.00")
-        return transactions.order_by("date", "id"), balance
+        return (
+            transactions.select_related("source_content_type")
+            .prefetch_related("source_object")
+            .order_by("date", "id"),
+            balance,
+        )
+
+    @staticmethod
+    def _counterparty(txn) -> str:
+        from apps.finance.labels import describe_treasury_transaction
+
+        return describe_treasury_transaction(txn)["counterparty"] or ""
 
     @staticmethod
     def _signed(txn):
@@ -72,7 +83,9 @@ class TreasuryStatementQuery:
                     "date": txn.date,
                     "type": txn.type,
                     "amount": txn.amount,
-                    "reference": txn.reference,
+                    # No reference typed (e.g. an associate's withdrawal): say
+                    # who the money was for instead of leaving it blank.
+                    "reference": txn.reference or cls._counterparty(txn),
                     "balance": balance,
                 }
             )

@@ -258,6 +258,6 @@ describe('InvoiceDetail', () => {
       'Erreur de saisie contractuelle',
     )
     expect(wrapper.text()).toContain('Erreur de saisie contractuelle')
-    expect(wrapper.text()).toContain('unit_selling_price')
+    expect(wrapper.text()).toContain('Prix de vente unitaire : 650.0000')
   })
 })

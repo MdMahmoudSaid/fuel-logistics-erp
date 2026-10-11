@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import ShareholderView from '../ShareholderView.vue'
 import { i18n } from '@/i18n'
+import { createPinia, setActivePinia } from 'pinia'
 
 // Bug fix (2026-09-18): destructive actions now go through the app's own
 // popup instead of window.confirm() - see useConfirmDialog.
@@ -103,6 +104,7 @@ vi.mock('@/api/resource', () => ({
 describe('ShareholderView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    setActivePinia(createPinia())
     i18n.global.locale.value = 'fr'
     shareholderResourceList.mockResolvedValue(shareholderListPayload())
     shareholderContributionResourceList.mockResolvedValue(emptyList())
@@ -523,6 +525,70 @@ describe('ShareholderView', () => {
     expect(summarySection.text()).not.toContain('-26 240 000')
     expect(summarySection.text()).toContain('0 XOF')
     expect(summarySection.text()).toContain('Aucun montant disponible pour le moment')
+  })
+
+  it('lists active associates only, with a toggle to the archived ones absent from every picker', async () => {
+    // Client request 2026-10-11: an inactive associate is archived.
+    const payload = shareholderListPayload()
+    payload.results.push({
+      ...payload.results[0],
+      id: 2,
+      name: 'Sidi',
+      participation_percent: '20.00',
+      phone: '+22212345678',
+      is_active: false,
+    })
+    payload.count = 2
+    shareholderResourceList.mockResolvedValue(payload)
+    const wrapper = mount(ShareholderView)
+    await flushPromises()
+
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Associés')!
+      .trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="associate-row-1"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="associate-row-2"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="associates-inactive"]').text()).toBe('Inactifs (1)')
+
+    await wrapper.find('[data-test="associates-inactive"]').trigger('click')
+    expect(wrapper.find('[data-test="associate-row-1"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="associate-row-2"]').text()).toContain('+222 12345678')
+    expect(wrapper.find('[data-test="inactive-notice"]').exists()).toBe(true)
+
+    for (const tab of ['Retraits', 'Grand livre']) {
+      await wrapper
+        .findAll('button')
+        .find((b) => b.text() === tab)!
+        .trigger('click')
+      await flushPromises()
+      const options = wrapper.findAll('select option').map((o) => o.text())
+      expect(options).toContain('Ahmed')
+      expect(options).not.toContain('Sidi')
+    }
+  })
+
+  it('opens the edit form with the current phone number in a full-width field', async () => {
+    const payload = shareholderListPayload()
+    payload.results[0].phone = '+22212345678'
+    shareholderResourceList.mockResolvedValue(payload)
+    const wrapper = mount(ShareholderView)
+    await flushPromises()
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Associés')!
+      .trigger('click')
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Modifier')!
+      .trigger('click')
+    await flushPromises()
+
+    const form = wrapper.find('[data-test="shareholder-form"]')
+    expect((form.find('#phone').element as HTMLInputElement).value).toBe('12345678')
+    expect(form.find('#phone').attributes('autocomplete')).toBe('off')
   })
 
   it('shows shareholder contribution in the associates table but not in the add/edit form', async () => {

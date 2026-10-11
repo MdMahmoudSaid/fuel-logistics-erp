@@ -212,6 +212,22 @@ class InvoiceService:
 
     @staticmethod
     @transaction.atomic
+    def validate_if_trips_completed(invoice_id, actor) -> Invoice | None:
+        """Client request 2026-10-11: a trip's invoice must not stay DRAFT
+        once the trip is COMPLETED (reached only through the client
+        verification, so the billed quantity is final) - otherwise a
+        payment can never be imputed on it. A multi-trip invoice waits for
+        every one of its trips. Returns the validated invoice, or None when
+        nothing changed."""
+        invoice = Invoice.objects.select_for_update().get(pk=invoice_id)
+        if invoice.status != Invoice.Status.DRAFT:
+            return None
+        if any(sale.trip.status != "COMPLETED" for sale in invoice.all_sales):
+            return None
+        return InvoiceService.validate_invoice(invoice.id, actor)
+
+    @staticmethod
+    @transaction.atomic
     def update_draft_pricing(invoice_id, unit_selling_price, sale_id=None) -> Invoice:
         """Change a DRAFT invoice's initial selling price and recompute its
         total (feedback 2026-09-10: the initial price set on the trip's

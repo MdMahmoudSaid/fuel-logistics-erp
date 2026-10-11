@@ -6,7 +6,7 @@
 # with SupplierPayment rows (credit, what has been paid) into one running
 # balance.
 
-from apps.finance.models import OpeningDebt, SupplierPayment
+from apps.finance.models import OpeningDebt, SupplierAdvance, SupplierPayment
 from apps.purchasing.models import SupplierOrder
 from apps.reports.queries.statement_common import opening_balance, statement_rows
 
@@ -29,7 +29,21 @@ class SupplierStatementQuery:
             is_reversed=True
         )
         opening_debts = OpeningDebt.objects.filter(supplier_id=supplier_id, cancelled_at__isnull=True)
+        # Advances handed over are money the supplier already holds: they
+        # reduce what is owed, so the closing balance matches the ledger's
+        # net balance (ControlledDebtPaymentService.describe_supplier_balance).
+        advances = SupplierAdvance.objects.filter(supplier_id=supplier_id)
         return [
+            {
+                "date": advance.date,
+                "type": "ADVANCE_PAID",
+                "reference": advance.reference or f"AV-{advance.id}",
+                "debit": None,
+                "credit": advance.amount,
+                "sort_key": (advance.date, 1, advance.id),
+            }
+            for advance in advances
+        ] + [
             {
                 "date": debt.date,
                 "type": "OPENING_DEBT",

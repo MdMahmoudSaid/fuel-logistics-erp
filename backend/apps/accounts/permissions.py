@@ -13,6 +13,8 @@ ACTION_MAP = {
     # Per-trip settlement PDF export (Task 11, same design doc) - read-only
     # print of an existing TransportPayment, same "view" tier.
     "pdf": "view",
+    # Delivery note: a customer's delivered trips, pre-filled as lines.
+    "deliverable_trips": "view",
     "reliquat": "view",
     "next_reference": "view",
     "trips": "view",
@@ -88,6 +90,12 @@ ACTION_MAP = {
     # A correction only ever applies to an already-VALIDATED invoice, so it
     # requires the same "validate" tier rather than plain "edit".
     "correct": "validate",
+    # A customer refusing his trip (2026-10-11): routine operations work
+    # like assigning the customer - the view additionally requires the
+    # sales "validate" tier once the trip is invoiced.
+    "customer_refusal": "edit",
+    "customer_refusal_preview": "edit",
+    "customer_refusals": "view",
     # Editing a DRAFT invoice's price (feedback 2026-09-10) is a plain,
     # unaudited edit - same "edit" tier as `update`/`partial_update` on a
     # DRAFT invoice, not the "validate" tier `correct` above requires.

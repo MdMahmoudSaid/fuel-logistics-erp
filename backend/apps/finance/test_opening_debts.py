@@ -350,3 +350,133 @@ def test_advance_pdfs_are_generated(client):
     ledger = client.get(f"/api/suppliers/{supplier.id}/ledger/").data
     assert ledger["advances"][0]["remaining_amount"] == "60000.00"
     assert ledger["advances"][0]["account_name"] == "Banque T2"
+
+
+# --- statements and ledger PDFs follow the new rules ------------------------
+
+
+@pytest.mark.django_db
+def test_customer_statement_skips_cancelled_receipts_and_labels_advances(client):
+    from apps.reports.queries.customer_statement import CustomerStatementQuery
+
+    customer = Customer.objects.create(name="Client releve")
+    advance, _cash = _receipt(client, customer, "500000.00", advance=True, suffix="ST1")
+    wrong, _cash2 = _receipt(client, customer, "200000.00", advance=True, suffix="ST1B")
+    CustomerPaymentCancellationService.cancel_customer_payment(wrong, _admin("ST1"))
+
+    rows = CustomerStatementQuery.run(customer_id=customer.id)
+
+    assert [(r["type"], r["credit"]) for r in rows] == [("ADVANCE_RECEIVED", D("500000.00"))]
+    assert rows[-1]["balance"] == PaymentAllocationService.get_customer_outstanding(customer)
+
+
+@pytest.mark.django_db
+def test_supplier_statement_counts_advances_and_matches_the_ledger():
+    from apps.reports.queries.supplier_statement import SupplierStatementQuery
+
+    actor = _admin("ST2")
+    supplier = Supplier.objects.create(name="Fournisseur releve", country="Senegal")
+    bank = BankAccount.objects.create(name="Banque ST2", opening_balance=D("9000000.00"))
+    AdvanceService.create_supplier_advance(
+        supplier_id=supplier.id, bank_account_id=bank.id, cash_account_id=None, amount=D("1000000.00"),
+        date="2026-10-01", reference="AV-ST2", notes="", attachment=None, actor=actor,
+    )
+    _debt("supplier", supplier, D("3000000.00"), actor)
+    ControlledDebtPaymentService.record_payment(
+        debt_type="supplier", debt_id=supplier.id, bank_account_id=bank.id, amount=D("500000.00"),
+        date="2026-10-11", reference="VIR-ST2", actor=actor,
+    )
+
+    rows = SupplierStatementQuery.run(supplier_id=supplier.id)
+
+    assert [r["type"] for r in rows] == ["OPENING_DEBT", "ADVANCE_PAID", "PAYMENT"]
+    net = ControlledDebtPaymentService.describe_supplier_balance(supplier)["net_balance"]
+    assert rows[-1]["balance"] == -net == D("1500000.00")
+
+
+@pytest.mark.django_db
+def test_transporter_statement_is_a_running_balance_matching_the_ledger():
+    from apps.reports.queries.transporter_statement import TransporterStatementQuery
+
+    actor = _admin("ST3")
+    transporter = Transporter.objects.create(name="Transporteur releve")
+    bank = BankAccount.objects.create(name="Banque ST3", opening_balance=D("9000000.00"))
+    AdvanceService.create_transporter_advance(
+        transporter_id=transporter.id, bank_account_id=bank.id, cash_account_id=None, amount=D("300000.00"),
+        date="2026-10-01", reference="AV-ST3", notes="", attachment=None, actor=actor,
+    )
+    _debt("transporter", transporter, D("1000000.00"), actor)
+    ControlledDebtPaymentService.record_payment(
+        debt_type="transporter", debt_id=transporter.id, bank_account_id=bank.id, amount=D("200000.00"),
+        date="2026-10-11", reference="VIR-ST3", actor=actor,
+    )
+
+    rows = TransporterStatementQuery.run(transporter_id=transporter.id)
+
+    assert [(r["type"], r["debit"], r["credit"]) for r in rows] == [
+        ("OPENING_DEBT", D("1000000.00"), None),
+        ("ADVANCE_PAID", None, D("300000.00")),
+        ("PAYMENT", None, D("200000.00")),
+    ]
+    net = ControlledDebtPaymentService.describe_transporter_balance(transporter)["net_balance"]
+    assert rows[-1]["balance"] == -net == D("500000.00")
+
+
+def _capture_ledger_document(monkeypatch):
+    import apps.reports.services.report_pdf as report_pdf
+
+    captured = {}
+
+    def fake(document, rows, lang=None):
+        captured["document"], captured["rows"] = document, rows
+        return b"%PDF-fake"
+
+    monkeypatch.setattr(report_pdf, "render_report_pdf", fake)
+    return captured
+
+
+@pytest.mark.django_db
+def test_customer_ledger_pdf_has_the_page_sections(client, monkeypatch):
+    customer = Customer.objects.create(name="Client grand livre")
+    _debt("customer", customer, D("700000.00"), _admin("GL1"), reference="ANC-GL")
+    _receipt(client, customer, "1000000.00", advance=True, suffix="GL1")
+    wrong, _cash = _receipt(client, customer, "50000.00", suffix="GL1B")
+    CustomerPaymentCancellationService.cancel_customer_payment(wrong, _admin("GL1B"))
+    captured = _capture_ledger_document(monkeypatch)
+
+    response = client.get(f"/api/customers/{customer.id}/ledger/pdf/?lang=fr")
+
+    assert response.status_code == 200
+    document = captured["document"]
+    titles = [table["title"] for table in document["tables"]]
+    assert titles == ["Historique complet", "Dettes antérieures", "Liste des paiements", "Avances"]
+    summary = {line["label"]: line["value"] for line in document["summary"]}
+    assert summary["Total facturé"] == D("700000.00")
+    assert summary["Total encaissé"] == D("1000000.00")
+    assert summary["Avance disponible"] == D("300000.00")
+    assert summary["Solde impayé"] == D("-300000.00")
+    advance_rows = [r for r in captured["rows"] if r["section"] == "s3"]
+    assert [r["status"] for r in advance_rows] == ["Partiellement utilisée"]
+
+
+@pytest.mark.django_db
+def test_supplier_and_transporter_ledger_pdfs_list_prior_debts_and_advances(client, monkeypatch):
+    actor = _admin("GL2")
+    bank = BankAccount.objects.create(name="Banque GL2", opening_balance=D("9000000.00"))
+    supplier = Supplier.objects.create(name="Fournisseur GL", country="Senegal")
+    transporter = Transporter.objects.create(name="Transporteur GL")
+    AdvanceService.create_supplier_advance(
+        supplier_id=supplier.id, bank_account_id=bank.id, cash_account_id=None, amount=D("100000.00"),
+        date="2026-10-01", reference="AV-GL", notes="", attachment=None, actor=actor,
+    )
+    _debt("supplier", supplier, D("400000.00"), actor)
+    _debt("transporter", transporter, D("250000.00"), actor)
+    captured = _capture_ledger_document(monkeypatch)
+
+    assert client.get(f"/api/suppliers/{supplier.id}/ledger/pdf/").status_code == 200
+    titles = [table["title"] for table in captured["document"]["tables"]]
+    assert "Dettes antérieures" in titles and "Avances" in titles
+
+    assert client.get(f"/api/transporters/{transporter.id}/ledger/pdf/").status_code == 200
+    titles = [table["title"] for table in captured["document"]["tables"]]
+    assert titles[:2] == ["Historique complet", "Dettes antérieures"]

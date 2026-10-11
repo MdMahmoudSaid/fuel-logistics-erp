@@ -220,10 +220,13 @@ def test_transporter_statement_lists_settlements_for_the_transporter():
 
     rows = TransporterStatementQuery.run(transporter_id=fx["transporter"].id)
 
+    # Running-balance statement (2026-10-11): the settlement, net of its
+    # deduction, is what the company owes.
     assert len(rows) == 1
-    assert rows[0]["trip_reference"] == fx["trip"].reference
-    assert rows[0]["base_amount"] == Decimal("1500000.00")
-    assert rows[0]["net_amount"] == Decimal("1400000.00")
+    assert rows[0]["type"] == "SETTLEMENT"
+    assert rows[0]["reference"] == fx["trip"].reference
+    assert rows[0]["debit"] == Decimal("1400000.00")
+    assert rows[0]["balance"] == Decimal("1400000.00")
 
 
 # ---------------------------------------------------------------------------
@@ -1137,7 +1140,7 @@ def test_shareholder_statement_lists_profit_shares_withdrawals_and_loans():
     assert [r["type"] for r in rows] == ["PROFIT_SHARE", "WITHDRAWAL", "LOAN_GIVEN"]
     assert rows[0]["credit"] == Decimal("1000000.00")
     assert rows[1]["debit"] == Decimal("300000.00")
-    assert rows[2]["credit"] == Decimal("30000.00")  # 50,000 - 20,000 repaid = remaining_amount
+    assert rows[2]["debit"] == Decimal("30000.00")  # 50,000 lent - 20,000 given back
     assert rows[-1]["balance"] == ShareholderLedgerService.get_available_balance(shareholder.id)
 
 

@@ -27,7 +27,11 @@ const NAV_ICONS: Record<string, IconName> = {
   'customer-orders': 'cart-plus',
   sales: 'trending-up',
   invoices: 'receipt-text',
-  quotations: 'receipt',
+  proformas: 'receipt',
+  'delivery-notes': 'file-signature',
+  'loading-sheets': 'truck',
+  'purchase-orders': 'cart-plus',
+  'company-settings': 'landmark',
   'treasury-transactions': 'wallet',
   'bank-accounts': 'landmark',
   'cash-accounts': 'banknote',
@@ -80,9 +84,17 @@ const NAV_GROUPS: NavGroup[] = [
       { to: 'customer-orders', labelKey: 'navigation.customerOrders', module: 'sales' },
       { to: 'sales', labelKey: 'navigation.sales', module: 'sales' },
       { to: 'invoices', labelKey: 'navigation.invoices', module: 'sales' },
-      // AZUR ÉNERGIE product decision 2026-09-05: standalone quotation
-      // page, placed under Ventes per that decision.
-      { to: 'quotations', labelKey: 'navigation.quotations', module: 'sales' },
+    ],
+  },
+  {
+    // Spec 2026-10-11 documents-commerciaux §1: printable documents only.
+    key: 'documents',
+    titleKey: 'navigation.groups.documents',
+    items: [
+      { to: 'proformas', labelKey: 'navigation.proformas', module: 'sales' },
+      { to: 'delivery-notes', labelKey: 'navigation.deliveryNotes', module: 'sales' },
+      { to: 'loading-sheets', labelKey: 'navigation.loadingSheets', module: 'purchasing' },
+      { to: 'purchase-orders', labelKey: 'navigation.purchaseOrders', module: 'purchasing' },
     ],
   },
   {
@@ -123,6 +135,7 @@ const NAV_GROUPS: NavGroup[] = [
       { to: 'products', labelKey: 'navigation.products', module: 'operations' },
       { to: 'users', labelKey: 'navigation.users', module: 'admin' },
       { to: 'roles', labelKey: 'navigation.roles', module: 'admin' },
+      { to: 'company-settings', labelKey: 'navigation.companySettings', module: 'admin' },
       {
         to: 'loss-tolerance-settings',
         labelKey: 'navigation.lossToleranceSettings',
@@ -170,7 +183,8 @@ const overflowGroups = computed(() =>
   NAV_GROUPS.map((group) => ({
     ...group,
     items: group.items.filter(
-      (item) => auth.can(item.module, 'view') && !(BOTTOM_NAV_KEYS as readonly string[]).includes(item.to),
+      (item) =>
+        auth.can(item.module, 'view') && !(BOTTOM_NAV_KEYS as readonly string[]).includes(item.to),
     ),
   })).filter((group) => group.items.length > 0),
 )
@@ -228,7 +242,9 @@ onUnmounted(() => {
 <template>
   <div class="bg-sable text-texte flex min-h-screen">
     <!-- Sidebar (desktop) -->
-    <aside class="bg-bitume sticky top-0 hidden h-screen w-60 shrink-0 flex-col overflow-y-auto md:flex">
+    <aside
+      class="bg-bitume sticky top-0 hidden h-screen w-60 shrink-0 flex-col overflow-y-auto md:flex"
+    >
       <div class="px-4 py-4">
         <AppLogo tone="light" :size="28" />
       </div>

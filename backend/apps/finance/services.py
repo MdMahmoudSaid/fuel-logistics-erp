@@ -28,6 +28,7 @@ from apps.finance.models import (
     Shareholder,
     ShareholderContribution,
     ShareholderLoan,
+    ShareholderLoanRepayment,
     ShareholderProfitDistribution,
     ShareholderProfitPeriod,
     ShareholderProfitShare,
@@ -2632,6 +2633,9 @@ class ShareholderDistributionService:
             update_fields=["status", "validated_by", "validated_at", "updated_at"],
             user=actor,
         )
+        # Client request 2026-10-11: a company advance is repaid out of the
+        # borrower's next validated profit share.
+        ShareholderLoanService.apply_advances_to_distribution(distribution, actor)
         return distribution
 
     @staticmethod
@@ -2671,6 +2675,7 @@ class ShareholderDistributionService:
                 "a deja ete effectue sur l'une de ses parts."
             )
 
+        ShareholderLoanService.reverse_distribution_deductions(distribution)
         distribution.status = ShareholderProfitDistribution.Status.CANCELLED
         distribution.cancelled_by = actor
         distribution.cancelled_at = timezone.now()
@@ -2888,17 +2893,21 @@ class ShareholderWithdrawalService:
     ) -> ShareholderWithdrawal:
         """Automatically allocates the requested amount across the
         shareholder's own pools - all VALIDATED profit shares (oldest
-        first), then, only if still short, their own capital contributions
-        (oldest first) - never another shareholder's (design doc
-        2026-09-15-capital-associe-retrait-design.md). Loan terms are
-        never allocated against; see
+        first), then the advances he received and has not withdrawn yet -
+        from the company, then from associates (oldest first, client
+        decision 2026-10-11) - then, only if
+        still short, their own capital contributions (oldest first) - never
+        another shareholder's (design doc
+        2026-09-15-capital-associe-retrait-design.md); see
         ShareholderLedgerService.get_profit_and_capital_remaining.
         """
         shareholder = Shareholder.objects.select_for_update().get(pk=shareholder_id)
+        if not shareholder.is_active:
+            raise ShareholderWithdrawalError(f"L'associe {shareholder.name} est inactif.")
         amount_decimal = Decimal(str(amount))
 
-        available_balance = ShareholderLedgerService.get_available_balance(shareholder_id)
-        if amount_decimal > available_balance:
+        withdrawable = ShareholderLedgerService.get_withdrawable_balance(shareholder_id)
+        if amount_decimal > withdrawable:
             raise ShareholderWithdrawalError("Solde associe insuffisant.")
 
         allocatable = ShareholderLedgerService.get_profit_and_capital_remaining(shareholder_id)
@@ -2944,6 +2953,25 @@ class ShareholderWithdrawalService:
             )
             share.sync_amount_withdrawn()
             amount_left -= consumed
+
+        if amount_left > 0:
+            advances = (
+                ShareholderLoan.objects.select_for_update()
+                .filter(borrower_id=shareholder_id)
+                .order_by("source", "date", "id")  # COMPANY before SHAREHOLDER
+            )
+            for advance in advances:
+                if amount_left <= 0:
+                    break
+                remaining = advance.undrawn_amount
+                if remaining <= 0:
+                    continue
+                consumed = min(remaining, amount_left)
+                ShareholderWithdrawalAllocation.objects.create(
+                    withdrawal=withdrawal, advance=advance, amount=consumed,
+                )
+                advance.sync_amount_drawn()
+                amount_left -= consumed
 
         if amount_left > 0:
             contributions = (
@@ -3297,57 +3325,151 @@ class ShareholderLoanError(ValueError):
 
 
 class ShareholderLoanService:
-    """Owns ShareholderLoan creation and repayment recording (Task 7,
-    client modifications plan - fix for the loan-repayment lost-update
-    race; design doc 2026-08-26-benefices-associes-refinement-design.md
-    Fix 2 for creation).
+    """Owns ShareholderLoan creation and repayment (Task 7, client
+    modifications plan; company advances and repayment history added by the
+    client request of 2026-10-11).
 
-    A client PATCHing an absolute `amount_repaid` it computed from its own
-    stale read (current + entered increment) can silently overwrite a
-    concurrent repayment from another tab/user - the second write just
-    replaces the first with no error. record_repayment() instead takes
-    only the INCREMENT and applies it under select_for_update(), the same
-    row-lock pattern ShareholderWithdrawalService.record_withdrawal() and
-    PaymentAllocationService.allocate_payment() already use for the same
-    reason: two concurrent requests must not be able to jointly clobber
-    each other's effect on the same row.
+    Two sources (see the ShareholderLoan docstring): an associate advance
+    never touches company treasury; a company advance is granted without
+    any treasury movement either - it becomes withdrawable (money leaves
+    treasury only through a ShareholderWithdrawal) and is deducted
+    automatically from the borrower's next VALIDATED profit share
+    (apply_advances_to_distribution).
+
+    `amount_repaid` only ever moves under the loan's select_for_update()
+    lock, by the amount of a ShareholderLoanRepayment row created in the
+    same transaction - a client can never PATCH an absolute total computed
+    from a stale read (Task 7 fix: loan-repayment lost-update race).
     """
 
     @staticmethod
+    def _money(value, message="Montant invalide.") -> Decimal:
+        try:
+            amount = Decimal(str(value)).quantize(Decimal("0.01"))
+        except (InvalidOperation, TypeError, ValueError):
+            raise ShareholderLoanError(message)
+        if not amount.is_finite():
+            raise ShareholderLoanError(message)
+        return amount
+
+    @staticmethod
+    def _treasury_account(bank_account_id, cash_account_id):
+        if bank_account_id and cash_account_id:
+            raise ShareholderLoanError("Un seul compte (banque OU caisse) peut etre renseigne.")
+        if not bank_account_id and not cash_account_id:
+            raise ShareholderLoanError("Un compte de tresorerie (banque ou caisse) est requis.")
+        if bank_account_id:
+            return BankAccount.objects.select_for_update().get(pk=bank_account_id), None
+        return None, CashAccount.objects.select_for_update().get(pk=cash_account_id)
+
+    @staticmethod
+    def _active(shareholder_id, role) -> Shareholder:
+        shareholder = Shareholder.objects.select_for_update().get(pk=shareholder_id)
+        if not shareholder.is_active:
+            raise ShareholderLoanError(f"Le {role} {shareholder.name} est inactif.")
+        return shareholder
+
+    @staticmethod
     @transaction.atomic
-    def create_loan(*, borrower_id, lender_id, amount, date, notes="") -> ShareholderLoan:
-        """Create an advance/debt between two associates. Deliberately
-        creates only the ShareholderLoan row - money moving between
-        shareholders never touches company treasury (the model docstring's
-        invariant), so unlike ShareholderWithdrawalService.record_withdrawal
-        this never calls FinancePostingService and never creates a
-        TreasuryTransaction. The lender is row-locked and checked against
+    def create_loan(
+        *,
+        borrower_id,
+        lender_id=None,
+        amount,
+        date,
+        notes="",
+        source=ShareholderLoan.Source.SHAREHOLDER,
+        actor=None,
+    ) -> ShareholderLoan:
+        """Record an advance to `borrower_id`.
+
+        SHAREHOLDER: creates only the ShareholderLoan row - money moving
+        between associates never touches company treasury. The lender is
+        row-locked and checked against
         ShareholderLedgerService.get_available_balance so a loan can never
-        commit the lender past what they actually have available."""
-        lender = Shareholder.objects.select_for_update().get(pk=lender_id)
-        amount_decimal = Decimal(str(amount))
+        commit the lender past what they actually have available.
+
+        COMPANY: an advance on his future profit (client decision
+        2026-10-11). Like a profit distribution it moves no treasury: it
+        appears in his grand livre and becomes withdrawable - the money
+        leaves treasury only when he records a withdrawal against it. It is
+        a debt of the borrower, deducted from his next validated profit
+        share or repaid into treasury.
+        """
+        amount_decimal = ShareholderLoanService._money(amount)
+        if amount_decimal <= ZERO:
+            raise ShareholderLoanError("Le montant de l'avance doit etre superieur a zero.")
+        borrower = ShareholderLoanService._active(borrower_id, "beneficiaire")
+
+        if source == ShareholderLoan.Source.COMPANY:
+            if lender_id:
+                raise ShareholderLoanError(
+                    "Une avance de l'entreprise n'a pas d'associe preteur."
+                )
+            return ShareholderLoan.objects.create(
+                source=ShareholderLoan.Source.COMPANY,
+                borrower=borrower,
+                amount=amount_decimal,
+                date=date,
+                notes=notes,
+                recorded_by=actor,
+            )
+
+        if source != ShareholderLoan.Source.SHAREHOLDER:
+            raise ShareholderLoanError("Source d'avance inconnue.")
+        if not lender_id:
+            raise ShareholderLoanError("Choisissez l'associe preteur.")
+        if int(lender_id) == borrower.id:
+            raise ShareholderLoanError(
+                "L'emprunteur et le preteur ne peuvent pas etre le meme actionnaire."
+            )
+        lender = ShareholderLoanService._active(lender_id, "preteur")
 
         available_balance = ShareholderLedgerService.get_available_balance(lender.id)
         if amount_decimal > available_balance:
             raise ShareholderLoanError("Solde disponible du preteur insuffisant.")
 
         return ShareholderLoan.objects.create(
-            borrower_id=borrower_id,
-            lender_id=lender.id,
+            source=ShareholderLoan.Source.SHAREHOLDER,
+            borrower=borrower,
+            lender=lender,
             amount=amount_decimal,
             date=date,
             notes=notes,
+            recorded_by=actor,
         )
 
     @staticmethod
-    @transaction.atomic
-    def record_repayment(loan_id, increment_amount) -> ShareholderLoan:
-        loan = ShareholderLoan.objects.select_for_update().get(pk=loan_id)
+    def _apply(loan, repayment_amount) -> None:
+        """Move amount_repaid by `repayment_amount` (negative to undo) on a
+        loan the caller has row-locked."""
+        loan.amount_repaid = loan.amount_repaid + repayment_amount
+        loan.save(update_fields=["amount_repaid", "status", "updated_at"])
 
-        try:
-            increment = Decimal(str(increment_amount))
-        except (InvalidOperation, TypeError, ValueError):
-            raise ShareholderLoanError("Montant invalide.")
+    @staticmethod
+    @transaction.atomic
+    def record_repayment(
+        loan_id,
+        increment_amount,
+        *,
+        date=None,
+        bank_account_id=None,
+        cash_account_id=None,
+        notes="",
+        actor=None,
+    ) -> ShareholderLoan:
+        """Record one repayment of `increment_amount`.
+
+        An associate advance is repaid from the borrower's balance back to
+        the lender's (no treasury movement), never beyond what he has. A
+        company advance first cancels its part never withdrawn (no
+        treasury movement), then the rest is repaid into a bank/cash
+        account (one TreasuryTransaction MONEY_IN), never more than was
+        really withdrawn - its automatic deduction from
+        profit shares goes through apply_advances_to_distribution instead.
+        """
+        loan = ShareholderLoan.objects.select_for_update().get(pk=loan_id)
+        increment = ShareholderLoanService._money(increment_amount)
         if increment <= 0:
             raise ShareholderLoanError("Le montant du remboursement doit etre positif.")
 
@@ -3358,9 +3480,161 @@ class ShareholderLoanService:
                 f"au-dela du principal ({loan.amount})."
             )
 
-        loan.amount_repaid = new_total
-        loan.save(update_fields=["amount_repaid", "status", "updated_at"])
+        repayment_date = date or timezone.localdate()
+        if loan.source == ShareholderLoan.Source.COMPANY:
+            # Treasury only gets back money that really left it (client
+            # correction 2026-10-11): the part never withdrawn is simply
+            # cancelled - no money moves - and only the rest, at most what
+            # he withdrew and still owes, comes back into an account.
+            cancelled = min(increment, loan.undrawn_amount)
+            cash_back = increment - cancelled
+            if cash_back > loan.cash_outstanding:
+                raise ShareholderLoanError(
+                    f"Seuls {loan.cash_outstanding} ont ete retires et restent dus : "
+                    "impossible de rendre plus en caisse."
+                )
+            if cancelled > ZERO:
+                ShareholderLoanRepayment.objects.create(
+                    loan=loan,
+                    method=ShareholderLoanRepayment.Method.CANCEL,
+                    amount=cancelled,
+                    date=repayment_date,
+                    notes=notes,
+                    recorded_by=actor,
+                )
+                loan.amount_cancelled = loan.amount_cancelled + cancelled
+                loan.save(update_fields=["amount_cancelled", "updated_at"])
+            if cash_back > ZERO:
+                bank_account, cash_account = ShareholderLoanService._treasury_account(
+                    bank_account_id, cash_account_id
+                )
+                repayment = ShareholderLoanRepayment.objects.create(
+                    loan=loan,
+                    method=ShareholderLoanRepayment.Method.TREASURY,
+                    amount=cash_back,
+                    date=repayment_date,
+                    bank_account=bank_account,
+                    cash_account=cash_account,
+                    notes=notes,
+                    recorded_by=actor,
+                )
+                FinancePostingService._post_treasury(
+                    source=repayment,
+                    model=ShareholderLoanRepayment,
+                    transaction_type=TreasuryTransaction.Type.MONEY_IN,
+                    amount=cash_back,
+                    date=repayment_date,
+                    reference=f"AVANCE-{loan.id}",
+                    recorded_by=actor,
+                    resolve_accounts=lambda: (bank_account, cash_account),
+                    note=f"Remboursement d'avance - {loan.borrower.name}",
+                )
+        else:
+            if bank_account_id or cash_account_id:
+                raise ShareholderLoanError(
+                    "Une avance entre associes se rembourse directement au preteur."
+                )
+            # The money goes back from the borrower's balance to the
+            # lender's (client correction 2026-10-11): he must have it.
+            borrower = Shareholder.objects.select_for_update().get(pk=loan.borrower_id)
+            borrower_balance = ShareholderLedgerService.get_available_balance(borrower.id)
+            if increment > borrower_balance:
+                raise ShareholderLoanError(
+                    f"Solde de {borrower.name} insuffisant pour rembourser {increment} "
+                    f"(solde disponible : {max(borrower_balance, ZERO)})."
+                )
+            ShareholderLoanRepayment.objects.create(
+                loan=loan,
+                method=ShareholderLoanRepayment.Method.DIRECT,
+                amount=increment,
+                date=repayment_date,
+                notes=notes,
+                recorded_by=actor,
+            )
+
+        ShareholderLoanService._apply(loan, increment)
         return loan
+
+    @staticmethod
+    def apply_advances_to_distribution(distribution, actor=None) -> Decimal:
+        """Deduct each borrower's open company advances (oldest first) from
+        his share of a just-VALIDATED distribution (client request
+        2026-10-11). The share is consumed by what was deducted and the
+        advance repaid by the same amount: the advance already credited his
+        balance, so his share adds only what is left. No treasury movement.
+        Returns the total deducted."""
+        total = ZERO
+        shares = ShareholderProfitShare.objects.select_for_update().filter(
+            distribution=distribution
+        ).select_related("shareholder")
+        for share in shares:
+            loans = (
+                ShareholderLoan.objects.select_for_update()
+                .filter(
+                    borrower_id=share.shareholder_id,
+                    source=ShareholderLoan.Source.COMPANY,
+                )
+                .exclude(status=ShareholderLoan.Status.REPAID)
+                .order_by("date", "id")
+            )
+            for loan in loans:
+                available = share.remaining_due
+                if available <= ZERO:
+                    break
+                deducted = min(available, loan.remaining_amount)
+                if deducted <= ZERO:
+                    continue
+                ShareholderLoanRepayment.objects.create(
+                    loan=loan,
+                    method=ShareholderLoanRepayment.Method.PROFIT_SHARE,
+                    amount=deducted,
+                    date=timezone.localdate(),
+                    profit_share=share,
+                    notes=(
+                        f"Deduit de la repartition {distribution.period_start} - "
+                        f"{distribution.period_end}"
+                    ),
+                    recorded_by=actor,
+                )
+                ShareholderLoanService._apply(loan, deducted)
+                share.sync_amount_withdrawn()
+                total += deducted
+        return total
+
+    @staticmethod
+    def reverse_distribution_deductions(distribution) -> None:
+        """Undo apply_advances_to_distribution when its distribution is
+        cancelled: the advances are owed again and the shares are freed."""
+        deductions = list(
+            ShareholderLoanRepayment.objects.filter(
+                method=ShareholderLoanRepayment.Method.PROFIT_SHARE,
+                profit_share__distribution=distribution,
+            )
+        )
+        if not deductions:
+            return
+        loans = {
+            loan.id: loan
+            for loan in ShareholderLoan.objects.select_for_update().filter(
+                id__in={d.loan_id for d in deductions}
+            )
+        }
+        share_ids = {d.profit_share_id for d in deductions}
+        for deduction in deductions:
+            ShareholderLoanService._apply(loans[deduction.loan_id], -deduction.amount)
+            deduction.delete()
+        for share in ShareholderProfitShare.objects.select_for_update().filter(id__in=share_ids):
+            share.sync_amount_withdrawn()
+
+    @staticmethod
+    def open_advances_exist(shareholder_id) -> bool:
+        """True while the associate still owes or is owed an advance - he
+        cannot be archived (made inactive) before it is settled."""
+        return (
+            ShareholderLoan.objects.filter(Q(borrower_id=shareholder_id) | Q(lender_id=shareholder_id))
+            .exclude(status=ShareholderLoan.Status.REPAID)
+            .exists()
+        )
 
 
 class ShareholderLedgerService:
@@ -3371,13 +3645,8 @@ class ShareholderLedgerService:
     PaymentAllocationService.get_customer_outstanding)."""
 
     @staticmethod
-    def get_profit_and_capital_remaining(shareholder_id) -> Decimal:
-        """The two pools a withdrawal can actually be allocated against -
-        deliberately excludes loan terms (design doc
-        2026-09-15-capital-associe-retrait-design.md): a loan between
-        shareholders is never a source ShareholderWithdrawalService draws
-        from, so this is a narrower, allocation-safe figure than
-        get_available_balance()."""
+    def _own_pools(shareholder_id) -> Decimal:
+        """His VALIDATED profit shares and capital still unwithdrawn."""
         shares_remaining = (
             ShareholderProfitShare.objects.filter(shareholder_id=shareholder_id)
             .filter(distribution__status=ShareholderProfitDistribution.Status.VALIDATED)
@@ -3392,50 +3661,101 @@ class ShareholderLedgerService:
         return shares_remaining + capital_remaining
 
     @staticmethod
+    def get_profit_and_capital_remaining(shareholder_id) -> Decimal:
+        """Every pool a withdrawal can actually be allocated against: his
+        profit shares and capital (design doc 2026-09-15-capital-associe-
+        retrait-design.md) plus the advances he received and can still
+        withdraw - from the company or from another associate (client
+        decision 2026-10-11). An allocation-safe ceiling, alongside
+        get_withdrawable_balance()."""
+        drawable_associate_advances = sum(
+            (
+                loan.undrawn_amount
+                for loan in ShareholderLoan.objects.filter(
+                    borrower_id=shareholder_id, source=ShareholderLoan.Source.SHAREHOLDER
+                )
+            ),
+            ZERO,
+        )
+        return (
+            ShareholderLedgerService._own_pools(shareholder_id)
+            + ShareholderLedgerService.get_undrawn_advances(shareholder_id)
+            + drawable_associate_advances
+        )
+
+    @staticmethod
+    def get_undrawn_advances(shareholder_id) -> Decimal:
+        """Company advances granted to him and not yet withdrawn (client
+        decision 2026-10-11): a withdrawable pool, like a profit share."""
+        return (
+            ShareholderLoan.objects.filter(
+                borrower_id=shareholder_id, source=ShareholderLoan.Source.COMPANY
+            ).aggregate(
+                total=Sum(F("amount") - F("amount_drawn") - F("amount_cancelled"))
+            )["total"]
+            or ZERO
+        )
+
+    @staticmethod
+    def get_company_advance_debt(shareholder_id) -> Decimal:
+        return (
+            ShareholderLoan.objects.filter(
+                borrower_id=shareholder_id, source=ShareholderLoan.Source.COMPANY
+            ).aggregate(total=Sum(F("amount") - F("amount_repaid")))["total"]
+            or ZERO
+        )
+
+    @staticmethod
+    def get_withdrawable_balance(shareholder_id) -> Decimal:
+        """How much he can withdraw now: his available balance, which
+        already includes the company advances he has not withdrawn yet
+        (client correction 2026-10-11)."""
+        return ShareholderLedgerService.get_available_balance(shareholder_id)
+
+    @staticmethod
     def get_available_balance(shareholder_id) -> Decimal:
-        """Single source of truth for how much a shareholder can withdraw
-        or lend out right now (design docs
-        2026-08-26-benefices-associes-refinement-design.md and
-        2026-09-15-capital-associe-retrait-design.md):
+        """Single source of truth for a shareholder's real balance - the
+        Grand livre "solde disponible" and the ceiling of what he can lend
+        to another associate (design docs 2026-08-26-benefices-associes-
+        refinement-design.md, 2026-09-15-capital-associe-retrait-design.md,
+        corrected by the client on 2026-10-11):
 
             available_balance =
                 profit_share_remaining_due
               + capital_remaining
-              + loans_given_remaining
-              - loans_received_remaining
+              + company advances not yet withdrawn
+              + associate advances received (minus withdrawn and given back)
+              - associate advances lent (minus given back)
 
-        Lending money to another associate is a receivable - it stays this
-        shareholder's equity, just claimed via an IOU instead of sitting in
-        remaining_due, so it *adds* to the balance. Receiving an advance is
-        a liability that must be repaid, so it *subtracts*. Called by both
-        ShareholderWithdrawalService.record_withdrawal and
-        ShareholderLoanService.create_loan so a withdrawal and a loan can
-        never be validated against two different numbers.
+        An associate advance moves part of the lender's balance to the
+        borrower: the lender goes down, the borrower goes up (he can
+        withdraw it); a repayment moves it back. A company advance credits
+        his balance like a profit share (client correction 2026-10-11):
+        withdrawing it lowers the balance, and what he owes the company is
+        a separate debt (get_company_advance_debt), settled by a deduction
+        from his next profit share (which lowers the balance), by a cash
+        repayment (balance unchanged) or, for the part never withdrawn, by
+        a cancellation (which lowers the balance).
 
         Only a VALIDATED distribution's shares count (2026-09-08 review,
         "modele metier definitif"): a DRAFT distribution is a preparatory
         proposal with no real debt to the shareholders, and a CANCELLED one
         no longer grants any right - neither may credit an available
         balance, everywhere that balance is used.
-
-        A shareholder's own remaining capital (design doc
-        2026-09-15) is included here, but a withdrawal never allocates
-        against loan terms - see get_profit_and_capital_remaining, used as
-        a narrower, allocation-safe ceiling by record_withdrawal.
         """
-        pools_remaining = ShareholderLedgerService.get_profit_and_capital_remaining(shareholder_id)
-        loans_given_remaining = sum(
-            (loan.remaining_amount for loan in ShareholderLoan.objects.filter(lender_id=shareholder_id)),
-            ZERO,
-        )
-        loans_received_remaining = sum(
-            (
-                loan.remaining_amount
-                for loan in ShareholderLoan.objects.filter(borrower_id=shareholder_id)
-            ),
-            ZERO,
-        )
-        return pools_remaining + loans_given_remaining - loans_received_remaining
+        balance = ShareholderLedgerService._own_pools(
+            shareholder_id
+        ) + ShareholderLedgerService.get_undrawn_advances(shareholder_id)
+        for loan in ShareholderLoan.objects.filter(
+            Q(borrower_id=shareholder_id) | Q(lender_id=shareholder_id)
+        ):
+            if loan.source == ShareholderLoan.Source.COMPANY:
+                continue
+            if loan.borrower_id == shareholder_id:
+                balance += loan.borrower_balance_effect
+            else:
+                balance -= loan.remaining_amount
+        return balance
 
     @staticmethod
     def get_balances_summary() -> dict:
@@ -3461,6 +3781,42 @@ class ShareholderLedgerService:
         return {"shareholders": rows, "total": total}
 
     @staticmethod
+    def _loan_row(loan) -> dict:
+        return {
+            "id": loan.id,
+            "source": loan.source,
+            "amount_drawn": loan.amount_drawn,
+            "amount_cancelled": loan.amount_cancelled,
+            "undrawn_amount": loan.undrawn_amount,
+            "cash_outstanding": loan.cash_outstanding,
+            "amount": loan.amount,
+            "amount_repaid": loan.amount_repaid,
+            "remaining_amount": loan.remaining_amount,
+            "status": loan.status,
+            "date": loan.date,
+            "notes": loan.notes,
+            "repayments": [
+                ShareholderLedgerService._repayment_row(r) for r in loan.repayments.all()
+            ],
+        }
+
+    @staticmethod
+    def _repayment_row(repayment) -> dict:
+        account = repayment.bank_account or repayment.cash_account
+        distribution = repayment.profit_share.distribution if repayment.profit_share_id else None
+        return {
+            "id": repayment.id,
+            "method": repayment.method,
+            "amount": repayment.amount,
+            "date": repayment.date,
+            "account_name": account.name if account else None,
+            "distribution_period": (
+                f"{distribution.period_start} - {distribution.period_end}" if distribution else None
+            ),
+            "notes": repayment.notes,
+        }
+
+    @staticmethod
     def get_shareholder_summary(shareholder_id) -> dict:
         shareholder = Shareholder.objects.get(pk=shareholder_id)
 
@@ -3478,36 +3834,47 @@ class ShareholderLedgerService:
         total_withdrawn = sum((s.amount_withdrawn for s in shares), ZERO)
         remaining_due = total_amount_due - total_withdrawn
 
+        loan_related = ("lender", "borrower")
+        loan_prefetch = (
+            "repayments__bank_account", "repayments__cash_account",
+            "repayments__profit_share__distribution",
+        )
         loans_borrowed = [
             {
-                "id": loan.id,
+                **ShareholderLedgerService._loan_row(loan),
                 "lender_id": loan.lender_id,
-                "lender_name": loan.lender.name,
-                "amount": loan.amount,
-                "amount_repaid": loan.amount_repaid,
-                "remaining_amount": loan.remaining_amount,
-                "status": loan.status,
-                "date": loan.date,
+                "lender_name": loan.lender.name if loan.lender_id else None,
             }
-            for loan in shareholder.loans_borrowed.select_related("lender").all()
+            for loan in shareholder.loans_borrowed.select_related(*loan_related)
+            .prefetch_related(*loan_prefetch)
+            .order_by("-date", "-id")
         ]
         loans_lent = [
             {
-                "id": loan.id,
+                **ShareholderLedgerService._loan_row(loan),
                 "borrower_id": loan.borrower_id,
                 "borrower_name": loan.borrower.name,
-                "amount": loan.amount,
-                "amount_repaid": loan.amount_repaid,
-                "remaining_amount": loan.remaining_amount,
-                "status": loan.status,
-                "date": loan.date,
             }
-            for loan in shareholder.loans_lent.select_related("borrower").all()
+            for loan in shareholder.loans_lent.select_related(*loan_related)
+            .prefetch_related(*loan_prefetch)
+            .order_by("-date", "-id")
         ]
-        net_loan_balance = (
-            sum((loan["remaining_amount"] for loan in loans_lent), ZERO)
-            - sum((loan["remaining_amount"] for loan in loans_borrowed), ZERO)
+        # What all his advances (given, received, from the company) add to
+        # or take from his balance (client correction 2026-10-11).
+        net_loan_balance = ShareholderLedgerService.get_available_balance(
+            shareholder_id
+        ) - ShareholderLedgerService._own_pools(shareholder_id)
+        # Client request 2026-10-11: the three debt/claim figures the
+        # grand livre shows as cards.
+        company_advance_debt = sum(
+            (row["remaining_amount"] for row in loans_borrowed if row["source"] == "COMPANY"),
+            ZERO,
         )
+        shareholder_loan_debt = sum(
+            (row["remaining_amount"] for row in loans_borrowed if row["source"] == "SHAREHOLDER"),
+            ZERO,
+        )
+        shareholder_loan_receivable = sum((row["remaining_amount"] for row in loans_lent), ZERO)
 
         withdrawals = list(
             shareholder.withdrawals.select_related("bank_account", "cash_account")
@@ -3561,6 +3928,15 @@ class ShareholderLedgerService:
             "loans_borrowed": loans_borrowed,
             "loans_lent": loans_lent,
             "net_loan_balance": net_loan_balance,
+            "company_advance_debt": company_advance_debt,
+            "company_advance_undrawn": ShareholderLedgerService.get_undrawn_advances(
+                shareholder_id
+            ),
+            "withdrawable_balance": ShareholderLedgerService.get_withdrawable_balance(
+                shareholder_id
+            ),
+            "shareholder_loan_debt": shareholder_loan_debt,
+            "shareholder_loan_receivable": shareholder_loan_receivable,
             "total_contributed": total_contributed,
             "capital_returned": capital_returned,
             "capital_remaining": capital_remaining,
@@ -3573,6 +3949,7 @@ class ShareholderLedgerService:
                         {
                             "profit_share": a.profit_share_id,
                             "contribution": a.contribution_id,
+                            "advance": a.advance_id,
                             "amount": a.amount,
                         }
                         for a in w.allocations.all()

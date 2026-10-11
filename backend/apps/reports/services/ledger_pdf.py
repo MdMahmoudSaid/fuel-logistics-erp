@@ -111,6 +111,7 @@ LEDGER_PDF_LABELS = {
         "trucks_section": "Camions rattachés",
         "settlements_section": "Règlements par trajet",
         "advances_section": "Avances",
+        "opening_debts_section": "Dettes antérieures",
         # Per-invoice PDF (feedback 2026-09-10)
         "invoice_title": "Facture",
         "invoice_number": "Numéro de facture",
@@ -169,6 +170,7 @@ LEDGER_PDF_LABELS = {
         "trucks_section": "Attached trucks",
         "settlements_section": "Trip settlements",
         "advances_section": "Advances",
+        "opening_debts_section": "Prior debts",
         "invoice_title": "Invoice",
         "invoice_number": "Invoice number",
         "issued_date": "Issued date",
@@ -228,6 +230,7 @@ LEDGER_PDF_LABELS = {
         "trucks_section": "Camions rattachés",
         "settlements_section": "Règlements par trajet",
         "advances_section": "Avances",
+        "opening_debts_section": "Dettes antérieures",
         "invoice_title": "Facture",
         "invoice_number": "Numéro de facture",
         "issued_date": "Date d'émission",
@@ -293,6 +296,13 @@ FIELD_LABELS_FR = {
     "net_amount": "Montant net",
     "settled": "Soldé",
     "advance_applied": "Avance appliquée",
+    # "Nouvelle dette" / Avances sections (2026-10-11)
+    "available_credit": "Avance disponible",
+    "paid_amount": "Payé",
+    "remaining_amount": "Reste à payer",
+    "available": "Disponible",
+    "unallocated_amount": "Crédit non affecté",
+    "account": "Compte",
 }
 
 # Enum/code VALUE -> printable-value translation (2026-09-05 language fix):
@@ -308,6 +318,13 @@ VALUE_LABELS_FR = {
     "advance_consumed": "Avance consommée",
     "payment": "Paiement",
     "invoice": "Facture",
+    "opening_debt": "Dette antérieure",
+    "advance_received": "Avance reçue",
+    # Advance status (Avances sections, 2026-10-11)
+    "AVAILABLE": "Disponible",
+    "PARTLY_USED": "Partiellement utilisée",
+    "USED": "Utilisée",
+    "UNPAID": "Non payé",
     # Invoice.Status / SupplierOrder.Status / TransportPayment.Status
     # (union - no colliding meaning across these enums)
     "DRAFT": "Brouillon",
@@ -390,6 +407,7 @@ _MONEY_FIELDS = {
     "total_received", "outstanding_balance", "outstanding", "total_purchased",
     "total_paid", "invoice_amount", "already_paid", "remaining_balance",
     "order_amount", "advance_used", "amount_paid",
+    "available_credit", "paid_amount", "remaining_amount", "available", "unallocated_amount",
 }
 _QUANTITY_FIELDS = {
     "quantity_litres", "total_reliquat", "quantity", "quantity_delivered", "loss",
@@ -779,3 +797,50 @@ def render_supplier_payment_pdf(payment, lang: str = "fr") -> bytes:
     from apps.reports.services.payment_pdf import render_supplier_payment_pdf as render
 
     return render(payment, lang)
+
+
+# --- Sections shared by the 3 party-ledger PDFs (2026-10-11) ----------------
+
+
+def opening_debt_section_rows(debts) -> list[dict]:
+    """"Dettes antérieures" rows, same columns as the ledger page."""
+    from apps.finance.services import OpeningDebtService
+
+    rows = []
+    for debt in debts:
+        line = OpeningDebtService.describe(debt)
+        rows.append({
+            "date": debt.date,
+            "reference": debt.reference or None,
+            "amount": debt.amount,
+            "paid_amount": line["paid_amount"],
+            "remaining_amount": line["remaining_amount"],
+            "status": line["status"],
+            "notes": debt.notes or None,
+        })
+    return rows
+
+
+def advance_status(amount, available, *, reversed_=False) -> str:
+    """Same wording as the ledger page's Avances section (AdvancesCard)."""
+    if reversed_:
+        return "CANCELLED"
+    if available <= 0:
+        return "USED"
+    return "PARTLY_USED" if available < amount else "AVAILABLE"
+
+
+def advance_section_rows(items) -> list[dict]:
+    """"Avances" rows from (date, reference, account, amount, available,
+    reversed) tuples - each ledger maps its own advance model to them."""
+    return [
+        {
+            "date": date,
+            "reference": reference or None,
+            "account": account or None,
+            "amount": amount,
+            "available": Decimal("0.00") if reversed_ else available,
+            "status": advance_status(amount, available, reversed_=reversed_),
+        }
+        for date, reference, account, amount, available, reversed_ in items
+    ]

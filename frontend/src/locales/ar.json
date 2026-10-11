@@ -40,7 +40,7 @@
     "lossesToReview": "الفروقات للمراجعة",
     "sales": "المبيعات",
     "invoices": "الفواتير",
-    "quotations": "العروض التجارية",
+    "quotations": "الفواتير الشكلية",
     "transporters": "الناقلون",
     "drivers": "السائقون",
     "trucks": "الشاحنات",
@@ -61,11 +61,17 @@
       "results": "النتائج والشركاء",
       "logistics": "اللوجستيات",
       "fleet": "اللوجستيات",
-      "settings": "الإعدادات"
+      "settings": "الإعدادات",
+      "documents": "المستندات"
     },
     "shareholders": "المساهمون / الشركاء",
     "profit": "الأرباح",
-    "tripsShort": "الرحلات"
+    "tripsShort": "الرحلات",
+    "companySettings": "معلومات الشركة",
+    "proformas": "الفواتير الشكلية",
+    "deliveryNotes": "أذونات التسليم",
+    "loadingSheets": "قوائم التحميل",
+    "purchaseOrders": "أوامر الشراء"
   },
   "header": {
     "logout": "تسجيل الخروج",
@@ -532,6 +538,51 @@
       "history": "سجل التصحيحات",
       "noHistory": "لا يوجد تصحيح.",
       "correctedFrom": "تم تصحيح الكمية المستلمة من {previous} لتر إلى {next} لتر"
+    },
+    "customerRefusal": {
+      "open": "العميل يرفض",
+      "title": "رفض العميل",
+      "currentCustomer": "العميل الحالي:",
+      "question": "ماذا نفعل بهذه الرحلة؟",
+      "stockTitle": "إعادة إلى مخزون الشركة",
+      "stockText": "لم تعد الرحلة مسندة إلى هذا العميل وتتجه إلى مخزون الشركة.",
+      "stockDisabled": "غير ممكن: الرحلة مُسلَّمة بالفعل. اختر عميلًا آخر.",
+      "changeTitle": "إسناد إلى عميل آخر",
+      "changeText": "تنتقل الرحلة إلى العميل الجديد وتُفوتَر له عند التسليم.",
+      "changeTextDelivered": "تنتقل الرحلة وبيعها وفاتورتها إلى العميل الجديد.",
+      "newCustomer": "العميل الجديد",
+      "selectCustomer": "اختر العميل الذي يتولى الرحلة…",
+      "unitPrice": "سعر البيع للوحدة",
+      "priceHint": "السعر الحالي: {current} · آخر سعر لـ {name}: {suggested}",
+      "from": "العميل السابق",
+      "to": "العميل الجديد",
+      "balanceBefore": "الرصيد الحالي",
+      "balanceAfter": "الرصيد بعد",
+      "stockEffect": "لن تبقى هذه الرحلة لـ {name}: لم تعد ضمن رحلاته أو طلباته.",
+      "statusEffect": "الحالة: {from} ← {to}.",
+      "routeEffect": "ستتبع الرحلة طريق مخزون الشركة (بدلًا من العميل).",
+      "noInvoiceEffect": "لا توجد فاتورة لهذه الرحلة بعد: لا شيء لإلغائه.",
+      "invoiceEffect": "تنتقل الفاتورة {invoice} إلى {name} (يُعاد حسابها بالسعر الجديد).",
+      "groupedEffect": "تخرج الرحلة من الفاتورة المجمعة {invoice} وتحصل على فاتورتها الخاصة باسم العميل الجديد.",
+      "waitingGroupEffect": "تغادر الرحلة مجموعة الفوترة وتحصل على فاتورتها الخاصة.",
+      "beforeDeliveryEffect": "ستُسلَّم الرحلة وتُفوتَر لـ {name}.",
+      "released": "{amount} دفعها {name} تعود إليه كسلفة (تُوزَّع على ديونه الأخرى).",
+      "creditApplied": "{amount} من سلفة {name} ستسدد هذه الفاتورة تلقائيًا.",
+      "oldNothing": "لا يحتفظ {name} بهذه الرحلة ولا بأي فاتورة لها.",
+      "reason": "سبب الرفض",
+      "reasonPlaceholder": "مثال: لم يعد العميل يريد هذا المنتج",
+      "audit": "يُسجَّل الرفض في سجل الرحلة (والفاتورة): المستخدم، التاريخ، السبب.",
+      "submitStock": "إعادة إلى المخزون",
+      "submitChange": "تغيير العميل",
+      "confirmStock": "إعادة الرحلة {trip} إلى مخزون الشركة (رفضها {name})؟",
+      "confirmChange": "إسناد الرحلة {trip} إلى {to} بدلًا من {from}؟",
+      "loadError": "تعذر تحميل العملاء.",
+      "previewError": "تعذر حساب أثر هذا الرفض.",
+      "saveError": "تعذر تسجيل هذا الرفض.",
+      "historyTitle": "رفض العميل",
+      "historyStock": "رفضها {from} — أُعيدت إلى المخزون",
+      "historyChange": "رفضها {from} — أُسندت إلى {to}",
+      "historyReleased": "{amount} أُعيدت كسلفة"
     }
   },
   "invoiceStatus": {
@@ -594,7 +645,15 @@
     "WITHDRAWAL": "سحب",
     "LOAN_GIVEN": "سلفة ممنوحة",
     "LOAN_RECEIVED": "سلفة مستلمة",
-    "OPENING_DEBT": "دين سابق"
+    "COMPANY_ADVANCE": "سلفة من الشركة",
+    "LOAN_REPAYMENT": "سداد سلفة",
+    "LOAN_REPAYMENT_RECEIVED": "سداد مستلم",
+    "OPENING_DEBT": "دين سابق",
+    "ADVANCE_RECEIVED": "سلفة مستلمة",
+    "ADVANCE_PAID": "سلفة مدفوعة",
+    "SETTLEMENT": "تسوية رحلة",
+    "ADVANCE_DEDUCTION": "سلفة مخصومة من الحصة",
+    "ADVANCE_CANCELLED": "سلفة ملغاة (لم تُسحب)"
   },
   "expenseCategory": {
     "customs": "الجمارك",
@@ -1091,7 +1150,10 @@
         "reason": "سبب إعادة الفتح",
         "history": "سجل الفترات",
         "lastReopen": "آخر سبب لإعادة الفتح",
-        "statusValues": { "OPEN": "مفتوحة", "CLOSED": "مغلقة" }
+        "statusValues": {
+          "OPEN": "مفتوحة",
+          "CLOSED": "مغلقة"
+        }
       },
       "loan": {
         "title": "سلف بين الشركاء",
@@ -1114,7 +1176,7 @@
       "withdrawal": {
         "title": "سحب أموال المساهم",
         "shareholder": "المساهم",
-        "availableBalanceHint": "الرصيد المتاح لهذا السحب",
+        "availableBalanceHint": "المبلغ القابل للسحب",
         "amount": "المبلغ",
         "date": "التاريخ",
         "accountType": "نوع الحساب",
@@ -1122,7 +1184,8 @@
         "record": "تسجيل السحب",
         "saveError": "تعذر حفظ هذا السحب — تحقق من الحقول.",
         "sourceProfitShare": "الأرباح",
-        "sourceCapital": "رأس المال"
+        "sourceCapital": "رأس المال",
+        "sourceAdvance": "سلفة الشركة"
       },
       "ledger": {
         "title": "دفتر أستاذ المساهم",
@@ -1134,7 +1197,9 @@
         "netLoanBalance": "صافي رصيد السلف",
         "loansLent": "سلف ممنوحة",
         "loansBorrowed": "سلف مقترضة",
-        "availableBalance": "الرصيد المتاح"
+        "availableBalance": "الرصيد المتاح",
+        "downloadPdf": "تنزيل الكشف (PDF)",
+        "exportError": "تعذر تنزيل الكشف."
       },
       "totalContributed": "رأس المال المساهم به",
       "capital": {
@@ -1159,6 +1224,80 @@
         "alreadyValidatedEngagements": "التوزيعات المعتمدة مسبقًا",
         "remainingDistributable": "الربح المتبقي للتوزيع",
         "noneAvailable": "لا يوجد مبلغ متاح حاليًا (لا يوجد صافي ربح في الفترة)."
+      },
+      "activeCount": "النشطون ({n})",
+      "inactiveCount": "غير النشطين ({n})",
+      "inactiveNotice": "شركاء مؤرشفون: لم يعودوا يظهرون في التوزيعات أو السلف أو السحوبات أو دفتر الأستاذ. يمكن إعادة تفعيل أحدهم عبر «تعديل».",
+      "formNew": "مساهم جديد",
+      "formEdit": "تعديل المساهم",
+      "advance": {
+        "title": "سلف الشركاء",
+        "question": "من أين تأتي السلفة؟",
+        "sourceCompany": "سلفة من الشركة",
+        "sourceCompanyText": "سلفة على أرباحه: تظهر في دفتر أستاذه ولا يتحرك الصندوق إلا عند السحب. تُخصم من حصته القادمة.",
+        "sourceAssociate": "من شريك آخر",
+        "sourceAssociateText": "ينتقل جزء من رصيد المُقرض إلى حساب المستفيد، ويمكنه سحبه. لا يتحرك الصندوق إلا عند السحب.",
+        "borrower": "الشريك المستفيد",
+        "lender": "الشريك المُقرض",
+        "lenderAvailable": "الرصيد المتاح للمُقرض",
+        "notesPlaceholder": "سبب السلفة (اختياري)",
+        "effectTitle": "ما سيتم تسجيله",
+        "effectCompanyDebt": "يحصل {name} على سلفة بقيمة {amount}: يمكنه سحبها (تبويب السحوبات) وهي دين عليه للشركة.",
+        "effectDeduction": "سيُخصم هذا المبلغ تلقائيًا من حصته القادمة المعتمدة من الأرباح.",
+        "effectAssociateDebt": "ينخفض رصيد {lender} بمبلغ {amount} ويرتفع رصيد {name} بمبلغ {amount}: يمكنه سحبه (تبويب السحوبات).",
+        "effectNoTreasury": "لا حركة في البنك أو الصندوق الآن: يخرج المال فقط عند السحب.",
+        "effectRepayAssociate": "يعيد السداد المبلغ من حسابه إلى حساب المُقرض (زر «سداد»).",
+        "lenderTooLow": "الرصيد المتاح للمُقرض غير كافٍ لهذه السلفة.",
+        "confirmCompany": "منح سلفة بقيمة {amount} إلى {name}؟ ستُخصم من حصته القادمة من الأرباح.",
+        "confirmAssociate": "تسجيل سلفة بقيمة {amount} من {lender} إلى {name}؟",
+        "openCompany": "مستحق للشركة (جارٍ)",
+        "openAssociate": "مستحق بين الشركاء (جارٍ)",
+        "listTitle": "السلف المسجلة",
+        "filterOpen": "الجارية ({n})",
+        "filterAll": "الكل ({n})",
+        "fromAssociate": "أقرضها {name}",
+        "repaid": "المسدَّد",
+        "autoDeductionHint": "ستُخصم تلقائيًا من حصته القادمة المعتمدة من الأرباح.",
+        "repay": "سداد",
+        "repayTitle": "سداد سلفة",
+        "repayCompanyHelp": "الجزء الذي لم يُسحب أبدًا يُلغى فقط (لا يتحرك الصندوق). وحده ما سحبه فعلًا يعود إلى حساب. وإلا تُخصم السلفة من حصته القادمة من الأرباح.",
+        "repayAssociateHelp": "يعود المبلغ من رصيد {name} إلى رصيد {lender}، دون حركة في البنك أو الصندوق.",
+        "repayAccount": "أُودع في",
+        "repayTooHigh": "المبلغ يتجاوز المتبقي للسداد.",
+        "repaySubmit": "تسجيل السداد",
+        "empty": "لا توجد سلف جارية.",
+        "history": {
+          "toggle": "السجل ({n})",
+          "deducted": "خُصم من توزيع {period}",
+          "treasury": "سُدد في {account}",
+          "direct": "سُدد إلى {name}",
+          "cancelled": "أُلغيت (لم تُسحب، دون حركة في الصندوق)"
+        },
+        "effectNoTreasuryYet": "لا حركة في البنك أو الصندوق الآن: يخرج المال فقط عند تنفيذ السحب.",
+        "fromCompany": "سلفة من الشركة",
+        "drawn": "المسحوب",
+        "undrawn": "المتبقي للسحب",
+        "effectAssociateOwes": "{name} مدين لـ{lender} بمبلغ {amount}: دين في دفتر أستاذه، ومستحق في دفتر {lender}.",
+        "repaySplitCancel": "{amount} لم تُسحب أبدًا: تُلغى دون أي حركة في الصندوق.",
+        "repaySplitCash": "{amount} سُحبت سابقًا: تُعاد إلى الصندوق أو البنك."
+      },
+      "debts": {
+        "title": "السلف والديون",
+        "companyDebt": "دين للشركة",
+        "companyDebtHelp": "سلف الشركة، تُخصم من حصته القادمة من الأرباح.",
+        "associateDebt": "دين للشركاء",
+        "associateDebtHelp": "مستلم من شركاء آخرين: يُعاد إليهم عبر «سداد».",
+        "receivable": "مستحقات على الشركاء",
+        "receivableHelp": "مُقرض لشركاء آخرين: يعود إلى رصيده عند السداد.",
+        "company": "الشركة",
+        "kind": {
+          "company": "سلفة من الشركة",
+          "owed": "سلفة مستلمة",
+          "receivable": "سلفة ممنوحة"
+        },
+        "repaidToYou": "سدّدها {name}",
+        "empty": "لا توجد سلف.",
+        "undrawn": "منها {amount} لم تُسحب بعد."
       }
     },
     "profit": {
@@ -1530,7 +1669,9 @@
       "correctionFields": {
         "unit_selling_price": "سعر البيع الوحدوي",
         "total_amount": "المبلغ الإجمالي",
-        "delivered_quantity": "الكمية المسلَّمة"
+        "delivered_quantity": "الكمية المسلَّمة",
+        "customer": "العميل",
+        "trip_removed": "رحلة أُزيلت من الفاتورة"
       },
       "trip": "الرحلة",
       "truckPlates": "الشاحنة (اللوحات)",
@@ -1956,6 +2097,34 @@
       "notConfigured": "لم يتم التكوين بعد — يتم عرض القيمة الافتراضية للمواصفة (100 لتر).",
       "saving": "جارٍ الحفظ…",
       "save": "حفظ"
+    },
+    "company": {
+      "title": "معلومات الشركة",
+      "description": "تظهر هذه المعلومات في الفواتير الشكلية وأذونات التسليم وقوائم التحميل وأوامر الشراء.",
+      "contact": "بيانات الاتصال",
+      "name": "اسم الشركة",
+      "tagline": "الشعار",
+      "taxId": "الرقم الضريبي",
+      "tradeRegister": "السجل التجاري",
+      "address": "العنوان",
+      "city": "المدينة",
+      "phone": "الهاتف",
+      "email": "البريد الإلكتروني",
+      "website": "الموقع الإلكتروني",
+      "banks": "الحسابات البنكية المطبوعة",
+      "banksHelp": "تظهر في الفواتير الشكلية، دون ارتباط بحسابات الخزينة.",
+      "bank": "البنك",
+      "swift": "رمز سويفت",
+      "accountNumber": "رقم الحساب",
+      "active": "معروض",
+      "addBank": "+ إضافة حساب",
+      "removeBank": "حذف",
+      "noBanks": "لا يوجد حساب بنكي.",
+      "save": "حفظ",
+      "saving": "جارٍ الحفظ…",
+      "saved": "تم حفظ المعلومات.",
+      "loadError": "تعذر تحميل معلومات الشركة.",
+      "saveError": "تعذر الحفظ — تحقق من الحقول."
     }
   },
   "errors": {
@@ -1974,13 +2143,13 @@
   },
   "quotations": {
     "list": {
-      "title": "العروض التجارية",
-      "new": "عرض جديد",
+      "title": "الفواتير الشكلية",
+      "new": "فاتورة شكلية جديدة",
       "allStatuses": "جميع الحالات",
       "duplicate": "نسخ",
-      "duplicateError": "تعذر نسخ العرض.",
-      "loadError": "تعذر تحميل العروض التجارية.",
-      "noQuotations": "لا توجد عروض تجارية.",
+      "duplicateError": "تعذر نسخ الفاتورة الشكلية.",
+      "loadError": "تعذر تحميل الفواتير الشكلية.",
+      "noQuotations": "لا توجد فواتير شكلية.",
       "table": {
         "reference": "المرجع",
         "customer": "العميل",
@@ -1990,8 +2159,8 @@
       }
     },
     "form": {
-      "newTitle": "عرض تجاري جديد",
-      "editTitle": "عرض {reference}",
+      "newTitle": "فاتورة شكلية جديدة",
+      "editTitle": "فاتورة شكلية {reference}",
       "customer": "عميل موجود",
       "selectCustomer": "ابحث عن عميل…",
       "noExistingCustomer": "لا يوجد عميل موجود",
@@ -2012,7 +2181,117 @@
       "back": "رجوع",
       "save": "حفظ",
       "saving": "جارٍ الحفظ…",
-      "saveError": "تعذر حفظ العرض التجاري."
+      "saveError": "تعذر حفظ الفاتورة الشكلية.",
+      "paymentTerms": "شروط الدفع",
+      "paymentTermsPlaceholder": "مثال: دفعة مقدمة 30٪ إلزامية",
+      "showBankAccounts": "إظهار الحسابات البنكية في ملف PDF"
+    }
+  },
+  "documents": {
+    "common": {
+      "reference": "المرجع",
+      "date": "التاريخ",
+      "amount": "المبلغ",
+      "litres": "لترات",
+      "status": "الحالة",
+      "actions": "إجراءات",
+      "open": "فتح",
+      "pdf": "PDF",
+      "print": "طباعة",
+      "duplicate": "نسخ",
+      "delete": "حذف",
+      "deleteConfirm": "حذف المستند {reference}؟",
+      "deleteError": "تعذر حذف هذا المستند.",
+      "loadError": "تعذر تحميل المستندات.",
+      "exportError": "تعذر إنشاء ملف PDF.",
+      "allStatuses": "كل الحالات",
+      "save": "حفظ",
+      "saving": "جارٍ الحفظ…",
+      "saveError": "تعذر الحفظ — تحقق من الحقول.",
+      "back": "رجوع",
+      "notes": "ملاحظات",
+      "addLine": "+ إضافة سطر",
+      "removeLine": "حذف السطر",
+      "total": "المجموع",
+      "lines": "السطور",
+      "noLines": "لا توجد سطور.",
+      "loading": "جارٍ التحميل…"
+    },
+    "proforma": {
+      "title": "الفواتير الشكلية",
+      "new": "فاتورة شكلية جديدة",
+      "partner": "العميل",
+      "empty": "لا توجد فواتير شكلية."
+    },
+    "delivery": {
+      "title": "أذونات التسليم",
+      "new": "إذن تسليم جديد",
+      "edit": "إذن التسليم {reference}",
+      "partner": "العميل",
+      "empty": "لا توجد أذونات تسليم.",
+      "customer": "العميل",
+      "selectCustomer": "اختر العميل…",
+      "place": "المكان",
+      "deliveryAddress": "عنوان التسليم",
+      "tripsTitle": "الرحلات المسلَّمة",
+      "tripsHint": "حدد الرحلات المراد إدراجها: تُملأ السطور تلقائيًا.",
+      "noTrips": "لا توجد رحلات مسلَّمة لهذا العميل.",
+      "alreadyOn": "موجودة في {refs}"
+    },
+    "loading": {
+      "title": "قوائم التحميل",
+      "new": "قائمة تحميل جديدة",
+      "edit": "قائمة التحميل {reference}",
+      "partner": "المورد / المستودع",
+      "empty": "لا توجد قوائم تحميل.",
+      "stepInfo": "1. المعلومات",
+      "stepTrucks": "2. الشاحنات",
+      "next": "التالي",
+      "supplier": "مورد / مستودع التحميل",
+      "otherSupplier": "آخر (إدخال حر)",
+      "supplierName": "اسم المورد / المستودع",
+      "onBehalfOf": "لحساب",
+      "sourceReference": "المرجع (تنازل، طلب…)",
+      "productName": "المنتج",
+      "route": "المحور / الوجهة",
+      "searchTrucks": "ابحث عن جرار أو صهريج…",
+      "noTrucks": "لا توجد شاحنات نشطة.",
+      "trucksCount": "{count} شاحنة · {litres}"
+    },
+    "purchase": {
+      "title": "أوامر الشراء",
+      "new": "أمر شراء جديد",
+      "edit": "أمر الشراء {reference}",
+      "partner": "المورد",
+      "empty": "لا توجد أوامر شراء.",
+      "supplier": "المورد",
+      "selectSupplier": "اختر المورد…",
+      "prefill": "تعبئة مسبقة من طلب مورد",
+      "noPrefill": "— لا شيء —",
+      "deliveryPlace": "مكان التسليم",
+      "deliveryDate": "تاريخ التسليم المطلوب",
+      "paymentTerms": "شروط الدفع",
+      "currency": "العملة",
+      "statuses": {
+        "DRAFT": "مسودة",
+        "SENT": "مُرسل"
+      }
+    },
+    "lines": {
+      "designation": "البيان",
+      "quantity": "الكمية",
+      "tanker": "الصهريج",
+      "tractor": "الجرار",
+      "missing": "النقص",
+      "observation": "ملاحظة",
+      "capacity": "السعة (لتر)",
+      "product": "المنتج",
+      "be": "رقم أمر التعبئة",
+      "route": "المحور",
+      "description": "البيان",
+      "unit": "الوحدة",
+      "unitPrice": "سعر الوحدة",
+      "amount": "المبلغ"
     }
   }
 }

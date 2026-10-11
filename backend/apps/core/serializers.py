@@ -1,8 +1,9 @@
+from django.db import transaction
 from rest_framework import serializers
 
 from apps.accounts.serializers import UserSerializer
 
-from .models import LossToleranceConfig, Product
+from .models import CompanyBankAccount, CompanyProfile, LossToleranceConfig, Product
 
 
 class ProductSerializer(serializers.ModelSerializer):
@@ -32,3 +33,33 @@ class LossToleranceConfigSerializer(serializers.ModelSerializer):
         if not obj.updated_by_id:
             return None
         return UserSerializer(obj.updated_by).data
+
+
+class CompanyBankAccountSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CompanyBankAccount
+        fields = ["id", "bank", "swift", "account_number", "is_active"]
+        read_only_fields = ["id"]
+
+
+class CompanyProfileSerializer(serializers.ModelSerializer):
+    """bank_accounts is replaced as a whole when sent, kept when omitted."""
+
+    bank_accounts = CompanyBankAccountSerializer(many=True, required=False)
+
+    class Meta:
+        model = CompanyProfile
+        fields = [
+            "name", "tagline", "tax_id", "trade_register", "address", "city",
+            "phone", "email", "website", "bank_accounts",
+        ]
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        banks = validated_data.pop("bank_accounts", None)
+        instance = super().update(instance, validated_data)
+        if banks is not None:
+            instance.bank_accounts.all().delete()
+            for position, bank in enumerate(banks):
+                CompanyBankAccount.objects.create(profile=instance, position=position, **bank)
+        return instance

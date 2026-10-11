@@ -284,19 +284,18 @@ def test_treasury_summary_from_the_real_query_context_reconciles_exactly():
 # ---------------------------------------------------------------------------
 
 
-def test_transporter_statement_totals_ignore_none_and_zero_advance():
+def test_transporter_statement_is_a_running_balance_statement():
     rows = [
-        {"date": date(2026, 9, 1), "trip_reference": "T1", "base_amount": D("1500.00"),
-         "deduction_amount": D("100.00"), "advance_applied": 0, "net_amount": D("1400.00")},
-        {"date": date(2026, 9, 2), "trip_reference": "T2", "base_amount": D("500.50"),
-         "deduction_amount": D("0"), "advance_applied": D("50.25"), "net_amount": D("450.25")},
+        {"date": date(2026, 9, 1), "type": "SETTLEMENT", "reference": "T1", "debit": D("1400.00"),
+         "credit": None, "balance": D("1400.00")},
+        {"date": date(2026, 9, 2), "type": "PAYMENT", "reference": "P1", "debit": None,
+         "credit": D("400.00"), "balance": D("1000.00")},
     ]
     lines = summary(build("transporter-statement", rows))
 
-    assert lines["total_base_amount"]["value"] == D("2000.50")
-    assert lines["total_deduction"]["value"] == D("100.00")
-    assert lines["total_advance"]["value"] == D("50.25")
-    assert lines["total_net"]["value"] == D("1850.25")
+    assert lines["total_debit"]["value"] == D("1400.00")
+    assert lines["total_credit"]["value"] == D("400.00")
+    assert lines["closing_balance"]["value"] == D("1000.00")
 
 
 def test_sales_and_expense_and_outstanding_totals():

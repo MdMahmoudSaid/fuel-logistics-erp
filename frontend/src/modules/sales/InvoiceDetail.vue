@@ -29,7 +29,7 @@ import MonoValue from '@/components/ui/MonoValue.vue'
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
-const { t, locale } = useI18n()
+const { t, te, locale } = useI18n()
 
 const invoiceId = computed(() => Number(route.params.id))
 
@@ -204,6 +204,13 @@ async function onSubmitCorrection() {
   } finally {
     correcting.value = false
   }
+}
+
+// Audit trail labels: the correctable fields plus the entries written by a
+// trip's customer refusal ("customer", "trip_removed" - 2026-10-11).
+function correctionFieldLabel(field: string) {
+  const key = `sales.invoiceDetail.correctionFields.${field}`
+  return te(key) ? t(key) : field
 }
 
 function badgeVariant(status: string) {
@@ -563,12 +570,13 @@ function formatDateTime(value: string) {
           <li v-for="entry in invoice.corrections" :key="entry.id" class="relative text-sm">
             <span class="bg-texte-3 absolute top-1 -start-[21px] h-2 w-2 rounded-full" />
             <p class="text-texte font-medium">
-              {{ entry.field_name }}: {{ entry.previous_value }} → {{ entry.new_value }}
+              {{ correctionFieldLabel(entry.field_name) }} : {{ entry.previous_value }} →
+              {{ entry.new_value }}
             </p>
             <p class="text-texte-2 text-xs">
               {{ formatDateTime(entry.corrected_at) }} · {{ entry.corrected_by_detail?.email }}
             </p>
-            <p class="text-texte-2">{{ entry.reason }}</p>
+            <p class="text-texte-2 whitespace-pre-line">{{ entry.reason }}</p>
           </li>
           <li v-if="!invoice.corrections.length" class="text-texte-3">
             {{ t('sales.invoiceDetail.noCorrections') }}

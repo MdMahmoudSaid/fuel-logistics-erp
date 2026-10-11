@@ -2180,7 +2180,6 @@ def test_client_verification_is_blocked_when_the_invoice_is_paid():
     )
     trip.refresh_from_db()
     invoice = trip.sale.invoice
-    InvoiceService.validate_invoice(invoice.id, fx["admin_user"])
     Invoice.objects.filter(pk=invoice.id).update(status=Invoice.Status.PAID)
 
     with pytest.raises(InvoicePaidCorrectionUnsupported):
@@ -3492,7 +3491,7 @@ def test_correct_client_verification_rejected_before_any_verification():
 
 
 @pytest.mark.django_db
-def test_correct_client_verification_updates_a_draft_invoice_total():
+def test_correct_client_verification_updates_the_auto_validated_invoice_total():
     fx = _fixtures_with_customer("CCV-DRAFT-INV")
     trip = _deliverable_trip(fx, "TRIP-CCV-DRAFT-INV-001")
     ProductSellingPriceHistory.objects.create(
@@ -3517,7 +3516,10 @@ def test_correct_client_verification_updates_a_draft_invoice_total():
 
     invoice.refresh_from_db()
     assert invoice.total_amount == Decimal("40410000.00")  # 44900 * 900
-    assert InvoiceCorrection.objects.filter(invoice=invoice).count() == 0  # still DRAFT
+    # 2026-10-11: the verification completed the trip, which validated the
+    # invoice - the later quantity fix is therefore an audited correction.
+    assert invoice.status == Invoice.Status.VALIDATED
+    assert InvoiceCorrection.objects.filter(invoice=invoice).count() == 1
 
 
 @pytest.mark.django_db
@@ -3538,7 +3540,8 @@ def test_correct_client_verification_on_a_validated_invoice_writes_a_correction_
         verified_at=date.today(), actor=fx["admin_user"],
     )
     invoice = trip.sale.invoice
-    InvoiceService.validate_invoice(invoice.id, fx["admin_user"])
+    invoice.refresh_from_db()
+    assert invoice.status == Invoice.Status.VALIDATED  # trip completed -> validated
 
     DeliveryService.correct_client_verification(
         trip_id=trip.id, received_qty=Decimal("44900.00"),
@@ -3569,7 +3572,6 @@ def test_correct_client_verification_blocked_when_invoice_paid_rolls_back():
         verified_at=date.today(), actor=fx["admin_user"],
     )
     invoice = trip.sale.invoice
-    InvoiceService.validate_invoice(invoice.id, fx["admin_user"])
     Invoice.objects.filter(pk=invoice.id).update(status=Invoice.Status.PAID)
 
     with pytest.raises(InvoicePaidCorrectionUnsupported):

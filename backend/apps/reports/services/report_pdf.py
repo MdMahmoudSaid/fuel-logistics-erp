@@ -42,10 +42,10 @@ DASH = "—"
 # Fixed widths (mm) by column kind; text columns share what is left (>= 30mm).
 _KIND_WIDTH_MM = {
     "date": 21, "ref": 32, "money": 26, "unit_money": 34, "quantity": 22, "enum": 30, "status": 30,
-    "percent": 20,
+    "percent": 20, "number": 24,
 }
 _TEXT_MIN_MM = 30
-_NUMERIC = ("money", "unit_money", "quantity", "percent")
+_NUMERIC = ("money", "unit_money", "quantity", "percent", "number")
 # One table row cannot span pages: a pasted multi-thousand-character note
 # would make the whole export fail with a LayoutError. The PDF keeps the
 # first MAX_TEXT_CHARS characters and ends with an ellipsis (the on-screen
@@ -85,6 +85,15 @@ def _as_date(value):
     return None
 
 
+def _money(value, currency: str | None = None) -> str:
+    """XOF (the default) is whole units; another document currency (a
+    proforma or purchase order in EUR...) keeps its cents and its code."""
+    if not currency or currency == "XOF":
+        return _format_money(value).replace(" ", NBSP)
+    whole, _, cents = f"{Decimal(str(value)):,.2f}".partition(".")
+    return f"{whole.replace(',', NBSP)},{cents}{NBSP}{currency}"
+
+
 def _cell_text(column: dict, value) -> str:
     """Display string of one cell (unescaped); DASH for an empty value."""
     if value is None or value == "":
@@ -94,11 +103,15 @@ def _cell_text(column: dict, value) -> str:
         parsed = _as_date(value)
         return parsed.strftime("%d/%m/%Y") if parsed else str(value)
     if kind == "money":
-        return _format_money(value).replace(" ", NBSP)
+        return _money(value, column.get("currency"))
     if kind == "unit_money":
         return _format_unit_money(value).replace(" ", NBSP)
     if kind == "quantity":
         return _format_quantity(value).replace(" ", NBSP)
+    if kind == "number":  # unit-free, trailing zero decimals dropped (commercial documents)
+        whole, _, decimals = f"{Decimal(str(value)):,.4f}".partition(".")
+        decimals = decimals.rstrip("0")
+        return whole.replace(",", NBSP) + (f",{decimals}" if decimals else "")
     if kind == "percent":
         return f"{Decimal(str(value)):.2f}".replace(".", ",") + NBSP + "%"
     if kind in ("enum", "status"):
@@ -110,7 +123,7 @@ def _cell_text(column: dict, value) -> str:
 def _summary_text(line: dict) -> str:
     value = line["value"]
     if line["kind"] == "money":
-        return _format_money(value).replace(" ", NBSP)
+        return _money(value, line.get("currency"))
     if line["kind"] == "quantity":
         return _format_quantity(value).replace(" ", NBSP)
     return str(value)
@@ -135,6 +148,9 @@ def _header_block(document: dict, available: float, rtl: bool) -> list:
     company, title = document["company"]["name"], document["title"]
     logo = logo_image(16 * mm)
     company_par = _p(company, _cell_style(bold=True, size=15, rtl=rtl), document["lang"])
+    tagline = document["company"].get("tagline")
+    if tagline:  # document PDFs (spec 2026-10-11 documents-commerciaux)
+        company_par = [company_par, _p(tagline, _cell_style(size=8, color=MUTED, rtl=rtl), document["lang"])]
     if logo is None:
         head = Table([[company_par]], colWidths=[available])
     elif rtl:
@@ -161,15 +177,15 @@ def _header_block(document: dict, available: float, rtl: bool) -> list:
     if rtl:  # mirrored grid: value | label, and the pair order reversed
         rows = [list(reversed(row)) for row in rows]
         widths = list(reversed(widths))
-    info_table = Table(rows, colWidths=widths, hAlign="RIGHT" if rtl else "LEFT")
-    info_table.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 0),
-                                    ("TOPPADDING", (0, 0), (-1, -1), 1.5), ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5)]))
-    return [
-        head,
-        Spacer(1, 3 * mm),
-        _p(title, _cell_style(bold=True, size=17, rtl=rtl), document["lang"]),
-        Spacer(1, 3 * mm),
-        info_table,
+    elements = [head, Spacer(1, 3 * mm), _p(title, _cell_style(bold=True, size=17, rtl=rtl), document["lang"]),
+                Spacer(1, 3 * mm)]
+    if rows:
+        info_table = Table(rows, colWidths=widths, hAlign="RIGHT" if rtl else "LEFT")
+        info_table.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                                        ("TOPPADDING", (0, 0), (-1, -1), 1.5),
+                                        ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5)]))
+        elements.append(info_table)
+    return elements + [
         Spacer(1, 2 * mm),
         HRFlowable(width="100%", thickness=0.8, color=INK, spaceAfter=4 * mm),
     ]
@@ -244,6 +260,68 @@ def _summary_block(document: dict, available: float, rtl: bool):
     return KeepTogether([Spacer(1, 6 * mm), block])
 
 
+def _blocks(document: dict, available: float, rtl: bool) -> list:
+    """Text blocks after the summary (amount in words, terms, notes) - the
+    optional `blocks` key of the commercial documents."""
+    lang, elements = document["lang"], []
+    for block in document.get("blocks") or []:
+        if not block.get("boxed"):
+            # Plain paragraphs (not a table cell): long notes may flow over
+            # several pages instead of raising a LayoutError.
+            elements.append(Spacer(1, 4 * mm))
+            if block.get("title"):
+                elements.append(_p(block["title"], _cell_style(bold=True, size=9, rtl=rtl), lang, available))
+            elements.append(_p(block["text"], _cell_style(size=9, rtl=rtl), lang, available))
+            continue
+        content = []
+        if block.get("title"):
+            content.append(_p(block["title"], _cell_style(bold=True, size=9, rtl=rtl), lang, available - 12))
+        content.append(_p(block["text"], _cell_style(size=9, rtl=rtl), lang, available - 12))
+        box = Table([[content]], colWidths=[available])
+        style = [("LEFTPADDING", (0, 0), (-1, -1), 6 if block.get("boxed") else 0),
+                 ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]
+        if block.get("boxed"):
+            style += [("BOX", (0, 0), (-1, -1), 0.8, INK), ("BACKGROUND", (0, 0), (-1, -1), TOTAL_FILL)]
+        box.setStyle(TableStyle(style))
+        elements += [Spacer(1, 4 * mm), box]
+    return elements
+
+
+def _signatures(document: dict, available: float, rtl: bool) -> list:
+    """One framed box per signer (optional `signatures` key)."""
+    labels = list(document.get("signatures") or [])
+    if not labels:
+        return []
+    if rtl:
+        labels.reverse()
+    gap = 10 * mm
+    width = (available - gap * (len(labels) - 1)) / len(labels)
+    cells, widths = [], []
+    for index, label in enumerate(labels):
+        if index:
+            cells.append("")
+            widths.append(gap)
+        cells.append(_p(label, _cell_style(bold=True, size=9, rtl=rtl), document["lang"], width - 12))
+        widths.append(width)
+    table = Table([cells], colWidths=widths, rowHeights=[28 * mm])
+    style = [("VALIGN", (0, 0), (-1, -1), "TOP"), ("TOPPADDING", (0, 0), (-1, -1), 5)]
+    style += [("BOX", (i, 0), (i, 0), 0.6, LINE) for i in range(0, len(cells), 2)]
+    table.setStyle(TableStyle(style))
+    return [KeepTogether([Spacer(1, 10 * mm), table])]
+
+
+def _footer(document: dict, rtl: bool) -> list:
+    """Company contact lines at the end of the document (`company.lines`)."""
+    lines = document["company"].get("lines") or []
+    if not lines:
+        return []
+    style = _cell_style(size=7, color=MUTED, rtl=rtl)
+    style.alignment = 1  # centered
+    elements = [Spacer(1, 8 * mm), HRFlowable(width="100%", thickness=0.5, color=LINE, spaceAfter=2 * mm)]
+    elements += [_p(line, style, document["lang"]) for line in lines]
+    return elements
+
+
 def build_report_flowables(document: dict, rows: list[dict], lang: str | None = None):
     """(flowables, available width in points) for the document."""
     landscape_page = document["orientation"] == "landscape"
@@ -262,7 +340,11 @@ def build_report_flowables(document: dict, rows: list[dict], lang: str | None = 
         table_rows = [r for r in rows if r.get("section") == section] if section else rows
         elements.append(_data_table(document, table, table_rows, opening, available, rtl))
         elements.append(Spacer(1, 4 * mm))
-    elements.append(_summary_block(document, available, rtl))
+    if document["summary"]:
+        elements.append(_summary_block(document, available, rtl))
+    elements += _blocks(document, available, rtl)
+    elements += _signatures(document, available, rtl)
+    elements += _footer(document, rtl)
     return elements, available
 
 

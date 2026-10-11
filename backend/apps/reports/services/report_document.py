@@ -119,6 +119,22 @@ def _party_statement_summary(direction):
     return summarize
 
 
+def _shareholder_statement_summary(slug, rows, context):
+    """Balances of the period, then the associate's current advance
+    position - the cards of his Grand livre (client request 2026-10-11)."""
+    lines = _party_statement_summary(-1)(slug, rows, context)
+    for key in (
+        "company_advance_debt", "company_advance_undrawn", "shareholder_loan_debt",
+        "shareholder_loan_receivable",
+    ):
+        lines.append(_line(key, _dec(context.get(key)) or ZERO, "money"))
+    lines.append(
+        _line("withdrawable_balance", _dec(context.get("withdrawable_balance")) or ZERO,
+              "money", True)
+    )
+    return lines
+
+
 def _treasury_summary(slug, rows, context):
     opening = _dec(context.get("opening_balance")) or ZERO
     transfers = _dec(context.get("transfers_net")) or ZERO
@@ -138,15 +154,6 @@ def _treasury_summary(slug, rows, context):
         lines.append(_line("reconciliation_gap", closing - equation, "money"))
     lines.append(_line("closing_balance", closing, "money", True))
     return lines
-
-
-def _transporter_summary(slug, rows, context):
-    return [
-        _line("total_base_amount", _sum(rows, "base_amount"), "money"),
-        _line("total_deduction", _sum(rows, "deduction_amount"), "money"),
-        _line("total_advance", _sum(rows, "advance_applied"), "money"),
-        _line("total_net", _sum(rows, "net_amount"), "money", True),
-    ]
 
 
 def _truck_history_summary(slug, rows, context):
@@ -333,7 +340,7 @@ REPORT_SPECS = {
         entity=("supplier", "supplier_id"), opening_row=True,
     ),
     "shareholder-statement": ReportSpec(
-        "portrait", (TableSpec(_STATEMENT_COLUMNS),), _party_statement_summary(-1),
+        "portrait", (TableSpec(_STATEMENT_COLUMNS),), _shareholder_statement_summary,
         entity=("shareholder", "shareholder_id"), opening_row=True,
     ),
     "bank-statement": ReportSpec(
@@ -344,11 +351,10 @@ REPORT_SPECS = {
         "portrait", (TableSpec(_TREASURY_COLUMNS),), _treasury_summary,
         entity=("cash_account", "cash_account_id"), opening_row=True,
     ),
+    # Running balance like the customer/supplier statements (2026-10-11).
     "transporter-statement": ReportSpec(
-        "portrait",
-        (TableSpec((("date", "date"), ("trip_reference", "ref"), ("base_amount", "money"),
-                    ("deduction_amount", "money"), ("advance_applied", "money"), ("net_amount", "money"))),),
-        _transporter_summary, entity=("transporter", "transporter_id"),
+        "portrait", (TableSpec(_STATEMENT_COLUMNS),), _party_statement_summary(1),
+        entity=("transporter", "transporter_id"), opening_row=True,
     ),
     "truck-history": ReportSpec(
         "portrait",
