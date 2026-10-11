@@ -105,6 +105,8 @@ async function onDelete(row: DocumentRow) {
 }
 
 const actionClass = 'text-bitume hover:text-orange text-sm underline disabled:opacity-50'
+const cardActionClass =
+  'border-ligne-forte text-bitume h-10 rounded-lg border bg-white px-3 text-sm disabled:opacity-50'
 </script>
 
 <template>
@@ -135,7 +137,71 @@ const actionClass = 'text-bitume hover:text-orange text-sm underline disabled:op
     <AppAlert v-if="error" :message="error" />
     <p v-if="loading" class="text-texte-3 text-sm">{{ t('documents.common.loading') }}</p>
 
-    <div class="border-ligne overflow-x-auto rounded-xl border bg-white">
+    <!-- Téléphone : une carte par document, actions en boutons tactiles. -->
+    <div class="space-y-3 md:hidden">
+      <div
+        v-for="row in rows"
+        :key="`card-${row.id}`"
+        class="border-ligne cursor-pointer rounded-xl border bg-white p-4"
+        @click="open(row)"
+      >
+        <div class="flex items-start justify-between gap-3">
+          <MonoValue :value="row.reference" align="left" class="font-semibold" />
+          <span
+            v-if="config.statuses"
+            class="bg-sable text-texte-2 shrink-0 rounded-full px-2.5 py-0.5 text-xs"
+          >
+            {{ t(`${config.statuses.labelPrefix}${row.status}`) }}
+          </span>
+        </div>
+        <p class="text-texte mt-1 text-sm">{{ config.partner(row) }}</p>
+        <div class="mt-2 flex items-end justify-between gap-3">
+          <span class="text-texte-3 text-xs">{{ row[config.dateField] }}</span>
+          <MonoValue :value="displayValue(row)" class="text-base" />
+        </div>
+        <div class="border-ligne mt-3 flex flex-wrap gap-2 border-t pt-3" @click.stop>
+          <button
+            v-if="config.duplicatePath"
+            type="button"
+            :class="cardActionClass"
+            @click="onDuplicate(row)"
+          >
+            {{ t('documents.common.duplicate') }}
+          </button>
+          <button
+            type="button"
+            :class="cardActionClass"
+            :disabled="busyId === row.id"
+            @click="onPdf(row)"
+          >
+            {{ t('documents.common.pdf') }}
+          </button>
+          <button
+            type="button"
+            :class="cardActionClass"
+            :disabled="busyId === row.id"
+            @click="onPrint(row)"
+          >
+            {{ t('documents.common.print') }}
+          </button>
+          <button
+            type="button"
+            class="ms-auto h-10 rounded-lg px-3 text-sm text-red-700"
+            @click="onDelete(row)"
+          >
+            {{ t('documents.common.delete') }}
+          </button>
+        </div>
+      </div>
+      <p
+        v-if="!loading && rows.length === 0"
+        class="border-ligne text-texte-3 rounded-xl border bg-white px-3 py-8 text-center text-sm"
+      >
+        {{ label('empty') }}
+      </p>
+    </div>
+
+    <div class="border-ligne hidden overflow-x-auto rounded-xl border bg-white md:block">
       <table class="w-full text-left text-sm">
         <thead>
           <tr class="border-ligne text-texte-2 border-b">

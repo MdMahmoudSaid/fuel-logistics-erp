@@ -157,3 +157,13 @@
     break-inside: avoid;
   }
 }
+
+/* Téléphone : les tableaux défilants (wrapper .overflow-x-auto) gardent une
+   ligne par enregistrement au lieu de couper références, dates et montants
+   sur plusieurs lignes ; on fait défiler horizontalement à la place. */
+@media (max-width: 767px) {
+  .overflow-x-auto > table th,
+  .overflow-x-auto > table td {
+    white-space: nowrap;
+  }
+}

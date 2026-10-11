@@ -238,12 +238,16 @@ function invoiceStatusLabel(status: string, outstanding: string) {
     <p v-else-if="loading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
     <template v-else-if="ledger">
-      <section class="grid gap-3 md:grid-cols-3">
-        <div class="border-ligne rounded-lg border bg-white p-4">
+      <section class="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3">
+        <div class="border-ligne rounded-lg border bg-white p-3 sm:p-4">
           <p class="text-texte-2 text-xs font-semibold uppercase">
             {{ t('finance.customerLedger.totalInvoiced') }}
           </p>
-          <MonoValue class="font-semibold" align="left" :value="formatMoney(totalInvoiced)" />
+          <MonoValue
+            class="text-sm font-semibold sm:text-base"
+            align="left"
+            :value="formatMoney(totalInvoiced)"
+          />
           <p
             v-if="openingDebtsTotal > 0"
             class="text-texte-3 mt-0.5 text-xs"
@@ -256,46 +260,54 @@ function invoiceStatusLabel(status: string, outstanding: string) {
             }}
           </p>
         </div>
-        <div class="border-ligne rounded-lg border bg-white p-4">
+        <div class="border-ligne rounded-lg border bg-white p-3 sm:p-4">
           <p class="text-texte-2 text-xs font-semibold uppercase">
             {{ t('finance.customerLedger.totalReceived') }}
           </p>
-          <MonoValue class="font-semibold" align="left" :value="formatMoney(totalReceived)" />
+          <MonoValue
+            class="text-sm font-semibold sm:text-base"
+            align="left"
+            :value="formatMoney(totalReceived)"
+          />
         </div>
-        <div class="border-ligne rounded-lg border bg-white p-4">
+        <div class="border-ligne rounded-lg border bg-white p-3 sm:p-4">
           <p class="text-texte-2 text-xs font-semibold uppercase">
             {{ t('finance.customerLedger.outstandingBalance') }}
           </p>
           <MonoValue
-            class="font-semibold"
+            class="text-sm font-semibold sm:text-base"
             align="left"
             :class="Number(ledger.outstanding_balance) > 0 ? 'text-ecart' : 'text-livre'"
             :value="formatMoney(ledger.outstanding_balance)"
           />
         </div>
-        <div class="border-ligne rounded-lg border bg-white p-4">
+        <div class="border-ligne rounded-lg border bg-white p-3 sm:p-4">
           <p class="text-texte-2 text-xs font-semibold uppercase">
             {{ t('finance.customerLedger.availableCredit') }}
           </p>
           <MonoValue
-            class="font-semibold"
+            class="text-sm font-semibold sm:text-base"
             align="left"
             data-test="customer-available-credit"
             :value="formatMoney(ledger.available_credit ?? 0)"
           />
         </div>
-        <div class="border-ligne rounded-lg border bg-white p-4">
+        <div class="border-ligne rounded-lg border bg-white p-3 sm:p-4">
           <p class="text-texte-2 text-xs font-semibold uppercase">
             {{ t('finance.customerLedger.openInvoices') }}
           </p>
-          <MonoValue class="font-semibold" align="left" :value="String(openInvoices)" />
+          <MonoValue
+            class="text-sm font-semibold sm:text-base"
+            align="left"
+            :value="String(openInvoices)"
+          />
         </div>
-        <div class="border-ligne rounded-lg border bg-white p-4">
+        <div class="border-ligne rounded-lg border bg-white p-3 sm:p-4">
           <p class="text-texte-2 text-xs font-semibold uppercase">
             {{ t('finance.customerLedger.lastPayment') }}
           </p>
           <MonoValue
-            class="font-semibold"
+            class="text-sm font-semibold sm:text-base"
             align="left"
             :value="lastPayment ? formatMoney(lastPayment.amount) : '—'"
           />

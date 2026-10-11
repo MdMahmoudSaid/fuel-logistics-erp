@@ -2219,7 +2219,8 @@
       "total": "Total",
       "lines": "Lignes",
       "noLines": "Aucune ligne.",
-      "loading": "Chargement…"
+      "loading": "Chargement…",
+      "line": "Ligne"
     },
     "proforma": {
       "title": "Proformas",

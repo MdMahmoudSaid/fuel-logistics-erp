@@ -772,15 +772,15 @@ const cessionProofUrl = computed(
         <div class="space-y-3">
           <AppAlert v-if="statusError" :message="statusError" />
 
-          <div class="flex flex-wrap items-end gap-2">
-            <div class="space-y-1">
+          <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:gap-2">
+            <div class="flex flex-col gap-1">
               <label class="text-texte-2 text-sm font-medium" for="next_status">{{
                 t('trips.detail.nextStatus')
               }}</label>
               <select
                 id="next_status"
                 v-model="nextStatus"
-                class="border-ligne-forte h-11 rounded-lg border bg-white px-3 text-sm"
+                class="border-ligne-forte h-11 w-full rounded-lg border bg-white px-3 text-sm sm:w-auto"
               >
                 <option value="" disabled>{{ t('trips.detail.selectStatus') }}</option>
                 <option v-for="s in visibleNextStatuses" :key="s" :value="s">
@@ -788,7 +788,7 @@ const cessionProofUrl = computed(
                 </option>
               </select>
             </div>
-            <div class="flex-1 space-y-1">
+            <div class="flex flex-1 flex-col gap-1">
               <label class="text-texte-2 text-sm font-medium" for="status_notes">{{
                 t('trips.detail.notes')
               }}</label>
@@ -798,7 +798,11 @@ const cessionProofUrl = computed(
                 class="border-ligne-forte h-11 w-full rounded-lg border bg-white px-3 text-sm"
               />
             </div>
-            <Button :disabled="!nextStatus || changingStatus" @click="onChangeStatus">
+            <Button
+              class="w-full sm:w-auto"
+              :disabled="!nextStatus || changingStatus"
+              @click="onChangeStatus"
+            >
               {{ changingStatus ? t('trips.detail.updating') : t('trips.detail.apply') }}
             </Button>
           </div>

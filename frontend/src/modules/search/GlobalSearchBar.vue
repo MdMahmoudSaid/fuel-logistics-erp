@@ -52,7 +52,7 @@ watch(query, (value) => {
 </script>
 
 <template>
-  <div class="relative w-72">
+  <div class="relative w-full md:w-72">
     <input
       v-model="query"
       type="search"

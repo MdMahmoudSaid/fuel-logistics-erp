@@ -323,23 +323,36 @@ onUnmounted(() => {
       </div>
 
       <header
-        class="border-ligne flex h-16 shrink-0 items-center justify-between border-b bg-white px-4 md:px-6"
+        class="border-ligne flex h-16 shrink-0 items-center justify-between gap-2 border-b bg-white px-3 md:gap-4 md:px-6"
       >
-        <div class="flex items-center gap-3 md:hidden">
+        <div class="flex shrink-0 items-center gap-3 md:hidden">
           <AppLogo :wordmark="false" :size="28" />
         </div>
-        <GlobalSearchBar v-if="auth.can('reports', 'view')" class="max-w-md flex-1 md:flex-none" />
-        <span v-else class="text-texte-2 text-sm">{{ t('common.brandTagline') }}</span>
-        <div class="flex items-center gap-4">
+        <GlobalSearchBar
+          v-if="auth.can('reports', 'view')"
+          class="min-w-0 max-w-md flex-1 md:flex-none"
+        />
+        <span v-else class="text-texte-2 min-w-0 truncate text-sm">{{
+          t('common.brandTagline')
+        }}</span>
+        <div class="flex shrink-0 items-center gap-2 md:gap-4">
           <span v-if="auth.user" class="text-texte-2 hidden text-sm sm:inline">
             {{ auth.user.full_name || auth.user.email }} · {{ auth.user.role_detail?.name }}
           </span>
           <div class="hidden sm:block">
             <LanguageSwitcher />
           </div>
-          <Button variant="ghost" size="md" class="!h-9 !px-3 text-sm" @click="onLogout">{{
-            t('header.logout')
-          }}</Button>
+          <Button
+            variant="ghost"
+            size="md"
+            class="!h-11 !w-11 !px-0 text-sm sm:!h-9 sm:!w-auto sm:!px-3"
+            :aria-label="t('header.logout')"
+            :title="t('header.logout')"
+            @click="onLogout"
+          >
+            <Icon name="log-out" :size="20" class="sm:hidden" />
+            <span class="hidden sm:inline">{{ t('header.logout') }}</span>
+          </Button>
         </div>
       </header>
 

@@ -2215,7 +2215,8 @@
       "total": "Total",
       "lines": "Lines",
       "noLines": "No line.",
-      "loading": "Loading…"
+      "loading": "Loading…",
+      "line": "Line"
     },
     "proforma": {
       "title": "Proformas",

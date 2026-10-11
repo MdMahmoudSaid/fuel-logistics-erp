@@ -33,6 +33,7 @@ export type IconName =
   | 'eye'
   | 'eye-off'
   | 'download'
+  | 'log-out'
 
 withDefaults(defineProps<{ name: IconName; size?: number }>(), { size: 20 })
 </script>
@@ -168,6 +169,11 @@ withDefaults(defineProps<{ name: IconName; size?: number }>(), { size: 20 })
       <path d="M12 4v11" />
       <path d="M7.5 11 12 15.5 16.5 11" />
       <path d="M4 19h16" />
+    </g>
+    <g v-else-if="name === 'log-out'">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <path d="M16 17l5-5-5-5" />
+      <path d="M21 12H9" />
     </g>
     <g v-else-if="name === 'more-horizontal'">
       <circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none" />

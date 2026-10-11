@@ -188,39 +188,39 @@ function badgeVariant(status: string) {
     <p v-else-if="loading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
     <template v-else-if="ledger">
-      <section class="grid gap-3 md:grid-cols-4">
-        <div class="border-ligne rounded-lg border bg-white p-4">
+      <section class="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-4">
+        <div class="border-ligne rounded-lg border bg-white p-3 sm:p-4">
           <p class="text-texte-2 text-xs font-semibold uppercase">
             {{ t('finance.partyLedger.totalDue') }}
           </p>
           <MonoValue
-            class="font-semibold"
+            class="text-sm font-semibold sm:text-base"
             align="left"
             :value="formatMoney(ledger.summary.total_due)"
           />
         </div>
-        <div class="border-ligne rounded-lg border bg-white p-4">
+        <div class="border-ligne rounded-lg border bg-white p-3 sm:p-4">
           <p class="text-texte-2 text-xs font-semibold uppercase">
             {{ t('finance.partyLedger.openAdvances') }}
           </p>
           <MonoValue
-            class="font-semibold"
+            class="text-sm font-semibold sm:text-base"
             align="left"
             :value="formatMoney(ledger.summary.open_advances)"
           />
         </div>
-        <div class="border-ligne rounded-lg border bg-white p-4">
+        <div class="border-ligne rounded-lg border bg-white p-3 sm:p-4">
           <p class="text-texte-2 text-xs font-semibold uppercase">
             {{ t('finance.partyLedger.netBalance') }}
           </p>
           <MonoValue
-            class="font-semibold"
+            class="text-sm font-semibold sm:text-base"
             align="left"
             :class="Number(ledger.summary.net_balance) < 0 ? 'text-critique' : 'text-livre'"
             :value="formatMoney(ledger.summary.net_balance)"
           />
         </div>
-        <div class="border-ligne rounded-lg border bg-white p-4">
+        <div class="border-ligne rounded-lg border bg-white p-3 sm:p-4">
           <p class="text-texte-2 text-xs font-semibold uppercase">
             {{ t('finance.partyLedger.lastMovement') }}
           </p>
