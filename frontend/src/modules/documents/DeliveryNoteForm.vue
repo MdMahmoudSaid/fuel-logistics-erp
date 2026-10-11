@@ -21,7 +21,7 @@ interface CustomerOption {
 }
 
 const { t } = useI18n()
-const { documentId, current, saving, busy, error, load, save, pdf, print, back } =
+const { current, saving, busy, error, load, save, pdf, print, back } =
   useDocumentForm<DeliveryNote>('delivery')
 
 const customers = ref<CustomerOption[]>([])
@@ -140,7 +140,7 @@ function onSubmit() {
   <div class="max-w-5xl space-y-5">
     <DocumentFormHeader
       :title="title"
-      :saved="!!documentId"
+      :saved="!!current"
       :busy="busy"
       @pdf="pdf"
       @print="print"

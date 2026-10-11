@@ -30,10 +30,14 @@ export function useDocumentForm<T extends { id: number; reference: string }>(kin
     saving.value = true
     error.value = ''
     try {
-      if (documentId.value) {
-        current.value = await api.update(documentId.value, payload)
+      const id = current.value?.id ?? documentId.value
+      if (id) {
+        current.value = await api.update(id, payload)
       } else {
+        // Kept here: the router reuses this same form for the detail route
+        // (no remount), so PDF / Print need the created document now.
         const created = await api.create(payload)
+        current.value = created
         router.replace({ name: config.detailRoute, params: { id: created.id } })
       }
     } catch {

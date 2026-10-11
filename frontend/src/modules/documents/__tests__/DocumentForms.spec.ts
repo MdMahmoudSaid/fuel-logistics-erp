@@ -91,8 +91,12 @@ const fetchDeliverableTrips = vi.fn(async (_customer: number) => [
     other_notes: ['BL-202610-0001'],
   },
 ])
+const downloadDocumentPdf = vi.fn(async () => undefined)
+const printDocumentPdf = vi.fn(async () => undefined)
 vi.mock('../api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api')>()),
+  downloadDocumentPdf: (...args: unknown[]) => downloadDocumentPdf(...(args as [])),
+  printDocumentPdf: (...args: unknown[]) => printDocumentPdf(...(args as [])),
   fetchDeliverableTrips: (id: number) => fetchDeliverableTrips(id),
 }))
 vi.mock('@/modules/settings/api', () => ({
@@ -190,5 +194,30 @@ describe('document forms', () => {
     await flushPromises()
     expect(wrapper.text()).not.toContain('Impossible de charger les documents.')
     expect(wrapper.findAll('select option').map((o) => o.text())).toContain('Vivo Energy')
+  })
+
+  it('PDF and Print work right after the first save, without reloading the page', async () => {
+    const wrapper = mount(PurchaseOrderForm)
+    await flushPromises()
+    expect(wrapper.find('[data-test="doc-form-pdf"]').exists()).toBe(false)
+    await wrapper.find('[data-test="po-prefill"]').setValue('8')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    await wrapper.find('[data-test="doc-form-pdf"]').trigger('click')
+    await wrapper.find('[data-test="doc-form-print"]').trigger('click')
+    await flushPromises()
+    expect(downloadDocumentPdf).toHaveBeenCalledWith(
+      '/purchase-order-documents/',
+      5,
+      'bon-commande-X-1.pdf',
+      'fr',
+    )
+    expect(printDocumentPdf).toHaveBeenCalledWith('/purchase-order-documents/', 5, 'fr')
+
+    // A second save updates the created document instead of creating another.
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+    expect(create).toHaveBeenCalledTimes(1)
   })
 })

@@ -144,6 +144,8 @@ async function onSubmit() {
   try {
     if (isNew.value) {
       const created = await quotationResource.create(payload)
+      // Same form instance on the detail route: PDF / Print need it now.
+      quotation.value = created
       router.replace({ name: 'quotation-detail', params: { id: created.id } })
     } else {
       quotation.value = await quotationResource.update(quotationId.value!, payload)
