@@ -1,4 +1,4 @@
-# The same 22 report slugs must exist in the API registry, the document specs,
+# The same 24 report slugs must exist in the API registry, the document specs,
 # the label catalog and the frontend selector (REPORT_TYPES), so a report can
 # never work in the API but be missing from the sheet or the selector.
 # Also pins the export/legacy contract of the reports added on 2026-09-23.
@@ -35,12 +35,12 @@ def frontend_slugs():
     return re.findall(r"value: '([a-z-]+)'", body)
 
 
-def test_the_same_22_slugs_exist_in_registry_specs_labels_and_frontend_selector():
+def test_the_same_24_slugs_exist_in_registry_specs_labels_and_frontend_selector():
     slugs = set(REPORT_REGISTRY)
 
-    assert len(slugs) == 22 and set(NEW_SLUGS) <= slugs
+    assert len(slugs) == 24 and set(NEW_SLUGS) <= slugs
     assert set(REPORT_SPECS) == slugs
-    assert set(frontend_slugs()) == slugs and len(frontend_slugs()) == 22  # no duplicate entry
+    assert set(frontend_slugs()) == slugs and len(frontend_slugs()) == 24  # no duplicate entry
     for lang in LABELS:
         assert all(LABELS[lang].get(f"title.{slug}") for slug in slugs)
 

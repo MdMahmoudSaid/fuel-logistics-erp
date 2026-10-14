@@ -33,6 +33,12 @@ TITLES = {
     "trip-fee-debt-report": ("Dettes de frais de trajet", "Trip fee debts", "ديون رسوم الرحلات"),
     "general-debt-report": ("Dettes générales", "General debts", "الديون العامة"),
     "general-receivable-report": ("Créances clients", "Customer receivables", "مستحقات العملاء التفصيلية"),
+    "debts-summary-report": (
+        "Ce que nous devons (dettes)", "What we owe (debts)", "الديون التي علينا (ما علينا للغير)",
+    ),
+    "receivables-summary-report": (
+        "Ce qui nous est dû (créances)", "What is owed to us (receivables)", "الديون التي لنا (ما لنا عند الغير)",
+    ),
 }
 
 FIELDS = {
@@ -43,6 +49,8 @@ FIELDS = {
     "credit": ("Crédit", "Credit", "دائن"),
     "balance": ("Solde", "Balance", "الرصيد"),
     "amount": ("Montant", "Amount", "المبلغ"),
+    "party_type": ("Catégorie", "Category", "الفئة"),
+    "party": ("Nom", "Name", "الاسم"),
     "trip_reference": ("Trajet", "Trip", "الرحلة"),
     "base_amount": ("Montant brut", "Gross amount", "المبلغ الإجمالي"),
     "deduction_amount": ("Retenue", "Deduction", "الخصم"),
@@ -195,6 +203,13 @@ SUMMARY = {
     "receivable_invoiced_total": ("Total facturé (factures ouvertes)", "Total invoiced (open invoices)", "إجمالي المفوتر (الفواتير المفتوحة)"),
     "receivable_received_total": ("Total encaissé", "Total received", "إجمالي المحصّل"),
     "unallocated_credit_total": ("dont crédits non affectés (déduits)", "of which unallocated credits (deducted)", "منها الأرصدة غير المخصصة (مخصومة)"),
+    "debt_parties_count": ("Nombre de lignes", "Number of lines", "عدد البنود"),
+    "total_we_owe": ("Total des dettes (ce que nous devons)", "Total debts (what we owe)", "إجمالي الديون التي علينا"),
+    "receivable_parties_count": ("Nombre de lignes", "Number of lines", "عدد البنود"),
+    "total_owed_to_us": (
+        "Total des créances (ce qui nous est dû)", "Total receivables (what is owed to us)",
+        "إجمالي الديون التي لنا",
+    ),
     "total_receivable": ("Reste total à encaisser", "Total receivable", "إجمالي المتبقي للتحصيل"),
 }
 
@@ -319,6 +334,27 @@ ENUMS = {
         "opening_debt": ("Dette antérieure", "Prior debt", "دين سابق"),
         "credit": ("Crédit non affecté", "Unallocated credit", "رصيد غير مخصص"),
         "customer_total": ("Total client", "Customer total", "إجمالي العميل"),
+    },
+    "debtParty": {
+        "supplier": ("Fournisseur", "Supplier", "مورّد"),
+        "transporter": ("Transporteur", "Transporter", "ناقل"),
+        "fee_customs": ("Frais de trajet : Douane", "Trip fees: Customs", "رسوم الرحلات: الجمارك"),
+        "fee_transit": ("Frais de trajet : Transit", "Trip fees: Transit", "رسوم الرحلات: العبور"),
+        "fee_road_transit": (
+            "Frais de trajet : Transit routière", "Trip fees: Road transit", "رسوم الرحلات: العبور البري",
+        ),
+        "fee_border": ("Frais de trajet : Frontière", "Trip fees: Border", "رسوم الرحلات: الحدود"),
+        "fee_loading": ("Frais de trajet : Chargement", "Trip fees: Loading", "رسوم الرحلات: التحميل"),
+        "customer_credit": ("Avance reçue d'un client", "Advance received from a customer", "دفعة مقدّمة من عميل"),
+    },
+    "receivableParty": {
+        "customer": ("Client (impayés)", "Customer (unpaid)", "عميل (مستحقات غير مسددة)"),
+        "supplier_advance": (
+            "Avance versée à un fournisseur", "Advance paid to a supplier", "دفعة مقدّمة لمورّد",
+        ),
+        "transporter_advance": (
+            "Avance versée à un transporteur", "Advance paid to a transporter", "دفعة مقدّمة لناقل",
+        ),
     },
     "fuelComponent": {
         "SUPPLIER_RELIQUAT": ("Reliquat fournisseur", "Supplier balance", "رصيد المورد"),

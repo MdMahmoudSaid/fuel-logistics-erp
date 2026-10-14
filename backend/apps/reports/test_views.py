@@ -1490,6 +1490,8 @@ def _all_report_params(admin_user, suffix):
         "trip-fee-debt-report": {"fee_type": "customs"},
         "general-debt-report": {},
         "general-receivable-report": {},
+        "debts-summary-report": {},
+        "receivables-summary-report": {},
     }
 
 

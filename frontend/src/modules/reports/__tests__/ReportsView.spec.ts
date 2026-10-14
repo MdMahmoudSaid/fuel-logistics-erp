@@ -239,6 +239,8 @@ describe('ReportsView', () => {
       ['trip-fee-debt-report', 'Dettes de frais de trajet', false],
       ['general-debt-report', 'Dettes générales', false],
       ['general-receivable-report', 'Créances clients (détail)', false],
+      ['debts-summary-report', 'Ce que nous devons (dettes)', false],
+      ['receivables-summary-report', 'Ce qui nous est dû (créances)', false],
     ] as const
 
     it.each(NEW)(

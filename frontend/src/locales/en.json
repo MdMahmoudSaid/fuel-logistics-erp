@@ -1837,6 +1837,12 @@
       },
       "general-receivable-report": {
         "label": "Customer receivables (detail)"
+      },
+      "debts-summary-report": {
+        "label": "What we owe (debts)"
+      },
+      "receivables-summary-report": {
+        "label": "What is owed to us (receivables)"
       }
     },
     "fields": {

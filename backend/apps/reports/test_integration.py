@@ -190,6 +190,8 @@ def test_all_report_types_return_valid_structured_data_via_the_api():
         "trip-fee-debt-report": {"fee_type": "all"},
         "general-debt-report": {},
         "general-receivable-report": {},
+        "debts-summary-report": {},
+        "receivables-summary-report": {},
     }
 
     assert set(params_by_report_type) == set(REPORT_REGISTRY)

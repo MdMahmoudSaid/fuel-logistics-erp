@@ -57,6 +57,8 @@ export const REPORT_TYPES: ReportTypeOption[] = [
   },
   { value: 'general-debt-report', label: 'General debt report', periodless: true },
   { value: 'general-receivable-report', label: 'General receivable report', periodless: true },
+  { value: 'debts-summary-report', label: 'Debts summary report', periodless: true },
+  { value: 'receivables-summary-report', label: 'Receivables summary report', periodless: true },
   {
     value: 'bank-statement',
     label: 'Bank statement',

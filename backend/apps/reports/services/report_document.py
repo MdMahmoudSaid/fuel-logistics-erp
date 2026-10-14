@@ -266,6 +266,13 @@ def _general_receivable_summary(slug, rows, context):
     ]
 
 
+def _party_total_summary(count_key, total_key):
+    def summarize(slug, rows, context):
+        return [_line(count_key, len(rows), "count"), _line(total_key, _sum(rows, "amount"), "money", True)]
+
+    return summarize
+
+
 def _outstanding_summary(count_key):
     def summarize(slug, rows, context):
         return [
@@ -480,6 +487,16 @@ REPORT_SPECS = {
         ),
         _general_receivable_summary,
         period_mode="as_of",
+    ),
+    "debts-summary-report": ReportSpec(
+        "portrait",
+        (TableSpec((("party_type", "enum", "debtParty"), ("party", "text"), ("amount", "money"))),),
+        _party_total_summary("debt_parties_count", "total_we_owe"), period_mode="as_of",
+    ),
+    "receivables-summary-report": ReportSpec(
+        "portrait",
+        (TableSpec((("party_type", "enum", "receivableParty"), ("party", "text"), ("amount", "money"))),),
+        _party_total_summary("receivable_parties_count", "total_owed_to_us"), period_mode="as_of",
     ),
     "customer-outstanding": ReportSpec(
         "portrait", (TableSpec((("customer", "text"), ("outstanding", "money"))),),

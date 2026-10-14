@@ -13,6 +13,7 @@ from apps.reports.export import rows_to_csv, rows_to_xlsx
 from apps.reports.queries.capital_report import CapitalReportQuery
 from apps.reports.queries.customer_outstanding_report import CustomerOutstandingReportQuery
 from apps.reports.queries.customer_statement import CustomerStatementQuery
+from apps.reports.queries.debts_summary_report import DebtsSummaryReportQuery
 from apps.reports.queries.expense_report import ExpenseReportQuery
 from apps.reports.queries.fuel_stock_report import FuelStockReportQuery
 from apps.reports.queries.general_debt_report import GeneralDebtReportQuery
@@ -21,6 +22,7 @@ from apps.reports.queries.general_receivable_report import GeneralReceivableRepo
 from apps.reports.queries.loss_report import LossReportQuery
 from apps.reports.queries.margin_report import MarginReportQuery
 from apps.reports.queries.purchase_report import PurchaseReportQuery
+from apps.reports.queries.receivables_summary_report import ReceivablesSummaryReportQuery
 from apps.reports.queries.sales_report import SalesReportQuery
 from apps.reports.queries.shareholder_statement import ShareholderStatementQuery
 from apps.reports.queries.supplier_outstanding_report import SupplierOutstandingReportQuery
@@ -62,6 +64,8 @@ REPORT_REGISTRY = {
     "trip-fee-debt-report": TripFeeDebtReportQuery,
     "general-debt-report": GeneralDebtReportQuery,
     "general-receivable-report": GeneralReceivableReportQuery,
+    "debts-summary-report": DebtsSummaryReportQuery,
+    "receivables-summary-report": ReceivablesSummaryReportQuery,
 }
 
 _EXPORT_CONTENT_TYPES = {

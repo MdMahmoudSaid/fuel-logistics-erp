@@ -1841,6 +1841,12 @@
       },
       "general-receivable-report": {
         "label": "Créances clients (détail)"
+      },
+      "debts-summary-report": {
+        "label": "Ce que nous devons (dettes)"
+      },
+      "receivables-summary-report": {
+        "label": "Ce qui nous est dû (créances)"
       }
     },
     "fields": {
