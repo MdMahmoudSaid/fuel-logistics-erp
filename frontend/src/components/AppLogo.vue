@@ -1,12 +1,12 @@
 <script setup lang="ts">
 /**
- * Marque AZUR ÉNERGIE : icône circulaire (goutte + globe, asset PNG
+ * Marque AZUR ÉNERGIE : monogramme AE + goutte (asset PNG transparent
  * recadré depuis le logo fourni - voir frontend/src/assets/
- * azur-energie-icon.png) accompagnée, en option, du wordmark.
+ * azur-energie-icon.png) accompagné, en option, du wordmark.
  *
- * L'icône a son propre fond circulaire opaque (bleu/or) et un fond
- * transparent autour, donc elle reste lisible sur fond clair ou sombre
- * sans traitement supplémentaire ; seul le texte du wordmark suit `tone`.
+ * Le monogramme est bleu foncé/or : sur fond sombre (`tone="light"`) il est
+ * posé sur une pastille blanche pour rester lisible ; le texte du wordmark
+ * suit aussi `tone`.
  */
 import azurEnergieIcon from '@/assets/azur-energie-icon.png'
 
@@ -33,6 +33,7 @@ withDefaults(
       alt=""
       aria-hidden="true"
       class="shrink-0 object-contain"
+      :class="tone === 'light' ? 'rounded-lg bg-white p-0.5' : ''"
       :style="{ width: `${size}px`, height: `${size}px` }"
     />
 
