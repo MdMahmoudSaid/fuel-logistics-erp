@@ -1,4 +1,4 @@
-# "Ce que nous devons" / "Ce qui nous est dû": one line per party, as of today
+# "Dettes à payer" / "Créances à encaisser" (قائمة المطالبات / قائمة المستحقات): one line per party, as of today
 # (client request 2026-10-14). Every amount must tie to the services behind the
 # payment screens; shareholder money never appears.
 
@@ -146,9 +146,9 @@ def test_supplier_advance_already_consumed_by_a_debt_is_not_counted_twice():
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("lang,debt_title,recv_title", [
-    ("fr", "Ce que nous devons (dettes)", "Ce qui nous est dû (créances)"),
-    ("en", "What we owe (debts)", "What is owed to us (receivables)"),
-    ("ar", "الديون التي علينا (ما علينا للغير)", "الديون التي لنا (ما لنا عند الغير)"),
+    ("fr", "Dettes à payer", "Créances à encaisser"),
+    ("en", "Debts to pay", "Receivables to collect"),
+    ("ar", "قائمة المطالبات", "قائمة المستحقات"),
 ])
 def test_titles_are_explicit_in_each_language(lang, debt_title, recv_title):
     assert _document("debts-summary-report", [], lang)["title"] == debt_title

@@ -1839,10 +1839,10 @@
         "label": "Customer receivables (detail)"
       },
       "debts-summary-report": {
-        "label": "What we owe (debts)"
+        "label": "Debts to pay"
       },
       "receivables-summary-report": {
-        "label": "What is owed to us (receivables)"
+        "label": "Receivables to collect"
       }
     },
     "fields": {

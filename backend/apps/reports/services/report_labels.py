@@ -34,10 +34,10 @@ TITLES = {
     "general-debt-report": ("Dettes générales", "General debts", "الديون العامة"),
     "general-receivable-report": ("Créances clients", "Customer receivables", "مستحقات العملاء التفصيلية"),
     "debts-summary-report": (
-        "Ce que nous devons (dettes)", "What we owe (debts)", "الديون التي علينا (ما علينا للغير)",
+        "Dettes à payer", "Debts to pay", "قائمة المطالبات",
     ),
     "receivables-summary-report": (
-        "Ce qui nous est dû (créances)", "What is owed to us (receivables)", "الديون التي لنا (ما لنا عند الغير)",
+        "Créances à encaisser", "Receivables to collect", "قائمة المستحقات",
     ),
 }
 

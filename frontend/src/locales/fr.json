@@ -1843,10 +1843,10 @@
         "label": "Créances clients (détail)"
       },
       "debts-summary-report": {
-        "label": "Ce que nous devons (dettes)"
+        "label": "Dettes à payer"
       },
       "receivables-summary-report": {
-        "label": "Ce qui nous est dû (créances)"
+        "label": "Créances à encaisser"
       }
     },
     "fields": {
