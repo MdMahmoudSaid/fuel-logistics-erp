@@ -610,6 +610,11 @@ export interface ShareholderContribution {
   reference: string
   notes: string
   proof_url: string | null
+  is_cancelled?: boolean
+  cancelled_at?: string | null
+  cancel_reason?: string
+  // Why this apport can no longer be cancelled / re-assigned (null = free).
+  blocked_reason?: string | null
   recorded_by: number | null
   recorded_by_detail: UserBrief | null
   created_at: string

@@ -45,6 +45,7 @@ import MonoValue from '@/components/ui/MonoValue.vue'
 import EntityForm from '@/components/master-data/EntityForm.vue'
 import type { FieldSchema } from '@/components/master-data/types'
 import ContributionForm from './ContributionForm.vue'
+import ContributionsSection from './ContributionsSection.vue'
 import ShareholderAdvancesPanel, {
   type TreasuryAccountOption,
 } from './ShareholderAdvancesPanel.vue'
@@ -805,6 +806,12 @@ async function onWithdrawalShareholderChange() {
       </div>
     </Card>
 
+    <ContributionsSection
+      v-if="activeTab === 'associates'"
+      :shareholders="shareholders"
+      @changed="loadShareholders"
+    />
+
     <!-- Section 2: Profit distributions -->
     <Card v-if="activeTab === 'distributions'" :title="t('finance.shareholder.distribution.title')">
       <AppAlert v-if="distributionError" :message="distributionError" />
@@ -1415,6 +1422,7 @@ async function onWithdrawalShareholderChange() {
                   v-for="c in contributions"
                   :key="c.id"
                   class="border-ligne border-b last:border-0"
+                  :class="c.is_cancelled ? 'text-texte-3 line-through' : ''"
                 >
                   <td class="px-2 py-1.5">{{ c.date }}</td>
                   <td class="px-2 py-1.5 text-end">

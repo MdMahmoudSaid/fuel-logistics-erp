@@ -481,6 +481,30 @@ export function reopenShareholderProfitPeriod(
     .then((r) => r.data)
 }
 
+export function cancelShareholderContribution(
+  id: number,
+  reason: string,
+): Promise<ShareholderContribution> {
+  return apiClient
+    .post<ShareholderContribution>(`/shareholder-contributions/${id}/cancel/`, { reason })
+    .then((r) => r.data)
+}
+
+export function updateShareholderContribution(
+  id: number,
+  payload: {
+    shareholder?: number
+    date?: string
+    reference?: string
+    notes?: string
+    reason?: string
+  },
+): Promise<ShareholderContribution> {
+  return apiClient
+    .patch<ShareholderContribution>(`/shareholder-contributions/${id}/`, payload)
+    .then((r) => r.data)
+}
+
 export function createShareholderContribution(payload: {
   shareholder: number
   bank_account?: number | null

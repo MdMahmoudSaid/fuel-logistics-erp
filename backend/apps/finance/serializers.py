@@ -1238,7 +1238,9 @@ class ShareholderSerializer(serializers.ModelSerializer):
         value = (
             annotated
             if annotated is not None
-            else obj.contributions.aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
+            else obj.contributions.filter(cancelled_at__isnull=True)
+            .aggregate(total=Sum("amount"))["total"]
+            or Decimal("0.00")
         )
         # Match every other DecimalField on this serializer (DRF renders
         # those as strings) - a SerializerMethodField doesn't get that
@@ -1563,6 +1565,9 @@ class ShareholderContributionSerializer(serializers.ModelSerializer):
     attachment = serializers.FileField(write_only=True, required=False, allow_null=True, default=None)
     proof_url = serializers.SerializerMethodField()
     remaining_capital = serializers.DecimalField(max_digits=16, decimal_places=2, read_only=True)
+    is_cancelled = serializers.BooleanField(read_only=True)
+    blocked_reason = serializers.SerializerMethodField()
+    reason = serializers.CharField(write_only=True, required=False, allow_blank=True, default="")
 
     class Meta:
         model = ShareholderContribution
@@ -1571,8 +1576,15 @@ class ShareholderContributionSerializer(serializers.ModelSerializer):
             "remaining_capital", "date",
             "bank_account", "cash_account", "reference", "notes", "attachment", "proof_url",
             "recorded_by", "recorded_by_detail", "created_at", "updated_at",
+            "is_cancelled", "cancelled_at", "cancel_reason", "blocked_reason", "reason",
         ]
-        read_only_fields = ["id", "amount_returned", "remaining_capital", "recorded_by", "created_at", "updated_at"]
+        read_only_fields = [
+            "id", "amount_returned", "remaining_capital", "recorded_by", "created_at", "updated_at",
+            "cancelled_at", "cancel_reason",
+        ]
+
+    def get_blocked_reason(self, obj) -> str | None:
+        return ShareholderContributionService.blocking_reason(obj)
 
     def get_proof_url(self, obj) -> str | None:
         if not obj.document_id or not obj.document.file:
@@ -1585,6 +1597,9 @@ class ShareholderContributionSerializer(serializers.ModelSerializer):
         return validate_image_upload(value)
 
     def validate(self, data):
+        if self.instance is not None:
+            # Edit: the account is fixed (checked in update()).
+            return data
         bank_account = data.get("bank_account")
         cash_account = data.get("cash_account")
         if bank_account and cash_account:
@@ -1613,4 +1628,25 @@ class ShareholderContributionSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(str(exc))
 
     def update(self, instance, validated_data):
-        raise serializers.ValidationError("Un apport enregistre ne peut pas etre modifie.")
+        # Amount and account are never editable (cancel and re-enter).
+        for locked in ("amount", "bank_account", "cash_account"):
+            if locked in validated_data:
+                new = validated_data[locked]
+                current = getattr(instance, locked)
+                if new != current:
+                    raise serializers.ValidationError(
+                        {locked: "Le montant et le compte ne se modifient pas : annulez puis saisissez a nouveau."}
+                    )
+        shareholder = validated_data.get("shareholder")
+        try:
+            return ShareholderContributionService.update_contribution(
+                instance, self.context["request"].user,
+                reason=validated_data.get("reason", ""),
+                shareholder_id=shareholder.id if shareholder else None,
+                date=validated_data.get("date"),
+                reference=validated_data.get("reference"),
+                notes=validated_data.get("notes"),
+                attachment=validated_data.get("attachment"),
+            )
+        except ShareholderContributionError as exc:
+            raise serializers.ValidationError(str(exc))

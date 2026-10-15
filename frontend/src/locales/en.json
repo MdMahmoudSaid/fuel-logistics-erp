@@ -1299,6 +1299,25 @@
         "repaidToYou": "Repaid by {name}",
         "empty": "No advance.",
         "undrawn": "Of which {amount} not yet withdrawn."
+      },
+      "capitalList": {
+        "title": "Capital contributions",
+        "help": "Correct or cancel a contribution. The amount and account cannot be edited: cancel and enter it again.",
+        "remaining": "Remaining",
+        "status": {
+          "active": "Active",
+          "partial": "Partly withdrawn",
+          "cancelled": "Cancelled"
+        },
+        "cancel": "Cancel contribution",
+        "cancelTitle": "Cancel this contribution",
+        "cancelWarning": "The balance of {account} will decrease by {amount}. The contribution stays visible in the history with its reason.",
+        "editTitle": "Edit contribution",
+        "reason": "Reason (required)",
+        "amountLocked": "The amount and account cannot be edited: cancel the contribution and enter it again.",
+        "loadError": "Could not load contributions.",
+        "saveError": "Could not edit this contribution.",
+        "cancelError": "Could not cancel this contribution."
       }
     },
     "profit": {

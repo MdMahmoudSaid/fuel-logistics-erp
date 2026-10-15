@@ -38,7 +38,8 @@ class CapitalReportQuery:
     def run(cls, *, date_from=None, date_to=None) -> list[dict]:
         total_capital = ShareholderContributionService.get_total_capital()
         later = dict(
-            ShareholderContribution.objects.values("shareholder_id")
+            ShareholderContribution.objects.filter(cancelled_at__isnull=True)
+            .values("shareholder_id")
             .annotate(total=Sum("amount"))
             .values_list("shareholder_id", "total")
         )
@@ -60,9 +61,11 @@ class CapitalReportQuery:
                 }
             )
 
-        contributions = ShareholderContribution.objects.select_related(
-            "shareholder", "bank_account", "cash_account"
-        ).order_by("date", "id")
+        contributions = (
+            ShareholderContribution.objects.filter(cancelled_at__isnull=True)
+            .select_related("shareholder", "bank_account", "cash_account")
+            .order_by("date", "id")
+        )
         if date_from:
             contributions = contributions.filter(date__gte=date_from)
         if date_to:

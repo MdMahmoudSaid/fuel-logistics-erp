@@ -95,6 +95,8 @@ vi.mock('../api', () => ({
   reopenShareholderProfitPeriod: (...args: unknown[]) => reopenShareholderProfitPeriod(...args),
   recordShareholderLoanRepayment: vi.fn(),
   createShareholderContribution: vi.fn(),
+  cancelShareholderContribution: vi.fn(),
+  updateShareholderContribution: vi.fn(),
 }))
 
 vi.mock('@/api/resource', () => ({

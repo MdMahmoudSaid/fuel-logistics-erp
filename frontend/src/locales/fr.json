@@ -1301,6 +1301,25 @@
         "repaidToYou": "Remboursé par {name}",
         "empty": "Aucune avance.",
         "undrawn": "Dont {amount} pas encore retirés."
+      },
+      "capitalList": {
+        "title": "Apports en capital",
+        "help": "Corrigez ou annulez un apport. Le montant et le compte ne se modifient pas : annulez puis saisissez à nouveau.",
+        "remaining": "Restant",
+        "status": {
+          "active": "Actif",
+          "partial": "Partiellement retiré",
+          "cancelled": "Annulé"
+        },
+        "cancel": "Annuler l'apport",
+        "cancelTitle": "Annuler cet apport",
+        "cancelWarning": "Le solde de {account} diminuera de {amount}. L'apport reste visible dans l'historique avec le motif.",
+        "editTitle": "Modifier l'apport",
+        "reason": "Motif (obligatoire)",
+        "amountLocked": "Le montant et le compte ne sont pas modifiables : annulez l'apport puis saisissez-le à nouveau.",
+        "loadError": "Impossible de charger les apports.",
+        "saveError": "Impossible de modifier cet apport.",
+        "cancelError": "Impossible d'annuler cet apport."
       }
     },
     "profit": {

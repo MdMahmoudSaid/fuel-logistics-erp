@@ -1604,6 +1604,14 @@ class ShareholderContribution(AuditableModel, TimeStampedModel):
     amount_returned = models.DecimalField(
         max_digits=16, decimal_places=2, default=0, editable=False
     )
+    # Admin-only cancellation (2026-10-15): the row is kept, an offsetting
+    # MONEY_OUT is posted, and every capital total ignores it.
+    cancelled_at = models.DateTimeField(null=True, blank=True, editable=False)
+    cancelled_by = models.ForeignKey(
+        "accounts.User", on_delete=models.PROTECT, null=True, blank=True,
+        editable=False, related_name="shareholder_contributions_cancelled",
+    )
+    cancel_reason = models.TextField(blank=True, editable=False)
 
     class Meta:
         ordering = ["-date", "-id"]
@@ -1637,7 +1645,13 @@ class ShareholderContribution(AuditableModel, TimeStampedModel):
         return f"{self.shareholder}: {self.amount} ({self.date})"
 
     @property
+    def is_cancelled(self) -> bool:
+        return self.cancelled_at is not None
+
+    @property
     def remaining_capital(self) -> Decimal:
+        if self.is_cancelled:
+            return Decimal("0.00")
         return self.amount - self.amount_returned
 
     def sync_amount_returned(self) -> Decimal:

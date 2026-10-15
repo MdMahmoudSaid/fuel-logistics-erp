@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from django.db.models.functions import Coalesce
 from django.http import HttpResponse
 from rest_framework import status as http_status
@@ -76,6 +76,8 @@ from .services import (
     CustomerPaymentCancellationError,
     CustomerPaymentCancellationService,
     OpeningDebtError,
+    ShareholderContributionError,
+    ShareholderContributionService,
     OpeningDebtService,
     ControlledDebtPaymentError,
     ControlledDebtPaymentService,
@@ -739,7 +741,10 @@ class ShareholderViewSet(viewsets.ModelViewSet):
     # to show each shareholder's real capital apporte (bug fix, 2026-09-03
     # recette manuelle - see ShareholderSerializer.total_contributed).
     queryset = Shareholder.objects.annotate(
-        total_contributed=Coalesce(Sum("contributions__amount"), Decimal("0.00"))
+        total_contributed=Coalesce(
+            Sum("contributions__amount", filter=Q(contributions__cancelled_at__isnull=True)),
+            Decimal("0.00"),
+        )
     )
     serializer_class = ShareholderSerializer
     filterset_fields = ["is_active"]
@@ -1000,6 +1005,22 @@ class ShareholderContributionViewSet(viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         raise MethodNotAllowed("DELETE", detail=_NO_HARD_DELETE_DETAIL)
+
+    @action(detail=True, methods=["post"])
+    def cancel(self, request, pk=None):
+        """Admin-only contre-passation of a capital contribution.
+
+        POST /api/shareholder-contributions/{id}/cancel/  {"reason": "..."}
+        """
+        try:
+            contribution = ShareholderContributionService.cancel_contribution(
+                self.get_object(), request.user, request.data.get("reason", "")
+            )
+        except ShareholderContributionError as exc:
+            return Response({"detail": str(exc)}, status=http_status.HTTP_400_BAD_REQUEST)
+        return Response(
+            ShareholderContributionSerializer(contribution, context={"request": request}).data
+        )
 
 
 # Entity kinds ExpenseAllocation.content_object can point at (guide Section

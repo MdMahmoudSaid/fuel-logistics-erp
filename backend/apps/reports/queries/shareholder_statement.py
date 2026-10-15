@@ -76,7 +76,7 @@ class ShareholderStatementQuery:
             .select_related("distribution")
         )
         contributions = ShareholderContribution.objects.filter(
-            shareholder_id=shareholder_id
+            shareholder_id=shareholder_id, cancelled_at__isnull=True
         ).select_related("bank_account", "cash_account")
         withdrawals = ShareholderWithdrawal.objects.filter(
             shareholder_id=shareholder_id

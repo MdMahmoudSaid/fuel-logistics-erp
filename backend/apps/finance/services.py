@@ -15,6 +15,8 @@ from django.db import connection, transaction
 from django.db.models import F, Q, Sum
 from django.utils import timezone
 
+from apps.accounts.models import Role
+
 from apps.core.request_cache import memoize_per_request
 from apps.documents.models import Document
 from apps.finance.models import (
@@ -2976,7 +2978,7 @@ class ShareholderWithdrawalService:
         if amount_left > 0:
             contributions = (
                 ShareholderContribution.objects.select_for_update()
-                .filter(shareholder_id=shareholder_id)
+                .filter(shareholder_id=shareholder_id, cancelled_at__isnull=True)
                 .order_by("date", "id")
             )
             for contribution in contributions:
@@ -3077,10 +3079,128 @@ class ShareholderContributionService:
         return contribution
 
     @staticmethod
+    def _is_admin(user) -> bool:
+        return bool(
+            user
+            and (user.is_superuser or (user.role and user.role.name == Role.NAME_ADMIN))
+        )
+
+    @staticmethod
+    def blocking_reason(contribution) -> str | None:
+        """Why this contribution can no longer be cancelled or have its
+        sensitive fields changed (None = free). Shown by the UI as the
+        disabled-button tooltip."""
+        if contribution.is_cancelled:
+            return "Cet apport est deja annule."
+        if contribution.amount_returned > ZERO:
+            return (
+                "Une partie de cet apport a deja ete retiree : "
+                "annulez d'abord les retraits qui l'ont utilise."
+            )
+        return None
+
+    @staticmethod
+    @transaction.atomic
+    def cancel_contribution(contribution, actor, reason) -> ShareholderContribution:
+        """Admin-only contre-passation: keep the row, post an offsetting
+        MONEY_OUT on the same account, flag it cancelled. Refused when part
+        of it was already withdrawn, or when the account no longer holds the
+        money (it would go negative)."""
+        if not ShareholderContributionService._is_admin(actor):
+            raise ShareholderContributionError("Seul un administrateur peut annuler un apport.")
+        reason = (reason or "").strip()
+        if not reason:
+            raise ShareholderContributionError("Le motif d'annulation est obligatoire.")
+
+        contribution = ShareholderContribution.objects.select_for_update().get(pk=contribution.pk)
+        blocked = ShareholderContributionService.blocking_reason(contribution)
+        if blocked:
+            raise ShareholderContributionError(blocked)
+
+        account = contribution.bank_account or contribution.cash_account
+        account = type(account).objects.select_for_update().get(pk=account.pk)
+        if account.current_balance < contribution.amount:
+            raise ShareholderContributionError(
+                "Le solde du compte ne couvre plus cet apport (l'argent a deja ete utilise) : "
+                "annulez d'abord les depenses ou paiements qui l'ont consomme."
+            )
+
+        TreasuryTransaction.objects.create(
+            bank_account=contribution.bank_account, cash_account=contribution.cash_account,
+            type=TreasuryTransaction.Type.MONEY_OUT, amount=contribution.amount,
+            date=timezone.localdate(),
+            note=f"Annulation apport en capital #{contribution.id} : {reason}",
+            source_content_type=ContentType.objects.get_for_model(ShareholderContribution),
+            source_object_id=contribution.id, recorded_by=actor,
+        )
+        contribution.cancelled_at = timezone.now()
+        contribution.cancelled_by = actor
+        contribution.cancel_reason = reason
+        contribution.save(update_fields=["cancelled_at", "cancelled_by", "cancel_reason", "updated_at"])
+        return contribution
+
+    @staticmethod
+    @transaction.atomic
+    def update_contribution(
+        contribution, actor, *, reason="", shareholder_id=None, date=None,
+        reference=None, notes=None, attachment=None,
+    ) -> ShareholderContribution:
+        """Reference/notes/proof are always editable. Changing the
+        shareholder or the date needs an untouched contribution (nothing
+        withdrawn, not cancelled) and a reason; amount/account are never
+        edited - cancel and re-enter."""
+        contribution = ShareholderContribution.objects.select_for_update().get(pk=contribution.pk)
+        if contribution.is_cancelled:
+            raise ShareholderContributionError("Un apport annule ne peut plus etre modifie.")
+
+        sensitive = (
+            (shareholder_id is not None and int(shareholder_id) != contribution.shareholder_id)
+            or (date is not None and date != contribution.date)
+        )
+        if sensitive:
+            if contribution.amount_returned > ZERO:
+                raise ShareholderContributionError(
+                    "Une partie de cet apport a deja ete retiree : l'associe et la date ne "
+                    "peuvent plus etre modifies."
+                )
+            if not (reason or "").strip():
+                raise ShareholderContributionError("Le motif de la modification est obligatoire.")
+            if shareholder_id is not None and int(shareholder_id) != contribution.shareholder_id:
+                contribution.shareholder = Shareholder.objects.select_for_update().get(pk=shareholder_id)
+            if date is not None:
+                contribution.date = date
+        if reference is not None:
+            contribution.reference = reference
+        if notes is not None:
+            contribution.notes = notes
+        if attachment:
+            contribution.document = Document.objects.create(
+                file=attachment, document_type="shareholder_contribution_proof",
+                reference=contribution.reference, uploaded_by=actor,
+                content_type=ContentType.objects.get_for_model(ShareholderContribution),
+                object_id=contribution.id,
+            )
+        contribution.save()
+
+        # Keep the original MONEY_IN consistent with the edited fields.
+        TreasuryTransaction.objects.filter(
+            source_content_type=ContentType.objects.get_for_model(ShareholderContribution),
+            source_object_id=contribution.id, type=TreasuryTransaction.Type.MONEY_IN,
+        ).update(
+            date=contribution.date, reference=contribution.reference, note=contribution.notes,
+            document=contribution.document, updated_at=timezone.now(),
+        )
+        return contribution
+
+    @staticmethod
     @memoize_per_request
     def get_total_capital() -> Decimal:
         opening_balances = Shareholder.objects.aggregate(total=Sum("contribution"))["total"] or ZERO
-        contributions = ShareholderContribution.objects.aggregate(total=Sum("amount"))["total"] or ZERO
+        contributions = (
+            ShareholderContribution.objects.filter(cancelled_at__isnull=True)
+            .aggregate(total=Sum("amount"))["total"]
+            or ZERO
+        )
         return opening_balances + contributions
 
 
@@ -3654,7 +3774,9 @@ class ShareholderLedgerService:
             or ZERO
         )
         capital_remaining = (
-            ShareholderContribution.objects.filter(shareholder_id=shareholder_id)
+            ShareholderContribution.objects.filter(
+                shareholder_id=shareholder_id, cancelled_at__isnull=True
+            )
             .aggregate(total=Sum(F("amount") - F("amount_returned")))["total"]
             or ZERO
         )
@@ -3894,10 +4016,14 @@ class ShareholderLedgerService:
         # total_contributed here is just the one aggregate this summary
         # needs to show alongside remaining_due/available_balance.
         total_contributed = (
-            shareholder.contributions.aggregate(total=Sum("amount"))["total"] or ZERO
+            shareholder.contributions.filter(cancelled_at__isnull=True)
+            .aggregate(total=Sum("amount"))["total"]
+            or ZERO
         )
         capital_returned = (
-            shareholder.contributions.aggregate(total=Sum("amount_returned"))["total"] or ZERO
+            shareholder.contributions.filter(cancelled_at__isnull=True)
+            .aggregate(total=Sum("amount_returned"))["total"]
+            or ZERO
         )
         capital_remaining = total_contributed - capital_returned
 
