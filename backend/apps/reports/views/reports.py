@@ -120,6 +120,10 @@ class ReportViewSet(viewsets.ViewSet):
             params["date_from"] = date_from
         if date_to:
             params["date_to"] = date_to
+        if pk in ("bank-statement", "cash-statement"):
+            # No account picked: the statement covers every account of that
+            # kind (all banks / all cash desks), not the whole treasury.
+            params["scope"] = "bank" if pk == "bank-statement" else "cash"
         if pk == "margin-report" and is_current_period(request.query_params):
             params["since_last_closure"] = True
         try:

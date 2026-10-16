@@ -40,9 +40,13 @@ class TreasuryStatementQuery:
     FIELDS = FIELDS
 
     @staticmethod
-    def _load(bank_account_id, cash_account_id):
+    def _load(bank_account_id, cash_account_id, scope=None):
         """(transactions ordered by date/id, account opening balance, date the
-        account was opened)."""
+        account was opened).
+
+        With no account chosen, `scope` ("bank" or "cash", set by the report
+        view from the report type) makes the statement cover every account of
+        that kind - never the other kind's money."""
         transactions = TreasuryTransaction.objects.all()
         opened_on = None
         if bank_account_id:
@@ -53,10 +57,16 @@ class TreasuryStatementQuery:
             transactions = transactions.filter(cash_account_id=cash_account_id)
             account = CashAccount.objects.get(pk=cash_account_id)
             balance, opened_on = account.opening_balance, account.created_at.date()
+        elif scope in ("bank", "cash"):
+            model = BankAccount if scope == "bank" else CashAccount
+            transactions = transactions.filter(**{f"{scope}_account__isnull": False})
+            accounts = list(model.objects.all())
+            balance = sum((a.opening_balance for a in accounts), Decimal("0.00"))
+            opened_on = min((a.created_at.date() for a in accounts), default=None)
         else:
             balance = Decimal("0.00")
         return (
-            transactions.select_related("source_content_type")
+            transactions.select_related("source_content_type", "bank_account", "cash_account")
             .prefetch_related("source_object")
             .order_by("date", "id"),
             balance,
@@ -74,14 +84,16 @@ class TreasuryStatementQuery:
         return txn.amount if txn.type == TreasuryTransaction.Type.MONEY_IN else -txn.amount
 
     @classmethod
-    def run(cls, *, bank_account_id=None, cash_account_id=None, date_from=None, date_to=None) -> list[dict]:
+    def run(
+        cls, *, bank_account_id=None, cash_account_id=None, date_from=None, date_to=None, scope=None
+    ) -> list[dict]:
         date_from = _as_date(date_from)
         date_to = _as_date(date_to)
         # Walk the account's *entire* transaction history in order, so the
         # running balance is always correct - date_from/date_to only decide
         # which rows are emitted below, exactly like the transfer exclusion,
         # rather than truncating the balance calculation itself.
-        transactions, balance, opened_on = cls._load(bank_account_id, cash_account_id)
+        transactions, balance, opened_on = cls._load(bank_account_id, cash_account_id, scope)
 
         rows = []
         opening = balance
@@ -99,6 +111,10 @@ class TreasuryStatementQuery:
                 reference = f"{counterparty} ({txn.reference})" if counterparty and txn.reference else (
                     counterparty or txn.reference
                 )
+            if scope and not (bank_account_id or cash_account_id):
+                # All accounts of the kind in one statement: say which one.
+                account = txn.bank_account or txn.cash_account
+                reference = f"{account.name} - {reference}" if reference else account.name
             rows.append(
                 {
                     "date": txn.date,
@@ -131,7 +147,7 @@ class TreasuryStatementQuery:
 
     @classmethod
     def statement_context(
-        cls, *, bank_account_id=None, cash_account_id=None, date_from=None, date_to=None
+        cls, *, bank_account_id=None, cash_account_id=None, date_from=None, date_to=None, scope=None
     ) -> dict:
         """Reconciliation figures for the summary block (spec section
         Internal transfers): opening + period_in - period_out + transfers_net
@@ -141,7 +157,7 @@ class TreasuryStatementQuery:
         equation is a real check rather than a tautology."""
         date_from = _as_date(date_from)
         date_to = _as_date(date_to)
-        transactions, account_opening, _opened_on = cls._load(bank_account_id, cash_account_id)
+        transactions, account_opening, _opened_on = cls._load(bank_account_id, cash_account_id, scope)
 
         zero = Decimal("0.00")
         opening = closing = account_opening

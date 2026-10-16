@@ -1131,6 +1131,47 @@ def test_treasury_statement_starts_with_the_opening_balance_as_an_entry():
     assert carried[0]["amount"] == Decimal("380000.00")
 
 
+@pytest.mark.django_db
+def test_statement_without_an_account_covers_only_that_kind_of_account():
+    from rest_framework.test import APIClient
+
+    admin_user = _make_admin("TREASSCOPE")
+    bank_a = BankAccount.objects.create(name="Bank A SCOPE", opening_balance=Decimal("1000.00"))
+    bank_b = BankAccount.objects.create(name="Bank B SCOPE", opening_balance=Decimal("500.00"))
+    cash = CashAccount.objects.create(name="Cash SCOPE", opening_balance=Decimal("70.00"))
+    TreasuryTransaction.objects.create(
+        bank_account=bank_a, type=TreasuryTransaction.Type.MONEY_IN, amount=Decimal("100.00"),
+        date="2026-08-20", reference="R1", recorded_by=admin_user,
+    )
+    TreasuryTransaction.objects.create(
+        cash_account=cash, type=TreasuryTransaction.Type.MONEY_OUT, amount=Decimal("20.00"),
+        date="2026-08-21", recorded_by=admin_user,
+    )
+
+    bank_rows = TreasuryStatementQuery.run(scope="bank")
+    cash_rows = TreasuryStatementQuery.run(scope="cash")
+
+    # Banks only: opening 1500 (both banks) then the one bank movement; no cash money.
+    assert [r["kind"] for r in bank_rows] == ["opening", "movement"]
+    assert bank_rows[0]["amount"] == Decimal("1500.00")
+    assert bank_rows[1]["reference"] == "Bank A SCOPE - R1"
+    assert bank_rows[-1]["balance"] == Decimal("1600.00")
+    # Cash only: opening 70 then the 20 out.
+    assert cash_rows[0]["amount"] == Decimal("70.00")
+    assert cash_rows[-1]["balance"] == Decimal("50.00")
+    context = TreasuryStatementQuery.statement_context(scope="bank")
+    assert context["opening_balance"] == Decimal("1500.00")
+    assert context["closing_balance"] == Decimal("1600.00")
+
+    # Through the API, the report type alone decides the scope.
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    api_bank = client.get("/api/reports/bank-statement/").json()["rows"]
+    api_cash = client.get("/api/reports/cash-statement/").json()["rows"]
+    assert api_bank[-1]["balance"] == "1600.00"
+    assert api_cash[-1]["balance"] == "50.00"
+
+
 # ---------------------------------------------------------------------------
 # ShareholderStatementQuery
 # ---------------------------------------------------------------------------
