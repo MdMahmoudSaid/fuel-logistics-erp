@@ -248,7 +248,27 @@ def test_treasury_summary_uses_the_signed_reconciliation_equation():
     assert lines["total_in"]["value"] == D("500.00") and lines["total_out"]["value"] == D("100.00")
     assert lines["internal_transfers"]["value"] == D("-30.00")
     assert lines["closing_balance"]["value"] == D("1270.00")
-    assert document["opening_balance"]["value"] == D("900.00")
+    # The treasury statements list the opening balance as the first table row
+    # (an "Entrée" line) rather than as the separate balance-only row.
+    assert document["opening_balance"] is None
+
+
+def test_treasury_summary_leaves_the_opening_and_transfer_lines_out_of_the_period_totals():
+    rows = [
+        {"date": date(2026, 9, 1), "type": "MONEY_IN", "amount": D("900.00"), "reference": "Solde d'ouverture",
+         "balance": D("900.00"), "kind": "opening"},
+        {"date": date(2026, 9, 5), "type": "MONEY_IN", "amount": D("500.00"), "reference": "", "balance": D("1400.00"),
+         "kind": "movement"},
+        {"date": date(2026, 9, 8), "type": "MONEY_OUT", "amount": D("30.00"), "reference": "Transfert A -> B",
+         "balance": D("1370.00"), "kind": "transfer"},
+        {"date": date(2026, 9, 10), "type": "MONEY_OUT", "amount": D("100.00"), "reference": "", "balance": D("1270.00"),
+         "kind": "movement"},
+    ]
+    context = {"opening_balance": D("900.00"), "transfers_net": D("-30.00"), "closing_balance": D("1270.00")}
+    lines = summary(build("bank-statement", rows, statement_context=context))
+
+    assert lines["total_in"]["value"] == D("500.00") and lines["total_out"]["value"] == D("100.00")
+    assert "reconciliation_gap" not in lines
 
     broken = summary(build("cash-statement", rows, statement_context={**context, "closing_balance": D("1300.00")}))
     assert broken["reconciliation_gap"]["value"] == D("30.00")

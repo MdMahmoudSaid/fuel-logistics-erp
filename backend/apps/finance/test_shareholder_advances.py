@@ -865,7 +865,9 @@ def test_bank_statement_names_the_associate_when_no_reference(admin_client):
 
     rows = TreasuryStatementQuery.run(cash_account_id=cash.id)
 
-    assert [r["reference"] for r in rows] == [
+    # The account's opening balance is now the statement's first line.
+    assert rows[0]["kind"] == "opening"
+    assert [r["reference"] for r in rows[1:]] == [
         "Retrait associe - Associe 0",
         f"AVANCE-{loan.id}",
     ]

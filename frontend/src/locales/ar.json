@@ -842,6 +842,7 @@
       "saveError": "تعذر حفظ هذه الدفعة — تحقق من الحقول."
     },
     "transfer": {
+      "open": "تحويل",
       "title": "تحويل داخلي",
       "sameAccountError": "لا يمكن أن يكون المصدر والوجهة نفس الحساب.",
       "fromAccountType": "نوع حساب المصدر",
@@ -953,6 +954,7 @@
       "noAdvances": "لا توجد سلف."
     },
     "treasuryLedger": {
+      "openingBalance": "الرصيد الافتتاحي",
       "title": "سجل الخزينة",
       "internalTransfer": "تحويل داخلي",
       "newExpense": "+ مصروف جديد",

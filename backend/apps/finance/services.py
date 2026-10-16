@@ -2364,6 +2364,13 @@ class TreasuryService:
             dest_account_type, dest_account_id
         )
 
+        if not source_account.is_active or not dest_account.is_active:
+            raise TreasuryTransferError("Un compte inactif ne peut pas etre utilise dans un transfert.")
+        if Decimal(str(amount)) > source_account.current_balance:
+            raise TreasuryTransferError(
+                "Solde insuffisant sur le compte source pour effectuer ce transfert."
+            )
+
         common = dict(
             amount=amount, date=date, reference=reference, recorded_by=user, is_transfer=True
         )

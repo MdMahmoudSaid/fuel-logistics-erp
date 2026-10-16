@@ -842,6 +842,7 @@
       "saveError": "Could not record this payment — check the fields."
     },
     "transfer": {
+      "open": "Transfer",
       "title": "Internal Transfer",
       "sameAccountError": "Source and destination cannot be the same account.",
       "fromAccountType": "From account type",
@@ -953,6 +954,7 @@
       "noAdvances": "No advances yet."
     },
     "treasuryLedger": {
+      "openingBalance": "Opening balance",
       "title": "Treasury Journal",
       "internalTransfer": "Internal transfer",
       "newExpense": "+ New expense",

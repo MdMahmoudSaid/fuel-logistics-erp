@@ -138,8 +138,11 @@ def _shareholder_statement_summary(slug, rows, context):
 def _treasury_summary(slug, rows, context):
     opening = _dec(context.get("opening_balance")) or ZERO
     transfers = _dec(context.get("transfers_net")) or ZERO
-    total_in = sum((_dec(r["amount"]) for r in rows if r["type"] == "MONEY_IN"), ZERO)
-    total_out = sum((_dec(r["amount"]) for r in rows if r["type"] == "MONEY_OUT"), ZERO)
+    # The opening line and the transfer legs are listed in the table but have
+    # their own summary lines (opening_balance / internal_transfers).
+    plain = [r for r in rows if r.get("kind", "movement") == "movement"]
+    total_in = sum((_dec(r["amount"]) for r in plain if r["type"] == "MONEY_IN"), ZERO)
+    total_out = sum((_dec(r["amount"]) for r in plain if r["type"] == "MONEY_OUT"), ZERO)
     equation = opening + total_in - total_out + transfers
     closing = _dec(context.get("closing_balance"))
     lines = [
@@ -352,11 +355,11 @@ REPORT_SPECS = {
     ),
     "bank-statement": ReportSpec(
         "portrait", (TableSpec(_TREASURY_COLUMNS),), _treasury_summary,
-        entity=("bank_account", "bank_account_id"), opening_row=True,
+        entity=("bank_account", "bank_account_id"),
     ),
     "cash-statement": ReportSpec(
         "portrait", (TableSpec(_TREASURY_COLUMNS),), _treasury_summary,
-        entity=("cash_account", "cash_account_id"), opening_row=True,
+        entity=("cash_account", "cash_account_id"),
     ),
     # Running balance like the customer/supplier statements (2026-10-11).
     "transporter-statement": ReportSpec(

@@ -844,6 +844,7 @@
       "saveError": "Impossible d'enregistrer ce paiement — vérifiez les champs."
     },
     "transfer": {
+      "open": "Transfert",
       "title": "Transfert interne",
       "sameAccountError": "La source et la destination ne peuvent pas être le même compte.",
       "fromAccountType": "Type de compte source",
@@ -955,6 +956,7 @@
       "noAdvances": "Aucune avance."
     },
     "treasuryLedger": {
+      "openingBalance": "Solde d'ouverture",
       "title": "Journal de trésorerie",
       "internalTransfer": "Transfert interne",
       "newExpense": "+ Nouvelle dépense",

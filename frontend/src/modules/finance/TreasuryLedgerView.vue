@@ -6,6 +6,7 @@ import AppAlert from '@/components/ui/AppAlert.vue'
 import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
+import { createResourceApi } from '@/api/resource'
 import { treasuryTransactionResource } from './api'
 import { fetchDashboardSummary } from '@/modules/dashboard/api'
 import Button from '@/components/ui/Button.vue'
@@ -48,6 +49,51 @@ function onAdvanceSuccess() {
 }
 
 const transactions = ref<TreasuryTransaction[]>([])
+
+// An account's opening balance is a field on the account, not a stored
+// TreasuryTransaction (it is already inside every balance), so it is listed
+// here as a computed "Entrée" line to make the journal show where the money
+// started. These rows are display-only: they never feed the balance cards or
+// the Entrées/sorties card, which come from the dashboard summary.
+interface AccountWithOpening {
+  id: number
+  name: string
+  opening_balance: string
+  created_at: string
+}
+const bankAccountResource = createResourceApi<AccountWithOpening>('/bank-accounts/')
+const cashAccountResource = createResourceApi<AccountWithOpening>('/cash-accounts/')
+
+function openingRow(
+  account: AccountWithOpening,
+  kind: 'bank' | 'cash',
+): TreasuryTransaction | null {
+  const amount = Number(account.opening_balance)
+  if (!amount) return null
+  return {
+    id: -(kind === 'bank' ? 1 : 2) * 1_000_000 - account.id,
+    bank_account: kind === 'bank' ? account.id : null,
+    bank_account_name: kind === 'bank' ? account.name : null,
+    cash_account: kind === 'cash' ? account.id : null,
+    cash_account_name: kind === 'cash' ? account.name : null,
+    type: amount > 0 ? 'MONEY_IN' : 'MONEY_OUT',
+    is_transfer: false,
+    amount: String(Math.abs(amount)),
+    date: account.created_at.slice(0, 10),
+    reference: '',
+    note: '',
+    counterparty: t('finance.treasuryLedger.openingBalance'),
+    source_content_type: null,
+    source_object_id: null,
+    source_object_repr: '',
+    document: null,
+    document_url: null,
+    recorded_by: null,
+    recorded_by_detail: null,
+    created_at: account.created_at,
+    updated_at: account.created_at,
+  }
+}
 const loading = ref(true)
 const error = ref('')
 // Dashboard recette fix (2026-09-04): the "Encaissements de la periode" KPI
@@ -86,11 +132,21 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const [txnData, summary] = await Promise.all([
+    const [txnData, summary, bankData, cashData] = await Promise.all([
       treasuryTransactionResource.list(),
       fetchDashboardSummary({}),
+      bankAccountResource.list(),
+      cashAccountResource.list(),
     ])
-    transactions.value = txnData.results
+    const openings = [
+      ...bankData.results.map((a) => openingRow(a, 'bank')),
+      ...cashData.results.map((a) => openingRow(a, 'cash')),
+    ].filter((row): row is TreasuryTransaction => row !== null)
+    // Newest first like the API; the stable sort keeps an opening line after
+    // the real movements of the same day.
+    transactions.value = [...txnData.results, ...openings].sort((a, b) =>
+      b.date.localeCompare(a.date),
+    )
     balance.value = Number(summary.finance.treasury_balance)
     bankBalance.value = Number(summary.bank_amounts.total)
     cashBalance.value = Number(summary.cash_amounts.total)

@@ -5,9 +5,18 @@
 # The running balance is accumulated over every transaction on the account,
 # transfer legs included - that is the account's real balance
 # (BankAccount/CashAccount.current_balance sums all of them too, guide
-# Section 8.10). Only the *rows shown* skip transfer legs, so the account's
-# statement reads as "external money movements" without ever reporting a
-# balance that doesn't match reality.
+# Section 8.10).
+#
+# Rows carry a `kind` so the summary can tell them apart (2026-10-16):
+#   "opening"  - the account's opening balance as the first line (it is a
+#                field on the account, not a TreasuryTransaction); never
+#                counted in the period totals, the summary already shows it;
+#   "transfer" - an internal transfer leg, now listed with the counterpart
+#                account; still excluded from profit/expense reporting and
+#                reconciled through `transfers_net`;
+#   "movement" - every other movement.
+
+OPENING_LABEL = "Solde d'ouverture"
 
 from decimal import Decimal
 
@@ -32,14 +41,18 @@ class TreasuryStatementQuery:
 
     @staticmethod
     def _load(bank_account_id, cash_account_id):
-        """(transactions ordered by date/id, account opening balance)."""
+        """(transactions ordered by date/id, account opening balance, date the
+        account was opened)."""
         transactions = TreasuryTransaction.objects.all()
+        opened_on = None
         if bank_account_id:
             transactions = transactions.filter(bank_account_id=bank_account_id)
-            balance = BankAccount.objects.get(pk=bank_account_id).opening_balance
+            account = BankAccount.objects.get(pk=bank_account_id)
+            balance, opened_on = account.opening_balance, account.created_at.date()
         elif cash_account_id:
             transactions = transactions.filter(cash_account_id=cash_account_id)
-            balance = CashAccount.objects.get(pk=cash_account_id).opening_balance
+            account = CashAccount.objects.get(pk=cash_account_id)
+            balance, opened_on = account.opening_balance, account.created_at.date()
         else:
             balance = Decimal("0.00")
         return (
@@ -47,6 +60,7 @@ class TreasuryStatementQuery:
             .prefetch_related("source_object")
             .order_by("date", "id"),
             balance,
+            opened_on,
         )
 
     @staticmethod
@@ -67,17 +81,24 @@ class TreasuryStatementQuery:
         # running balance is always correct - date_from/date_to only decide
         # which rows are emitted below, exactly like the transfer exclusion,
         # rather than truncating the balance calculation itself.
-        transactions, balance = cls._load(bank_account_id, cash_account_id)
+        transactions, balance, opened_on = cls._load(bank_account_id, cash_account_id)
 
         rows = []
+        opening = balance
         for txn in transactions:
             balance += cls._signed(txn)
-            if txn.is_transfer:
-                continue
             if date_from and txn.date < date_from:
+                opening += cls._signed(txn)
                 continue
             if date_to and txn.date > date_to:
                 continue
+            reference = txn.reference or cls._counterparty(txn)
+            if txn.is_transfer:
+                # "Transfert A -> B", keeping the typed reference when there is one.
+                counterparty = cls._counterparty(txn)
+                reference = f"{counterparty} ({txn.reference})" if counterparty and txn.reference else (
+                    counterparty or txn.reference
+                )
             rows.append(
                 {
                     "date": txn.date,
@@ -85,9 +106,26 @@ class TreasuryStatementQuery:
                     "amount": txn.amount,
                     # No reference typed (e.g. an associate's withdrawal): say
                     # who the money was for instead of leaving it blank.
-                    "reference": txn.reference or cls._counterparty(txn),
+                    "reference": reference,
                     "balance": balance,
+                    "kind": "transfer" if txn.is_transfer else "movement",
                 }
+            )
+        if opening:
+            rows.insert(
+                0,
+                {
+                    "date": date_from or opened_on,
+                    "type": (
+                        TreasuryTransaction.Type.MONEY_IN
+                        if opening > 0
+                        else TreasuryTransaction.Type.MONEY_OUT
+                    ),
+                    "amount": abs(opening),
+                    "reference": OPENING_LABEL,
+                    "balance": opening,
+                    "kind": "opening",
+                },
             )
         return rows
 
@@ -103,7 +141,7 @@ class TreasuryStatementQuery:
         equation is a real check rather than a tautology."""
         date_from = _as_date(date_from)
         date_to = _as_date(date_to)
-        transactions, account_opening = cls._load(bank_account_id, cash_account_id)
+        transactions, account_opening, _opened_on = cls._load(bank_account_id, cash_account_id)
 
         zero = Decimal("0.00")
         opening = closing = account_opening

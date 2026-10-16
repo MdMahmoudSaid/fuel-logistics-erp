@@ -152,6 +152,7 @@ onMounted(load)
           <input v-model="showInactive" type="checkbox" class="accent-orange" />
           {{ t('masterData.showInactive') }}
         </label>
+        <slot name="header-actions" :reload="load" />
         <Button variant="primary" @click="openCreate">{{ t('masterData.add') }}</Button>
       </div>
     </div>

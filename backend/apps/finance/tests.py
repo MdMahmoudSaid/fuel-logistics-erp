@@ -2969,6 +2969,79 @@ def test_treasury_transfer_to_same_account_is_rejected(treasury_user):
 
 
 @pytest.mark.django_db
+def test_treasury_transfer_rejected_when_source_balance_is_insufficient(treasury_user):
+    bank_a = BankAccount.objects.create(name="Bank A", opening_balance="1000.00")
+    bank_b = BankAccount.objects.create(name="Bank B")
+
+    with pytest.raises(TreasuryTransferError):
+        TreasuryService.record_transfer(
+            source_account_type="bank",
+            source_account_id=bank_a.id,
+            dest_account_type="bank",
+            dest_account_id=bank_b.id,
+            amount=Decimal("1000.01"),
+            date="2026-08-18",
+            reference="",
+            user=treasury_user,
+        )
+
+    assert not TreasuryTransaction.objects.filter(is_transfer=True).exists()
+
+    # The exact balance is allowed (bank -> bank), and moves the money.
+    TreasuryService.record_transfer(
+        source_account_type="bank",
+        source_account_id=bank_a.id,
+        dest_account_type="bank",
+        dest_account_id=bank_b.id,
+        amount=Decimal("1000.00"),
+        date="2026-08-18",
+        reference="",
+        user=treasury_user,
+    )
+    assert BankAccount.objects.get(pk=bank_a.pk).current_balance == Decimal("0.00")
+    assert BankAccount.objects.get(pk=bank_b.pk).current_balance == Decimal("1000.00")
+
+
+@pytest.mark.django_db
+def test_treasury_transfer_rejected_for_an_inactive_account(treasury_user):
+    cash = CashAccount.objects.create(name="Cash inactive", opening_balance="1000.00", is_active=False)
+    bank = BankAccount.objects.create(name="Bank active")
+
+    with pytest.raises(TreasuryTransferError):
+        TreasuryService.record_transfer(
+            source_account_type="cash",
+            source_account_id=cash.id,
+            dest_account_type="bank",
+            dest_account_id=bank.id,
+            amount=Decimal("10.00"),
+            date="2026-08-18",
+            reference="",
+            user=treasury_user,
+        )
+
+
+@pytest.mark.django_db
+def test_treasury_transfer_api_returns_400_when_balance_is_insufficient(finance_client):
+    cash = CashAccount.objects.create(name="Cash poor", opening_balance="50.00")
+    bank = BankAccount.objects.create(name="Bank dest")
+
+    response = finance_client.post(
+        "/api/treasury-transactions/transfer/",
+        {
+            "source_account_type": "cash",
+            "source_account_id": cash.id,
+            "dest_account_type": "bank",
+            "dest_account_id": bank.id,
+            "amount": "51.00",
+            "date": "2026-08-18",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "insuffisant" in response.json()["detail"]
+
+
+@pytest.mark.django_db
 def test_treasury_transfer_rejected_via_api_for_same_account(finance_client):
     cash_account = CashAccount.objects.create(name="Main Cash")
 

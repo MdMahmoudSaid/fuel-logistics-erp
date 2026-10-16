@@ -30,6 +30,7 @@ from apps.finance.models import (
     TreasuryTransaction,
 )
 from apps.finance.services import (
+    TreasuryService,
     ControlledDebtPaymentService,
     PaymentAllocationService,
     ShareholderContributionService,
@@ -1060,7 +1061,7 @@ def test_transporter_loss_indemnity_stays_visible_and_is_not_double_counted():
 
 
 @pytest.mark.django_db
-def test_treasury_statement_excludes_transfer_legs_but_keeps_correct_balance():
+def test_treasury_statement_lists_transfer_legs_and_keeps_correct_balance():
     admin_user = _make_admin("TREASSTMT")
     account = CashAccount.objects.create(name="Cash TREASSTMT", opening_balance=Decimal("0.00"))
     other_account = CashAccount.objects.create(name="Cash TREASSTMT DEST")
@@ -1072,15 +1073,17 @@ def test_treasury_statement_excludes_transfer_legs_but_keeps_correct_balance():
         date="2026-08-18",
         recorded_by=admin_user,
     )
-    # A transfer leg out of `account`: must not appear as its own row, but
-    # must still count in the running balance shown on the remaining rows.
-    TreasuryTransaction.objects.create(
-        cash_account=account,
-        type=TreasuryTransaction.Type.MONEY_OUT,
+    # An internal transfer: both legs exist, the one on `account` is listed
+    # as its own row (kind "transfer") and counts in the running balance.
+    TreasuryService.record_transfer(
+        source_account_type="cash",
+        source_account_id=account.id,
+        dest_account_type="cash",
+        dest_account_id=other_account.id,
         amount=Decimal("200000.00"),
         date="2026-08-19",
-        is_transfer=True,
-        recorded_by=admin_user,
+        reference="",
+        user=admin_user,
     )
     TreasuryTransaction.objects.create(
         cash_account=account,
@@ -1092,8 +1095,40 @@ def test_treasury_statement_excludes_transfer_legs_but_keeps_correct_balance():
 
     rows = TreasuryStatementQuery.run(cash_account_id=account.id)
 
-    assert len(rows) == 2  # the transfer leg is excluded from the listed rows
+    assert [r["kind"] for r in rows] == ["movement", "transfer", "movement"]
+    assert rows[1]["type"] == "MONEY_OUT"
+    assert rows[1]["reference"] == "Transfert Cash TREASSTMT -> Cash TREASSTMT DEST"
     assert rows[-1]["balance"] == Decimal("650000.00")  # 1,000,000 - 200,000 - 150,000
+
+
+@pytest.mark.django_db
+def test_treasury_statement_starts_with_the_opening_balance_as_an_entry():
+    admin_user = _make_admin("TREASOPEN")
+    account = BankAccount.objects.create(name="Bank TREASOPEN", opening_balance=Decimal("500000.00"))
+    TreasuryTransaction.objects.create(
+        bank_account=account,
+        type=TreasuryTransaction.Type.MONEY_OUT,
+        amount=Decimal("120000.00"),
+        date="2026-08-20",
+        recorded_by=admin_user,
+    )
+
+    rows = TreasuryStatementQuery.run(bank_account_id=account.id)
+
+    assert [r["kind"] for r in rows] == ["opening", "movement"]
+    assert rows[0]["type"] == "MONEY_IN"
+    assert rows[0]["amount"] == Decimal("500000.00")
+    assert rows[0]["balance"] == Decimal("500000.00")
+    assert rows[0]["reference"] == "Solde d'ouverture"
+    assert rows[1]["balance"] == Decimal("380000.00")
+
+    # A zero opening balance adds no line; a period starting after history
+    # opens on the balance carried forward at date_from.
+    empty = BankAccount.objects.create(name="Bank TREASOPEN0")
+    assert TreasuryStatementQuery.run(bank_account_id=empty.id) == []
+    carried = TreasuryStatementQuery.run(bank_account_id=account.id, date_from="2026-08-21")
+    assert [r["kind"] for r in carried] == ["opening"]
+    assert carried[0]["amount"] == Decimal("380000.00")
 
 
 # ---------------------------------------------------------------------------
@@ -1386,8 +1421,9 @@ def test_treasury_statement_context_reconciles_with_signed_internal_transfers():
         == context["closing_balance"]
     )
     # period_in/out are exactly the sums of the displayed (non-transfer) rows.
-    assert context["period_in"] == sum(r["amount"] for r in rows if r["type"] == "MONEY_IN")
-    assert context["period_out"] == sum(r["amount"] for r in rows if r["type"] == "MONEY_OUT")
+    movements = [r for r in rows if r["kind"] == "movement"]
+    assert context["period_in"] == sum(r["amount"] for r in movements if r["type"] == "MONEY_IN")
+    assert context["period_out"] == sum(r["amount"] for r in movements if r["type"] == "MONEY_OUT")
 
 
 @pytest.mark.django_db

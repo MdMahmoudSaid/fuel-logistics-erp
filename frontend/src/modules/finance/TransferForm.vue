@@ -10,28 +10,40 @@ import { createResourceApi } from '@/api/resource'
 import { translateApiError } from '@/i18n/apiErrors'
 import { recordTransfer } from './api'
 import Button from '@/components/ui/Button.vue'
+import { formatMoney } from '@/utils/currency'
 
+// sourceType: which kind of account the transfer starts from (the bank page
+// opens it on "bank", the cash page on "cash"); the destination starts on the
+// other kind and stays editable, so bank<->bank and cash<->cash remain possible.
+const props = withDefaults(defineProps<{ sourceType?: 'bank' | 'cash' }>(), { sourceType: 'bank' })
 const emit = defineEmits<{ success: []; cancel: [] }>()
 const { t } = useI18n()
 
-const bankAccountResource = createResourceApi<{ id: number; name: string }>('/bank-accounts/')
-const cashAccountResource = createResourceApi<{ id: number; name: string }>('/cash-accounts/')
-const bankAccounts = ref<{ id: number; name: string }[]>([])
-const cashAccounts = ref<{ id: number; name: string }[]>([])
+type TransferAccount = {
+  id: number
+  name: string
+  current_balance?: string | number
+  is_active?: boolean
+}
+
+const bankAccountResource = createResourceApi<TransferAccount>('/bank-accounts/')
+const cashAccountResource = createResourceApi<TransferAccount>('/cash-accounts/')
+const bankAccounts = ref<TransferAccount[]>([])
+const cashAccounts = ref<TransferAccount[]>([])
 
 onMounted(async () => {
   const [bankData, cashData] = await Promise.all([
     bankAccountResource.list(),
     cashAccountResource.list(),
   ])
-  bankAccounts.value = bankData.results
-  cashAccounts.value = cashData.results
+  bankAccounts.value = bankData.results.filter((a) => a.is_active !== false)
+  cashAccounts.value = cashData.results.filter((a) => a.is_active !== false)
 })
 
 const form = ref({
-  source_account_type: 'bank' as 'bank' | 'cash',
+  source_account_type: props.sourceType as 'bank' | 'cash',
   source_account_id: '',
-  dest_account_type: 'cash' as 'bank' | 'cash',
+  dest_account_type: (props.sourceType === 'bank' ? 'cash' : 'bank') as 'bank' | 'cash',
   dest_account_id: '',
   amount: '',
   date: new Date().toISOString().slice(0, 10),
@@ -40,6 +52,11 @@ const form = ref({
 
 function optionsFor(type: 'bank' | 'cash') {
   return type === 'bank' ? bankAccounts.value : cashAccounts.value
+}
+function accountLabel(a: TransferAccount): string {
+  return a.current_balance === undefined
+    ? a.name
+    : `${a.name} — ${formatMoney(Number(a.current_balance))}`
 }
 const sourceOptions = computed(() => optionsFor(form.value.source_account_type))
 const destOptions = computed(() => optionsFor(form.value.dest_account_type))
@@ -115,7 +132,7 @@ async function onSubmit() {
             class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           >
             <option value="" disabled>{{ t('finance.transfer.selectAccount') }}</option>
-            <option v-for="a in sourceOptions" :key="a.id" :value="a.id">{{ a.name }}</option>
+            <option v-for="a in sourceOptions" :key="a.id" :value="a.id">{{ accountLabel(a) }}</option>
           </select>
         </div>
 
@@ -143,7 +160,7 @@ async function onSubmit() {
             class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           >
             <option value="" disabled>{{ t('finance.transfer.selectAccount') }}</option>
-            <option v-for="a in destOptions" :key="a.id" :value="a.id">{{ a.name }}</option>
+            <option v-for="a in destOptions" :key="a.id" :value="a.id">{{ accountLabel(a) }}</option>
           </select>
         </div>
 

@@ -1,11 +1,16 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import MasterDataView from '@/components/master-data/MasterDataView.vue'
 import { createResourceApi } from '@/api/resource'
 import type { FieldSchema } from '@/components/master-data/types'
+import Button from '@/components/ui/Button.vue'
+import Modal from '@/components/ui/Modal.vue'
+import TransferForm from './TransferForm.vue'
 
 const { t } = useI18n()
+
+const showTransfer = ref(false)
 
 const resource = createResourceApi('/cash-accounts/')
 const fields = computed<FieldSchema[]>(() => [
@@ -39,5 +44,28 @@ const fields = computed<FieldSchema[]>(() => [
     :item-label="t('masterData.itemLabels.cashAccounts')"
     :resource="resource"
     :fields="fields"
-  />
+  >
+    <template #header-actions="{ reload }">
+      <Button variant="secondary" @click="showTransfer = true">
+        {{ t('finance.transfer.open') }}
+      </Button>
+      <Modal
+        v-if="showTransfer"
+        :title="t('finance.transfer.title')"
+        max-width="max-w-xl"
+        @close="showTransfer = false"
+      >
+        <TransferForm
+          source-type="cash"
+          @success="
+            () => {
+              showTransfer = false
+              reload()
+            }
+          "
+          @cancel="showTransfer = false"
+        />
+      </Modal>
+    </template>
+  </MasterDataView>
 </template>

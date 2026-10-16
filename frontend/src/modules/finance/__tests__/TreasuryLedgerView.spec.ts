@@ -17,6 +17,14 @@ vi.mock('../api', async (importOriginal) => {
   }
 })
 
+const bankAccounts = vi.fn(async () => ({ results: [] as unknown[] }))
+const cashAccounts = vi.fn(async () => ({ results: [] as unknown[] }))
+vi.mock('@/api/resource', () => ({
+  createResourceApi: (path: string) => ({
+    list: () => (path === '/bank-accounts/' ? bankAccounts() : cashAccounts()),
+  }),
+}))
+
 const dashboardSummary = vi.fn(async () => ({
   finance: { treasury_balance: '0' },
   bank_amounts: { total: '0' },
@@ -38,6 +46,29 @@ describe('TreasuryLedgerView', () => {
     vi.clearAllMocks()
     delete routeQuery.action
     delete routeQuery.type
+  })
+
+  it("lists each account's opening balance as an Entrée line, skipping zero balances", async () => {
+    bankAccounts.mockResolvedValueOnce({
+      results: [
+        { id: 1, name: 'BDM', opening_balance: '22872781.00', created_at: '2026-10-10T08:00:00Z' },
+        { id: 2, name: 'BNDA', opening_balance: '0.00', created_at: '2026-10-10T08:00:00Z' },
+      ],
+    })
+    cashAccounts.mockResolvedValueOnce({
+      results: [
+        { id: 3, name: 'Caisse 1', opening_balance: '9600000.00', created_at: '2026-10-11T08:00:00Z' },
+      ],
+    })
+    const wrapper = mount(TreasuryLedgerView)
+    await flushPromises()
+
+    const rows = wrapper.findAll('tbody tr')
+    expect(rows).toHaveLength(2)
+    expect(rows[0].text()).toContain("Solde d'ouverture")
+    expect(rows[0].text()).toContain('Caisse 1')
+    expect(rows[0].text()).toContain('Entrée')
+    expect(rows[1].text()).toContain('BDM')
   })
 
   it('shows a Nouvelle avance button next to Nouveau paiement', async () => {
