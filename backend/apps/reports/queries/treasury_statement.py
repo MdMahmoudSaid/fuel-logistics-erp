@@ -74,6 +74,19 @@ class TreasuryStatementQuery:
         )
 
     @staticmethod
+    def _accounts(bank_account_id, cash_account_id, scope):
+        """The accounts a statement covers (same rule as _load)."""
+        if bank_account_id:
+            return list(BankAccount.objects.filter(pk=bank_account_id))
+        if cash_account_id:
+            return list(CashAccount.objects.filter(pk=cash_account_id))
+        if scope == "bank":
+            return list(BankAccount.objects.order_by("id"))
+        if scope == "cash":
+            return list(CashAccount.objects.order_by("id"))
+        return []
+
+    @staticmethod
     def _counterparty(txn) -> str:
         from apps.finance.labels import describe_treasury_transaction
 
@@ -93,20 +106,21 @@ class TreasuryStatementQuery:
         # running balance is always correct - date_from/date_to only decide
         # which rows are emitted below, exactly like the transfer exclusion,
         # rather than truncating the balance calculation itself.
-        transactions, balance, opened_on = cls._load(bank_account_id, cash_account_id, scope)
+        transactions, balance, _opened_on = cls._load(bank_account_id, cash_account_id, scope)
 
         rows = []
-        opening = balance
-        # The opening line is a sum over every account when none was chosen.
-        single_account_name = ""
-        if bank_account_id:
-            single_account_name = BankAccount.objects.get(pk=bank_account_id).name
-        elif cash_account_id:
-            single_account_name = CashAccount.objects.get(pk=cash_account_id).name
+        # One opening line per account (so the Compte column says which bank /
+        # cash desk the money started in), each carried forward to date_from.
+        opening_by_account = {
+            account.pk: [account, account.opening_balance]
+            for account in cls._accounts(bank_account_id, cash_account_id, scope)
+        }
         for txn in transactions:
             balance += cls._signed(txn)
             if date_from and txn.date < date_from:
-                opening += cls._signed(txn)
+                key = (txn.bank_account_id or txn.cash_account_id)
+                if key in opening_by_account:
+                    opening_by_account[key][1] += cls._signed(txn)
                 continue
             if date_to and txn.date > date_to:
                 continue
@@ -133,23 +147,28 @@ class TreasuryStatementQuery:
                     "kind": "transfer" if txn.is_transfer else "movement",
                 }
             )
-        if opening:
-            rows.insert(
-                0,
+        openings = []
+        running = Decimal("0.00")
+        for account, amount in opening_by_account.values():
+            if not amount:
+                continue
+            running += amount
+            openings.append(
                 {
-                    "date": date_from or opened_on,
+                    "date": date_from or account.created_at.date(),
                     "type": (
                         TreasuryTransaction.Type.MONEY_IN
-                        if opening > 0
+                        if amount > 0
                         else TreasuryTransaction.Type.MONEY_OUT
                     ),
-                    "account": single_account_name,
-                    "amount": abs(opening),
+                    "account": account.name,
+                    "amount": abs(amount),
                     "reference": OPENING_LABEL,
-                    "balance": opening,
+                    "balance": running,
                     "kind": "opening",
-                },
+                }
             )
+        rows[0:0] = openings
         return rows
 
     @classmethod

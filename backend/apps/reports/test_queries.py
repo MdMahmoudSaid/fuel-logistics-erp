@@ -1120,6 +1120,7 @@ def test_treasury_statement_starts_with_the_opening_balance_as_an_entry():
     assert rows[0]["amount"] == Decimal("500000.00")
     assert rows[0]["balance"] == Decimal("500000.00")
     assert rows[0]["reference"] == "Solde d'ouverture"
+    assert rows[0]["account"] == "Bank TREASOPEN"
     assert rows[1]["balance"] == Decimal("380000.00")
 
     # A zero opening balance adds no line; a period starting after history
@@ -1151,16 +1152,19 @@ def test_statement_without_an_account_covers_only_that_kind_of_account():
     bank_rows = TreasuryStatementQuery.run(scope="bank")
     cash_rows = TreasuryStatementQuery.run(scope="cash")
 
-    # Banks only: opening 1500 (both banks) then the one bank movement; no cash money.
-    assert [r["kind"] for r in bank_rows] == ["opening", "movement"]
-    assert bank_rows[0]["amount"] == Decimal("1500.00")
-    assert bank_rows[1]["account"] == "Bank A SCOPE"
-    assert bank_rows[1]["reference"] == "R1"
-    assert bank_rows[0]["account"] == ""  # the opening line sums every bank
-    assert cash_rows[1]["account"] == "Cash SCOPE"
+    # Banks only: one opening line per bank (named), then the one bank movement.
+    assert [r["kind"] for r in bank_rows] == ["opening", "opening", "movement"]
+    assert [(r["account"], r["amount"]) for r in bank_rows[:2]] == [
+        ("Bank A SCOPE", Decimal("1000.00")),
+        ("Bank B SCOPE", Decimal("500.00")),
+    ]
+    assert bank_rows[1]["balance"] == Decimal("1500.00")  # running total of the openings
+    assert bank_rows[2]["account"] == "Bank A SCOPE"
+    assert bank_rows[2]["reference"] == "R1"
     assert bank_rows[-1]["balance"] == Decimal("1600.00")
+    assert cash_rows[1]["account"] == "Cash SCOPE"
     # Cash only: opening 70 then the 20 out.
-    assert cash_rows[0]["amount"] == Decimal("70.00")
+    assert cash_rows[0]["amount"] == Decimal("70.00") and cash_rows[0]["account"] == "Cash SCOPE"
     assert cash_rows[-1]["balance"] == Decimal("50.00")
     context = TreasuryStatementQuery.statement_context(scope="bank")
     assert context["opening_balance"] == Decimal("1500.00")
