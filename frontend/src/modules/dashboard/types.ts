@@ -140,6 +140,9 @@ export interface DashboardSummary {
     supplier_debt_total: string
     transporter_debt_total: string
     other_debts: string
+    // What the company owes its associates and they have not drawn yet
+    // (capital not given back + validated profit not withdrawn) - added like a debt.
+    shareholder_dues: string
     supplier_reliquat_value: string
     supplier_in_transit_value: string
     supplier_company_stock_value: string

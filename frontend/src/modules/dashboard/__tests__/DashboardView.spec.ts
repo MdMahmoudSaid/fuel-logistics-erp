@@ -101,6 +101,7 @@ const summary: DashboardSummary = {
     supplier_debt_total: '2000000.00',
     transporter_debt_total: '500000.00',
     other_debts: '300000.00',
+    shareholder_dues: '0',
     supplier_reliquat_value: '0.00',
     supplier_in_transit_value: '0.00',
     supplier_company_stock_value: '0.00',
@@ -659,6 +660,7 @@ describe('DashboardView', () => {
         supplier_debt_total: '45000000.00',
         transporter_debt_total: '2925000.00',
         other_debts: '10255000.00',
+        shareholder_dues: '0',
         supplier_reliquat_value: '0.00',
         supplier_in_transit_value: '0.00',
         supplier_company_stock_value: '0.00',
@@ -670,6 +672,25 @@ describe('DashboardView', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('358 180 000 XOF')
+  })
+
+  it('shows what is owed to the associates as its own line of the fond de roulement', async () => {
+    fetchDashboardSummary.mockResolvedValueOnce({
+      ...summary,
+      working_capital: { ...summary.working_capital, shareholder_dues: '7654321.00' },
+    })
+    const wrapper = mount(DashboardView, { global: { plugins: [makeRouter()] } })
+    await flushPromises()
+
+    await wrapper.find('[data-test="working-capital-toggle"]').trigger('click')
+
+    const detailRows = wrapper
+      .find('[data-test="working-capital-detail"]')
+      .findAll('div')
+      .map((row) => row.text().replace(/\s+/g, ' '))
+    expect(detailRows.find((row) => row.startsWith('Dettes envers les associés'))).toContain(
+      '7 654 321 XOF',
+    )
   })
 
   it('shows the supplier reliquat value as its own line in the working capital card', async () => {
@@ -685,6 +706,7 @@ describe('DashboardView', () => {
         supplier_debt_total: '100000000.00',
         transporter_debt_total: '0.00',
         other_debts: '0.00',
+        shareholder_dues: '0',
         supplier_reliquat_value: '77500000.00',
         supplier_in_transit_value: '0.00',
         supplier_company_stock_value: '0.00',
@@ -722,6 +744,7 @@ describe('DashboardView', () => {
         supplier_debt_total: '0.00',
         transporter_debt_total: '0.00',
         other_debts: '0.00',
+        shareholder_dues: '0',
         supplier_reliquat_value: '20000000.00',
         supplier_in_transit_value: '5000000.00',
         supplier_company_stock_value: '3000000.00',
@@ -753,6 +776,7 @@ describe('DashboardView', () => {
         supplier_debt_total: '0.00',
         transporter_debt_total: '0.00',
         other_debts: '0.00',
+        shareholder_dues: '0',
         supplier_reliquat_value: '20000000.00',
         supplier_in_transit_value: '5000000.00',
         supplier_company_stock_value: '3000000.00',

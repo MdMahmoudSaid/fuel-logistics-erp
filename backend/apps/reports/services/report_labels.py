@@ -346,6 +346,10 @@ ENUMS = {
         "fee_border": ("Frais de trajet : Frontière", "Trip fees: Border", "رسوم الرحلات: الحدود"),
         "fee_loading": ("Frais de trajet : Chargement", "Trip fees: Loading", "رسوم الرحلات: التحميل"),
         "customer_credit": ("Avance reçue d'un client", "Advance received from a customer", "دفعة مقدّمة من عميل"),
+        "shareholder": (
+            "Associé (capital et bénéfices non retirés)", "Shareholder (capital and unwithdrawn profit)",
+            "شريك (رأس المال والأرباح غير المسحوبة)",
+        ),
     },
     "receivableParty": {
         "customer": ("Client (impayés)", "Customer (unpaid)", "عميل (مستحقات غير مسددة)"),

@@ -3420,12 +3420,14 @@ class WorkingCapitalService:
         supplier_reliquat_value = supplier_pipeline["supplier_reliquat_value"]
         supplier_in_transit_value = supplier_pipeline["supplier_in_transit_value"]
         supplier_company_stock_value = supplier_pipeline["supplier_company_stock_value"]
+        shareholder_dues = ShareholderLedgerService.get_company_dues()["total"]
         gross = treasury_available + customer_receivables
         total = (
             gross
             + supplier_debt_total
             + transporter_debt_total
             + other_debts
+            + shareholder_dues
             + supplier_reliquat_value
             + supplier_in_transit_value
             + supplier_company_stock_value
@@ -3437,6 +3439,7 @@ class WorkingCapitalService:
             "supplier_debt_total": supplier_debt_total,
             "transporter_debt_total": transporter_debt_total,
             "other_debts": other_debts,
+            "shareholder_dues": shareholder_dues,
             "supplier_reliquat_value": supplier_reliquat_value,
             "supplier_in_transit_value": supplier_in_transit_value,
             "supplier_company_stock_value": supplier_company_stock_value,
@@ -3788,6 +3791,22 @@ class ShareholderLedgerService:
             or ZERO
         )
         return shares_remaining + capital_remaining
+
+    @staticmethod
+    def get_company_dues() -> dict:
+        """What the company owes its associates and they have not drawn yet:
+        capital contributions not yet given back plus VALIDATED profit shares
+        not yet withdrawn (client decision 2026-10-16 - an open debt, listed
+        per associate in the "Dettes a payer" report and added to the Fond de
+        roulement like every other debt). Same pools as the withdrawal
+        allocation (_own_pools); inactive associates stay listed while the
+        company still owes them."""
+        rows = []
+        for shareholder in Shareholder.objects.order_by("name", "id"):
+            amount = ShareholderLedgerService._own_pools(shareholder.id)
+            if amount > ZERO:
+                rows.append({"id": shareholder.id, "name": shareholder.name, "amount": amount})
+        return {"shareholders": rows, "total": sum((r["amount"] for r in rows), ZERO)}
 
     @staticmethod
     def get_profit_and_capital_remaining(shareholder_id) -> Decimal:
@@ -4195,6 +4214,7 @@ class ShareholderProfitPreviewService:
             - working_capital["supplier_debt_total"]
             - working_capital["transporter_debt_total"]
             - working_capital["other_debts"]
+            - working_capital["shareholder_dues"]
             - working_capital["supplier_reliquat_value"]
             - working_capital["supplier_in_transit_value"]
             - working_capital["supplier_company_stock_value"]

@@ -821,12 +821,14 @@ def test_distributable_result_formula_term_by_term():
     assert wc["supplier_debt_total"] > Decimal("0.00")
     assert wc["total"] == (
         wc["gross"] + wc["supplier_debt_total"] + wc["transporter_debt_total"]
-        + wc["other_debts"] + wc["supplier_reliquat_value"]
+        + wc["other_debts"] + wc["shareholder_dues"] + wc["supplier_reliquat_value"]
         + wc["supplier_in_transit_value"] + wc["supplier_company_stock_value"]
     )
+    # The 1,000,000 posted contribution is still owed back to the associate.
+    assert wc["shareholder_dues"] == Decimal("1000000.00")
     expected = (
         wc["total"] - wc["supplier_debt_total"] - wc["transporter_debt_total"]
-        - wc["other_debts"] - wc["supplier_reliquat_value"] - wc["capital"]
+        - wc["other_debts"] - wc["shareholder_dues"] - wc["supplier_reliquat_value"] - wc["capital"]
         - wc["supplier_in_transit_value"] - wc["supplier_company_stock_value"]
     )
     assert preview["result_after_debts_and_capital"] == expected
@@ -1009,7 +1011,7 @@ def test_distributable_result_no_longer_subtracts_company_absorbed_loss():
     wc = preview["working_capital"]
     assert Decimal(str(preview["distributable_result"])) == (
         wc["total"] - wc["supplier_debt_total"] - wc["transporter_debt_total"]
-        - wc["other_debts"] - wc["supplier_reliquat_value"] - wc["capital"]
+        - wc["other_debts"] - wc["shareholder_dues"] - wc["supplier_reliquat_value"] - wc["capital"]
         - wc["supplier_in_transit_value"] - wc["supplier_company_stock_value"]
     )
     # the key is still there, just not a term:

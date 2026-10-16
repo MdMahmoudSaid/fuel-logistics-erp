@@ -145,6 +145,7 @@
       "customerReceivables": "مستحقات العملاء",
       "supplierDebtTotal": "ديون الموردين",
       "transporterDebtTotal": "ديون الناقلين",
+      "shareholderDues": "مستحقات الشركاء",
       "otherDebts": "ديون الجمارك / العبور / الرسوم",
       "supplierReliquatValue": "مدفوع: لدى المورد",
       "supplierInTransitValue": "مدفوع: قيد النقل",

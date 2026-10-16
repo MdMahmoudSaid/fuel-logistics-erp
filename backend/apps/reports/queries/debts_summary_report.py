@@ -7,7 +7,9 @@
 #   - trip fees: one line per fee bucket (customs, transit, ...);
 #   - customer: the credit the customer has paid ahead (negative outstanding).
 #
-# Shareholder money is deliberately excluded (profit share / capital, not a debt).
+# - shareholders: one line per associate for the capital contributions not
+#   given back and the validated profit shares not yet withdrawn (client
+#   decision 2026-10-16: the company owes it to them until they withdraw it).
 
 from decimal import Decimal
 
@@ -15,7 +17,7 @@ from apps.core.request_cache import memoize_per_request
 from apps.customers.models import Customer
 from apps.finance.models import CustomerPayment, OpeningDebt
 from apps.finance.services import ControlledDebtPaymentService as Debts
-from apps.finance.services import PaymentAllocationService
+from apps.finance.services import PaymentAllocationService, ShareholderLedgerService
 from apps.reports.queries.debt_common import FEE_TYPES
 from apps.sales.models import Invoice
 
@@ -57,4 +59,6 @@ class DebtsSummaryReportQuery:
             outstanding = PaymentAllocationService.get_customer_outstanding(customer)
             if outstanding < ZERO:
                 rows.append({"party_type": "customer_credit", "party": customer.name, "amount": -outstanding})
+        for shareholder in ShareholderLedgerService.get_company_dues()["shareholders"]:
+            rows.append({"party_type": "shareholder", "party": shareholder["name"], "amount": shareholder["amount"]})
         return rows

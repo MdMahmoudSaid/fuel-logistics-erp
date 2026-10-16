@@ -44,6 +44,7 @@ PROFIT_PDF_LABELS = {
         "treasuryAvailable": "Tresorerie disponible",
         "customerReceivables": "Creances clients",
         "gross": "= Brut (tresorerie + creances)",
+        "shareholderDues": "Dettes envers les associes",
         "supplierDebt": "Dette fournisseurs",
         "transporterDebt": "Dette transporteurs",
         "customsDebt": "Douane",
@@ -90,6 +91,7 @@ PROFIT_PDF_LABELS = {
         "treasuryAvailable": "Available treasury",
         "customerReceivables": "Customer receivables",
         "gross": "= Gross (treasury + receivables)",
+        "shareholderDues": "Dues to shareholders",
         "supplierDebt": "Supplier debt",
         "transporterDebt": "Transporter debt",
         "customsDebt": "Customs",
@@ -321,6 +323,7 @@ def render_profit_report_pdf(
                 wc["supplier_debt_total"] + wc["transporter_debt_total"] + wc["other_debts"]
             ),
         ),
+        (labels["shareholderDues"], _format_money(wc["shareholder_dues"])),
         (labels["supplierCompanyStock"], _format_money(wc["supplier_company_stock_value"])),
         (labels["supplierInTransit"], _format_money(wc["supplier_in_transit_value"])),
         (labels["supplierReliquat"], _format_money(wc["supplier_reliquat_value"])),
@@ -331,7 +334,7 @@ def render_profit_report_pdf(
     ]
     wc_table = Table(wc_rows, colWidths=[110 * mm, 60 * mm])
     wc_table.setStyle(_SUMMARY_TABLE_STYLE)
-    wc_table.setStyle(TableStyle([_bold_row(idx) for idx in (2, 9, 13, 16)]))
+    wc_table.setStyle(TableStyle([_bold_row(idx) for idx in (2, 9, 14, 17)]))
     elements.append(wc_table)
     elements.append(Spacer(1, 8 * mm))
 

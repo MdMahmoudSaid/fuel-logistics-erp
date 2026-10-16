@@ -25,6 +25,7 @@ def _preview(**overrides) -> dict:
             "supplier_debt_total": Decimal("45000000.00"),
             "transporter_debt_total": Decimal("2925000.00"),
             "other_debts": Decimal("10255000.00"),
+            "shareholder_dues": Decimal("0.00"),
             "supplier_reliquat_value": Decimal("15000000.00"),
             "supplier_in_transit_value": Decimal("5000000.00"),
             "supplier_company_stock_value": Decimal("3000000.00"),

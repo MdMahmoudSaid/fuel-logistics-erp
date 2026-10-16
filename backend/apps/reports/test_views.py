@@ -1312,11 +1312,13 @@ def test_dashboard_working_capital_formula_matches_manual_calculation():
     # Bank now holds 10,000,000 (opening) + 5,000,000 (contribution) = 15,000,000.
     # Cash = 2,000,000. No suppliers/transporters/customers/debts exist in this
     # test, so treasury_available is the only nonzero component of gross, and
-    # no debts exist to add, so total == gross.
+    # no trade debts exist to add, so total == gross + what the company owes
+    # the associate for his contribution (not drawn yet, 2026-10-16).
     assert wc["treasury_available"] == "17000000.00"
     assert wc["capital"] == "5000000.00"
     assert wc["gross"] == "17000000.00"
-    assert wc["total"] == "17000000.00"
+    assert wc["shareholder_dues"] == "5000000.00"
+    assert wc["total"] == "22000000.00"
     # Capital must NOT be double-counted: gross == treasury_available exactly,
     # not treasury_available + capital.
     assert Decimal(wc["gross"]) == Decimal(wc["treasury_available"])
