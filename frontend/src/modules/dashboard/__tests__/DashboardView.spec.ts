@@ -674,7 +674,7 @@ describe('DashboardView', () => {
     expect(wrapper.text()).toContain('358 180 000 XOF')
   })
 
-  it('shows what is owed to the associates as its own line of the fond de roulement', async () => {
+  it('shows what is owed to the associates as an information line that does not change the total', async () => {
     fetchDashboardSummary.mockResolvedValueOnce({
       ...summary,
       working_capital: { ...summary.working_capital, shareholder_dues: '7654321.00' },
@@ -688,9 +688,11 @@ describe('DashboardView', () => {
       .find('[data-test="working-capital-detail"]')
       .findAll('div')
       .map((row) => row.text().replace(/\s+/g, ' '))
-    expect(detailRows.find((row) => row.startsWith('Dettes envers les associés'))).toContain(
+    expect(detailRows.find((row) => row.startsWith('Dues aux associés (information)'))).toContain(
       '7 654 321 XOF',
     )
+    // The headline stays the fixture's total: the dues are never added to it.
+    expect(wrapper.text()).toContain('20 800 000 XOF')
   })
 
   it('shows the supplier reliquat value as its own line in the working capital card', async () => {

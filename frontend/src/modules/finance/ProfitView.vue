@@ -71,18 +71,13 @@ function num(value: string): number {
 }
 
 // Client modifications (2026-09-04, third pass): "dettes ouvertes" step
-// between brut and the final FDR figure - the same debt buckets (incl. what is owed to the associates)
+// between brut and the final FDR figure - the same 3 debt buckets
 // working_capital.total already adds, summed here purely for display (not
 // recomputed/renamed anywhere in working_capital itself).
 const workingCapitalDebtsTotal = computed(() => {
   if (!preview.value) return 0
   const wc = preview.value.working_capital
-  return (
-    num(wc.supplier_debt_total) +
-    num(wc.transporter_debt_total) +
-    num(wc.other_debts) +
-    num(wc.shareholder_dues ?? '0')
-  )
+  return num(wc.supplier_debt_total) + num(wc.transporter_debt_total) + num(wc.other_debts)
 })
 
 const periodProfit = computed(() => rows.value.reduce((sum, r) => sum + num(r.current_margin), 0))

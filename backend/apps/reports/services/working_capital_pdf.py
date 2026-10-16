@@ -21,14 +21,14 @@ from apps.reports.services.profit_pdf import _format_money
 WORKING_CAPITAL_LINES = {
     "total": ("Fond de roulement client", "Working capital", "total"),
     "capital": ("Capital apporte (information)", "Capital contributed (information)", "capital"),
+    "shareholder_dues": (
+        "Dues aux associes (information)", "Owed to shareholders (information)", "shareholder_dues",
+    ),
     "treasury": ("Tresorerie disponible", "Available treasury", "treasury_available"),
     "receivables": ("Creances clients", "Customer receivables", "customer_receivables"),
     "supplier_debt": ("Dettes fournisseurs", "Supplier debts", "supplier_debt_total"),
     "transporter_debt": ("Dettes transporteurs", "Transporter debts", "transporter_debt_total"),
     "other_debts": ("Dettes douane / transit / frais", "Customs / transit / fees debts", "other_debts"),
-    "shareholder_dues": (
-        "Dettes envers les associes", "Dues to shareholders", "shareholder_dues",
-    ),
     "supplier_company_stock": ("Paye : stock entreprise", "Paid: company stock", "supplier_company_stock_value"),
     "supplier_in_transit": ("Paye : en cours", "Paid: in transit", "supplier_in_transit_value"),
     "supplier_reliquat": ("Paye : chez le fournisseur", "Paid: at the supplier", "supplier_reliquat_value"),

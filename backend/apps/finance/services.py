@@ -3420,6 +3420,10 @@ class WorkingCapitalService:
         supplier_reliquat_value = supplier_pipeline["supplier_reliquat_value"]
         supplier_in_transit_value = supplier_pipeline["supplier_in_transit_value"]
         supplier_company_stock_value = supplier_pipeline["supplier_company_stock_value"]
+        # Information only, like `capital`: the associates' money is already in
+        # treasury (contributions) or is a share of profit already counted, so
+        # adding it as one more debt would count the same money twice (a 1M
+        # contribution would read as 2M). It is never part of gross/total.
         shareholder_dues = ShareholderLedgerService.get_company_dues()["total"]
         gross = treasury_available + customer_receivables
         total = (
@@ -3427,7 +3431,6 @@ class WorkingCapitalService:
             + supplier_debt_total
             + transporter_debt_total
             + other_debts
-            + shareholder_dues
             + supplier_reliquat_value
             + supplier_in_transit_value
             + supplier_company_stock_value
@@ -4214,7 +4217,6 @@ class ShareholderProfitPreviewService:
             - working_capital["supplier_debt_total"]
             - working_capital["transporter_debt_total"]
             - working_capital["other_debts"]
-            - working_capital["shareholder_dues"]
             - working_capital["supplier_reliquat_value"]
             - working_capital["supplier_in_transit_value"]
             - working_capital["supplier_company_stock_value"]

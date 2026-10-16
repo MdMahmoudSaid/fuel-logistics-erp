@@ -54,7 +54,7 @@ def test_company_dues_are_the_capital_not_given_back_per_associate():
 
 
 @pytest.mark.django_db
-def test_dues_are_added_to_the_working_capital_and_listed_in_the_debts_report():
+def test_dues_are_information_in_the_working_capital_and_listed_in_the_debts_report():
     admin = _admin()
     bank = BankAccount.objects.create(name="Dues Bank 2")
     a = Shareholder.objects.create(name="Assoc A", participation_percent=Decimal("100"), contribution=Decimal("0"))
@@ -63,7 +63,8 @@ def test_dues_are_added_to_the_working_capital_and_listed_in_the_debts_report():
     wc = WorkingCapitalService.get_working_capital()
 
     assert wc["shareholder_dues"] == Decimal("1000000.00")
-    assert wc["total"] == wc["gross"] + Decimal("1000000.00")  # no other debt exists
+    # A 1,000,000 contribution reads as 1,000,000 (the treasury), never 2,000,000.
+    assert wc["total"] == wc["gross"] == Decimal("1000000.00")
     rows = DebtsSummaryReportQuery.run()
     assert {"party_type": "shareholder", "party": "Assoc A", "amount": Decimal("1000000.00")} in rows
 
@@ -94,9 +95,10 @@ def test_dues_match_the_raw_rows_and_no_other_fond_de_roulement_line_changes_wit
     def lines():
         wc = WorkingCapitalService.get_working_capital()
         parts = ("treasury_available", "customer_receivables", "supplier_debt_total",
-                 "transporter_debt_total", "other_debts", "shareholder_dues",
+                 "transporter_debt_total", "other_debts",
                  "supplier_reliquat_value", "supplier_in_transit_value", "supplier_company_stock_value")
-        # Each component appears once in the total, "capital" is information only.
+        # Each component appears once in the total; "capital" and "shareholder_dues"
+        # are information only (that money is already in treasury).
         assert wc["total"] == sum((wc[k] for k in parts), Decimal("0.00"))
         return wc
 
@@ -116,8 +118,9 @@ def test_dues_match_the_raw_rows_and_no_other_fond_de_roulement_line_changes_wit
     )
     ShareholderDistributionService.validate_distribution(distribution.id, admin)
     after = lines()
-    # Profit validated: only the dues move (+1,000,000); treasury and every
-    # other line are untouched (no money has moved, nothing else reads it).
+    # Profit validated: only the dues move (+1,000,000); treasury, every other
+    # line and the TOTAL are untouched (no money has moved).
+    assert after["total"] == before["total"]
     assert after["shareholder_dues"] == raw_dues() == Decimal("2500000.00")
     for key in ("treasury_available", "customer_receivables", "supplier_debt_total",
                 "transporter_debt_total", "other_debts", "supplier_reliquat_value",
@@ -130,6 +133,8 @@ def test_dues_match_the_raw_rows_and_no_other_fond_de_roulement_line_changes_wit
         bank_account_id=bank.id,
     )
     final = lines()
+    # The cash really left treasury: the total drops by exactly 700,000, once.
+    assert final["total"] == after["total"] - Decimal("700000.00")
     assert final["shareholder_dues"] == raw_dues() == Decimal("1800000.00")
     assert [(r["name"], r["amount"]) for r in ShareholderLedgerService.get_company_dues()["shareholders"]] == [
         ("A", Decimal("900000.00")),  # 1,000,000 capital - 100,000 drawn; profit fully drawn

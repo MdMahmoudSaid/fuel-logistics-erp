@@ -141,7 +141,8 @@ export interface DashboardSummary {
     transporter_debt_total: string
     other_debts: string
     // What the company owes its associates and they have not drawn yet
-    // (capital not given back + validated profit not withdrawn) - added like a debt.
+    // (capital not given back + validated profit not withdrawn) - information
+    // only, never part of gross/total (that money is already in treasury).
     shareholder_dues: string
     supplier_reliquat_value: string
     supplier_in_transit_value: string

@@ -228,12 +228,12 @@ const workingCapitalOpen = ref(false)
 const WC_PDF_LINES = [
   { key: 'total', label: 'dashboard.final.workingCapital' },
   { key: 'capital', label: 'dashboard.final.capitalContributed' },
+  { key: 'shareholder_dues', label: 'dashboard.final.shareholderDues' },
   { key: 'treasury', label: 'dashboard.final.availableTreasury' },
   { key: 'receivables', label: 'dashboard.final.customerReceivables' },
   { key: 'supplier_debt', label: 'dashboard.final.supplierDebtTotal' },
   { key: 'transporter_debt', label: 'dashboard.final.transporterDebtTotal' },
   { key: 'other_debts', label: 'dashboard.final.otherDebts' },
-  { key: 'shareholder_dues', label: 'dashboard.final.shareholderDues' },
   { key: 'supplier_company_stock', label: 'dashboard.final.supplierCompanyStockValue' },
   { key: 'supplier_in_transit', label: 'dashboard.final.supplierInTransitValue' },
   { key: 'supplier_reliquat', label: 'dashboard.final.supplierReliquatValue' },
@@ -644,6 +644,12 @@ const compactEnRouteTrips = computed(() => enRouteTrips.value.slice(0, 5))
                 </dd>
               </div>
               <div class="bg-sable flex items-center justify-between gap-3 rounded-lg px-3 py-2">
+                <dt class="text-texte-2">{{ t('dashboard.final.shareholderDues') }}</dt>
+                <dd class="text-texte font-medium">
+                  <MonoValue v-bind="workingCapitalCard.shareholderDuesParts" />
+                </dd>
+              </div>
+              <div class="bg-sable flex items-center justify-between gap-3 rounded-lg px-3 py-2">
                 <dt class="text-texte-2">{{ t('dashboard.final.availableTreasury') }}</dt>
                 <dd class="text-texte font-medium">
                   <MonoValue v-bind="workingCapitalCard.treasuryParts" />
@@ -671,12 +677,6 @@ const compactEnRouteTrips = computed(() => enRouteTrips.value.slice(0, 5))
                 <dt class="text-texte-2">{{ t('dashboard.final.otherDebts') }}</dt>
                 <dd class="text-texte font-medium">
                   <MonoValue v-bind="workingCapitalCard.otherDebtsParts" />
-                </dd>
-              </div>
-              <div class="bg-sable flex items-center justify-between gap-3 rounded-lg px-3 py-2">
-                <dt class="text-texte-2">{{ t('dashboard.final.shareholderDues') }}</dt>
-                <dd class="text-texte font-medium">
-                  <MonoValue v-bind="workingCapitalCard.shareholderDuesParts" />
                 </dd>
               </div>
               <div class="bg-sable flex items-center justify-between gap-3 rounded-lg px-3 py-2">
