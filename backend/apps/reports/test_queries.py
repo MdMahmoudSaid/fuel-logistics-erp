@@ -1154,7 +1154,10 @@ def test_statement_without_an_account_covers_only_that_kind_of_account():
     # Banks only: opening 1500 (both banks) then the one bank movement; no cash money.
     assert [r["kind"] for r in bank_rows] == ["opening", "movement"]
     assert bank_rows[0]["amount"] == Decimal("1500.00")
-    assert bank_rows[1]["reference"] == "Bank A SCOPE - R1"
+    assert bank_rows[1]["account"] == "Bank A SCOPE"
+    assert bank_rows[1]["reference"] == "R1"
+    assert bank_rows[0]["account"] == ""  # the opening line sums every bank
+    assert cash_rows[1]["account"] == "Cash SCOPE"
     assert bank_rows[-1]["balance"] == Decimal("1600.00")
     # Cash only: opening 70 then the 20 out.
     assert cash_rows[0]["amount"] == Decimal("70.00")

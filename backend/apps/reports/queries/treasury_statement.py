@@ -33,7 +33,7 @@ def _as_date(value):
         return value
     return parse_date(value)
 
-FIELDS = ["date", "type", "amount", "reference", "balance"]
+FIELDS = ["date", "type", "account", "amount", "reference", "balance"]
 
 
 class TreasuryStatementQuery:
@@ -97,6 +97,12 @@ class TreasuryStatementQuery:
 
         rows = []
         opening = balance
+        # The opening line is a sum over every account when none was chosen.
+        single_account_name = ""
+        if bank_account_id:
+            single_account_name = BankAccount.objects.get(pk=bank_account_id).name
+        elif cash_account_id:
+            single_account_name = CashAccount.objects.get(pk=cash_account_id).name
         for txn in transactions:
             balance += cls._signed(txn)
             if date_from and txn.date < date_from:
@@ -111,14 +117,14 @@ class TreasuryStatementQuery:
                 reference = f"{counterparty} ({txn.reference})" if counterparty and txn.reference else (
                     counterparty or txn.reference
                 )
-            if scope and not (bank_account_id or cash_account_id):
-                # All accounts of the kind in one statement: say which one.
-                account = txn.bank_account or txn.cash_account
-                reference = f"{account.name} - {reference}" if reference else account.name
+            account = txn.bank_account or txn.cash_account
             rows.append(
                 {
                     "date": txn.date,
                     "type": txn.type,
+                    # Which bank / cash desk the movement went in or out of
+                    # (the statement can cover every account of the kind).
+                    "account": account.name,
                     "amount": txn.amount,
                     # No reference typed (e.g. an associate's withdrawal): say
                     # who the money was for instead of leaving it blank.
@@ -137,6 +143,7 @@ class TreasuryStatementQuery:
                         if opening > 0
                         else TreasuryTransaction.Type.MONEY_OUT
                     ),
+                    "account": single_account_name,
                     "amount": abs(opening),
                     "reference": OPENING_LABEL,
                     "balance": opening,

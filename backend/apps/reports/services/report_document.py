@@ -334,6 +334,7 @@ _STATEMENT_COLUMNS = (
 _TREASURY_COLUMNS = (
     ("date", "date"),
     ("type", "enum", "transactionType"),
+    ("account", "text"),
     ("amount", "money"),
     ("reference", "ref"),
     ("balance", "money"),
