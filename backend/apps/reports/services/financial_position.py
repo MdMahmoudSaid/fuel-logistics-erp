@@ -11,9 +11,11 @@
 # makes the net result equal the profit: the profit books a trip's costs only
 # when the trip is sold.
 #
-# Goal (client rule): the net result equals the distributable net profit of the
-# Benefices page plus the starting funds (shown as a reconciliation, never as a
-# liability), at any time. It holds because
+# Goal: the net result equals the distributable net profit of the Benefices page
+# plus the starting funds (never shown as a liability). The page compares the two
+# figures it displays (`gap` = net result - distributable profit): green only when
+# they are equal, red otherwise - while starting funds exist the gap is exactly
+# `starting_funds`, anything beyond that is an untracked movement. It holds because
 #     treasury + receivables + advances + paid unsold fuel/costs
 #   - debts of sold goods - customer credit - what is owed to the associates
 # is exactly: capital contributions + all-time profit - everything drawn, minus
@@ -256,7 +258,7 @@ class FinancialPositionService:
             # that can be distributed (Benefices page). A non-zero gap would
             # mean a movement this page does not know how to place.
             "distributable_result": distributable,
-            "gap": total_assets - total_liabilities - starting_funds - distributable,
+            "gap": total_assets - total_liabilities - distributable,
             # Where the treasury comes from (net per origin): lets a gap with the
             # distributable profit be traced to the movements behind it.
             "treasury_origins": _treasury_origins(

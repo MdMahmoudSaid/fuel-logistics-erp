@@ -125,4 +125,18 @@ describe('FinancialPositionView', () => {
     expect(wrapper.find('[data-test="position-origins"]').text()).not.toContain('92 358 500')
     expect(wrapper.find('[data-test="position-origins"]').text()).toContain('Apports en capital')
   })
+
+  it('turns the control red with the gap when the net result differs from the profit', async () => {
+    const { fetchFinancialPosition } = await import('../api')
+    vi.mocked(fetchFinancialPosition).mockResolvedValueOnce({ ...position, gap: '92358500.00' })
+    const wrapper = mount(FinancialPositionView)
+    await flushPromises()
+
+    const control = wrapper.find('[data-test="position-control"]')
+    expect(control.text()).toContain('Écart avec le résultat net')
+    expect(control.text()).toContain('92 358 500')
+    expect(control.text()).not.toContain('Identique au résultat net')
+    expect(control.find('.text-critique').exists()).toBe(true)
+    expect(control.find('.text-livre').exists()).toBe(false)
+  })
 })

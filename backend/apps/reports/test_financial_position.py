@@ -44,7 +44,9 @@ def _position():
 
 def _assert_net_is_the_distributable_profit():
     position = _position()
-    assert position["gap"] == D("0.00"), position
+    # The page compares the two figures it shows: the only legitimate gap is the
+    # starting funds (money that existed before the app, not profit).
+    assert position["gap"] == position["starting_funds"], position
     assert position["net_result"] == position["distributable_result"] + position["starting_funds"]
     return position
 
@@ -329,7 +331,7 @@ def test_financial_position_endpoint_returns_the_position_as_strings():
     assert data["assets"]["total"] == "42.00"
     assert data["net_result"] == "42.00"  # the opening balance is not profit...
     assert data["starting_funds"] == "42.00"  # ...and is shown as such, not as a debt
-    assert data["gap"] == "0.00"
+    assert data["gap"] == "42.00"  # = the starting funds, visibly not profit
 
 
 @pytest.mark.django_db
