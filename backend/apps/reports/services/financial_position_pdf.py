@@ -279,8 +279,6 @@ def _result_block(position: dict, labels: dict, lang: str, rtl: bool):
         (labels["net_result"], position["net_result"], True, INK),
         (labels["control"], position["distributable_result"], False, INK),
     ]
-    if float(position["starting_funds"]) != 0:
-        rows.append(("+ " + labels["starting_funds"], position["starting_funds"], False, INK))
     if float(position["gap"]) != 0:
         rows.append((labels["gap"], position["gap"], True, RED))
     rows.append((labels["capital"], position["capital"], False, MUTED))

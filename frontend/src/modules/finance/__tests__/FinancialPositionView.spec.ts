@@ -107,4 +107,22 @@ describe('FinancialPositionView', () => {
     expect(print).toHaveBeenCalled()
     wrapper.unmount()
   })
+
+  it('shows no starting-funds line in the control nor the opening balances in the origins', async () => {
+    const { fetchFinancialPosition } = await import('../api')
+    vi.mocked(fetchFinancialPosition).mockResolvedValueOnce({
+      ...position,
+      starting_funds: '92358500.00',
+      treasury_origins: [
+        { key: 'opening_balances', amount: '92358500.00' },
+        ...position.treasury_origins,
+      ],
+    })
+    const wrapper = mount(FinancialPositionView)
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="position-control"]').text()).not.toContain('92 358 500')
+    expect(wrapper.find('[data-test="position-origins"]').text()).not.toContain('92 358 500')
+    expect(wrapper.find('[data-test="position-origins"]').text()).toContain('Apports en capital')
+  })
 })

@@ -64,6 +64,12 @@ const pageEl = ref<HTMLElement | null>(null)
 const { print: printPage } = usePrintScope(pageEl, ref('portrait'))
 const today = new Date().toLocaleDateString(locale.value)
 
+// The opening balances are part of the account balances already shown above:
+// no line of their own in the origins list.
+const origins = computed(() =>
+  (position.value?.treasury_origins ?? []).filter((origin) => origin.key !== 'opening_balances'),
+)
+
 const net = computed(() => (position.value ? Number(position.value.net_result) : 0))
 
 const sides = computed(() =>
@@ -187,13 +193,6 @@ const sides = computed(() =>
           <span class="text-texte-2">{{ t('finance.position.control') }}</span>
           <MonoValue class="font-medium" :value="formatMoney(position.distributable_result)" />
         </div>
-        <div
-          v-if="Number(position.starting_funds) !== 0"
-          class="flex items-baseline justify-between gap-3"
-        >
-          <span class="text-texte-2">+ {{ t('finance.position.lines.starting_funds') }}</span>
-          <MonoValue class="font-medium" :value="formatMoney(position.starting_funds)" />
-        </div>
         <p v-if="Number(position.gap) === 0" class="text-livre text-xs">
           ✓ {{ t('finance.position.controlOk') }}
         </p>
@@ -223,7 +222,7 @@ const sides = computed(() =>
         <p class="text-texte-3 mt-2 text-xs">{{ t('finance.position.originsHelp') }}</p>
         <ul class="mt-2 space-y-1">
           <li
-            v-for="origin in position.treasury_origins"
+            v-for="origin in origins"
             :key="origin.key"
             class="flex items-baseline justify-between gap-3"
           >
