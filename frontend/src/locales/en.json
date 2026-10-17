@@ -1459,7 +1459,7 @@
         "unsold_fuel_paid": "Unsold fuel already paid for",
         "unsold_costs_paid": "Trip costs paid on unsold fuel",
         "starting_funds": "Starting funds (opening balances and old debts)",
-        "unsold_unpaid_covered": "Unsold fuel and costs not yet paid (covered by the debts)"
+        "unsold_unpaid_covered": "Unsold fuel not yet paid for (covered by the debts)"
       },
       "children": {
         "company_stock": "Paid: company stock",
@@ -1469,7 +1469,11 @@
         "transit": "Transit",
         "road_transit": "Road transit",
         "border": "Border",
-        "loading": "Loading"
+        "loading": "Loading",
+        "unpaid_company_stock": "Unpaid: company stock",
+        "unpaid_in_transit": "Unpaid: in transit",
+        "unpaid_at_supplier": "Unpaid: at the supplier",
+        "unpaid_costs": "Costs of unsold trips, unpaid"
       },
       "control": "Check: net profit to distribute (Profit page)",
       "controlOk": "Same as the net result",

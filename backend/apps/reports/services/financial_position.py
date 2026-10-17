@@ -157,14 +157,17 @@ class FinancialPositionService:
         paid_stock = pipeline["supplier_company_stock_value"]
         paid_in_transit = pipeline["supplier_in_transit_value"]
         paid_at_supplier = pipeline["supplier_reliquat_value"]
-        full_unsold = ZERO
+        full_stock = full_in_transit = full_at_supplier = ZERO
         for order in SupplierOrder.objects.filter(status=SupplierOrder.Status.CONFIRMED):
-            full_unsold += (
-                SupplierStockService.get_purchase_company_stock_amount(order)
-                + SupplierStockService.get_purchase_in_transit_amount(order)
-                + SupplierStockService.get_purchase_reliquat_amount(order)
-            )
-        unpaid_unsold_fuel = max(full_unsold - (paid_stock + paid_in_transit + paid_at_supplier), ZERO)
+            full_stock += SupplierStockService.get_purchase_company_stock_amount(order)
+            full_in_transit += SupplierStockService.get_purchase_in_transit_amount(order)
+            full_at_supplier += SupplierStockService.get_purchase_reliquat_amount(order)
+        # The same three places as the "Paye : ..." lines; the part of each not
+        # paid yet is what the supplier debt still finances.
+        unpaid_stock = max(full_stock - paid_stock, ZERO)
+        unpaid_in_transit = max(full_in_transit - paid_in_transit, ZERO)
+        unpaid_at_supplier = max(full_at_supplier - paid_at_supplier, ZERO)
+        unpaid_unsold_fuel = unpaid_stock + unpaid_in_transit + unpaid_at_supplier
 
         costs = _unsold_trip_costs()
 
@@ -193,7 +196,16 @@ class FinancialPositionService:
                 {"key": "at_supplier", "amount": paid_at_supplier},
             ]),
             _line("unsold_costs_paid", costs["paid"]),
-            _line("unsold_unpaid_covered", unpaid_unsold_fuel + sum(costs["unpaid"].values(), ZERO)),
+            _line(
+                "unsold_unpaid_covered",
+                unpaid_unsold_fuel + sum(costs["unpaid"].values(), ZERO),
+                [
+                    {"key": "unpaid_company_stock", "amount": unpaid_stock},
+                    {"key": "unpaid_in_transit", "amount": unpaid_in_transit},
+                    {"key": "unpaid_at_supplier", "amount": unpaid_at_supplier},
+                    {"key": "unpaid_costs", "amount": sum(costs["unpaid"].values(), ZERO)},
+                ],
+            ),
         ]
 
         supplier_total = _sum_rows(debts, "supplier")

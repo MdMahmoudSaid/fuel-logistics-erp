@@ -1461,7 +1461,7 @@
         "unsold_fuel_paid": "Carburant non vendu déjà payé",
         "unsold_costs_paid": "Frais de trajet payés sur du carburant non vendu",
         "starting_funds": "Fonds de départ (soldes d'ouverture et anciennes dettes)",
-        "unsold_unpaid_covered": "Carburant et frais non vendus, non encore payés (couverts par les dettes)"
+        "unsold_unpaid_covered": "Carburant non vendu, non encore payé (couvert par les dettes)"
       },
       "children": {
         "company_stock": "Payé : stock entreprise",
@@ -1471,7 +1471,11 @@
         "transit": "Transit",
         "road_transit": "Transit routière",
         "border": "Frontière",
-        "loading": "Chargement"
+        "loading": "Chargement",
+        "unpaid_company_stock": "Non payé : stock entreprise",
+        "unpaid_in_transit": "Non payé : en cours",
+        "unpaid_at_supplier": "Non payé : chez le fournisseur",
+        "unpaid_costs": "Frais de trajets non vendus, non payés"
       },
       "control": "Contrôle : bénéfice net à distribuer (page Bénéfices)",
       "controlOk": "Identique au résultat net",

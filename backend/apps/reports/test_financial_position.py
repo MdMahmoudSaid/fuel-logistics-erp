@@ -110,7 +110,14 @@ def test_paying_for_unsold_fuel_moves_it_to_the_asset_side_without_changing_the_
     assert stock["amount"] == D("400000.00")  # the "Paye : ..." figure of the Fond de roulement
     assert {c["key"]: c["amount"] for c in stock["children"]}["at_supplier"] == D("400000.00")
     assert _lines(position["liabilities"])["supplier_debts"]["amount"] == D("600000.00")  # what is left to pay
-    assert _lines(position["assets"])["unsold_unpaid_covered"]["amount"] == D("600000.00")
+    covered = _lines(position["assets"])["unsold_unpaid_covered"]
+    assert covered["amount"] == D("600000.00")
+    # Same three places as the "Paye : ..." lines: 400,000 paid + 600,000 not yet
+    # paid = the 1,000,000 of fuel still at the supplier.
+    assert {c["key"]: c["amount"] for c in covered["children"]} == {
+        "unpaid_company_stock": D("0.00"), "unpaid_in_transit": D("0.00"),
+        "unpaid_at_supplier": D("600000.00"), "unpaid_costs": D("0.00"),
+    }
 
 
 @pytest.mark.django_db
