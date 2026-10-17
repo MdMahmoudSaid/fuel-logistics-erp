@@ -1453,19 +1453,20 @@
         "supplier_advances": "Avances versées aux fournisseurs",
         "transporter_advances": "Avances versées aux transporteurs",
         "associate_advances": "Avances aux associés (non récupérées)",
-        "supplier_debts": "Dettes fournisseurs (hors carburant non vendu)",
-        "transporter_debts": "Dettes transporteurs (trajets vendus)",
-        "trip_fee_debts": "Frais de trajet à payer (trajets vendus)",
+        "supplier_debts": "Dettes fournisseurs",
+        "transporter_debts": "Dettes transporteurs",
+        "trip_fee_debts": "Dettes douane / transit / frais",
         "customer_credit": "Avances reçues des clients",
         "shareholder_dues": "Dû aux associés (capital et bénéfices non retirés)",
         "unsold_fuel_paid": "Carburant non vendu déjà payé",
         "unsold_costs_paid": "Frais de trajet payés sur du carburant non vendu",
-        "starting_funds": "Fonds de départ (soldes d'ouverture des comptes)"
+        "starting_funds": "Fonds de départ (soldes d'ouverture des comptes)",
+        "unsold_unpaid_covered": "Carburant et frais non vendus, non encore payés (couverts par les dettes)"
       },
       "children": {
-        "company_stock": "Stock entreprise",
-        "in_transit": "En cours (sur la route)",
-        "at_supplier": "Chez le fournisseur",
+        "company_stock": "Payé : stock entreprise",
+        "in_transit": "Payé : en cours",
+        "at_supplier": "Payé : chez le fournisseur",
         "customs": "Douane",
         "transit": "Transit",
         "road_transit": "Transit routière",
@@ -1475,8 +1476,28 @@
       "control": "Contrôle : bénéfice net à distribuer (page Bénéfices)",
       "controlOk": "Identique au résultat net",
       "controlGap": "Écart avec le résultat net",
-      "matchedNote": "Dettes compensées par du carburant ou des frais non encore vendus, affichées d'aucun côté :",
-      "note": "Le carburant et les frais d'un trajet non encore vendu ne sont comptés que pour ce qui a été payé ; la partie impayée est compensée par la dette correspondante et n'apparaît d'aucun côté, comme dans le Fond de roulement."
+      "note": "Les dettes sont affichées pour leur montant complet, comme dans le Fond de roulement. Le carburant et les frais d'un trajet non encore vendu, pas encore payés, figurent des deux côtés (l'actif financé par la dette) : ils s'annulent dans le résultat net.",
+      "fdr": "Fond de roulement client (rappel)",
+      "fdrHelp": "Trésorerie + créances clients + dettes ouvertes + carburant payé non vendu. Il additionne les dettes ; cette page les soustrait.",
+      "originsTitle": "D'où vient la trésorerie",
+      "originsHelp": "Mouvement net par origine, sur les comptes comptés ci-dessus. Utile pour retrouver ce qui explique un écart avec le bénéfice à distribuer.",
+      "origins": {
+        "opening_balances": "Soldes d'ouverture des comptes",
+        "shareholdercontribution": "Apports en capital",
+        "shareholderwithdrawal": "Retraits d'associés",
+        "customerpayment": "Encaissements clients",
+        "supplierpayment": "Paiements fournisseurs",
+        "transportpayment": "Paiements transporteurs",
+        "expense": "Dépenses et frais payés",
+        "supplieradvance": "Avances aux fournisseurs",
+        "transporteradvance": "Avances aux transporteurs",
+        "customeradvance": "Avances clients",
+        "shareholderloan": "Avances aux associés",
+        "shareholderloanrepayment": "Remboursements d'avances associés",
+        "openingdebt": "Nouvelles dettes payées",
+        "transfer": "Transferts internes",
+        "manual": "Saisies manuelles sans origine"
+      }
     }
   },
   "truckStatus": {

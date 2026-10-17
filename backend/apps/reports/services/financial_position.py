@@ -1,14 +1,15 @@
 # "Situation financiere" (client request 2026-10-17): what the company owns
 # against what it owes, and the net result = owned - owed.
 #
-# Same principle as the Fond de roulement (WorkingCapitalService): fuel that is
-# still unsold and not yet paid for is NOT shown twice. The supplier debt that
-# finances it and the fuel itself cancel out, so neither appears; only the
-# part already paid stands on the asset side, and the debt that remains is the
-# one that relates to fuel already sold. The same goes for the trip costs
-# (transport, customs, transit...) already engaged on a trip that is not sold:
-# the profit only books them when the trip is sold, so what has been paid is an
-# asset until then, and what is unpaid appears nowhere.
+# Every figure that exists in the Fond de roulement is shown here with the SAME
+# value (treasury, customer receivables, the three "Paye : ..." fuel lines,
+# supplier / transporter / trip-fee debts at their full amount, what is owed
+# to the associates). A purchase on credit is a debt in full AND the fuel it
+# covers, so the unsold fuel (and the costs already engaged on trips not sold
+# yet) not yet paid for is shown on the asset side as "couvert par les dettes":
+# the two cancel in the net result. Booking them once on each side is what
+# makes the net result equal the profit: the profit books a trip's costs only
+# when the trip is sold.
 #
 # Goal (client rule): the net result is the same figure as the distributable
 # net profit of the Benefices page, at any time. It holds because
@@ -24,7 +25,16 @@
 
 from decimal import Decimal
 
-from apps.finance.models import BankAccount, CashAccount, ExpenseAllocation, ShareholderLoan, TransportPayment
+from django.db.models import F as models_F
+
+from apps.finance.models import (
+    BankAccount,
+    CashAccount,
+    ExpenseAllocation,
+    ShareholderLoan,
+    TransportPayment,
+    TreasuryTransaction,
+)
 from apps.finance.services import (
     ControlledDebtPaymentService as Debts,
 )
@@ -102,6 +112,35 @@ def _unsold_trip_costs() -> dict:
     return {"unpaid": unpaid, "paid": paid}
 
 
+def _treasury_origins(bank_accounts, cash_accounts, starting_funds) -> list[dict]:
+    """Net treasury movement per origin (the kind of record that caused it),
+    on the accounts counted in the position; internal transfers net to zero
+    between two counted accounts and are listed apart."""
+    from django.db.models import Case, DecimalField, Q, Sum, Value, When
+
+    movements = TreasuryTransaction.objects.filter(
+        Q(bank_account__in=bank_accounts) | Q(cash_account__in=cash_accounts)
+    )
+    signed = Case(
+        When(type=TreasuryTransaction.Type.MONEY_IN, then="amount"),
+        default=-1 * models_F("amount"),
+        output_field=DecimalField(max_digits=18, decimal_places=2),
+    )
+    grouped = (
+        movements.values("is_transfer", "source_content_type__model")
+        .annotate(net=Sum(signed))
+        .order_by()
+    )
+    totals: dict[str, Decimal] = {}
+    for row in grouped:
+        key = "transfer" if row["is_transfer"] else (row["source_content_type__model"] or "manual")
+        totals[key] = totals.get(key, ZERO) + row["net"]
+    rows = [{"key": "opening_balances", "amount": starting_funds}] + [
+        {"key": key, "amount": amount} for key, amount in totals.items() if amount != ZERO
+    ]
+    return rows
+
+
 class FinancialPositionService:
     @staticmethod
     def get_position() -> dict:
@@ -153,15 +192,13 @@ class FinancialPositionService:
                 {"key": "at_supplier", "amount": paid_at_supplier},
             ]),
             _line("unsold_costs_paid", costs["paid"]),
+            _line("unsold_unpaid_covered", unpaid_unsold_fuel + sum(costs["unpaid"].values(), ZERO)),
         ]
 
         supplier_total = _sum_rows(debts, "supplier")
         transporter_total = _sum_rows(debts, "transporter")
         fee_children = [
-            {
-                "key": key,
-                "amount": _sum_rows(debts, f"fee_{key}") - costs["unpaid"][key],
-            }
+            {"key": key, "amount": _sum_rows(debts, f"fee_{key}")}
             for key in _FEE_KEYS
         ]
         dues = ShareholderLedgerService.get_company_dues()
@@ -169,8 +206,8 @@ class FinancialPositionService:
             (a.opening_balance for a in cash_accounts), ZERO
         )
         liability_lines = [
-            _line("supplier_debts", supplier_total - unpaid_unsold_fuel),
-            _line("transporter_debts", transporter_total - costs["unpaid"]["transport"]),
+            _line("supplier_debts", supplier_total),
+            _line("transporter_debts", transporter_total),
             _line("trip_fee_debts", sum((c["amount"] for c in fee_children), ZERO), fee_children),
             _line("customer_credit", _sum_rows(debts, "customer_credit")),
             _line("shareholder_dues", dues["total"], [
@@ -183,6 +220,7 @@ class FinancialPositionService:
         total_liabilities = sum((l["amount"] for l in liability_lines), ZERO)
         distributable = ShareholderProfitPreviewService.get_preview()["distributable_result"]
         matched = unpaid_unsold_fuel + sum(costs["unpaid"].values(), ZERO)
+        working_capital = WorkingCapitalService.get_working_capital()
         return {
             "assets": {"lines": asset_lines, "total": total_assets},
             "liabilities": {"lines": liability_lines, "total": total_liabilities},
@@ -195,6 +233,12 @@ class FinancialPositionService:
             # mean a movement this page does not know how to place.
             "distributable_result": distributable,
             "gap": total_assets - total_liabilities - distributable,
+            # Where the treasury comes from (net per origin): lets a gap with the
+            # distributable profit be traced to the movements behind it.
+            "treasury_origins": _treasury_origins(bank_accounts, cash_accounts, starting_funds),
+            # The Fond de roulement figure, for the record (it ADDS the open
+            # debts to the treasury and the receivables; this page subtracts them).
+            "working_capital_total": working_capital["total"],
             # Information only: the capital the associates brought in.
             "capital": ShareholderContributionService.get_total_capital(),
         }

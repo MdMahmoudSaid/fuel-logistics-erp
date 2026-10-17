@@ -76,16 +76,19 @@ def test_position_lists_treasury_and_starting_funds_net_to_zero():
 
 
 @pytest.mark.django_db
-def test_unsold_unpaid_fuel_and_its_debt_appear_on_neither_side():
+def test_unsold_unpaid_fuel_is_matched_by_its_debt_and_cancels_in_the_result():
     _, supplier, order = _make_supplier_order_with_status(
         "POS-UNP", SupplierOrder.Status.CONFIRMED, quantity=D("1000.00"), unit_price=D("1000.0000"),
     )
 
     position = _assert_net_is_the_distributable_profit()
 
-    assert _lines(position["liabilities"])["supplier_debts"]["amount"] == D("0.00")
+    # The debt is shown in full (same figure as the Fond de roulement and the
+    # "Dettes a payer" report); the fuel it covers stands on the other side.
+    assert _lines(position["liabilities"])["supplier_debts"]["amount"] == D("1000000.00")
     assert _lines(position["assets"])["unsold_fuel_paid"]["amount"] == D("0.00")
-    assert position["matched_unsold"] == D("1000000.00")  # for the record only
+    assert _lines(position["assets"])["unsold_unpaid_covered"]["amount"] == D("1000000.00")
+    assert position["net_result"] == D("0.00")
 
 
 @pytest.mark.django_db
@@ -104,9 +107,10 @@ def test_paying_for_unsold_fuel_moves_it_to_the_asset_side_without_changing_the_
 
     assert _lines(position["assets"])["banks"]["amount"] == D("4600000.00")
     stock = _lines(position["assets"])["unsold_fuel_paid"]
-    assert stock["amount"] == D("400000.00")  # only what has really been paid for
+    assert stock["amount"] == D("400000.00")  # the "Paye : ..." figure of the Fond de roulement
     assert {c["key"]: c["amount"] for c in stock["children"]}["at_supplier"] == D("400000.00")
-    assert _lines(position["liabilities"])["supplier_debts"]["amount"] == D("0.00")
+    assert _lines(position["liabilities"])["supplier_debts"]["amount"] == D("600000.00")  # what is left to pay
+    assert _lines(position["assets"])["unsold_unpaid_covered"]["amount"] == D("600000.00")
 
 
 @pytest.mark.django_db
@@ -139,9 +143,11 @@ def test_costs_engaged_on_an_unsold_trip_are_an_asset_only_for_what_is_paid():
     position = _assert_net_is_the_distributable_profit()
 
     assert _lines(position["assets"])["unsold_costs_paid"]["amount"] == D("2400000.00")
-    # What is still unpaid on that trip is matched by the debt: shown nowhere.
-    assert _lines(position["liabilities"])["transporter_debts"]["amount"] == D("0.00")
-    assert _lines(position["liabilities"])["trip_fee_debts"]["amount"] == D("0.00")
+    # What is still unpaid on that trip stays a debt, matched on the asset side.
+    assert _lines(position["liabilities"])["transporter_debts"]["amount"] == D("3000000.00")
+    assert _lines(position["liabilities"])["trip_fee_debts"]["amount"] == D("600000.00")
+    covered = _lines(position["assets"])["unsold_unpaid_covered"]["amount"]
+    assert covered >= D("3600000.00")
 
 
 @pytest.mark.django_db
@@ -213,6 +219,51 @@ def test_general_expense_distribution_and_withdrawals_keep_the_result_equal_to_t
             bank_account_id=bank.id,
         )
         _assert_net_is_the_distributable_profit()
+
+
+@pytest.mark.django_db
+def test_every_fond_de_roulement_figure_is_found_with_the_same_value_and_the_origins_add_up():
+    from apps.finance.services import WorkingCapitalService
+
+    admin = _make_admin("POSFDR")
+    bank = BankAccount.objects.create(name="B1", opening_balance=D("10000000.00"))
+    _contribute(admin, bank, "50000000.00")
+    _deliver_trip_with_transporter_loss(
+        "POSFDR", admin, received_qty=D("44600.00"), base_amount=D("5000000.00"),
+    )
+    _make_supplier_order_with_status(
+        "POS-FDR2", SupplierOrder.Status.CONFIRMED, quantity=D("1000.00"), unit_price=D("1000.0000"),
+    )
+
+    position = _assert_net_is_the_distributable_profit()
+    wc = WorkingCapitalService.get_working_capital()
+    assets, liabilities = _lines(position["assets"]), _lines(position["liabilities"])
+
+    assert assets["banks"]["amount"] + assets["cash"]["amount"] == wc["treasury_available"]
+    assert assets["customer_receivables"]["amount"] == wc["customer_receivables"]
+    assert liabilities["supplier_debts"]["amount"] == wc["supplier_debt_total"]
+    assert liabilities["transporter_debts"]["amount"] == wc["transporter_debt_total"]
+    assert liabilities["trip_fee_debts"]["amount"] == wc["other_debts"]
+    assert liabilities["shareholder_dues"]["amount"] == wc["shareholder_dues"]
+    stock = {c["key"]: c["amount"] for c in assets["unsold_fuel_paid"]["children"]}
+    assert stock == {
+        "company_stock": wc["supplier_company_stock_value"],
+        "in_transit": wc["supplier_in_transit_value"],
+        "at_supplier": wc["supplier_reliquat_value"],
+    }
+    assert position["working_capital_total"] == wc["total"]
+    # The Fond de roulement is treasury + receivables + the open debts + the paid fuel.
+    assert wc["total"] == (
+        assets["banks"]["amount"] + assets["cash"]["amount"] + assets["customer_receivables"]["amount"]
+        + liabilities["supplier_debts"]["amount"] + liabilities["transporter_debts"]["amount"]
+        + liabilities["trip_fee_debts"]["amount"] + assets["unsold_fuel_paid"]["amount"]
+    )
+
+    # Where the treasury comes from adds up to the treasury shown.
+    origins = {o["key"]: o["amount"] for o in position["treasury_origins"]}
+    assert origins["opening_balances"] == D("10000000.00")
+    assert origins["shareholdercontribution"] == D("50000000.00")
+    assert sum(origins.values(), D("0.00")) == assets["banks"]["amount"] + assets["cash"]["amount"]
 
 
 @pytest.mark.django_db

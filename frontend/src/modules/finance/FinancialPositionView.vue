@@ -12,7 +12,7 @@ import { formatMoney } from '@/utils/currency'
 import { fetchFinancialPosition } from './api'
 import type { FinancialPosition, FinancialPositionChild, FinancialPositionLine } from './types'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 
 const position = ref<FinancialPosition | null>(null)
 const loading = ref(true)
@@ -27,6 +27,11 @@ onMounted(async () => {
     loading.value = false
   }
 })
+
+function originLabel(key: string): string {
+  const path = `finance.position.origins.${key}`
+  return te(path) ? t(path) : key
+}
 
 function childLabel(child: FinancialPositionChild): string {
   return child.label ?? t(`finance.position.children.${child.key}`)
@@ -146,10 +151,34 @@ const sides = computed(() =>
       </section>
 
       <p class="text-texte-3 text-xs">{{ t('finance.position.note') }}</p>
-      <p v-if="Number(position.matched_unsold) !== 0" class="text-texte-3 text-xs">
-        {{ t('finance.position.matchedNote') }}
-        <MonoValue :value="formatMoney(position.matched_unsold)" />
-      </p>
+
+      <section class="border-ligne space-y-1 rounded-xl border bg-white p-4 text-sm">
+        <div class="flex items-baseline justify-between gap-3">
+          <span class="text-texte-2">{{ t('finance.position.fdr') }}</span>
+          <MonoValue class="font-medium" :value="formatMoney(position.working_capital_total)" />
+        </div>
+        <p class="text-texte-3 text-xs">{{ t('finance.position.fdrHelp') }}</p>
+      </section>
+
+      <details
+        data-test="position-origins"
+        class="border-ligne rounded-xl border bg-white p-4 text-sm"
+      >
+        <summary class="text-texte-2 cursor-pointer font-medium">
+          {{ t('finance.position.originsTitle') }}
+        </summary>
+        <p class="text-texte-3 mt-2 text-xs">{{ t('finance.position.originsHelp') }}</p>
+        <ul class="mt-2 space-y-1">
+          <li
+            v-for="origin in position.treasury_origins"
+            :key="origin.key"
+            class="flex items-baseline justify-between gap-3"
+          >
+            <span>{{ originLabel(origin.key) }}</span>
+            <MonoValue :value="formatMoney(origin.amount)" />
+          </li>
+        </ul>
+      </details>
 
       <p class="text-texte-3 text-xs">
         {{ t('finance.position.capital') }} :

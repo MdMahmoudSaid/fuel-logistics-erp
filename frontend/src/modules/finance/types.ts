@@ -830,5 +830,8 @@ export interface FinancialPosition {
   gap: string
   // Open debts matched by fuel / costs not sold yet (shown on neither side).
   matched_unsold: string
+  working_capital_total: string
+  // Net treasury movement per origin (model name of the source record).
+  treasury_origins: { key: string; amount: string }[]
   capital: string
 }

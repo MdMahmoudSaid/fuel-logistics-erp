@@ -37,6 +37,11 @@ const position = {
   distributable_result: '21338383.00',
   gap: '0.00',
   matched_unsold: '30000000.00',
+  working_capital_total: '650000000.00',
+  treasury_origins: [
+    { key: 'shareholdercontribution', amount: '300000000.00' },
+    { key: 'customerpayment', amount: '100000000.00' },
+  ],
   capital: '300000000.00',
 }
 
@@ -71,7 +76,8 @@ describe('FinancialPositionView', () => {
     const control = wrapper.find('[data-test="position-control"]').text()
     expect(control).toContain('21 338 383')
     expect(control).toContain('Identique au résultat net')
-    expect(wrapper.text()).toContain('30 000 000') // matched debts, for the record
+    expect(wrapper.text()).toContain('650 000 000') // the Fond de roulement, for the record
+    expect(wrapper.find('[data-test="position-origins"]').text()).toContain('Apports en capital')
   })
 
   it('hides zero sub-lines but keeps every main line', async () => {
@@ -80,7 +86,7 @@ describe('FinancialPositionView', () => {
 
     const assets = wrapper.find('[data-test="position-assets"]').text()
     expect(assets).toContain('Caisses') // main line at its own amount
-    expect(assets).not.toContain('Stock entreprise') // zero child hidden
-    expect(assets).toContain('Chez le fournisseur')
+    expect(assets).not.toContain('stock entreprise') // zero child hidden
+    expect(assets).toContain('Payé : chez le fournisseur')
   })
 })

@@ -1451,19 +1451,20 @@
         "supplier_advances": "Advances paid to suppliers",
         "transporter_advances": "Advances paid to transporters",
         "associate_advances": "Advances to associates (not recovered)",
-        "supplier_debts": "Supplier debts (excluding unsold fuel)",
-        "transporter_debts": "Transporter debts (sold trips)",
-        "trip_fee_debts": "Trip fees to pay (sold trips)",
+        "supplier_debts": "Supplier debts",
+        "transporter_debts": "Transporter debts",
+        "trip_fee_debts": "Customs / transit / fee debts",
         "customer_credit": "Advances received from customers",
         "shareholder_dues": "Owed to associates (capital and unwithdrawn profit)",
         "unsold_fuel_paid": "Unsold fuel already paid for",
         "unsold_costs_paid": "Trip costs paid on unsold fuel",
-        "starting_funds": "Starting funds (account opening balances)"
+        "starting_funds": "Starting funds (account opening balances)",
+        "unsold_unpaid_covered": "Unsold fuel and costs not yet paid (covered by the debts)"
       },
       "children": {
-        "company_stock": "Company stock",
-        "in_transit": "In transit (on the road)",
-        "at_supplier": "At the supplier",
+        "company_stock": "Paid: company stock",
+        "in_transit": "Paid: in transit",
+        "at_supplier": "Paid: at the supplier",
         "customs": "Customs",
         "transit": "Transit",
         "road_transit": "Road transit",
@@ -1473,8 +1474,28 @@
       "control": "Check: net profit to distribute (Profit page)",
       "controlOk": "Same as the net result",
       "controlGap": "Gap with the net result",
-      "matchedNote": "Debts matched by fuel or costs not sold yet, shown on neither side:",
-      "note": "Fuel and costs of a trip that is not sold yet count only for what has been paid; the unpaid part is matched by its debt and appears on neither side, as in the Fond de roulement."
+      "note": "Debts are shown in full, like in the Fond de roulement. Fuel and costs of a trip not sold yet and not yet paid stand on both sides (the asset financed by the debt): they cancel in the net result.",
+      "fdr": "Customer working capital (for the record)",
+      "fdrHelp": "Treasury + customer receivables + open debts + paid unsold fuel. It adds the debts; this page subtracts them.",
+      "originsTitle": "Where the treasury comes from",
+      "originsHelp": "Net movement per origin, on the accounts counted above. Useful to find what explains a gap with the profit to distribute.",
+      "origins": {
+        "opening_balances": "Account opening balances",
+        "shareholdercontribution": "Capital contributions",
+        "shareholderwithdrawal": "Associate withdrawals",
+        "customerpayment": "Customer receipts",
+        "supplierpayment": "Supplier payments",
+        "transportpayment": "Transporter payments",
+        "expense": "Expenses and fees paid",
+        "supplieradvance": "Advances to suppliers",
+        "transporteradvance": "Advances to transporters",
+        "customeradvance": "Customer advances",
+        "shareholderloan": "Advances to associates",
+        "shareholderloanrepayment": "Associate advance repayments",
+        "openingdebt": "New debts paid",
+        "transfer": "Internal transfers",
+        "manual": "Manual entries with no origin"
+      }
     }
   },
   "truckStatus": {
