@@ -1460,7 +1460,7 @@
         "shareholder_dues": "Dû aux associés (capital et bénéfices non retirés)",
         "unsold_fuel_paid": "Carburant non vendu déjà payé",
         "unsold_costs_paid": "Frais de trajet payés sur du carburant non vendu",
-        "starting_funds": "Fonds de départ (soldes d'ouverture des comptes)",
+        "starting_funds": "Fonds de départ (soldes d'ouverture et anciennes dettes)",
         "unsold_unpaid_covered": "Carburant et frais non vendus, non encore payés (couverts par les dettes)"
       },
       "children": {

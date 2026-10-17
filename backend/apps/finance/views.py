@@ -602,8 +602,25 @@ class TreasuryTransactionViewSet(viewsets.ModelViewSet):
     permission_classes = [HasModulePermission]
     module = "finance"
 
-    def perform_create(self, serializer):
-        serializer.save(recorded_by=self.request.user)
+    # No money may enter or leave a bank / cash account without a source: every
+    # movement is written by the service of the operation that causes it
+    # (customer payment, supplier payment, capital contribution, transfer...).
+    # A raw entry here would be money of unknown origin (2026-10-17: a 100M
+    # entry of that kind skewed the whole financial position).
+    _NO_MANUAL_ENTRY_DETAIL = (
+        "Une ecriture de tresorerie ne peut pas etre saisie directement : "
+        "utilisez l'operation correspondante (paiement, apport en capital, "
+        "transfert, solde d'ouverture du compte...)."
+    )
+
+    def create(self, request, *args, **kwargs):
+        raise MethodNotAllowed("POST", detail=self._NO_MANUAL_ENTRY_DETAIL)
+
+    def update(self, request, *args, **kwargs):
+        raise MethodNotAllowed(request.method, detail=self._NO_MANUAL_ENTRY_DETAIL)
+
+    def partial_update(self, request, *args, **kwargs):
+        raise MethodNotAllowed("PATCH", detail=self._NO_MANUAL_ENTRY_DETAIL)
 
     def destroy(self, request, *args, **kwargs):
         raise MethodNotAllowed("DELETE", detail=_NO_HARD_DELETE_DETAIL)

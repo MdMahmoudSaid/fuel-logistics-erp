@@ -31,6 +31,7 @@ from apps.finance.models import (
     BankAccount,
     CashAccount,
     ExpenseAllocation,
+    OpeningDebt,
     ShareholderLoan,
     TransportPayment,
     TreasuryTransaction,
@@ -202,8 +203,16 @@ class FinancialPositionService:
             for key in _FEE_KEYS
         ]
         dues = ShareholderLedgerService.get_company_dues()
-        starting_funds = sum((a.opening_balance for a in bank_accounts), ZERO) + sum(
-            (a.opening_balance for a in cash_accounts), ZERO
+        # What the company already had when it started using the app: the
+        # accounts' opening balances, plus what customers already owed it and
+        # minus what it already owed suppliers / transporters ("Nouvelle dette":
+        # money that moved before the app, so never a profit nor a cost).
+        old_debts = OpeningDebt.objects.filter(cancelled_at__isnull=True)
+        starting_funds = (
+            sum((a.opening_balance for a in bank_accounts), ZERO)
+            + sum((a.opening_balance for a in cash_accounts), ZERO)
+            + sum((d.amount for d in old_debts.filter(customer__isnull=False)), ZERO)
+            - sum((d.amount for d in old_debts.filter(customer__isnull=True)), ZERO)
         )
         liability_lines = [
             _line("supplier_debts", supplier_total),
@@ -235,7 +244,12 @@ class FinancialPositionService:
             "gap": total_assets - total_liabilities - distributable,
             # Where the treasury comes from (net per origin): lets a gap with the
             # distributable profit be traced to the movements behind it.
-            "treasury_origins": _treasury_origins(bank_accounts, cash_accounts, starting_funds),
+            "treasury_origins": _treasury_origins(
+                bank_accounts,
+                cash_accounts,
+                sum((a.opening_balance for a in bank_accounts), ZERO)
+                + sum((a.opening_balance for a in cash_accounts), ZERO),
+            ),
             # The Fond de roulement figure, for the record (it ADDS the open
             # debts to the treasury and the receivables; this page subtracts them).
             "working_capital_total": working_capital["total"],

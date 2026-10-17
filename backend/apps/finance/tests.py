@@ -3061,42 +3061,36 @@ def test_treasury_transfer_rejected_via_api_for_same_account(finance_client):
 
 
 @pytest.mark.django_db
-def test_direct_is_transfer_flag_is_ignored_on_api_create(finance_client):
-    """is_transfer is read-only - only TreasuryService.record_transfer()
-    may set it, so posting it directly is silently ignored rather than
-    honoured (docs/PHASE_5_PLAN.md Etape 7)."""
-    cash_account = CashAccount.objects.create(name="Main Cash")
-
-    response = finance_client.post(
-        "/api/treasury-transactions/",
-        {
-            "cash_account": cash_account.id,
-            "type": TreasuryTransaction.Type.MONEY_IN,
-            "is_transfer": True,
-            "amount": "1000000.00",
-            "date": "2026-08-18",
-        },
+def test_a_treasury_entry_cannot_be_created_edited_or_deleted_by_hand(finance_client):
+    """No money enters a bank / cash account without a source (2026-10-17): the
+    raw endpoint refuses every write, whatever the payload (a plain MONEY_IN,
+    a forged is_transfer, a TRANSFER type...). Only the services write rows."""
+    cash_account = CashAccount.objects.create(name="Main Cash", opening_balance=Decimal("500.00"))
+    txn = TreasuryTransaction.objects.create(
+        cash_account=cash_account, type=TreasuryTransaction.Type.MONEY_OUT, amount=Decimal("10.00"),
+        date="2026-08-18", recorded_by=_make_admin_user("NOMANUAL"),
     )
 
-    assert response.status_code == 201, response.data
-    assert response.data["is_transfer"] is False
+    for payload in (
+        {"cash_account": cash_account.id, "type": "MONEY_IN", "amount": "100000000.00", "date": "2026-10-01"},
+        {"cash_account": cash_account.id, "type": "MONEY_IN", "is_transfer": True, "amount": "1.00", "date": "2026-10-01"},
+        {"cash_account": cash_account.id, "type": "TRANSFER", "amount": "1.00", "date": "2026-10-01"},
+    ):
+        response = finance_client.post("/api/treasury-transactions/", payload)
+        assert response.status_code == 405, response.data
+    assert finance_client.patch(
+        f"/api/treasury-transactions/{txn.id}/", {"amount": "999.00"}
+    ).status_code == 405
+    assert finance_client.put(
+        f"/api/treasury-transactions/{txn.id}/",
+        {"cash_account": cash_account.id, "type": "MONEY_IN", "amount": "1.00", "date": "2026-10-01"},
+    ).status_code == 405
+    # Deleting was already refused (403 for this role, 405 for a role allowed to delete).
+    assert finance_client.delete(f"/api/treasury-transactions/{txn.id}/").status_code in (403, 405)
 
-
-@pytest.mark.django_db
-def test_invalid_transfer_type_value_rejected_via_api(finance_client):
-    cash_account = CashAccount.objects.create(name="Main Cash")
-
-    response = finance_client.post(
-        "/api/treasury-transactions/",
-        {
-            "cash_account": cash_account.id,
-            "type": "TRANSFER",
-            "amount": "1000000.00",
-            "date": "2026-08-18",
-        },
-    )
-
-    assert response.status_code == 400
+    txn.refresh_from_db()
+    assert txn.amount == Decimal("10.00") and TreasuryTransaction.objects.count() == 1
+    assert finance_client.get("/api/treasury-transactions/").status_code == 200  # reading stays open
 
 
 @pytest.mark.django_db

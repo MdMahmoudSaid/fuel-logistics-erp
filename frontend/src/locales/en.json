@@ -1458,7 +1458,7 @@
         "shareholder_dues": "Owed to associates (capital and unwithdrawn profit)",
         "unsold_fuel_paid": "Unsold fuel already paid for",
         "unsold_costs_paid": "Trip costs paid on unsold fuel",
-        "starting_funds": "Starting funds (account opening balances)",
+        "starting_funds": "Starting funds (opening balances and old debts)",
         "unsold_unpaid_covered": "Unsold fuel and costs not yet paid (covered by the debts)"
       },
       "children": {

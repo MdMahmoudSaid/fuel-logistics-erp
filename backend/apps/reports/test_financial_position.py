@@ -267,6 +267,41 @@ def test_every_fond_de_roulement_figure_is_found_with_the_same_value_and_the_ori
 
 
 @pytest.mark.django_db
+def test_old_debts_are_starting_funds_not_profit():
+    """A "Nouvelle dette" is money that moved before the app: what a customer
+    already owed (asset) or what the company already owed (liability) is part
+    of the starting position, and collecting / paying it changes nothing."""
+    from apps.customers.models import Customer
+    from apps.finance.models import CustomerPayment, OpeningDebt
+    from apps.finance.services import PaymentAllocationService
+    from apps.suppliers.models import Supplier
+
+    admin = _make_admin("POSOLD")
+    bank = BankAccount.objects.create(name="B1")
+    customer = Customer.objects.create(name="Old customer")
+    OpeningDebt.objects.create(customer=customer, amount=D("4000.00"), date="2026-10-11", recorded_by=admin)
+    OpeningDebt.objects.create(
+        supplier=Supplier.objects.create(name="Old supplier", country="SN"),
+        amount=D("1500.00"), date="2026-10-11", recorded_by=admin,
+    )
+
+    position = _assert_net_is_the_distributable_profit()
+    assert _lines(position["assets"])["customer_receivables"]["amount"] == D("4000.00")
+    assert _lines(position["liabilities"])["supplier_debts"]["amount"] == D("1500.00")
+    assert _lines(position["liabilities"])["starting_funds"]["amount"] == D("2500.00")  # 4000 - 1500
+
+    payment = CustomerPayment.objects.create(
+        customer=customer, amount=D("3000.00"), payment_date="2026-10-11",
+        method=CustomerPayment.Method.BANK_TRANSFER, destination=CustomerPayment.Destination.BANK,
+        bank_account=bank, recorded_by=admin,
+    )
+    from apps.finance.services import FinancePostingService
+
+    FinancePostingService.record_customer_payment_treasury(payment)
+    _assert_net_is_the_distributable_profit()  # collecting 3,000 of it changes nothing
+
+
+@pytest.mark.django_db
 def test_financial_position_endpoint_returns_the_position_as_strings():
     from apps.accounts.models import Role, User
 
