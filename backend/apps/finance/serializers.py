@@ -27,6 +27,7 @@ from .models import (
     OpeningDebt,
     PaymentAllocation,
     Shareholder,
+    ManualProfit,
     ShareholderContribution,
     ShareholderLoan,
     ShareholderLoanRepayment,
@@ -49,6 +50,8 @@ from .services import (
     OpeningDebtError,
     OpeningDebtService,
     PaymentAllocationService,
+    ManualProfitError,
+    ManualProfitService,
     ShareholderContributionError,
     ShareholderContributionService,
     ShareholderDistributionError,
@@ -1649,4 +1652,42 @@ class ShareholderContributionSerializer(serializers.ModelSerializer):
                 attachment=validated_data.get("attachment"),
             )
         except ShareholderContributionError as exc:
+            raise serializers.ValidationError(str(exc))
+
+
+class ManualProfitSerializer(serializers.ModelSerializer):
+    """Creation goes through ManualProfitService.record (admin only), which
+    also posts the treasury MONEY_IN when an account is given."""
+
+    recorded_by_detail = UserSerializer(source="recorded_by", read_only=True)
+    is_cancelled = serializers.BooleanField(read_only=True)
+    blocked_reason = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ManualProfit
+        fields = [
+            "id", "amount", "date", "note", "bank_account", "cash_account",
+            "recorded_by", "recorded_by_detail", "created_at", "is_cancelled",
+            "cancelled_at", "cancel_reason", "blocked_reason",
+        ]
+        read_only_fields = [
+            "id", "recorded_by", "created_at", "cancelled_at", "cancel_reason",
+        ]
+
+    def get_blocked_reason(self, obj) -> str | None:
+        return ManualProfitService.blocking_reason(obj)
+
+    def create(self, validated_data):
+        bank_account = validated_data.get("bank_account")
+        cash_account = validated_data.get("cash_account")
+        try:
+            return ManualProfitService.record(
+                amount=validated_data["amount"],
+                date=validated_data["date"],
+                note=validated_data.get("note", ""),
+                actor=self.context["request"].user,
+                bank_account_id=bank_account.id if bank_account else None,
+                cash_account_id=cash_account.id if cash_account else None,
+            )
+        except ManualProfitError as exc:
             raise serializers.ValidationError(str(exc))

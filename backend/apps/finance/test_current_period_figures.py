@@ -66,6 +66,7 @@ def _assert_invariant(preview):
         - preview["general_expenses_paid"]
         + preview["carried_over"]
         + preview["brought_forward_profit"]
+        + preview["manual_profit"]
         - preview["distributions_since_closure"]
     )
     assert reconstructed == preview["distributable_result"]

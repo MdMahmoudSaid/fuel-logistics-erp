@@ -19,11 +19,16 @@ import { exportProfitReportPdf, fetchShareholderProfitPreview } from './api'
 import type { ShareholderProfitPreview } from './types'
 import Button from '@/components/ui/Button.vue'
 import Icon from '@/components/ui/Icon.vue'
+import ManualProfitSection from './ManualProfitSection.vue'
+import { useAuthStore } from '@/stores/auth'
 import type { IconName } from '@/components/ui/Icon.vue'
 import MonoValue from '@/components/ui/MonoValue.vue'
 import { formatMoney, formatQuantity, formatUnitMoney } from '@/utils/currency'
 
 const { t, locale } = useI18n()
+const auth = useAuthStore()
+const isAdmin = computed(() => auth.user?.role_detail?.name === 'Admin')
+const manualProfits = ref<InstanceType<typeof ManualProfitSection> | null>(null)
 
 interface MarginRow {
   // Since-closure delta row ("Periode en cours", spec 2026-10-05-periodes-
@@ -143,6 +148,11 @@ async function loadPreview(params: Record<string, string | undefined>) {
   }
 }
 
+function reload() {
+  loadRows()
+  loadPreview({ ...dateRange.value })
+}
+
 function onDateRangeChange(value: DateRangeValue) {
   dateRange.value = value
   const params: Record<string, string | undefined> = { ...value }
@@ -175,6 +185,14 @@ async function onExportPdf() {
       <h1 class="font-display text-2xl leading-none font-semibold uppercase">
         {{ t('finance.profit.title') }}
       </h1>
+      <Button
+        v-if="isAdmin && !loading"
+        variant="primary"
+        data-test="profit-add-manual"
+        @click="manualProfits?.openAdd()"
+      >
+        {{ t('finance.profit.added.add') }}
+      </Button>
       <Button
         v-if="!loading"
         variant="ghost"
@@ -294,6 +312,16 @@ async function onExportPdf() {
               }}</span>
             </p>
             <p
+              v-if="preview && Number(preview.manual_profit ?? 0) > 0"
+              data-test="profit-manual"
+              class="text-texte-3 mt-1 text-xs"
+            >
+              {{ t('finance.profit.manualProfit') }} :
+              <span class="text-livre font-mono">{{
+                formatMoney(preview.manual_profit ?? 0)
+              }}</span>
+            </p>
+            <p
               v-if="preview && Math.abs(Number(preview.distributions_since_closure)) > 0"
               data-test="profit-distributions-since-closure"
               class="text-texte-3 mt-1 text-xs"
@@ -306,6 +334,8 @@ async function onExportPdf() {
           </div>
         </div>
       </section>
+
+      <ManualProfitSection ref="manualProfits" @changed="reload" />
 
       <!-- Section 2: Distribution - "Combien peut-on distribuer aux
            associes ?" Client modifications (2026-09-04, third pass):

@@ -772,6 +772,8 @@ export interface ShareholderProfitPreview {
   // Profit brought from the previous application, part of the open period until
   // the first closure distributes it (0 afterwards).
   brought_forward_profit?: string
+  // Profit added by hand (ManualProfit) in the open period.
+  manual_profit?: string
   distributions_since_closure: string
   net_profit: string
   // Tolerance-absorbed delivery loss (DeliveryControl.company_absorbed_
@@ -839,4 +841,21 @@ export interface FinancialPosition {
   // Net treasury movement per origin (model name of the source record).
   treasury_origins: { key: string; amount: string }[]
   capital: string
+}
+
+// GET /api/manual-profits/ (ManualProfit): profit entered by hand.
+export interface ManualProfit {
+  id: number
+  amount: string
+  date: string
+  note: string
+  bank_account: number | null
+  cash_account: number | null
+  recorded_by_detail: UserBrief | null
+  created_at: string
+  is_cancelled: boolean
+  cancelled_at: string | null
+  cancel_reason: string
+  // Why it can no longer be cancelled (null = free).
+  blocked_reason: string | null
 }

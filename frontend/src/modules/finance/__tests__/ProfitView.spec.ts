@@ -1,3 +1,4 @@
+import { createPinia, setActivePinia } from 'pinia'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import ProfitView from '../ProfitView.vue'
@@ -20,10 +21,15 @@ vi.mock('@/modules/reports/api', () => ({
 vi.mock('../api', () => ({
   fetchShareholderProfitPreview: (...args: unknown[]) => fetchShareholderProfitPreview(...args),
   exportProfitReportPdf: (...args: unknown[]) => exportProfitReportPdf(...args),
+  manualProfitResource: { list: async () => ({ count: 0, results: [] }) },
+}))
+vi.mock('@/api/resource', () => ({
+  createResourceApi: () => ({ list: async () => ({ count: 0, results: [] }) }),
 }))
 
 describe('ProfitView', () => {
   beforeEach(() => {
+    setActivePinia(createPinia())
     vi.clearAllMocks()
     i18n.global.locale.value = 'fr'
     fetchShareholderProfitPreview.mockResolvedValue({
@@ -511,7 +517,7 @@ describe('ProfitView', () => {
     const wrapper = mount(ProfitView)
     await flushPromises()
 
-    const bodyRows = wrapper.findAll('tbody tr')
+    const bodyRows = wrapper.findAll('section.overflow-auto tbody tr')
     const [posRow, negRow, zeroRow] = bodyRows
     const profitCells = (row: (typeof bodyRows)[number]) =>
       row
@@ -737,5 +743,17 @@ describe('ProfitView', () => {
     const note = wrapper.find('[data-test="profit-brought-forward"]')
     expect(note.exists()).toBe(true)
     expect(note.text()).toContain('92 358 500 XOF')
+  })
+
+  it('explains the profit added by hand under the net profit', async () => {
+    const preview = await fetchShareholderProfitPreview()
+    fetchShareholderProfitPreview.mockResolvedValue({ ...preview, manual_profit: '5000.00' })
+
+    const wrapper = mount(ProfitView)
+    await flushPromises()
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="profit-manual"]').text()).toContain('5 000 XOF')
+    expect(wrapper.find('[data-test="manual-profit-section"]').exists()).toBe(true)
   })
 })

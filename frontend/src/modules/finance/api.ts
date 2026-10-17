@@ -16,6 +16,7 @@ import type {
   PartyType,
   Shareholder,
   ShareholderBalancesSummary,
+  ManualProfit,
   ShareholderContribution,
   ShareholderLedger,
   ShareholderLoan,
@@ -616,4 +617,22 @@ export async function exportFinancialPositionPdf(lang: string): Promise<void> {
     responseType: 'blob',
   })
   downloadBlob(new Blob([response.data]), 'situation-financiere.pdf')
+}
+
+export const manualProfitResource = createResourceApi<ManualProfit>('/manual-profits/')
+
+export function createManualProfit(payload: {
+  amount: string
+  date: string
+  note: string
+  bank_account?: number | null
+  cash_account?: number | null
+}): Promise<ManualProfit> {
+  return apiClient.post<ManualProfit>('/manual-profits/', payload).then((r) => r.data)
+}
+
+export function cancelManualProfit(id: number, reason: string): Promise<ManualProfit> {
+  return apiClient
+    .post<ManualProfit>(`/manual-profits/${id}/cancel/`, { reason })
+    .then((r) => r.data)
 }

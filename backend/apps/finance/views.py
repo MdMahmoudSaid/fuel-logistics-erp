@@ -36,6 +36,7 @@ from .models import (
     ExpenseCategory,
     OpeningDebt,
     Shareholder,
+    ManualProfit,
     ShareholderContribution,
     ShareholderLoan,
     ShareholderProfitDistribution,
@@ -58,6 +59,7 @@ from .serializers import (
     CustomerPaidExpensesRequestSerializer,
     IndirectSettlementRequestSerializer,
     OpeningDebtSerializer,
+    ManualProfitSerializer,
     ShareholderContributionSerializer,
     ShareholderLoanSerializer,
     ShareholderProfitDistributionSerializer,
@@ -76,6 +78,8 @@ from .services import (
     CustomerPaymentCancellationError,
     CustomerPaymentCancellationService,
     OpeningDebtError,
+    ManualProfitError,
+    ManualProfitService,
     ShareholderContributionError,
     ShareholderContributionService,
     OpeningDebtService,
@@ -1038,6 +1042,28 @@ class ShareholderContributionViewSet(viewsets.ModelViewSet):
         return Response(
             ShareholderContributionSerializer(contribution, context={"request": request}).data
         )
+
+
+class ManualProfitViewSet(viewsets.ModelViewSet):
+    """Profit added by hand (ManualProfit). Create and cancel are admin-only
+    (enforced by ManualProfitService); rows are never edited or deleted."""
+
+    queryset = ManualProfit.objects.select_related("recorded_by").all()
+    serializer_class = ManualProfitSerializer
+    http_method_names = ["get", "post", "head", "options"]
+    permission_classes = [HasModulePermission]
+    module = "shareholders"
+
+    @action(detail=True, methods=["post"])
+    def cancel(self, request, pk=None):
+        """POST /api/manual-profits/{id}/cancel/  {"reason": "..."}"""
+        try:
+            profit = ManualProfitService.cancel(
+                self.get_object(), request.user, request.data.get("reason", "")
+            )
+        except ManualProfitError as exc:
+            return Response({"detail": str(exc)}, status=http_status.HTTP_400_BAD_REQUEST)
+        return Response(ManualProfitSerializer(profit, context={"request": request}).data)
 
 
 # Entity kinds ExpenseAllocation.content_object can point at (guide Section

@@ -1378,7 +1378,35 @@
       "carriedOver": "Carried over from previous period",
       "broughtForward": "Incl. profit brought forward (previous application)",
       "distributionsSinceClosure": "Distributions since closing",
-      "distributableResultHelp": "All trips, all periods, minus distributions already validated."
+      "distributableResultHelp": "All trips, all periods, minus distributions already validated.",
+      "manualProfit": "Incl. added profit",
+      "added": {
+        "title": "Added profits",
+        "help": "An amount received by the company, outside any trip, counted as profit and shared between the associates when the period is closed.",
+        "add": "Add a profit",
+        "addTitle": "Add a profit",
+        "amount": "Amount",
+        "date": "Date",
+        "note": "Reason",
+        "notePlaceholder": "Where does this amount come from?",
+        "account": "Add the money to account",
+        "noAccount": "No account (profit only, no treasury movement)",
+        "accountHelp": "With an account, the amount enters the treasury and the profit together: the figures stay balanced.",
+        "bank": "Bank",
+        "cash": "Cash",
+        "submit": "Save the profit",
+        "empty": "No profit added.",
+        "by": "By",
+        "cancel": "Cancel",
+        "cancelTitle": "Cancel this profit",
+        "cancelWarning": "The profit of {amount} will be removed and, if it was paid into an account, an offsetting movement will be recorded.",
+        "reason": "Cancellation reason",
+        "cancelled": "Cancelled",
+        "saveError": "Could not save this profit.",
+        "cancelError": "Could not cancel this profit.",
+        "loadError": "Could not load the added profits.",
+        "positive": "The amount must be greater than zero."
+      }
     },
     "openingDebt": {
       "newDebt": "New debt",
@@ -1500,7 +1528,8 @@
         "shareholderloanrepayment": "Associate advance repayments",
         "openingdebt": "New debts paid",
         "transfer": "Internal transfers",
-        "manual": "Manual entries with no origin"
+        "manual": "Manual entries with no origin",
+        "manualprofit": "Added profits"
       }
     }
   },

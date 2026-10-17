@@ -1380,7 +1380,35 @@
       "carriedOver": "Report période précédente",
       "broughtForward": "Dont bénéfice reporté (ancienne application)",
       "distributionsSinceClosure": "Répartitions depuis la clôture",
-      "distributableResultHelp": "Tous les trajets, toutes périodes, moins les répartitions déjà validées."
+      "distributableResultHelp": "Tous les trajets, toutes périodes, moins les répartitions déjà validées.",
+      "manualProfit": "Dont bénéfice ajouté",
+      "added": {
+        "title": "Bénéfices ajoutés",
+        "help": "Un montant reçu par l'entreprise, hors trajets, compté comme bénéfice et réparti entre les associés à la clôture de la période.",
+        "add": "Ajouter un bénéfice",
+        "addTitle": "Ajouter un bénéfice",
+        "amount": "Montant",
+        "date": "Date",
+        "note": "Motif",
+        "notePlaceholder": "D'où vient ce montant ?",
+        "account": "Ajouter l'argent au compte",
+        "noAccount": "Aucun compte (bénéfice seul, sans mouvement de trésorerie)",
+        "accountHelp": "Avec un compte, le montant entre dans la trésorerie et le bénéfice : les chiffres restent équilibrés.",
+        "bank": "Banque",
+        "cash": "Caisse",
+        "submit": "Enregistrer le bénéfice",
+        "empty": "Aucun bénéfice ajouté.",
+        "by": "Par",
+        "cancel": "Annuler",
+        "cancelTitle": "Annuler ce bénéfice",
+        "cancelWarning": "Le bénéfice de {amount} sera retiré et, s'il a été versé sur un compte, un mouvement inverse sera enregistré.",
+        "reason": "Motif de l'annulation",
+        "cancelled": "Annulé",
+        "saveError": "Impossible d'enregistrer ce bénéfice.",
+        "cancelError": "Impossible d'annuler ce bénéfice.",
+        "loadError": "Impossible de charger les bénéfices ajoutés.",
+        "positive": "Le montant doit être supérieur à zéro."
+      }
     },
     "openingDebt": {
       "newDebt": "Nouvelle dette",
@@ -1502,7 +1530,8 @@
         "shareholderloanrepayment": "Remboursements d'avances associés",
         "openingdebt": "Nouvelles dettes payées",
         "transfer": "Transferts internes",
-        "manual": "Saisies manuelles sans origine"
+        "manual": "Saisies manuelles sans origine",
+        "manualprofit": "Bénéfices ajoutés"
       }
     }
   },

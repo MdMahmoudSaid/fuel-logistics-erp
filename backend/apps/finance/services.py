@@ -26,6 +26,7 @@ from apps.finance.models import (
     CashAccount,
     CustomerPayment,
     Expense,
+    ManualProfit,
     OpeningDebt,
     PaymentAllocation,
     Shareholder,
@@ -3212,6 +3213,110 @@ class ShareholderContributionService:
         return opening_balances + contributions
 
 
+class ManualProfitError(ValueError):
+    """Raised when a manual profit entry or its cancellation is invalid."""
+
+
+class ManualProfitService:
+    """Profit entered by hand (client request 2026-10-17, see ManualProfit).
+    Admin-only. With an account the amount is posted as a MONEY_IN in the
+    same transaction, so treasury and profit move together; cancelling posts
+    the offsetting MONEY_OUT."""
+
+    @staticmethod
+    @transaction.atomic
+    def record(*, amount, date, note, actor, bank_account_id=None, cash_account_id=None) -> ManualProfit:
+        if not ShareholderContributionService._is_admin(actor):
+            raise ManualProfitError("Seul un administrateur peut ajouter un benefice.")
+        if bank_account_id and cash_account_id:
+            raise ManualProfitError("Un seul compte (banque OU caisse) peut etre renseigne.")
+        amount = Decimal(str(amount)).quantize(Decimal("0.01"))
+        if amount <= ZERO:
+            raise ManualProfitError("Le montant du benefice doit etre superieur a zero.")
+        note = (note or "").strip()
+        if not note:
+            raise ManualProfitError("Le motif du benefice est obligatoire.")
+
+        bank_account = cash_account = None
+        if bank_account_id:
+            bank_account = BankAccount.objects.select_for_update().get(pk=bank_account_id)
+        elif cash_account_id:
+            cash_account = CashAccount.objects.select_for_update().get(pk=cash_account_id)
+
+        profit = ManualProfit(
+            amount=amount, date=date, note=note, bank_account=bank_account,
+            cash_account=cash_account, recorded_by=actor,
+        )
+        profit.save(user=actor)
+        if bank_account or cash_account:
+            TreasuryTransaction.objects.create(
+                bank_account=bank_account, cash_account=cash_account,
+                type=TreasuryTransaction.Type.MONEY_IN, amount=amount, date=date,
+                note=f"Benefice ajoute : {note}",
+                source_content_type=ContentType.objects.get_for_model(ManualProfit),
+                source_object_id=profit.id, recorded_by=actor,
+            )
+        return profit
+
+    @staticmethod
+    def blocking_reason(profit) -> str | None:
+        """Why this entry can no longer be cancelled (None = free)."""
+        if profit.is_cancelled:
+            return "Ce benefice est deja annule."
+        # Distributed already (period closed): the associates hold a share of it.
+        if ShareholderProfitPreviewService.get_preview()["distributable_result"] < profit.amount:
+            return (
+                "Ce benefice a deja ete distribue aux associes : "
+                "annulez d'abord la repartition concernee."
+            )
+        return None
+
+    @staticmethod
+    @transaction.atomic
+    def cancel(profit, actor, reason) -> ManualProfit:
+        if not ShareholderContributionService._is_admin(actor):
+            raise ManualProfitError("Seul un administrateur peut annuler un benefice.")
+        reason = (reason or "").strip()
+        if not reason:
+            raise ManualProfitError("Le motif d'annulation est obligatoire.")
+        profit = ManualProfit.objects.select_for_update().get(pk=profit.pk)
+        blocked = ManualProfitService.blocking_reason(profit)
+        if blocked:
+            raise ManualProfitError(blocked)
+
+        account = profit.bank_account or profit.cash_account
+        if account is not None:
+            account = type(account).objects.select_for_update().get(pk=account.pk)
+            if account.current_balance < profit.amount:
+                raise ManualProfitError(
+                    "Le solde du compte ne couvre plus ce benefice (l'argent a deja ete utilise) : "
+                    "annulez d'abord les depenses ou paiements qui l'ont consomme."
+                )
+            TreasuryTransaction.objects.create(
+                bank_account=profit.bank_account, cash_account=profit.cash_account,
+                type=TreasuryTransaction.Type.MONEY_OUT, amount=profit.amount,
+                date=timezone.localdate(),
+                note=f"Annulation benefice ajoute #{profit.id} : {reason}",
+                source_content_type=ContentType.objects.get_for_model(ManualProfit),
+                source_object_id=profit.id, recorded_by=actor,
+            )
+        profit.cancelled_at = timezone.now()
+        profit.cancelled_by = actor
+        profit.cancel_reason = reason
+        profit.save(update_fields=["cancelled_at", "cancelled_by", "cancel_reason", "updated_at"], user=actor)
+        return profit
+
+
+@memoize_per_request
+def _manual_profit_total(since=None) -> Decimal:
+    """Sum of the live manual profits; `since` (a datetime) keeps only those
+    entered after it (the open period after a closure)."""
+    qs = ManualProfit.objects.filter(cancelled_at__isnull=True)
+    if since is not None:
+        qs = qs.filter(created_at__gt=since)
+    return qs.aggregate(total=Sum("amount"))["total"] or ZERO
+
+
 class WorkingCapitalService:
     """Fond de roulement client (docs/superpowers/specs/2026-09-04-recette-
     corrections-design.md, Section 3) - a management indicator, NOT the
@@ -4185,6 +4290,9 @@ class ShareholderProfitPreviewService:
         # Profit made before the app was used (CompanyProfile.brought_forward_profit):
         # all-time like every other term of all_time_net_profit below.
         brought_forward_profit = _brought_forward_profit()
+        # Profit added by hand (ManualProfit): same all-time treatment.
+        manual_profit_total = _manual_profit_total()
+        brought_forward_profit += manual_profit_total
 
         # total_company_absorbed_loss is still computed for the typed API
         # contract (dashboard shareholders_summary). Since spec 2026-09-07 it
@@ -4282,8 +4390,13 @@ class ShareholderProfitPreviewService:
         distributions_since_closure = ZERO
         # Part of the open period until the first closure distributes it.
         open_brought_forward = (
-            brought_forward_profit if since_last_closure and last_closure is None else ZERO
+            _brought_forward_profit() if since_last_closure and last_closure is None else ZERO
         )
+        open_manual_profit = ZERO
+        if since_last_closure:
+            open_manual_profit = (
+                _manual_profit_total(last_closure.closed_at) if last_closure else manual_profit_total
+            )
         if since_last_closure:
             if last_closure is not None:
                 carried_over = min(last_closure.net_profit or ZERO, ZERO)
@@ -4323,6 +4436,7 @@ class ShareholderProfitPreviewService:
             "general_expenses_paid": general_expenses_paid,
             "carried_over": carried_over,
             "brought_forward_profit": open_brought_forward,
+            "manual_profit": open_manual_profit,
             "distributions_since_closure": distributions_since_closure,
             "net_profit": net_profit,
             "total_company_absorbed_loss": total_company_absorbed_loss,

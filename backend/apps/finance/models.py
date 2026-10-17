@@ -1559,6 +1559,55 @@ class ShareholderWithdrawal(AuditableModel, TimeStampedModel):
         return f"{self.shareholder}: {self.amount} ({self.date})"
 
 
+class ManualProfit(AuditableModel, TimeStampedModel):
+    """Profit entered by hand (client request 2026-10-17): an amount handed
+    to the company that counts as profit, outside any trip. It is added to
+    the all-time net profit (so it shows in "Benefice net apres depenses
+    generales" and is shared between the associates by the next period
+    closure) and, when an account is chosen, posted as a MONEY_IN so the
+    treasury, the Fond de roulement and the Situation financiere stay
+    balanced. Cancelled, never deleted (offsetting MONEY_OUT).
+    """
+
+    amount = models.DecimalField(max_digits=16, decimal_places=2)
+    date = models.DateField()
+    note = models.TextField()
+    bank_account = models.ForeignKey(
+        BankAccount, on_delete=models.PROTECT, null=True, blank=True, related_name="manual_profits"
+    )
+    cash_account = models.ForeignKey(
+        CashAccount, on_delete=models.PROTECT, null=True, blank=True, related_name="manual_profits"
+    )
+    recorded_by = models.ForeignKey(
+        "accounts.User", on_delete=models.PROTECT, related_name="manual_profits_recorded"
+    )
+    cancelled_at = models.DateTimeField(null=True, blank=True, editable=False)
+    cancelled_by = models.ForeignKey(
+        "accounts.User", on_delete=models.PROTECT, null=True, blank=True,
+        editable=False, related_name="manual_profits_cancelled",
+    )
+    cancel_reason = models.TextField(blank=True, editable=False)
+
+    class Meta:
+        ordering = ["-date", "-id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0), name="finance_manualprofit_amount_positive"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(bank_account__isnull=True) | models.Q(cash_account__isnull=True),
+                name="finance_manualprofit_single_account",
+            ),
+        ]
+
+    @property
+    def is_cancelled(self) -> bool:
+        return self.cancelled_at is not None
+
+    def __str__(self) -> str:
+        return f"Manual profit {self.amount} ({self.date})"
+
+
 class ShareholderContribution(AuditableModel, TimeStampedModel):
     """Real cash injected into the company by a shareholder/associate
     (Phase 1, docs/superpowers/specs/2026-09-02-business-corrections-6-phases-design.md).

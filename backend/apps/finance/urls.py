@@ -8,6 +8,7 @@ from .views import (
     ExpenseCategoryViewSet,
     ExpenseViewSet,
     OpeningDebtViewSet,
+    ManualProfitViewSet,
     ShareholderContributionViewSet,
     ShareholderLoanViewSet,
     ShareholderProfitDistributionViewSet,
@@ -42,6 +43,7 @@ router.register(
 router.register("shareholder-periods", ShareholderProfitPeriodViewSet, basename="shareholderprofitperiod")
 router.register("shareholder-loans", ShareholderLoanViewSet, basename="shareholderloan")
 router.register("shareholder-withdrawals", ShareholderWithdrawalViewSet, basename="shareholderwithdrawal")
+router.register("manual-profits", ManualProfitViewSet, basename="manualprofit")
 router.register(
     "shareholder-contributions", ShareholderContributionViewSet, basename="shareholdercontribution"
 )
