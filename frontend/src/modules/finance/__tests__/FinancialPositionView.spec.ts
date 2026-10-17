@@ -12,7 +12,7 @@ const position = {
       },
       { key: 'cash', amount: '9600000.00', children: [] },
       {
-        key: 'fuel_stock',
+        key: 'unsold_fuel_paid',
         amount: '5000000.00',
         children: [
           { key: 'company_stock', amount: '0.00' },
@@ -34,6 +34,9 @@ const position = {
     total: '405000000.00',
   },
   net_result: '21338383.00',
+  distributable_result: '21338383.00',
+  gap: '0.00',
+  matched_unsold: '30000000.00',
   capital: '300000000.00',
 }
 
@@ -59,6 +62,16 @@ describe('FinancialPositionView', () => {
     expect(liabilities).toContain('405 000 000')
 
     expect(wrapper.find('[data-test="position-net-result"]').text()).toContain('21 338 383')
+  })
+
+  it('shows the control against the distributable profit and flags any gap', async () => {
+    const wrapper = mount(FinancialPositionView)
+    await flushPromises()
+
+    const control = wrapper.find('[data-test="position-control"]').text()
+    expect(control).toContain('21 338 383')
+    expect(control).toContain('Identique au résultat net')
+    expect(wrapper.text()).toContain('30 000 000') // matched debts, for the record
   })
 
   it('hides zero sub-lines but keeps every main line', async () => {

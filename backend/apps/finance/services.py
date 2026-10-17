@@ -3799,14 +3799,18 @@ class ShareholderLedgerService:
     def get_company_dues() -> dict:
         """What the company owes its associates and they have not drawn yet:
         capital contributions not yet given back plus VALIDATED profit shares
-        not yet withdrawn (client decision 2026-10-16 - an open debt, listed
-        per associate in the "Dettes a payer" report and added to the Fond de
-        roulement like every other debt). Same pools as the withdrawal
-        allocation (_own_pools); inactive associates stay listed while the
-        company still owes them."""
+        not yet withdrawn (client decision 2026-10-16), plus the net effect of
+        advances between associates (what one lent is no longer owed to him,
+        what the other received is owed to him: the total only moves when the
+        borrower actually withdraws it). That is each associate's available
+        balance without the company advances he has not withdrawn yet (those
+        are matched by his own debt to the company). Inactive associates stay
+        listed while the company still owes them."""
         rows = []
         for shareholder in Shareholder.objects.order_by("name", "id"):
-            amount = ShareholderLedgerService._own_pools(shareholder.id)
+            amount = ShareholderLedgerService.get_available_balance(
+                shareholder.id
+            ) - ShareholderLedgerService.get_undrawn_advances(shareholder.id)
             if amount > ZERO:
                 rows.append({"id": shareholder.id, "name": shareholder.name, "amount": amount})
         return {"shareholders": rows, "total": sum((r["amount"] for r in rows), ZERO)}

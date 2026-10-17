@@ -1443,7 +1443,7 @@
       "totalAssets": "Total de ce que possède l'entreprise",
       "totalLiabilities": "Total de ce que doit l'entreprise",
       "netResult": "Résultat net",
-      "netHelp": "Ce que possède l'entreprise − ce qu'elle doit (associés compris).",
+      "netHelp": "Ce que possède l'entreprise − ce qu'elle doit (associés et fonds de départ compris). C'est le bénéfice net à distribuer.",
       "capital": "Capital apporté (information)",
       "loadError": "Impossible de charger la situation financière.",
       "lines": {
@@ -1453,12 +1453,14 @@
         "supplier_advances": "Avances versées aux fournisseurs",
         "transporter_advances": "Avances versées aux transporteurs",
         "associate_advances": "Avances aux associés (non récupérées)",
-        "fuel_stock": "Carburant non vendu (au prix d'achat)",
-        "supplier_debts": "Dettes fournisseurs",
-        "transporter_debts": "Dettes transporteurs",
-        "trip_fee_debts": "Frais de trajet à payer",
+        "supplier_debts": "Dettes fournisseurs (hors carburant non vendu)",
+        "transporter_debts": "Dettes transporteurs (trajets vendus)",
+        "trip_fee_debts": "Frais de trajet à payer (trajets vendus)",
         "customer_credit": "Avances reçues des clients",
-        "shareholder_dues": "Dû aux associés (capital et bénéfices non retirés)"
+        "shareholder_dues": "Dû aux associés (capital et bénéfices non retirés)",
+        "unsold_fuel_paid": "Carburant non vendu déjà payé",
+        "unsold_costs_paid": "Frais de trajet payés sur du carburant non vendu",
+        "starting_funds": "Fonds de départ (soldes d'ouverture des comptes)"
       },
       "children": {
         "company_stock": "Stock entreprise",
@@ -1469,7 +1471,12 @@
         "road_transit": "Transit routière",
         "border": "Frontière",
         "loading": "Chargement"
-      }
+      },
+      "control": "Contrôle : bénéfice net à distribuer (page Bénéfices)",
+      "controlOk": "Identique au résultat net",
+      "controlGap": "Écart avec le résultat net",
+      "matchedNote": "Dettes compensées par du carburant ou des frais non encore vendus, affichées d'aucun côté :",
+      "note": "Le carburant et les frais d'un trajet non encore vendu ne sont comptés que pour ce qui a été payé ; la partie impayée est compensée par la dette correspondante et n'apparaît d'aucun côté, comme dans le Fond de roulement."
     }
   },
   "truckStatus": {

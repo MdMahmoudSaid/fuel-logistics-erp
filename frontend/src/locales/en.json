@@ -1441,7 +1441,7 @@
       "totalAssets": "Total owned",
       "totalLiabilities": "Total owed",
       "netResult": "Net result",
-      "netHelp": "What the company owns − what it owes (associates included).",
+      "netHelp": "What the company owns − what it owes (associates and starting funds included). This is the net profit to distribute.",
       "capital": "Capital contributed (information)",
       "loadError": "Could not load the financial position.",
       "lines": {
@@ -1451,12 +1451,14 @@
         "supplier_advances": "Advances paid to suppliers",
         "transporter_advances": "Advances paid to transporters",
         "associate_advances": "Advances to associates (not recovered)",
-        "fuel_stock": "Unsold fuel (at purchase price)",
-        "supplier_debts": "Supplier debts",
-        "transporter_debts": "Transporter debts",
-        "trip_fee_debts": "Trip fees to pay",
+        "supplier_debts": "Supplier debts (excluding unsold fuel)",
+        "transporter_debts": "Transporter debts (sold trips)",
+        "trip_fee_debts": "Trip fees to pay (sold trips)",
         "customer_credit": "Advances received from customers",
-        "shareholder_dues": "Owed to associates (capital and unwithdrawn profit)"
+        "shareholder_dues": "Owed to associates (capital and unwithdrawn profit)",
+        "unsold_fuel_paid": "Unsold fuel already paid for",
+        "unsold_costs_paid": "Trip costs paid on unsold fuel",
+        "starting_funds": "Starting funds (account opening balances)"
       },
       "children": {
         "company_stock": "Company stock",
@@ -1467,7 +1469,12 @@
         "road_transit": "Road transit",
         "border": "Border",
         "loading": "Loading"
-      }
+      },
+      "control": "Check: net profit to distribute (Profit page)",
+      "controlOk": "Same as the net result",
+      "controlGap": "Gap with the net result",
+      "matchedNote": "Debts matched by fuel or costs not sold yet, shown on neither side:",
+      "note": "Fuel and costs of a trip that is not sold yet count only for what has been paid; the unpaid part is matched by its debt and appears on neither side, as in the Fond de roulement."
     }
   },
   "truckStatus": {

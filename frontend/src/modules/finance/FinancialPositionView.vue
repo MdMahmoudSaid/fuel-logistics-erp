@@ -128,6 +128,29 @@ const sides = computed(() =>
         />
       </section>
 
+      <section
+        data-test="position-control"
+        class="border-ligne space-y-1 rounded-xl border bg-white p-4 text-sm"
+      >
+        <div class="flex items-baseline justify-between gap-3">
+          <span class="text-texte-2">{{ t('finance.position.control') }}</span>
+          <MonoValue class="font-medium" :value="formatMoney(position.distributable_result)" />
+        </div>
+        <p v-if="Number(position.gap) === 0" class="text-livre text-xs">
+          ✓ {{ t('finance.position.controlOk') }}
+        </p>
+        <p v-else class="text-critique text-xs">
+          {{ t('finance.position.controlGap') }} :
+          <MonoValue :value="formatMoney(position.gap)" />
+        </p>
+      </section>
+
+      <p class="text-texte-3 text-xs">{{ t('finance.position.note') }}</p>
+      <p v-if="Number(position.matched_unsold) !== 0" class="text-texte-3 text-xs">
+        {{ t('finance.position.matchedNote') }}
+        <MonoValue :value="formatMoney(position.matched_unsold)" />
+      </p>
+
       <p class="text-texte-3 text-xs">
         {{ t('finance.position.capital') }} :
         <MonoValue :value="formatMoney(position.capital)" />
