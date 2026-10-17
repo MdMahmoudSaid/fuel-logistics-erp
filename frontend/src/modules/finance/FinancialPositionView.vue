@@ -187,6 +187,13 @@ const sides = computed(() =>
           <span class="text-texte-2">{{ t('finance.position.control') }}</span>
           <MonoValue class="font-medium" :value="formatMoney(position.distributable_result)" />
         </div>
+        <div
+          v-if="Number(position.starting_funds) !== 0"
+          class="flex items-baseline justify-between gap-3"
+        >
+          <span class="text-texte-2">+ {{ t('finance.position.lines.starting_funds') }}</span>
+          <MonoValue class="font-medium" :value="formatMoney(position.starting_funds)" />
+        </div>
         <p v-if="Number(position.gap) === 0" class="text-livre text-xs">
           ✓ {{ t('finance.position.controlOk') }}
         </p>

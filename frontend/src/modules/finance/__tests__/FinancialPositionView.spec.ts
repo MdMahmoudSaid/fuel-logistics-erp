@@ -35,6 +35,7 @@ const position = {
     total: '405000000.00',
   },
   net_result: '21338383.00',
+  starting_funds: '0.00',
   distributable_result: '21338383.00',
   gap: '0.00',
   matched_unsold: '30000000.00',

@@ -42,6 +42,7 @@ LABELS = {
         "control": "Bénéfice net à distribuer",
         "gap": "Écart avec le résultat net",
         "capital": "Capital apporté (information)",
+        "starting_funds": "Fonds de départ (soldes d'ouverture et anciennes dettes)",
         "lines": {
             "banks": "Banques",
             "cash": "Caisses",
@@ -56,7 +57,6 @@ LABELS = {
             "shareholder_dues": "Dû aux associés",
             "unsold_fuel_paid": "Carburant non vendu payé",
             "unsold_costs_paid": "Frais payés sur carburant non vendu",
-            "starting_funds": "Fonds de départ",
             "unsold_unpaid_covered": "Carburant non vendu non payé (couvert par les dettes)",
         },
         "children": {
@@ -85,6 +85,7 @@ LABELS = {
         "control": "Distributable net profit",
         "gap": "Gap with the net result",
         "capital": "Capital contributed (information)",
+        "starting_funds": "Starting funds (opening balances and old debts)",
         "lines": {
             "banks": "Banks",
             "cash": "Cash desks",
@@ -99,7 +100,6 @@ LABELS = {
             "shareholder_dues": "Owed to shareholders",
             "unsold_fuel_paid": "Unsold fuel paid",
             "unsold_costs_paid": "Costs paid on unsold fuel",
-            "starting_funds": "Starting funds",
             "unsold_unpaid_covered": "Unsold fuel not paid (covered by debts)",
         },
         "children": {
@@ -128,6 +128,7 @@ LABELS = {
         "control": "الربح الصافي القابل للتوزيع",
         "gap": "فرق مع النتيجة الصافية",
         "capital": "رأس المال المساهم به (للمعلومة)",
+        "starting_funds": "أموال البداية (الأرصدة الافتتاحية والديون القديمة)",
         "lines": {
             "banks": "البنوك",
             "cash": "الصناديق",
@@ -142,7 +143,6 @@ LABELS = {
             "shareholder_dues": "مستحقات الشركاء",
             "unsold_fuel_paid": "وقود غير مباع مدفوع",
             "unsold_costs_paid": "رسوم مدفوعة على وقود غير مباع",
-            "starting_funds": "أموال البداية",
             "unsold_unpaid_covered": "وقود غير مباع غير مدفوع (مغطّى بالديون)",
         },
         "children": {
@@ -279,6 +279,8 @@ def _result_block(position: dict, labels: dict, lang: str, rtl: bool):
         (labels["net_result"], position["net_result"], True, INK),
         (labels["control"], position["distributable_result"], False, INK),
     ]
+    if float(position["starting_funds"]) != 0:
+        rows.append(("+ " + labels["starting_funds"], position["starting_funds"], False, INK))
     if float(position["gap"]) != 0:
         rows.append((labels["gap"], position["gap"], True, RED))
     rows.append((labels["capital"], position["capital"], False, MUTED))

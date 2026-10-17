@@ -45,7 +45,7 @@ def _position():
 def _assert_net_is_the_distributable_profit():
     position = _position()
     assert position["gap"] == D("0.00"), position
-    assert position["net_result"] == position["distributable_result"]
+    assert position["net_result"] == position["distributable_result"] + position["starting_funds"]
     return position
 
 
@@ -70,9 +70,12 @@ def test_position_lists_treasury_and_starting_funds_net_to_zero():
     assert assets["banks"]["amount"] == D("1000.00")
     assert [c["label"] for c in assets["banks"]["children"]] == ["B1"]  # inactive account left out
     assert assets["cash"]["amount"] == D("500.00")
-    # The money the accounts were opened with is the starting funds, not profit.
-    assert _lines(position["liabilities"])["starting_funds"]["amount"] == D("1500.00")
-    assert position["net_result"] == D("0.00")
+    # The money the accounts were opened with is the starting funds, not profit:
+    # never a liability line, the net result carries it as a reconciliation.
+    assert "starting_funds" not in _lines(position["liabilities"])
+    assert position["starting_funds"] == D("1500.00")
+    assert position["net_result"] == D("1500.00")
+    assert position["distributable_result"] == D("0.00")
 
 
 @pytest.mark.django_db
@@ -167,7 +170,7 @@ def test_a_sold_trip_debts_stay_on_the_liability_side_and_the_result_is_the_prof
     )
 
     position = _assert_net_is_the_distributable_profit()
-    assert position["net_result"] == D("8410000.00")
+    assert position["distributable_result"] == D("8410000.00")
     assert _lines(position["liabilities"])["supplier_debts"]["amount"] == D("27000000.00")
     assert _lines(position["assets"])["customer_receivables"]["amount"] == D("40140000.00")
 
@@ -212,13 +215,13 @@ def test_general_expense_distribution_and_withdrawals_keep_the_result_equal_to_t
         source_content_type=ContentType.objects.get_for_model(Expense), source_object_id=expense.id,
         recorded_by=admin,
     )
-    assert _assert_net_is_the_distributable_profit()["net_result"] == D("7710000.00")
+    assert _assert_net_is_the_distributable_profit()["distributable_result"] == D("7710000.00")
 
     distribution = ShareholderDistributionService.create_distribution(
         period_start="2026-08-01", period_end="2026-08-31", total_profit=D("3000000.00"), actor=admin,
     )
     ShareholderDistributionService.validate_distribution(distribution.id, admin)
-    assert _assert_net_is_the_distributable_profit()["net_result"] == D("4710000.00")
+    assert _assert_net_is_the_distributable_profit()["distributable_result"] == D("4710000.00")
 
     for amount in ("2000000.00", "4000000.00"):  # the second one dips into capital
         ShareholderWithdrawalService.record_withdrawal(
@@ -295,7 +298,7 @@ def test_old_debts_are_starting_funds_not_profit():
     position = _assert_net_is_the_distributable_profit()
     assert _lines(position["assets"])["customer_receivables"]["amount"] == D("4000.00")
     assert _lines(position["liabilities"])["supplier_debts"]["amount"] == D("1500.00")
-    assert _lines(position["liabilities"])["starting_funds"]["amount"] == D("2500.00")  # 4000 - 1500
+    assert position["starting_funds"] == D("2500.00")  # 4000 - 1500
 
     payment = CustomerPayment.objects.create(
         customer=customer, amount=D("3000.00"), payment_date="2026-10-11",
@@ -324,7 +327,8 @@ def test_financial_position_endpoint_returns_the_position_as_strings():
     assert response.status_code == 200
     data = response.json()
     assert data["assets"]["total"] == "42.00"
-    assert data["net_result"] == "0.00"
+    assert data["net_result"] == "42.00"  # the opening balance is not profit...
+    assert data["starting_funds"] == "42.00"  # ...and is shown as such, not as a debt
     assert data["gap"] == "0.00"
 
 

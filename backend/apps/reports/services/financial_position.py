@@ -11,13 +11,13 @@
 # makes the net result equal the profit: the profit books a trip's costs only
 # when the trip is sold.
 #
-# Goal (client rule): the net result is the same figure as the distributable
-# net profit of the Benefices page, at any time. It holds because
+# Goal (client rule): the net result equals the distributable net profit of the
+# Benefices page plus the starting funds (shown as a reconciliation, never as a
+# liability), at any time. It holds because
 #     treasury + receivables + advances + paid unsold fuel/costs
 #   - debts of sold goods - customer credit - what is owed to the associates
-#   - the funds the accounts were opened with
 # is exactly: capital contributions + all-time profit - everything drawn, minus
-# what the associates may still draw, minus the starting funds.
+# what the associates may still draw, plus the starting funds.
 #
 # Every figure comes from a service that already owns it (the debts / receivables
 # reports, the supplier pipeline of the Fond de roulement, the associates'
@@ -234,7 +234,6 @@ class FinancialPositionService:
             _line("shareholder_dues", dues["total"], [
                 {"label": s["name"], "amount": s["amount"]} for s in dues["shareholders"]
             ]),
-            _line("starting_funds", starting_funds),
         ]
 
         total_assets = sum((l["amount"] for l in asset_lines), ZERO)
@@ -246,6 +245,10 @@ class FinancialPositionService:
             "assets": {"lines": asset_lines, "total": total_assets},
             "liabilities": {"lines": liability_lines, "total": total_liabilities},
             "net_result": total_assets - total_liabilities,
+            # Not a liability: the opening balances are already inside the banks /
+            # cash lines (and the old debts inside the receivables / debts). They
+            # are not profit, so the net result = distributable profit + these.
+            "starting_funds": starting_funds,
             # For the record: open debts matched by fuel / costs not sold yet,
             # shown in neither column (reconciles with "Dettes a payer").
             "matched_unsold": matched,
@@ -253,7 +256,7 @@ class FinancialPositionService:
             # that can be distributed (Benefices page). A non-zero gap would
             # mean a movement this page does not know how to place.
             "distributable_result": distributable,
-            "gap": total_assets - total_liabilities - distributable,
+            "gap": total_assets - total_liabilities - starting_funds - distributable,
             # Where the treasury comes from (net per origin): lets a gap with the
             # distributable profit be traced to the movements behind it.
             "treasury_origins": _treasury_origins(

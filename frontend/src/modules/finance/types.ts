@@ -825,7 +825,9 @@ export interface FinancialPosition {
   assets: FinancialPositionSide
   liabilities: FinancialPositionSide
   net_result: string
-  // Control: the net result must equal the distributable net profit.
+  // Control: the net result must equal the distributable net profit plus the
+  // starting funds (opening balances / old debts: inside the lines above, not profit).
+  starting_funds: string
   distributable_result: string
   gap: string
   // Open debts matched by fuel / costs not sold yet (shown on neither side).
