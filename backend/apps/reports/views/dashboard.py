@@ -36,6 +36,7 @@ from apps.reports.queries.transporter_outstanding_report import (
     TransporterOutstandingReportQuery,
 )
 from apps.reports.serialization import decimals_to_str
+from apps.reports.services.financial_position import FinancialPositionService
 from apps.reports.services.profit import TripProfitService
 from apps.reports.services.stock import TheoreticalStockService
 from apps.reports.services.working_capital_pdf import (
@@ -82,6 +83,14 @@ class DashboardViewSet(viewsets.ViewSet):
         response = HttpResponse(pdf_bytes, content_type="application/pdf")
         response["Content-Disposition"] = 'attachment; filename="fond-de-roulement.pdf"'
         return response
+
+    @action(detail=False, methods=["get"], url_path="financial-position")
+    def financial_position(self, request):
+        """What the company owns vs what it owes, and the net result.
+
+        GET /api/dashboard/financial-position/
+        """
+        return Response(decimals_to_str(FinancialPositionService.get_position()))
 
     @action(detail=False, methods=["get"])
     def summary(self, request):

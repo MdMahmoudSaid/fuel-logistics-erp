@@ -116,6 +116,7 @@ const NAV_GROUPS: NavGroup[] = [
     titleKey: 'navigation.groups.results',
     items: [
       { to: 'profit', labelKey: 'navigation.profit', module: 'shareholders' },
+      { to: 'financial-position', labelKey: 'navigation.financialPosition', module: 'reports' },
       { to: 'shareholders', labelKey: 'navigation.shareholders', module: 'shareholders' },
     ],
   },

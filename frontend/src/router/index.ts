@@ -292,6 +292,11 @@ const router = createRouter({
           name: 'profit',
           component: () => import('@/modules/finance/ProfitView.vue'),
         },
+        {
+          path: 'financial-position',
+          name: 'financial-position',
+          component: () => import('@/modules/finance/FinancialPositionView.vue'),
+        },
         { path: 'users', name: 'users', component: () => import('@/modules/users/UserView.vue') },
         {
           path: 'roles',

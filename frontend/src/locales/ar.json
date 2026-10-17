@@ -72,7 +72,8 @@
     "proformas": "الفواتير الشكلية",
     "deliveryNotes": "أذونات التسليم",
     "loadingSheets": "قوائم التحميل",
-    "purchaseOrders": "أوامر الشراء"
+    "purchaseOrders": "أوامر الشراء",
+    "financialPosition": "الوضعية المالية"
   },
   "header": {
     "logout": "تسجيل الخروج",
@@ -1430,6 +1431,42 @@
         "remaining": "المتاح",
         "status": "الحالة",
         "proof": "المستند"
+      }
+    },
+    "position": {
+      "title": "الوضعية المالية",
+      "subtitle": "ما تملكه المؤسسة وما عليها وما يتبقى لها بعد سداد كل شيء.",
+      "assets": "ما للمؤسسة",
+      "liabilities": "ما على المؤسسة",
+      "totalAssets": "مجموع ما للمؤسسة",
+      "totalLiabilities": "مجموع ما على المؤسسة",
+      "netResult": "النتيجة الصافية",
+      "netHelp": "ما للمؤسسة − ما عليها (بما في ذلك الشركاء).",
+      "capital": "رأس المال المساهم به (للمعلومة)",
+      "loadError": "تعذر تحميل الوضعية المالية.",
+      "lines": {
+        "banks": "البنوك",
+        "cash": "الصناديق",
+        "customer_receivables": "مستحقات العملاء",
+        "supplier_advances": "دفعات مقدّمة للموردين",
+        "transporter_advances": "دفعات مقدّمة للناقلين",
+        "associate_advances": "سلفات للشركاء (غير مستردة)",
+        "fuel_stock": "الوقود غير المباع (بسعر الشراء)",
+        "supplier_debts": "ديون الموردين",
+        "transporter_debts": "ديون الناقلين",
+        "trip_fee_debts": "رسوم الرحلات المستحقة",
+        "customer_credit": "دفعات مقدّمة من العملاء",
+        "shareholder_dues": "مستحقات الشركاء (رأس المال والأرباح غير المسحوبة)"
+      },
+      "children": {
+        "company_stock": "مخزون الشركة",
+        "in_transit": "في الطريق",
+        "at_supplier": "عند المورد",
+        "customs": "الجمارك",
+        "transit": "العبور",
+        "road_transit": "العبور البري",
+        "border": "الحدود",
+        "loading": "التحميل"
       }
     }
   },

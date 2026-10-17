@@ -27,6 +27,7 @@ ACTION_MAP = {
     # Dashboard's single custom read action (docs/PHASE_6_PLAN.md Etape 5).
     "summary": "view",
     "working_capital_pdf": "view",
+    "financial_position": "view",
     "payable_debts": "view",
     "party_balances": "view",
     # Bug fix (found 2026-09-06): missing from this map entirely, so it

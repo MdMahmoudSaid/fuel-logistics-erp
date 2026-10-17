@@ -37,6 +37,7 @@ function makeRouter() {
       { path: '/expenses', name: 'expenses', component: stub },
       { path: '/shareholders', name: 'shareholders', component: stub },
       { path: '/profit', name: 'profit', component: stub },
+      { path: '/financial-position', name: 'financial-position', component: stub },
       { path: '/reports', name: 'reports', component: stub },
       { path: '/audit-logs', name: 'audit-logs', component: stub },
       { path: '/settings/loss-tolerance', name: 'loss-tolerance-settings', component: stub },

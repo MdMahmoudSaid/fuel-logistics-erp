@@ -72,7 +72,8 @@
     "proformas": "Proformas",
     "deliveryNotes": "Bons de livraison",
     "loadingSheets": "Bons de chargement",
-    "purchaseOrders": "Bons de commande"
+    "purchaseOrders": "Bons de commande",
+    "financialPosition": "Situation financière"
   },
   "header": {
     "logout": "Déconnexion",
@@ -1432,6 +1433,42 @@
         "remaining": "Disponible",
         "status": "Statut",
         "proof": "Justificatif"
+      }
+    },
+    "position": {
+      "title": "Situation financière",
+      "subtitle": "Ce que possède l'entreprise, ce qu'elle doit, et ce qui lui reste une fois tout payé.",
+      "assets": "Ce que possède l'entreprise",
+      "liabilities": "Ce que doit l'entreprise",
+      "totalAssets": "Total de ce que possède l'entreprise",
+      "totalLiabilities": "Total de ce que doit l'entreprise",
+      "netResult": "Résultat net",
+      "netHelp": "Ce que possède l'entreprise − ce qu'elle doit (associés compris).",
+      "capital": "Capital apporté (information)",
+      "loadError": "Impossible de charger la situation financière.",
+      "lines": {
+        "banks": "Banques",
+        "cash": "Caisses",
+        "customer_receivables": "Créances clients",
+        "supplier_advances": "Avances versées aux fournisseurs",
+        "transporter_advances": "Avances versées aux transporteurs",
+        "associate_advances": "Avances aux associés (non récupérées)",
+        "fuel_stock": "Carburant non vendu (au prix d'achat)",
+        "supplier_debts": "Dettes fournisseurs",
+        "transporter_debts": "Dettes transporteurs",
+        "trip_fee_debts": "Frais de trajet à payer",
+        "customer_credit": "Avances reçues des clients",
+        "shareholder_dues": "Dû aux associés (capital et bénéfices non retirés)"
+      },
+      "children": {
+        "company_stock": "Stock entreprise",
+        "in_transit": "En cours (sur la route)",
+        "at_supplier": "Chez le fournisseur",
+        "customs": "Douane",
+        "transit": "Transit",
+        "road_transit": "Transit routière",
+        "border": "Frontière",
+        "loading": "Chargement"
       }
     }
   },

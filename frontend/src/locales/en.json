@@ -72,7 +72,8 @@
     "proformas": "Proformas",
     "deliveryNotes": "Delivery notes",
     "loadingSheets": "Loading sheets",
-    "purchaseOrders": "Purchase orders"
+    "purchaseOrders": "Purchase orders",
+    "financialPosition": "Financial position"
   },
   "header": {
     "logout": "Log out",
@@ -1430,6 +1431,42 @@
         "remaining": "Available",
         "status": "Status",
         "proof": "Proof"
+      }
+    },
+    "position": {
+      "title": "Financial position",
+      "subtitle": "What the company owns, what it owes, and what is left once everything is paid.",
+      "assets": "What the company owns",
+      "liabilities": "What the company owes",
+      "totalAssets": "Total owned",
+      "totalLiabilities": "Total owed",
+      "netResult": "Net result",
+      "netHelp": "What the company owns − what it owes (associates included).",
+      "capital": "Capital contributed (information)",
+      "loadError": "Could not load the financial position.",
+      "lines": {
+        "banks": "Banks",
+        "cash": "Cash desks",
+        "customer_receivables": "Customer receivables",
+        "supplier_advances": "Advances paid to suppliers",
+        "transporter_advances": "Advances paid to transporters",
+        "associate_advances": "Advances to associates (not recovered)",
+        "fuel_stock": "Unsold fuel (at purchase price)",
+        "supplier_debts": "Supplier debts",
+        "transporter_debts": "Transporter debts",
+        "trip_fee_debts": "Trip fees to pay",
+        "customer_credit": "Advances received from customers",
+        "shareholder_dues": "Owed to associates (capital and unwithdrawn profit)"
+      },
+      "children": {
+        "company_stock": "Company stock",
+        "in_transit": "In transit (on the road)",
+        "at_supplier": "At the supplier",
+        "customs": "Customs",
+        "transit": "Transit",
+        "road_transit": "Road transit",
+        "border": "Border",
+        "loading": "Loading"
       }
     }
   },

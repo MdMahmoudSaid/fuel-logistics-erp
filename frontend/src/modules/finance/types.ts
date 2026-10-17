@@ -799,3 +799,31 @@ export interface ShareholderProfitPreview {
   distributable_result: string
   shareholders: ShareholderProfitPreviewShare[]
 }
+
+// GET /api/dashboard/financial-position/ (backend apps/reports/services/
+// financial_position.py): what the company owns vs what it owes, and the net
+// result = owned - owed. Amounts are decimal strings.
+export interface FinancialPositionChild {
+  // Either a data label (an account / associate name) or a translatable key.
+  label?: string
+  key?: string
+  amount: string
+}
+
+export interface FinancialPositionLine {
+  key: string
+  amount: string
+  children: FinancialPositionChild[]
+}
+
+export interface FinancialPositionSide {
+  lines: FinancialPositionLine[]
+  total: string
+}
+
+export interface FinancialPosition {
+  assets: FinancialPositionSide
+  liabilities: FinancialPositionSide
+  net_result: string
+  capital: string
+}

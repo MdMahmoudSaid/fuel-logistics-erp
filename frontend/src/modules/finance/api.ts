@@ -9,6 +9,7 @@ import type {
   DebtPaymentType,
   Expense,
   ExpenseCategoryOption,
+  FinancialPosition,
   OpeningDebt,
   OpeningDebtPartyType,
   PartyBalance,
@@ -600,4 +601,8 @@ export function recordShareholderLoanRepayment(
   return apiClient
     .post<ShareholderLoan>(`/shareholder-loans/${loanId}/record-repayment/`, body)
     .then((r) => r.data)
+}
+
+export function fetchFinancialPosition(): Promise<FinancialPosition> {
+  return apiClient.get<FinancialPosition>('/dashboard/financial-position/').then((r) => r.data)
 }
