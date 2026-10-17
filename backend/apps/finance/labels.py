@@ -37,6 +37,10 @@ def _source_counterparty(txn) -> str | None:
         return f"Apport associe - {source.shareholder.name}"
     if model_name == "shareholderloanrepayment":
         return f"Remboursement avance - {source.loan.borrower.name}"
+    if model_name == "manualprofit":
+        # The reason typed when the profit was added (shown as the reference).
+        prefix = "Annulation benefice - " if txn.type == TreasuryTransaction.Type.MONEY_OUT else ""
+        return f"{prefix}{source.note}"
     if model_name == "expense":
         return _EXPENSE_COUNTERPARTY_BY_CATEGORY.get(source.category, source.get_category_display())
     return None

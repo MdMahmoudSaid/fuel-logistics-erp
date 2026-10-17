@@ -74,19 +74,25 @@ function errorText(e: unknown, fallback: string): string {
 
 // --- Add ---------------------------------------------------------------------
 const adding = ref(false)
-// 'none' = profit only, otherwise 'bank:<id>' / 'cash:<id>'.
-const account = ref('none')
+// 'bank:<id>' / 'cash:<id>': the money always goes into an account.
+const account = ref('')
 const form = ref({ amount: '', date: '', note: '' })
 
 function openAdd() {
   form.value = { amount: '', date: new Date().toISOString().slice(0, 10), note: '' }
-  // Default to the first bank account: the money normally lands in the treasury.
-  account.value = banks.value[0] ? `bank:${banks.value[0].id}` : 'none'
+  // Default to the first bank account: the money normally lands there.
+  account.value = banks.value[0]
+    ? `bank:${banks.value[0].id}`
+    : cashes.value[0]
+      ? `cash:${cashes.value[0].id}`
+      : ''
   dialogError.value = ''
   adding.value = true
 }
 
-const canSubmit = computed(() => Number(form.value.amount) > 0 && form.value.note.trim() !== '')
+const canSubmit = computed(
+  () => Number(form.value.amount) > 0 && form.value.note.trim() !== '' && account.value !== '',
+)
 
 async function submitAdd() {
   if (!canSubmit.value) {
@@ -146,12 +152,12 @@ defineExpose({ openAdd, load })
 
 <template>
   <Card :title="t('finance.profit.added.title')" data-test="manual-profit-section">
-    <div class="mb-3 flex flex-wrap items-start justify-between gap-3">
-      <p class="text-texte-2 max-w-2xl text-sm">{{ t('finance.profit.added.help') }}</p>
-      <Button v-if="isAdmin" variant="primary" data-test="add-manual-profit" @click="openAdd">
+    <template v-if="isAdmin" #actions>
+      <Button variant="primary" data-test="add-manual-profit" @click="openAdd">
         {{ t('finance.profit.added.add') }}
       </Button>
-    </div>
+    </template>
+    <p class="text-texte-2 mb-3 max-w-2xl text-sm">{{ t('finance.profit.added.help') }}</p>
     <AppAlert v-if="loadError" :message="loadError" />
     <div class="overflow-x-auto">
       <table class="w-full text-start text-sm">
@@ -251,7 +257,6 @@ defineExpose({ openAdd, load })
                 {{ c.name }}
               </option>
             </optgroup>
-            <option value="none">{{ t('finance.profit.added.noAccount') }}</option>
           </select>
           <span class="text-texte-3 block text-xs">{{
             t('finance.profit.added.accountHelp')

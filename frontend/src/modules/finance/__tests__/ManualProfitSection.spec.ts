@@ -80,18 +80,16 @@ describe('ManualProfitSection', () => {
     expect(w.emitted('changed')).toBeTruthy()
   })
 
-  it('can add a profit without any account', async () => {
+  it('has no "no account" choice: the money always goes into an account', async () => {
     const w = mountSection()
     await flushPromises()
     await w.find('[data-test="add-manual-profit"]').trigger('click')
-    await w.find('[data-test="manual-profit-amount"]').setValue('10')
-    await w.find('[data-test="manual-profit-note"]').setValue('x')
-    await w.find('[data-test="manual-profit-account"]').setValue('none')
-    await w.find('[data-test="add-manual-profit-dialog"]').trigger('submit')
-    await flushPromises()
-    expect(createFn).toHaveBeenCalledWith(
-      expect.objectContaining({ bank_account: null, cash_account: null }),
-    )
+    const values = w
+      .find('[data-test="manual-profit-account"]')
+      .findAll('option')
+      .map((o) => o.element.value)
+    expect(values).not.toContain('none')
+    expect(values.length).toBeGreaterThan(0)
   })
 
   it('cancels with a reason; a distributed profit has its button disabled', async () => {

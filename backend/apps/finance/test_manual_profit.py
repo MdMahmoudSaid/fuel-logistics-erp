@@ -49,25 +49,40 @@ def test_with_an_account_it_is_profit_and_treasury_and_the_position_stays_balanc
 
 
 @pytest.mark.django_db
-def test_without_an_account_it_is_profit_only():
-    ManualProfitService.record(amount="100", date=TODAY, note="x", actor=_admin())
+def test_an_account_is_required():
+    with pytest.raises(ManualProfitError):
+        ManualProfitService.record(amount="100", date=TODAY, note="x", actor=_admin())
+    assert ManualProfit.objects.count() == 0
 
-    assert ShareholderProfitPreviewService.get_preview()["net_profit"] == D("100.00")
-    assert TreasuryTransaction.objects.count() == 0
+
+@pytest.mark.django_db
+def test_the_reference_in_the_statement_is_the_reason():
+    from apps.reports.queries.treasury_statement import TreasuryStatementQuery
+
+    admin = _admin()
+    bank = BankAccount.objects.create(name="B1", opening_balance=D("0.00"))
+    ManualProfitService.record(
+        amount="900", date=TODAY, note="Don de Moussa", actor=admin, bank_account_id=bank.id
+    )
+
+    rows = TreasuryStatementQuery.run(bank_account_id=bank.id)
+
+    assert any(r["reference"] == "Don de Moussa" for r in rows)
 
 
 @pytest.mark.django_db
 def test_validation_and_admin_only():
     admin = _admin()
+    bank = BankAccount.objects.create(name="B2", opening_balance=D("0.00"))
     with pytest.raises(ManualProfitError):
-        ManualProfitService.record(amount="0", date=TODAY, note="x", actor=admin)
+        ManualProfitService.record(amount="0", date=TODAY, note="x", actor=admin, bank_account_id=bank.id)
     with pytest.raises(ManualProfitError):
-        ManualProfitService.record(amount="10", date=TODAY, note="  ", actor=admin)
+        ManualProfitService.record(amount="10", date=TODAY, note="  ", actor=admin, bank_account_id=bank.id)
     ops = User.objects.create_user(
         phone="+22299000078", pin="1234", role=Role.objects.get(name=Role.NAME_OPERATIONS)
     )
     with pytest.raises(ManualProfitError):
-        ManualProfitService.record(amount="10", date=TODAY, note="x", actor=ops)
+        ManualProfitService.record(amount="10", date=TODAY, note="x", actor=ops, bank_account_id=bank.id)
 
 
 @pytest.mark.django_db
@@ -92,7 +107,10 @@ def test_closing_the_period_shares_it_and_then_it_cannot_be_cancelled():
     admin = fx["admin_user"]
     shareholder = Shareholder.objects.create(name="A", participation_percent=D("100.00"))
     period = ShareholderProfitPeriodService.open_period("2026-08-01", admin)
-    profit = ManualProfitService.record(amount="1000", date=TODAY, note="x", actor=admin)
+    bank = BankAccount.objects.create(name="B1", opening_balance=D("0.00"))
+    profit = ManualProfitService.record(
+        amount="1000", date=TODAY, note="x", actor=admin, bank_account_id=bank.id
+    )
 
     open_view = ShareholderProfitPreviewService.get_preview(
         date_from="2026-08-01", date_to=TODAY, since_last_closure=True

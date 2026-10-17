@@ -185,23 +185,25 @@ async function onExportPdf() {
       <h1 class="font-display text-2xl leading-none font-semibold uppercase">
         {{ t('finance.profit.title') }}
       </h1>
-      <Button
-        v-if="isAdmin && !loading"
-        variant="primary"
-        data-test="profit-add-manual"
-        @click="manualProfits?.openAdd()"
-      >
-        {{ t('finance.profit.added.add') }}
-      </Button>
-      <Button
-        v-if="!loading"
-        variant="ghost"
-        :disabled="exportingPdf"
-        data-test="profit-export-pdf"
-        @click="onExportPdf"
-      >
-        {{ t('reports.exportPdf') }}
-      </Button>
+      <div class="flex flex-wrap items-center gap-2">
+        <Button
+          v-if="isAdmin && !loading"
+          variant="primary"
+          data-test="profit-add-manual"
+          @click="manualProfits?.openAdd()"
+        >
+          {{ t('finance.profit.added.add') }}
+        </Button>
+        <Button
+          v-if="!loading"
+          variant="ghost"
+          :disabled="exportingPdf"
+          data-test="profit-export-pdf"
+          @click="onExportPdf"
+        >
+          {{ t('reports.exportPdf') }}
+        </Button>
+      </div>
     </div>
 
     <div class="border-ligne flex flex-wrap items-end gap-3 rounded-xl border bg-white p-4">

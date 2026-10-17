@@ -3219,9 +3219,9 @@ class ManualProfitError(ValueError):
 
 class ManualProfitService:
     """Profit entered by hand (client request 2026-10-17, see ManualProfit).
-    Admin-only. With an account the amount is posted as a MONEY_IN in the
-    same transaction, so treasury and profit move together; cancelling posts
-    the offsetting MONEY_OUT."""
+    Admin-only. The money always goes into a bank / cash account (MONEY_IN in
+    the same transaction), so treasury and profit move together; cancelling
+    posts the offsetting MONEY_OUT."""
 
     @staticmethod
     @transaction.atomic
@@ -3230,6 +3230,8 @@ class ManualProfitService:
             raise ManualProfitError("Seul un administrateur peut ajouter un benefice.")
         if bank_account_id and cash_account_id:
             raise ManualProfitError("Un seul compte (banque OU caisse) peut etre renseigne.")
+        if not bank_account_id and not cash_account_id:
+            raise ManualProfitError("Un compte de tresorerie (banque ou caisse) est requis.")
         amount = Decimal(str(amount)).quantize(Decimal("0.01"))
         if amount <= ZERO:
             raise ManualProfitError("Le montant du benefice doit etre superieur a zero.")
@@ -3240,7 +3242,7 @@ class ManualProfitService:
         bank_account = cash_account = None
         if bank_account_id:
             bank_account = BankAccount.objects.select_for_update().get(pk=bank_account_id)
-        elif cash_account_id:
+        else:
             cash_account = CashAccount.objects.select_for_update().get(pk=cash_account_id)
 
         profit = ManualProfit(
@@ -3248,14 +3250,13 @@ class ManualProfitService:
             cash_account=cash_account, recorded_by=actor,
         )
         profit.save(user=actor)
-        if bank_account or cash_account:
-            TreasuryTransaction.objects.create(
-                bank_account=bank_account, cash_account=cash_account,
-                type=TreasuryTransaction.Type.MONEY_IN, amount=amount, date=date,
-                note=f"Benefice ajoute : {note}",
-                source_content_type=ContentType.objects.get_for_model(ManualProfit),
-                source_object_id=profit.id, recorded_by=actor,
-            )
+        TreasuryTransaction.objects.create(
+            bank_account=bank_account, cash_account=cash_account,
+            type=TreasuryTransaction.Type.MONEY_IN, amount=amount, date=date,
+            note=f"Benefice ajoute : {note}",
+            source_content_type=ContentType.objects.get_for_model(ManualProfit),
+            source_object_id=profit.id, recorded_by=actor,
+        )
         return profit
 
     @staticmethod
@@ -3285,7 +3286,7 @@ class ManualProfitService:
             raise ManualProfitError(blocked)
 
         account = profit.bank_account or profit.cash_account
-        if account is not None:
+        if account is not None:  # always true for new entries
             account = type(account).objects.select_for_update().get(pk=account.pk)
             if account.current_balance < profit.amount:
                 raise ManualProfitError(
