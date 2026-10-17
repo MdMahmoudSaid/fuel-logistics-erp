@@ -769,6 +769,9 @@ export interface ShareholderProfitPreview {
   // carried_over - distributions_since_closure == distributable_result.
   // Both are "0.00" for any other date filter.
   carried_over: string
+  // Profit brought from the previous application, part of the open period until
+  // the first closure distributes it (0 afterwards).
+  brought_forward_profit?: string
   distributions_since_closure: string
   net_profit: string
   // Tolerance-absorbed delivery loss (DeliveryControl.company_absorbed_

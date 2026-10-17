@@ -1378,6 +1378,7 @@
       "adjustment": "Ajustement",
       "adjustmentHelp": "Trajet d'une période déjà clôturée, modifié depuis : seule la différence est comptée ici.",
       "carriedOver": "Report période précédente",
+      "broughtForward": "Dont bénéfice reporté (ancienne application)",
       "distributionsSinceClosure": "Répartitions depuis la clôture",
       "distributableResultHelp": "Tous les trajets, toutes périodes, moins les répartitions déjà validées."
     },

@@ -217,7 +217,7 @@ describe('ProfitView', () => {
     // profit minus validated distributions), not the debts/capital figure.
     expect(distributableResultCard.text()).toContain('Bénéfice à distribuer')
     expect(distributableResultCard.text()).toContain('750 000 XOF')
-      })
+  })
 
   // Final whole-branch review (2026-09-08, Fix 2a): distributable_result
   // now silently nets out already_distributed (money already committed to
@@ -719,5 +719,23 @@ describe('ProfitView', () => {
     expect(carried.text()).toContain('Report période précédente')
     expect(carried.text()).toContain('500 000 XOF')
     expect(wrapper.find('[data-test="profit-distributions-since-closure"]').exists()).toBe(false)
+  })
+
+  it('explains the profit brought from the previous application under the net profit', async () => {
+    const preview = await fetchShareholderProfitPreview()
+    fetchShareholderProfitPreview.mockResolvedValue({
+      ...preview,
+      brought_forward_profit: '92358500.00',
+      net_profit: '92358500.00',
+      distributable_result: '92358500.00',
+    })
+
+    const wrapper = mount(ProfitView)
+    await flushPromises()
+    await flushPromises()
+
+    const note = wrapper.find('[data-test="profit-brought-forward"]')
+    expect(note.exists()).toBe(true)
+    expect(note.text()).toContain('92 358 500 XOF')
   })
 })

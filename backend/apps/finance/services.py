@@ -17,6 +17,7 @@ from django.utils import timezone
 
 from apps.accounts.models import Role
 
+from apps.core.models import CompanyProfile
 from apps.core.request_cache import memoize_per_request
 from apps.documents.models import Document
 from apps.finance.models import (
@@ -4122,6 +4123,16 @@ class ShareholderLedgerService:
         }
 
 
+@memoize_per_request
+def _brought_forward_profit() -> Decimal:
+    """Profit made before the app was used (CompanyProfile, read without
+    creating the row); once per request like the other shared figures."""
+    return (
+        CompanyProfile.objects.filter(pk=1).values_list("brought_forward_profit", flat=True).first()
+        or ZERO
+    )
+
+
 class ShareholderProfitPreviewService:
     """Read-only, indicative profit preview (design doc
     2026-08-26-benefices-associes-refinement-design.md) - never stored,
@@ -4171,6 +4182,9 @@ class ShareholderProfitPreviewService:
         else:
             general_expenses_paid = general_expenses_paid_total()
         net_profit = operational_profit - general_expenses_paid
+        # Profit made before the app was used (CompanyProfile.brought_forward_profit):
+        # all-time like every other term of all_time_net_profit below.
+        brought_forward_profit = _brought_forward_profit()
 
         # total_company_absorbed_loss is still computed for the typed API
         # contract (dashboard shareholders_summary). Since spec 2026-09-07 it
@@ -4238,7 +4252,7 @@ class ShareholderProfitPreviewService:
         # gets returned as "net_profit" (see override right before the return,
         # client decision 2026-10-04).
         if date_from is None and date_to is None and not since_last_closure:
-            all_time_net_profit = net_profit
+            all_time_net_profit = net_profit + brought_forward_profit
         else:
             all_time_general_expenses = (
                 Expense.objects.filter(allocations__isnull=True, status=Expense.Status.PAID)
@@ -4248,6 +4262,7 @@ class ShareholderProfitPreviewService:
             all_time_net_profit = (
                 sum((row["current_margin"] for row in MarginReportQuery.run()), ZERO)
                 - all_time_general_expenses
+                + brought_forward_profit
             )
         already_validated_total = (
             ShareholderProfitDistribution.objects.filter(
@@ -4258,13 +4273,17 @@ class ShareholderProfitPreviewService:
         distributable_result = all_time_net_profit - already_validated_total
 
         # Reconciliation lines of the open period (spec 2026-10-05, 3.3):
-        # operational_profit - general_expenses_paid + carried_over -
+        # operational_profit - general_expenses_paid + carried_over + brought_forward_profit -
         # distributions_since_closure == distributable_result. A closure
         # with a negative result distributed nothing, so its deficit carries
         # over; distributions validated/cancelled since the closure close
         # the gap. Zero outside the "Periode en cours" view.
         carried_over = ZERO
         distributions_since_closure = ZERO
+        # Part of the open period until the first closure distributes it.
+        open_brought_forward = (
+            brought_forward_profit if since_last_closure and last_closure is None else ZERO
+        )
         if since_last_closure:
             if last_closure is not None:
                 carried_over = min(last_closure.net_profit or ZERO, ZERO)
@@ -4303,6 +4322,7 @@ class ShareholderProfitPreviewService:
             "revenue": revenue,
             "general_expenses_paid": general_expenses_paid,
             "carried_over": carried_over,
+            "brought_forward_profit": open_brought_forward,
             "distributions_since_closure": distributions_since_closure,
             "net_profit": net_profit,
             "total_company_absorbed_loss": total_company_absorbed_loss,

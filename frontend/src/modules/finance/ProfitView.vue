@@ -284,6 +284,16 @@ async function onExportPdf() {
               <span class="text-critique font-mono">{{ formatMoney(preview.carried_over) }}</span>
             </p>
             <p
+              v-if="preview && Number(preview.brought_forward_profit ?? 0) > 0"
+              data-test="profit-brought-forward"
+              class="text-texte-3 mt-1 text-xs"
+            >
+              {{ t('finance.profit.broughtForward') }} :
+              <span class="text-livre font-mono">{{
+                formatMoney(preview.brought_forward_profit ?? 0)
+              }}</span>
+            </p>
+            <p
               v-if="preview && Math.abs(Number(preview.distributions_since_closure)) > 0"
               data-test="profit-distributions-since-closure"
               class="text-texte-3 mt-1 text-xs"

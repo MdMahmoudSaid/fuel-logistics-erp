@@ -113,6 +113,13 @@ class CompanyProfile(TimeStampedModel):
     phone = models.CharField(max_length=60, blank=True)
     email = models.CharField(max_length=150, blank=True)
     website = models.CharField(max_length=150, blank=True)
+    # Profit made before the app was used (the previous application's result,
+    # client request 2026-10-17). It counts in the all-time net profit, hence in
+    # "Benefice net apres depenses generales" and in what the next period
+    # closure distributes. Not exposed by the API/UI: set once with the
+    # `set_brought_forward_profit` command. No treasury movement: the money is
+    # already in the accounts' opening balances.
+    brought_forward_profit = models.DecimalField(max_digits=16, decimal_places=2, default=0)
 
     def save(self, *args, **kwargs):
         self.pk = 1
