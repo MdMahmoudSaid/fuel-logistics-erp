@@ -102,7 +102,7 @@ const sides = computed(() =>
         <h1 class="font-display text-2xl leading-none font-semibold uppercase">
           {{ t('finance.position.title') }}
         </h1>
-        <p class="text-texte-2 mt-2 text-sm">{{ t('finance.position.subtitle') }}</p>
+        <p class="text-texte-2 no-print mt-2 text-sm">{{ t('finance.position.subtitle') }}</p>
       </div>
       <div v-if="position" class="no-print flex gap-2">
         <Button variant="ghost" data-test="position-print" @click="printPage">
@@ -170,7 +170,7 @@ const sides = computed(() =>
           <h2 class="font-display text-base font-semibold uppercase">
             {{ t('finance.position.netResult') }}
           </h2>
-          <p class="text-texte-3 mt-1 text-xs">{{ t('finance.position.netHelp') }}</p>
+          <p class="text-texte-3 no-print mt-1 text-xs">{{ t('finance.position.netHelp') }}</p>
         </div>
         <MonoValue
           class="text-[30px] leading-none font-semibold"
@@ -196,9 +196,9 @@ const sides = computed(() =>
         </p>
       </section>
 
-      <p class="text-texte-3 text-xs">{{ t('finance.position.note') }}</p>
+      <p class="text-texte-3 no-print text-xs">{{ t('finance.position.note') }}</p>
 
-      <section class="border-ligne space-y-1 rounded-xl border bg-white p-4 text-sm">
+      <section class="no-print border-ligne space-y-1 rounded-xl border bg-white p-4 text-sm">
         <div class="flex items-baseline justify-between gap-3">
           <span class="text-texte-2">{{ t('finance.position.fdr') }}</span>
           <MonoValue class="font-medium" :value="formatMoney(position.working_capital_total)" />
