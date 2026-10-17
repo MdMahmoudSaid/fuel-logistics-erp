@@ -1446,6 +1446,7 @@
       "netHelp": "Ce que possède l'entreprise − ce qu'elle doit (associés et fonds de départ compris). C'est le bénéfice net à distribuer.",
       "capital": "Capital apporté (information)",
       "loadError": "Impossible de charger la situation financière.",
+      "exportError": "Impossible de générer le PDF.",
       "lines": {
         "banks": "Banques",
         "cash": "Caisses",

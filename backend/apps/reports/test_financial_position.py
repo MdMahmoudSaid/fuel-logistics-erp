@@ -326,3 +326,23 @@ def test_financial_position_endpoint_returns_the_position_as_strings():
     assert data["assets"]["total"] == "42.00"
     assert data["net_result"] == "0.00"
     assert data["gap"] == "0.00"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("lang", ["fr", "en", "ar"])
+def test_financial_position_pdf_endpoint_returns_a_pdf(lang):
+    from apps.accounts.models import Role, User
+
+    admin = User.objects.create_user(
+        phone="+22299000024", pin="1234", role=Role.objects.get(name=Role.NAME_ADMIN)
+    )
+    BankAccount.objects.create(name="B1", opening_balance=D("42.00"))
+    client = APIClient()
+    client.force_authenticate(admin)
+
+    response = client.get(f"/api/dashboard/financial-position-pdf/?lang={lang}")
+
+    assert response.status_code == 200
+    assert response["Content-Type"] == "application/pdf"
+    assert response.content.startswith(b"%PDF")
+    assert "situation-financiere.pdf" in response["Content-Disposition"]

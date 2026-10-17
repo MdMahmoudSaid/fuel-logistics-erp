@@ -1444,6 +1444,7 @@
       "netHelp": "What the company owns − what it owes (associates and starting funds included). This is the net profit to distribute.",
       "capital": "Capital contributed (information)",
       "loadError": "Could not load the financial position.",
+      "exportError": "Unable to generate the PDF.",
       "lines": {
         "banks": "Banks",
         "cash": "Cash desks",

@@ -28,6 +28,7 @@ ACTION_MAP = {
     "summary": "view",
     "working_capital_pdf": "view",
     "financial_position": "view",
+    "financial_position_pdf": "view",
     "payable_debts": "view",
     "party_balances": "view",
     # Bug fix (found 2026-09-06): missing from this map entirely, so it

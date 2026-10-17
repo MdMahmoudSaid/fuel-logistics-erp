@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import FinancialPositionView from '../FinancialPositionView.vue'
+import { exportFinancialPositionPdf } from '../api'
 
 const position = {
   assets: {
@@ -48,6 +49,7 @@ const position = {
 vi.mock('../api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api')>()),
   fetchFinancialPosition: vi.fn(async () => position),
+  exportFinancialPositionPdf: vi.fn(async () => undefined),
 }))
 
 describe('FinancialPositionView', () => {
@@ -88,5 +90,20 @@ describe('FinancialPositionView', () => {
     expect(assets).toContain('Caisses') // main line at its own amount
     expect(assets).not.toContain('stock entreprise') // zero child hidden
     expect(assets).toContain('Payé : chez le fournisseur')
+  })
+
+  it('offers a PDF download and a print button, with a print-only logo header', async () => {
+    const print = vi.spyOn(window, 'print').mockImplementation(() => undefined)
+    const wrapper = mount(FinancialPositionView, { attachTo: document.body })
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="position-print-masthead"] img').exists()).toBe(true)
+
+    await wrapper.find('[data-test="position-export-pdf"]').trigger('click')
+    expect(exportFinancialPositionPdf).toHaveBeenCalled()
+
+    await wrapper.find('[data-test="position-print"]').trigger('click')
+    expect(print).toHaveBeenCalled()
+    wrapper.unmount()
   })
 })

@@ -606,3 +606,14 @@ export function recordShareholderLoanRepayment(
 export function fetchFinancialPosition(): Promise<FinancialPosition> {
   return apiClient.get<FinancialPosition>('/dashboard/financial-position/').then((r) => r.data)
 }
+
+// GET /api/dashboard/financial-position-pdf/?lang= (backend apps/reports/
+// views/dashboard.py) - the Situation financiere page as a PDF, same masthead
+// as every other PDF.
+export async function exportFinancialPositionPdf(lang: string): Promise<void> {
+  const response = await apiClient.get('/dashboard/financial-position-pdf/', {
+    params: { lang },
+    responseType: 'blob',
+  })
+  downloadBlob(new Blob([response.data]), 'situation-financiere.pdf')
+}

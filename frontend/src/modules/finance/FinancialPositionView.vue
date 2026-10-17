@@ -7,12 +7,15 @@
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppAlert from '@/components/ui/AppAlert.vue'
+import Button from '@/components/ui/Button.vue'
 import MonoValue from '@/components/ui/MonoValue.vue'
+import azurEnergieIcon from '@/assets/azur-energie-icon.png'
+import { usePrintScope } from '@/composables/usePrintScope'
 import { formatMoney } from '@/utils/currency'
-import { fetchFinancialPosition } from './api'
+import { exportFinancialPositionPdf, fetchFinancialPosition } from './api'
 import type { FinancialPosition, FinancialPositionChild, FinancialPositionLine } from './types'
 
-const { t, te } = useI18n()
+const { t, te, locale } = useI18n()
 
 const position = ref<FinancialPosition | null>(null)
 const loading = ref(true)
@@ -42,6 +45,25 @@ function visibleChildren(line: FinancialPositionLine): FinancialPositionChild[] 
   return line.children.filter((child) => Number(child.amount) !== 0)
 }
 
+// PDF (same masthead as the other PDFs) and print (only the page content, with
+// a print-only logo header - usePrintScope hides the shell, as in Reports).
+const exportingPdf = ref(false)
+async function onExportPdf() {
+  exportingPdf.value = true
+  error.value = ''
+  try {
+    await exportFinancialPositionPdf(locale.value)
+  } catch {
+    error.value = t('finance.position.exportError')
+  } finally {
+    exportingPdf.value = false
+  }
+}
+
+const pageEl = ref<HTMLElement | null>(null)
+const { print: printPage } = usePrintScope(pageEl, ref('portrait'))
+const today = new Date().toLocaleDateString(locale.value)
+
 const net = computed(() => (position.value ? Number(position.value.net_result) : 0))
 
 const sides = computed(() =>
@@ -65,12 +87,36 @@ const sides = computed(() =>
 </script>
 
 <template>
-  <div class="max-w-5xl space-y-6">
-    <div>
-      <h1 class="font-display text-2xl leading-none font-semibold uppercase">
-        {{ t('finance.position.title') }}
-      </h1>
-      <p class="text-texte-2 mt-2 text-sm">{{ t('finance.position.subtitle') }}</p>
+  <div ref="pageEl" class="max-w-5xl space-y-6">
+    <!-- Print only: logo + company, like the report sheets. -->
+    <div class="hidden items-center gap-4 print:flex" data-test="position-print-masthead">
+      <img :src="azurEnergieIcon" alt="" class="size-16 shrink-0" />
+      <div>
+        <p class="text-2xl font-semibold">AZUR ÉNERGIE</p>
+        <p class="text-texte-3 text-sm">{{ today }}</p>
+      </div>
+    </div>
+
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h1 class="font-display text-2xl leading-none font-semibold uppercase">
+          {{ t('finance.position.title') }}
+        </h1>
+        <p class="text-texte-2 mt-2 text-sm">{{ t('finance.position.subtitle') }}</p>
+      </div>
+      <div v-if="position" class="no-print flex gap-2">
+        <Button variant="ghost" data-test="position-print" @click="printPage">
+          {{ t('reports.print') }}
+        </Button>
+        <Button
+          variant="ghost"
+          :disabled="exportingPdf"
+          data-test="position-export-pdf"
+          @click="onExportPdf"
+        >
+          {{ t('reports.exportPdf') }}
+        </Button>
+      </div>
     </div>
 
     <AppAlert v-if="error" :message="error" />
@@ -162,7 +208,7 @@ const sides = computed(() =>
 
       <details
         data-test="position-origins"
-        class="border-ligne rounded-xl border bg-white p-4 text-sm"
+        class="no-print border-ligne rounded-xl border bg-white p-4 text-sm"
       >
         <summary class="text-texte-2 cursor-pointer font-medium">
           {{ t('finance.position.originsTitle') }}

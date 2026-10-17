@@ -39,6 +39,7 @@ from apps.reports.serialization import decimals_to_str
 from apps.reports.services.financial_position import FinancialPositionService
 from apps.reports.services.profit import TripProfitService
 from apps.reports.services.stock import TheoreticalStockService
+from apps.reports.services.financial_position_pdf import render_financial_position_pdf
 from apps.reports.services.working_capital_pdf import (
     WORKING_CAPITAL_LINES,
     render_working_capital_pdf,
@@ -91,6 +92,18 @@ class DashboardViewSet(viewsets.ViewSet):
         GET /api/dashboard/financial-position/
         """
         return Response(decimals_to_str(FinancialPositionService.get_position()))
+
+    @action(detail=False, methods=["get"], url_path="financial-position-pdf")
+    def financial_position_pdf(self, request):
+        """The Situation financiere page as a PDF (same masthead as the other
+        PDFs). GET /api/dashboard/financial-position-pdf/?lang=fr|en|ar"""
+        pdf_bytes = render_financial_position_pdf(
+            position=decimals_to_str(FinancialPositionService.get_position()),
+            lang=request.query_params.get("lang", "fr"),
+        )
+        response = HttpResponse(pdf_bytes, content_type="application/pdf")
+        response["Content-Disposition"] = 'attachment; filename="situation-financiere.pdf"'
+        return response
 
     @action(detail=False, methods=["get"])
     def summary(self, request):
