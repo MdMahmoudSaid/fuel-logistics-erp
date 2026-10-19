@@ -76,10 +76,25 @@ class DashboardViewSet(viewsets.ViewSet):
                     {"detail": "Selectionnez au moins une ligne."},
                     status=http_status.HTTP_400_BAD_REQUEST,
                 )
+        # The sheet lists each bank / cash account and each customer.
+        treasury_accounts = [
+            (account.name, account.current_balance)
+            for account in [
+                *BankAccount.objects.filter(is_active=True).order_by("name", "id"),
+                *CashAccount.objects.filter(is_active=True).order_by("name", "id"),
+            ]
+        ]
+        customer_receivables = [
+            (row["customer"], row["outstanding"])
+            for row in sorted(CustomerOutstandingReportQuery.run(), key=lambda r: r["customer"])
+            if row["outstanding"]
+        ]
         pdf_bytes = render_working_capital_pdf(
             working_capital=WorkingCapitalService.get_working_capital(),
             lines=lines,
             lang=request.query_params.get("lang", "fr"),
+            treasury_accounts=treasury_accounts,
+            customer_receivables=customer_receivables,
         )
         response = HttpResponse(pdf_bytes, content_type="application/pdf")
         response["Content-Disposition"] = 'attachment; filename="fond-de-roulement.pdf"'
