@@ -147,6 +147,9 @@ export interface DashboardSummary {
     supplier_reliquat_value: string
     supplier_in_transit_value: string
     supplier_company_stock_value: string
+    // Money already spent that comes back (optional: absent from old API payloads).
+    advances_paid?: string
+    unsold_costs?: string
     gross: string
     total: string
   }

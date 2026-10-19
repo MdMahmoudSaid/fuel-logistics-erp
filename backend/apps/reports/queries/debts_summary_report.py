@@ -25,6 +25,7 @@ FIELDS = ["party_type", "party", "amount"]
 ZERO = Decimal("0.00")
 
 
+@memoize_per_request
 def customer_ids_with_activity() -> set:
     """Customers that ever had an invoice, a payment or an opening debt."""
     return (

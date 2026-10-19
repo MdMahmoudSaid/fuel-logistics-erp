@@ -29,6 +29,8 @@ def _preview(**overrides) -> dict:
             "supplier_reliquat_value": Decimal("15000000.00"),
             "supplier_in_transit_value": Decimal("5000000.00"),
             "supplier_company_stock_value": Decimal("3000000.00"),
+            "advances_paid": Decimal("500000.00"),
+            "unsold_costs": Decimal("250000.00"),
             "gross": Decimal("386000000.00"),
             "total": Decimal("467180000.00"),
         },

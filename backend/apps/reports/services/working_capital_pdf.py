@@ -35,6 +35,14 @@ WORKING_CAPITAL_LINES = {
     "supplier_company_stock": ("Stock : stock entreprise", "Stock: company stock", "supplier_company_stock_value"),
     "supplier_in_transit": ("Stock : en cours", "Stock: in transit", "supplier_in_transit_value"),
     "supplier_reliquat": ("Stock : chez le fournisseur", "Stock: at the supplier", "supplier_reliquat_value"),
+    "advances_paid": (
+        "Avances versees (fournisseurs, transporteurs, associes)",
+        "Advances paid (suppliers, transporters, associates)", "advances_paid",
+    ),
+    "unsold_costs": (
+        "Frais de trajet engages (carburant non vendu)",
+        "Trip costs engaged (unsold fuel)", "unsold_costs",
+    ),
     "supplier_debt": ("- Dettes fournisseurs", "- Supplier debts", "supplier_debt_total"),
     "transporter_debt": ("- Dettes transporteurs", "- Transporter debts", "transporter_debt_total"),
     "other_debts": ("- Dettes douane / transit / frais", "- Customs / transit / fees debts", "other_debts"),

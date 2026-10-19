@@ -29,6 +29,7 @@ from decimal import Decimal
 
 from django.db.models import F as models_F
 
+from apps.core.request_cache import memoize_per_request
 from apps.finance.models import (
     BankAccount,
     CashAccount,
@@ -50,7 +51,10 @@ from apps.finance.services import (
 from apps.purchasing.models import SupplierOrder
 from apps.purchasing.services import SupplierStockService
 from apps.reports.queries.debts_summary_report import DebtsSummaryReportQuery
-from apps.reports.queries.receivables_summary_report import ReceivablesSummaryReportQuery
+from apps.reports.queries.receivables_summary_report import (
+    ReceivablesSummaryReportQuery,
+    party_advances,
+)
 from apps.trips.models import Trip
 
 ZERO = Decimal("0.00")
@@ -66,6 +70,7 @@ def _sum_rows(rows, party_type):
     return sum((r["amount"] for r in rows if r["party_type"] == party_type), ZERO)
 
 
+@memoize_per_request
 def _unsold_trip_costs() -> dict:
     """Costs already engaged on the trips that are not sold yet (they are
     booked in the profit only at the sale): per kind, what is still unpaid
@@ -144,6 +149,30 @@ def _treasury_origins(bank_accounts, cash_accounts, starting_funds) -> list[dict
     return rows
 
 
+@memoize_per_request
+def engaged_assets() -> dict:
+    """Money spent or engaged that comes back or is waiting for the sale: the
+    advances paid to suppliers / transporters / associates, and the costs of
+    the trips not sold yet - paid ("Douane payee ...") AND still unpaid (the
+    open debt is deducted in the Fond de roulement, so its cost must be an
+    asset too, or paying a debt would change the figure). Shared by this page and the Fond de roulement
+    (client's own "Etat de la tresorerie": "Douane payee ..." is an asset), so
+    the two always carry the same figures."""
+    unsold_costs = _unsold_trip_costs()
+    return {
+        "supplier_advances": _sum_rows(party_advances("supplier_advance"), "supplier_advance"),
+        "transporter_advances": _sum_rows(party_advances("transporter_advance"), "transporter_advance"),
+        "associate_advances": sum(
+            (
+                loan.cash_outstanding
+                for loan in ShareholderLoan.objects.filter(source=ShareholderLoan.Source.COMPANY)
+            ),
+            ZERO,
+        ),
+        "unsold_costs": unsold_costs["paid"] + sum(unsold_costs["unpaid"].values(), ZERO),
+    }
+
+
 class FinancialPositionService:
     @staticmethod
     def get_position() -> dict:
@@ -173,13 +202,7 @@ class FinancialPositionService:
 
         costs = _unsold_trip_costs()
 
-        associate_advances = sum(
-            (
-                loan.cash_outstanding
-                for loan in ShareholderLoan.objects.filter(source=ShareholderLoan.Source.COMPANY)
-            ),
-            ZERO,
-        )
+        associate_advances = engaged_assets()["associate_advances"]
 
         asset_lines = [
             _line("banks", sum((a.current_balance for a in bank_accounts), ZERO), [

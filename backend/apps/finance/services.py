@@ -3331,7 +3331,12 @@ class WorkingCapitalService:
               (fuel bought and not sold yet, at the order's purchase price)
       debts = supplier_debt_total + transporter_debt_total + other_debts
               (dettes douane / transit / frais)
-      total = gross + stock - debts
+      advances = advances paid to suppliers / transporters / associates
+      costs = costs of the trips not sold yet, paid or not (the unpaid ones are
+              also in `debts`: without this asset, paying a debt would move the figure)
+      total = gross + stock + advances + costs - debts
+    So Fond de roulement = "Ce que possede l'entreprise" (Situation financiere)
+    minus the operating debts (suppliers, transporters, fees).
 
     Same layout as the client's own "Etat de la tresorerie" sheet: cash,
     receivables and supplier stock are listed as positives, the unpaid
@@ -3509,12 +3514,22 @@ class WorkingCapitalService:
         # adding it as one more debt would count the same money twice (a 1M
         # contribution would read as 2M). It is never part of gross/total.
         shareholder_dues = ShareholderLedgerService.get_company_dues()["total"]
+        # Local import: reports.services.financial_position imports this module.
+        from apps.reports.services.financial_position import engaged_assets
+
+        engaged = engaged_assets()
+        advances_paid = (
+            engaged["supplier_advances"]
+            + engaged["transporter_advances"]
+            + engaged["associate_advances"]
+        )
+        unsold_costs = engaged["unsold_costs"]
         gross = treasury_available + customer_receivables
         debts_total = supplier_debt_total + transporter_debt_total + other_debts
         stock_total = (
             supplier_reliquat_value + supplier_in_transit_value + supplier_company_stock_value
         )
-        total = gross + stock_total - debts_total
+        total = gross + stock_total + advances_paid + unsold_costs - debts_total
         return {
             "capital": capital,
             "treasury_available": treasury_available,
@@ -3527,6 +3542,8 @@ class WorkingCapitalService:
             "supplier_in_transit_value": supplier_in_transit_value,
             "supplier_company_stock_value": supplier_company_stock_value,
             "gross": gross,
+            "advances_paid": advances_paid,
+            "unsold_costs": unsold_costs,
             "debts_total": debts_total,
             "stock_total": stock_total,
             "total": total,

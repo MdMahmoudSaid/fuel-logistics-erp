@@ -23,6 +23,34 @@ FIELDS = ["party_type", "party", "amount"]
 ZERO = Decimal("0.00")
 
 
+def party_advances(party_type: str) -> list[dict]:
+    """The advances handed to suppliers ("supplier_advance") or transporters
+    ("transporter_advance") and not consumed yet, one row per party. Shared
+    with the Fond de roulement, which needs these rows without the customer
+    receivables (read by their own report)."""
+    rows = []
+    if party_type == "supplier_advance":
+        for supplier in Supplier.objects.filter(
+            id__in=SupplierAdvance.objects.values_list("supplier_id", flat=True)
+        ).order_by("name", "id"):
+            open_advances = sum(
+                (a.remaining_amount for a in AdvanceConsumptionService.open_supplier_advances(supplier)), ZERO
+            )
+            if open_advances > ZERO:
+                rows.append({"party_type": "supplier_advance", "party": supplier.name, "amount": open_advances})
+    else:
+        for transporter in Transporter.objects.filter(
+            id__in=TransporterAdvance.objects.values_list("transporter_id", flat=True)
+        ).order_by("name", "id"):
+            open_advances = sum(
+                (a.remaining_amount for a in AdvanceConsumptionService.open_transporter_advances(transporter)),
+                ZERO,
+            )
+            if open_advances > ZERO:
+                rows.append({"party_type": "transporter_advance", "party": transporter.name, "amount": open_advances})
+    return rows
+
+
 class ReceivablesSummaryReportQuery:
     FIELDS = FIELDS
 
@@ -34,21 +62,6 @@ class ReceivablesSummaryReportQuery:
             outstanding = PaymentAllocationService.get_customer_outstanding(customer)
             if outstanding > ZERO:
                 rows.append({"party_type": "customer", "party": customer.name, "amount": outstanding})
-        for supplier in Supplier.objects.filter(
-            id__in=SupplierAdvance.objects.values_list("supplier_id", flat=True)
-        ).order_by("name", "id"):
-            open_advances = sum(
-                (a.remaining_amount for a in AdvanceConsumptionService.open_supplier_advances(supplier)), ZERO
-            )
-            if open_advances > ZERO:
-                rows.append({"party_type": "supplier_advance", "party": supplier.name, "amount": open_advances})
-        for transporter in Transporter.objects.filter(
-            id__in=TransporterAdvance.objects.values_list("transporter_id", flat=True)
-        ).order_by("name", "id"):
-            open_advances = sum(
-                (a.remaining_amount for a in AdvanceConsumptionService.open_transporter_advances(transporter)),
-                ZERO,
-            )
-            if open_advances > ZERO:
-                rows.append({"party_type": "transporter_advance", "party": transporter.name, "amount": open_advances})
+        rows += party_advances("supplier_advance")
+        rows += party_advances("transporter_advance")
         return rows

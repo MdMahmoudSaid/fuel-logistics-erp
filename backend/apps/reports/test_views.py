@@ -1326,16 +1326,11 @@ def test_dashboard_working_capital_formula_matches_manual_calculation():
 
 
 @pytest.mark.django_db
-def test_dashboard_working_capital_advance_reduces_treasury_without_any_offset():
-    """Client modifications (2026-09-04): the corrected fond-de-roulement
-    formula never nets debts against advances at all - an open advance is
-    simply not part of the formula (docs/superpowers/specs/2026-09-04-
-    recette-corrections-design.md Section 3). This replaces the old
-    net/signed working_capital's behaviour (where an open advance offset
-    the cash outflow that created it) - under the (third-pass, additive)
-    formula, paying out an advance with no offsetting debt simply reduces
-    treasury_available, dropping working_capital.total (and .gross, since
-    no debt exists to add) by the same amount."""
+def test_dashboard_working_capital_advance_moves_money_from_treasury_to_advances_paid():
+    """Rule of 2026-10-19: an advance paid to a supplier is money that comes
+    back (the client's own sheet counts what is held elsewhere as an asset),
+    so paying it out only moves 2,000,000 from treasury_available to
+    advances_paid - the Fond de roulement total does not change."""
     from decimal import Decimal
     from apps.finance.models import CashAccount
     from apps.finance.services import AdvanceService
@@ -1356,8 +1351,10 @@ def test_dashboard_working_capital_advance_reduces_treasury_without_any_offset()
         attachment=SimpleUploadedFile("p.jpg", b"x", content_type="image/jpeg"), actor=admin_user,
     )
 
-    after = client.get("/api/dashboard/summary/").data["working_capital"]["total"]
-    assert Decimal(after) == Decimal(before) - Decimal("2000000.00")
+    wc = client.get("/api/dashboard/summary/").data["working_capital"]
+    assert Decimal(wc["treasury_available"]) == Decimal("8000000.00")
+    assert Decimal(wc["advances_paid"]) == Decimal("2000000.00")
+    assert Decimal(wc["total"]) == Decimal(before)
 
 
 @pytest.mark.django_db
@@ -1450,8 +1447,9 @@ def test_dashboard_working_capital_matches_client_recette_example():
     assert wc["transporter_debt_total"] == "2925000.00"
     assert wc["other_debts"] == "10255000.00"
     # Debts are deducted (rule 2026-10-19): 300,000,000 + 45,000,000 of fuel
-    # not sold yet - 45,000,000 - 2,925,000 - 10,255,000.
-    assert wc["total"] == "286820000.00"
+    # not sold yet + 2,925,000 transport cost engaged on that trip
+    # - 45,000,000 - 2,925,000 - 10,255,000.
+    assert wc["total"] == "289745000.00"
 
 
 # ---------------------------------------------------------------------------

@@ -57,6 +57,8 @@ PROFIT_PDF_LABELS = {
         "transitDebt": "- Transit",
         "roadTransitDebt": "- Transit routiere",
         "otherDebt": "- Autres frais (frontiere / chargement)",
+        "advancesPaid": "+ Avances versees (fournisseurs, transporteurs, associes)",
+        "unsoldCosts": "+ Frais de trajet engages (carburant non vendu)",
         "totalDebts": "= Total des dettes ouvertes (a deduire)",
         "supplierReliquat": "+ Stock : chez le fournisseur",
         "supplierInTransit": "+ Stock : en cours",
@@ -104,6 +106,8 @@ PROFIT_PDF_LABELS = {
         "transitDebt": "- Transit",
         "roadTransitDebt": "Road transit",
         "otherDebt": "Other fees (border / loading / misc.)",
+        "advancesPaid": "+ Advances paid (suppliers, transporters, associates)",
+        "unsoldCosts": "+ Trip costs engaged (unsold fuel)",
         "totalDebts": "= Total open debts (deducted)",
         "supplierReliquat": "+ Stock: at the supplier",
         "supplierInTransit": "+ Stock: in transit",
@@ -320,6 +324,8 @@ def render_profit_report_pdf(
         (labels["supplierCompanyStock"], _format_money(wc["supplier_company_stock_value"])),
         (labels["supplierInTransit"], _format_money(wc["supplier_in_transit_value"])),
         (labels["supplierReliquat"], _format_money(wc["supplier_reliquat_value"])),
+        (labels["advancesPaid"], _format_money(wc["advances_paid"])),
+        (labels["unsoldCosts"], _format_money(wc["unsold_costs"])),
         (labels["supplierDebt"], _format_money(-wc["supplier_debt_total"])),
         (labels["transporterDebt"], _format_money(-wc["transporter_debt_total"])),
         (labels["customsDebt"], _format_money(-other_debts_breakdown["customs"])),
@@ -340,7 +346,7 @@ def render_profit_report_pdf(
     ]
     wc_table = Table(wc_rows, colWidths=[110 * mm, 60 * mm])
     wc_table.setStyle(_SUMMARY_TABLE_STYLE)
-    wc_table.setStyle(TableStyle([_bold_row(idx) for idx in (2, 12, 13, 17)]))
+    wc_table.setStyle(TableStyle([_bold_row(idx) for idx in (2, 14, 15, 19)]))
     elements.append(wc_table)
     elements.append(Spacer(1, 8 * mm))
 

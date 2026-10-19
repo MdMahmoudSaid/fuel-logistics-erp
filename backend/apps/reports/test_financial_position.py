@@ -276,6 +276,13 @@ def test_every_fond_de_roulement_figure_is_found_with_the_same_value_and_the_ori
         - liabilities["trip_fee_debts"]["amount"]
     )
 
+    # The identity the client asked for: Fond de roulement = what the company
+    # owns (this page) minus the operating debts (suppliers, transporters, fees).
+    assert wc["total"] == position["assets"]["total"] - (
+        liabilities["supplier_debts"]["amount"] + liabilities["transporter_debts"]["amount"]
+        + liabilities["trip_fee_debts"]["amount"]
+    )
+
     # Where the treasury comes from adds up to the treasury shown.
     origins = {o["key"]: o["amount"] for o in position["treasury_origins"]}
     assert origins["opening_balances"] == D("10000000.00")

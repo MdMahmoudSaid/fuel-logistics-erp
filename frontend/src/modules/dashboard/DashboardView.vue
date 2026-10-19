@@ -234,6 +234,8 @@ const WC_PDF_LINES = [
   { key: 'supplier_company_stock', label: 'dashboard.final.supplierCompanyStockValue' },
   { key: 'supplier_in_transit', label: 'dashboard.final.supplierInTransitValue' },
   { key: 'supplier_reliquat', label: 'dashboard.final.supplierReliquatValue' },
+  { key: 'advances_paid', label: 'dashboard.final.advancesPaid' },
+  { key: 'unsold_costs', label: 'dashboard.final.unsoldCosts' },
   { key: 'supplier_debt', label: 'dashboard.final.supplierDebtTotal' },
   { key: 'transporter_debt', label: 'dashboard.final.transporterDebtTotal' },
   { key: 'other_debts', label: 'dashboard.final.otherDebts' },
@@ -283,6 +285,8 @@ const workingCapitalCard = computed(() => {
     otherDebtsParts: formatMoneyParts(negated(wc.other_debts)),
     shareholderDuesParts: formatMoneyParts(wc.shareholder_dues ?? '0'),
     supplierReliquatParts: formatMoneyParts(wc.supplier_reliquat_value),
+    advancesPaidParts: formatMoneyParts(wc.advances_paid ?? '0'),
+    unsoldCostsParts: formatMoneyParts(wc.unsold_costs ?? '0'),
     supplierInTransitParts: formatMoneyParts(wc.supplier_in_transit_value),
     supplierCompanyStockParts: formatMoneyParts(wc.supplier_company_stock_value),
   }
@@ -680,6 +684,18 @@ const compactEnRouteTrips = computed(() => enRouteTrips.value.slice(0, 5))
                 <dt class="text-texte-2">{{ t('dashboard.final.supplierReliquatValue') }}</dt>
                 <dd class="text-texte font-medium">
                   <MonoValue v-bind="workingCapitalCard.supplierReliquatParts" />
+                </dd>
+              </div>
+              <div class="bg-sable flex items-center justify-between gap-3 rounded-lg px-3 py-2">
+                <dt class="text-texte-2">{{ t('dashboard.final.advancesPaid') }}</dt>
+                <dd class="text-texte font-medium">
+                  <MonoValue v-bind="workingCapitalCard.advancesPaidParts" />
+                </dd>
+              </div>
+              <div class="bg-sable flex items-center justify-between gap-3 rounded-lg px-3 py-2">
+                <dt class="text-texte-2">{{ t('dashboard.final.unsoldCosts') }}</dt>
+                <dd class="text-texte font-medium">
+                  <MonoValue v-bind="workingCapitalCard.unsoldCostsParts" />
                 </dd>
               </div>
               <div class="bg-sable flex items-center justify-between gap-3 rounded-lg px-3 py-2">

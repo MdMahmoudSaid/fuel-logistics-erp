@@ -196,11 +196,14 @@ def test_working_capital_gross_and_total_breakdown():
     # gross = treasury + receivables (2,000,000 + 1,000,000)
     assert result["gross"] == Decimal("3000000.00")
     # The supplier order is loaded and not sold: its 1,000,000 of fuel is stock
-    # (en cours). total = gross + stock - the 3 debt buckets
-    # = 3,000,000 + 1,000,000 - 3 x 1,000,000.
+    # (en cours); the transport fee (1,000,000) is a cost engaged on that trip,
+    # not sold yet. The customs expense is not tied to a trip.
+    # total = gross + stock + trip costs - the 3 debt buckets
+    # = 3,000,000 + 1,000,000 + 1,000,000 - 3 x 1,000,000.
     assert result["supplier_in_transit_value"] == Decimal("1000000.00")
+    assert result["unsold_costs"] == Decimal("1000000.00")
     assert result["debts_total"] == Decimal("3000000.00")
-    assert result["total"] == Decimal("1000000.00")
+    assert result["total"] == Decimal("2000000.00")
 
 
 @pytest.mark.django_db
@@ -285,7 +288,8 @@ def test_working_capital_matches_client_recette_example():
       - dettes fournisseurs ouvertes  =  45 000 000
       - dettes transporteurs ouvertes =   2 925 000
       - dettes douane/transit/frais   =  10 255 000
-      = 286 820 000
+      + frais de transport engages    =   2 925 000 (trip not sold yet)
+      = 289 745 000
     The unpaid fuel nets to zero (stock - supplier debt); only the
     transporter and customs debts lower the figure.
     """
@@ -323,7 +327,8 @@ def test_working_capital_matches_client_recette_example():
     assert result["transporter_debt_total"] == Decimal("2925000.00")
     assert result["other_debts"] == Decimal("10255000.00")
     assert result["supplier_in_transit_value"] == Decimal("45000000.00")
-    assert result["total"] == Decimal("286820000.00")
+    assert result["unsold_costs"] == Decimal("2925000.00")
+    assert result["total"] == Decimal("289745000.00")
 
 
 def _load_partial(order, quantity, *, suffix):
@@ -705,3 +710,72 @@ def test_allocation_order_changes_only_the_paid_split_never_the_total_or_distrib
     # do not depend on it at all.
     assert new_wc == old_wc
     assert new_preview["distributable_result"] == old_preview["distributable_result"]
+
+
+@pytest.mark.django_db
+def test_working_capital_counts_advances_paid_and_trip_costs_already_paid():
+    """Client's own "Etat de la tresorerie": what has already been spent but
+    comes back (advances) or waits for the sale (costs paid on a trip not
+    sold yet, "Douane payee ...") is an asset. Paying an advance only moves
+    money from treasury to "advances paid": the total does not change."""
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    from apps.finance.services import AdvanceService
+
+    admin_user, supplier, _ = _make_supplier_order_with_status(
+        "WCADV-SUP", SupplierOrder.Status.DRAFT,
+        quantity=Decimal("1000.00"), unit_price=Decimal("1000.0000"),
+    )
+    cash = CashAccount.objects.create(name="WC Adv Cash", opening_balance=Decimal("10000000.00"))
+    before = WorkingCapitalService.get_working_capital()
+
+    AdvanceService.create_supplier_advance(
+        supplier_id=supplier.id, bank_account_id=None, cash_account_id=cash.id,
+        amount=Decimal("2000000.00"), date="2026-09-02", reference="", notes="",
+        attachment=SimpleUploadedFile("p.jpg", b"x", content_type="image/jpeg"), actor=admin_user,
+    )
+    after = WorkingCapitalService.get_working_capital()
+
+    assert after["treasury_available"] == before["treasury_available"] - Decimal("2000000.00")
+    assert after["advances_paid"] == Decimal("2000000.00")
+    assert after["total"] == before["total"]
+
+
+@pytest.mark.django_db
+def test_working_capital_counts_the_costs_of_a_trip_not_sold_yet_and_paying_them_changes_nothing():
+    from django.contrib.contenttypes.models import ContentType
+
+    from apps.finance.models import ExpenseAllocation
+
+    admin_user, supplier, order = _make_supplier_order_with_status(
+        "WCCOST-SUP", SupplierOrder.Status.CONFIRMED,
+        quantity=Decimal("1000.00"), unit_price=Decimal("1000.0000"),
+    )
+    trip = _load_partial(order, Decimal("1000.00"), suffix="WCCOST-SUP")
+    bank = BankAccount.objects.create(
+        name="WC Cost Bank", opening_balance=Decimal("10000000.00"), is_active=True
+    )
+    expense = Expense.objects.create(
+        category=Expense.Category.CUSTOMS, amount=Decimal("300000.00"),
+        calculation_method=Expense.CalculationMethod.MANUAL, date="2026-08-18",
+    )
+    ExpenseAllocation.objects.create(
+        expense=expense, content_type=ContentType.objects.get_for_model(Trip),
+        object_id=trip.id, allocated_amount=Decimal("300000.00"),
+    )
+    unpaid = WorkingCapitalService.get_working_capital()
+    # Engaged but unpaid: counted as an asset AND deducted as a debt.
+    assert unpaid["unsold_costs"] == Decimal("300000.00")
+    assert unpaid["other_debts"] == Decimal("300000.00")
+
+    # Pay 100,000 of it: the money leaves the bank, the open debt falls by
+    # 100,000 - paying a debt does not change the Fond de roulement.
+    ControlledDebtPaymentService.record_payment(
+        debt_type=ControlledDebtPaymentService.CUSTOMS, debt_id=0, bank_account_id=bank.id,
+        amount=Decimal("100000.00"), date="2026-08-20", reference="", actor=admin_user,
+    )
+    paid = WorkingCapitalService.get_working_capital()
+    assert paid["unsold_costs"] == Decimal("300000.00")
+    assert paid["other_debts"] == Decimal("200000.00")
+    assert paid["treasury_available"] == unpaid["treasury_available"] - Decimal("100000.00")
+    assert paid["total"] == unpaid["total"]

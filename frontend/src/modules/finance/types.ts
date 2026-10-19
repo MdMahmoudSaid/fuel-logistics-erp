@@ -748,6 +748,8 @@ export interface WorkingCapital {
   supplier_reliquat_value: string
   supplier_in_transit_value: string
   supplier_company_stock_value: string
+  advances_paid?: string
+  unsold_costs?: string
   gross: string
   total: string
 }
