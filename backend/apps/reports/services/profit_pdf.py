@@ -22,7 +22,13 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from apps.reports.services.pdf_template import DEFAULT_COMPANY_NAME, masthead, safe_text
+from apps.reports.services.pdf_template import (
+    DEFAULT_COMPANY_NAME,
+    FOOTER_MARGIN,
+    masthead,
+    numbered_canvas_cls,
+    safe_text,
+)
 
 
 ZERO = Decimal("0.00")
@@ -224,7 +230,7 @@ def _doc_template(buffer, *, title: str) -> SimpleDocTemplate:
         leftMargin=15 * mm,
         rightMargin=15 * mm,
         topMargin=15 * mm,
-        bottomMargin=15 * mm,
+        bottomMargin=FOOTER_MARGIN,
         title=title,
     )
 
@@ -402,5 +408,5 @@ def render_profit_report_pdf(
         detail_table.setStyle(_DETAIL_TABLE_STYLE)
         elements.append(detail_table)
 
-    doc.build(elements)
+    doc.build(elements, canvasmaker=numbered_canvas_cls(running_title=f"{DEFAULT_COMPANY_NAME} — {labels['title']}", lang=lang, side_margin=15 * mm))
     return buffer.getvalue()

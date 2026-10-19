@@ -39,7 +39,13 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from apps.reports.services.pdf_template import DEFAULT_COMPANY_NAME, masthead, safe_text
+from apps.reports.services.pdf_template import (
+    DEFAULT_COMPANY_NAME,
+    FOOTER_MARGIN,
+    masthead,
+    numbered_canvas_cls,
+    safe_text,
+)
 
 # No per-tenant "company name" setting exists anywhere in this codebase
 # (grepped models/settings/frontend branding) - a fixed constant is used
@@ -563,7 +569,7 @@ def _doc_template(buffer, *, title: str) -> SimpleDocTemplate:
         leftMargin=15 * mm,
         rightMargin=15 * mm,
         topMargin=15 * mm,
-        bottomMargin=15 * mm,
+        bottomMargin=FOOTER_MARGIN,
         title=title,
     )
 
@@ -763,7 +769,7 @@ def _label_value_pdf(*, title: str, field_rows: list[tuple[str, object]], lang: 
         company_name=DEFAULT_COMPANY_NAME, doc_title=title, styles=styles, heading_style=heading_style
     )
     elements += [Spacer(1, 6 * mm), table]
-    doc.build(elements)
+    doc.build(elements, canvasmaker=numbered_canvas_cls(running_title=f"{DEFAULT_COMPANY_NAME} — {title}", lang=lang, side_margin=15 * mm))
     return buffer.getvalue()
 
 

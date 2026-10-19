@@ -180,12 +180,81 @@ def draw_text(canvas, x: float, y: float, text: str, *, size: float = 7, align: 
             cursor += pdfmetrics.stringWidth(chunk, font, size)
 
 
-def numbered_canvas_cls(*, running_title: str, page_label: str, lang: str = "fr"):
-    """Canvas class that stamps "Page n / N" at the bottom of every page and
-    the running title at the top of pages 2+ (two-pass: N is only known once
-    every page has been laid out). In Arabic the title sits on the right."""
+# Space every PDF keeps free at the bottom of each page for the company footer.
+FOOTER_MARGIN = 27 * mm
+
+_PAGE_LABELS = {"fr": "Page {n} / {total}", "en": "Page {n} / {total}", "ar": "صفحة {n} / {total}"}
+_BRAND_BAR = (("#0b5cab", 0.7), ("#1e90d6", 0.2), ("#f39200", 0.1))
+
+
+def _footer_company() -> dict:
+    """The company block printed in every footer (Informations de l'entreprise
+    page). Like the logo, a footer problem never blocks an export."""
+    try:
+        from apps.core.models import CompanyProfile
+
+        return CompanyProfile.load().pdf_company()
+    except Exception:
+        return {"name": DEFAULT_COMPANY_NAME, "lines": []}
+
+
+def draw_company_footer(canvas, *, number: int, total: int, page_label: str, lang: str, side_margin: float):
+    """Footer of one page: brand colour bar, hairline, logo, then the company
+    name and its contact lines (address / phone-email-web / NIF-RC) in a
+    left block, "Page n / N" on the opposite side. Mirrored in Arabic."""
+    from reportlab.lib import colors
+
+    width = canvas._pagesize[0]
+    rtl = lang == "ar"
+    company = _footer_company()
+    lines = list(company.get("lines") or [])
+
+    bar_height, x = 1.8 * mm, 0.0
+    for color, share in _BRAND_BAR:
+        canvas.setFillColor(colors.HexColor(color))
+        canvas.rect(x, 0, width * share, bar_height, stroke=0, fill=1)
+        x += width * share
+
+    line_height = 3.2 * mm
+    block = line_height * (1 + len(lines))
+    top = bar_height + 3.5 * mm + block
+    canvas.setStrokeColor(colors.HexColor("#d1d5db"))
+    canvas.setLineWidth(0.5)
+    canvas.line(side_margin, top + 1.5 * mm, width - side_margin, top + 1.5 * mm)
+
+    logo_size = 10 * mm
+    text_inset = (logo_size + 3 * mm) if LOGO_PATH.exists() else 0
+    if LOGO_PATH.exists():
+        logo_x = width - side_margin - logo_size if rtl else side_margin
+        canvas.drawImage(
+            str(LOGO_PATH), logo_x, top - logo_size, width=logo_size, height=logo_size, mask="auto"
+        )
+    text_x = width - side_margin - text_inset if rtl else side_margin + text_inset
+    align = "right" if rtl else "left"
+    baseline = top - 2.4 * mm
+    canvas.setFillColor(colors.HexColor("#111827"))
+    draw_text(canvas, text_x, baseline, company["name"], size=7.5, align=align, bold=True)
+    canvas.setFillColor(colors.HexColor("#6b7280"))
+    for line in lines:
+        baseline -= line_height
+        draw_text(canvas, text_x, baseline, line, size=6.5, align=align)
+
+    page_x = side_margin if rtl else width - side_margin
+    draw_text(
+        canvas, page_x, bar_height + 3.5 * mm, page_label.format(n=number, total=total),
+        size=7, align="left" if rtl else "right",
+    )
+
+
+def numbered_canvas_cls(*, running_title: str, page_label: str | None = None, lang: str = "fr", side_margin: float = 12 * mm):
+    """Canvas class that stamps the company footer (and "Page n / N") at the
+    bottom of every page and the running title at the top of pages 2+
+    (two-pass: N is only known once every page has been laid out). In Arabic
+    the title sits on the right."""
     from reportlab.lib import colors
     from reportlab.pdfgen import canvas
+
+    label = page_label or _PAGE_LABELS.get(lang, _PAGE_LABELS["fr"])
 
     class NumberedCanvas(canvas.Canvas):
         def __init__(self, *args, **kwargs):
@@ -206,8 +275,10 @@ def numbered_canvas_cls(*, running_title: str, page_label: str, lang: str = "fr"
 
         def _decorate(self, number: int, total: int):
             width, height = self._pagesize
+            draw_company_footer(
+                self, number=number, total=total, page_label=label, lang=lang, side_margin=side_margin
+            )
             self.setFillColor(colors.HexColor("#6b7280"))
-            draw_text(self, width / 2, 7 * mm, page_label.format(n=number, total=total), align="center")
             if number > 1:
                 if lang == "ar":
                     draw_text(self, width - 12 * mm, height - 8 * mm, running_title, align="right")

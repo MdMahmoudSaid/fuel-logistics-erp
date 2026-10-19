@@ -28,7 +28,7 @@ from reportlab.platypus import (
 )
 
 from apps.reports.services.ledger_pdf import _format_money, _format_quantity, _format_unit_money
-from apps.reports.services.pdf_template import logo_image, numbered_canvas_cls, para_text
+from apps.reports.services.pdf_template import FOOTER_MARGIN, logo_image, numbered_canvas_cls, para_text
 
 MARGIN = 12 * mm
 INK = colors.HexColor("#12171c")
@@ -310,18 +310,6 @@ def _signatures(document: dict, available: float, rtl: bool) -> list:
     return [KeepTogether([Spacer(1, 10 * mm), table])]
 
 
-def _footer(document: dict, rtl: bool) -> list:
-    """Company contact lines at the end of the document (`company.lines`)."""
-    lines = document["company"].get("lines") or []
-    if not lines:
-        return []
-    style = _cell_style(size=7, color=MUTED, rtl=rtl)
-    style.alignment = 1  # centered
-    elements = [Spacer(1, 8 * mm), HRFlowable(width="100%", thickness=0.5, color=LINE, spaceAfter=2 * mm)]
-    elements += [_p(line, style, document["lang"]) for line in lines]
-    return elements
-
-
 def build_report_flowables(document: dict, rows: list[dict], lang: str | None = None):
     """(flowables, available width in points) for the document."""
     landscape_page = document["orientation"] == "landscape"
@@ -344,7 +332,6 @@ def build_report_flowables(document: dict, rows: list[dict], lang: str | None = 
         elements.append(_summary_block(document, available, rtl))
     elements += _blocks(document, available, rtl)
     elements += _signatures(document, available, rtl)
-    elements += _footer(document, rtl)
     return elements, available
 
 
@@ -356,7 +343,7 @@ def render_report_pdf(document: dict, rows: list[dict], lang: str | None = None)
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer, pagesize=page, leftMargin=MARGIN, rightMargin=MARGIN, topMargin=MARGIN + 4 * mm,
-        bottomMargin=MARGIN + 2 * mm, title=document["title"], author=document["company"]["name"],
+        bottomMargin=FOOTER_MARGIN, title=document["title"], author=document["company"]["name"],
     )
     doc.build(
         flowables,

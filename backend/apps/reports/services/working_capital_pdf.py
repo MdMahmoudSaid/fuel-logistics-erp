@@ -13,7 +13,13 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from apps.reports.services.pdf_template import DEFAULT_COMPANY_NAME, masthead, safe_text
+from apps.reports.services.pdf_template import (
+    DEFAULT_COMPANY_NAME,
+    FOOTER_MARGIN,
+    masthead,
+    numbered_canvas_cls,
+    safe_text,
+)
 from apps.reports.services.profit_pdf import _format_money
 
 # key -> (French label, English label, working_capital key). Order = order
@@ -52,7 +58,7 @@ def render_working_capital_pdf(*, working_capital: dict, lines: list[str], lang:
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer, pagesize=A4, leftMargin=20 * mm, rightMargin=20 * mm,
-        topMargin=15 * mm, bottomMargin=15 * mm, title=title,
+        topMargin=15 * mm, bottomMargin=FOOTER_MARGIN, title=title,
     )
     elements: list = masthead(
         company_name=DEFAULT_COMPANY_NAME, doc_title=title, styles=styles, heading_style=heading_style
@@ -80,5 +86,5 @@ def render_working_capital_pdf(*, working_capital: dict, lines: list[str], lang:
         style.append(("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f6f4ef")))
     table.setStyle(TableStyle(style))
     elements.append(table)
-    doc.build(elements)
+    doc.build(elements, canvasmaker=numbered_canvas_cls(running_title=f"{DEFAULT_COMPANY_NAME} — {title}", lang=language, side_margin=20 * mm))
     return buffer.getvalue()
