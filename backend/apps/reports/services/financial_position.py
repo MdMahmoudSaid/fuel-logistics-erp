@@ -2,7 +2,7 @@
 # against what it owes, and the net result = owned - owed.
 #
 # Every figure that exists in the Fond de roulement is shown here with the SAME
-# value (treasury, customer receivables, the three "Paye : ..." fuel lines,
+# value (treasury, customer receivables, the three paid-fuel lines (this page caps them by what is paid),
 # supplier / transporter / trip-fee debts at their full amount, what is owed
 # to the associates). A purchase on credit is a debt in full AND the fuel it
 # covers, so the unsold fuel (and the costs already engaged on trips not sold
@@ -267,8 +267,9 @@ class FinancialPositionService:
                 sum((a.opening_balance for a in bank_accounts), ZERO)
                 + sum((a.opening_balance for a in cash_accounts), ZERO),
             ),
-            # The Fond de roulement figure, for the record (it ADDS the open
-            # debts to the treasury and the receivables; this page subtracts them).
+            # The Fond de roulement figure, for the record (treasury + receivables
+            # + unsold fuel - open debts; unlike this page it has no unsold-trip
+            # costs and no associates' dues).
             "working_capital_total": working_capital["total"],
             # Information only: the capital the associates brought in.
             "capital": ShareholderContributionService.get_total_capital(),

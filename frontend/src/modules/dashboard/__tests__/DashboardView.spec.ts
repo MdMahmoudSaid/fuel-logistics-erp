@@ -643,14 +643,13 @@ describe('DashboardView', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('Fond de roulement client')
-    // total = gross (18000000) + debts (2000000 + 500000 + 300000), ADDED
+    // The headline is the total sent by the API (debts are already deducted there).
     expect(wrapper.text()).toContain('20 800 000 XOF')
   })
 
-  it('matches the client recette example: 300M brut + 45M + 2.925M + 10.255M = 358.18M', async () => {
-    // Confirmed bug during actual client recette testing (2026-09-04,
-    // third pass): the card showed dettes ouvertes as positive line items
-    // but the headline figure still subtracted them.
+  it('deducts the open debts: 300M brut + 45M stock - 45M - 2.925M - 10.255M = 286.82M', async () => {
+    // Rule corrected 2026-10-19 (the accountant confirmed it): the open debts
+    // are DEDUCTED from the Fond de roulement, and shown as negative rows.
     fetchDashboardSummary.mockResolvedValueOnce({
       ...summary,
       working_capital: {
@@ -662,16 +661,28 @@ describe('DashboardView', () => {
         other_debts: '10255000.00',
         shareholder_dues: '0',
         supplier_reliquat_value: '0.00',
-        supplier_in_transit_value: '0.00',
+        supplier_in_transit_value: '45000000.00',
         supplier_company_stock_value: '0.00',
         gross: '300000000.00',
-        total: '358180000.00',
+        total: '286820000.00',
       },
     })
     const wrapper = mount(DashboardView, { global: { plugins: [makeRouter()] } })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('358 180 000 XOF')
+    expect(wrapper.text()).toContain('286 820 000 XOF')
+
+    await wrapper.find('[data-test="working-capital-toggle"]').trigger('click')
+    const detailRows = wrapper
+      .find('[data-test="working-capital-detail"]')
+      .findAll('div')
+      .map((row) => row.text().replace(/\s+/g, ' '))
+    const rowFor = (label: string) => detailRows.find((row) => row.startsWith(label)) ?? ''
+    // Each debt line is shown as a negative amount (a minus sign before it).
+    expect(rowFor('Dettes fournisseurs')).toMatch(/[-−]\s?45 000 000/)
+    expect(rowFor('Dettes transporteurs')).toMatch(/[-−]\s?2 925 000/)
+    expect(rowFor('Dettes douane / transit / frais')).toMatch(/[-−]\s?10 255 000/)
+    expect(rowFor('Stock : en cours')).toContain('45 000 000')
   })
 
   it('shows what is owed to the associates as an information line that does not change the total', async () => {
@@ -727,7 +738,7 @@ describe('DashboardView', () => {
       .find('[data-test="working-capital-detail"]')
       .findAll('div')
       .map((row) => row.text().replace(/\s+/g, ' '))
-    expect(detailRows.find((row) => row.startsWith('Payé : chez le fournisseur'))).toContain(
+    expect(detailRows.find((row) => row.startsWith('Stock : chez le fournisseur'))).toContain(
       '77 500 000 XOF',
     )
   })
@@ -764,7 +775,7 @@ describe('DashboardView', () => {
     expect(detailText).toContain('3 000 000 XOF')
   })
 
-  it('labels the three fond de roulement lines as payment allocations, not extra debts', async () => {
+  it('labels the three fond de roulement lines as unsold fuel stock', async () => {
     // Client recette (2026-09-24): "Stock fournisseur (reliquat non chargé)"
     // was read as a second supplier debt. The values still come straight
     // from the API (working_capital.*), each next to its own label - the
@@ -792,15 +803,15 @@ describe('DashboardView', () => {
 
     const rows = wrapper.findAll('dl > div').map((row) => row.text().replace(/\s+/g, ' '))
     const rowFor = (label: string) => rows.find((row) => row.includes(label))
-    expect(rowFor('Payé : chez le fournisseur')).toContain('20 000 000 XOF')
-    expect(rowFor('Payé : en cours')).toContain('5 000 000 XOF')
-    expect(rowFor('Payé : stock entreprise')).toContain('3 000 000 XOF')
+    expect(rowFor('Stock : chez le fournisseur')).toContain('20 000 000 XOF')
+    expect(rowFor('Stock : en cours')).toContain('5 000 000 XOF')
+    expect(rowFor('Stock : stock entreprise')).toContain('3 000 000 XOF')
 
     // Same order as the payment allocation: stock, en cours, reliquat.
     const labelOrder = [
-      'Payé : stock entreprise',
-      'Payé : en cours',
-      'Payé : chez le fournisseur',
+      'Stock : stock entreprise',
+      'Stock : en cours',
+      'Stock : chez le fournisseur',
     ].map((label) => rows.findIndex((row) => row.includes(label)))
     expect(labelOrder).toEqual([...labelOrder].sort((a, b) => a - b))
     expect(labelOrder.every((index) => index >= 0)).toBe(true)
@@ -808,9 +819,8 @@ describe('DashboardView', () => {
     expect(wrapper.text()).not.toContain('Stock fournisseur (reliquat non chargé)')
     expect(wrapper.text()).not.toContain('Stock en cours (chargé, en route)')
     expect(wrapper.text()).not.toContain('Stock entreprise (arrivé au dépôt)')
-    expect(wrapper.text()).toContain(
-      'Les trois lignes indiquent comment les paiements fournisseur sont répartis entre le stock entreprise, le carburant en cours et le carburant restant chez le fournisseur. Elles ne représentent pas des dettes supplémentaires.',
-    )
+    expect(wrapper.text()).toContain('stock de carburant non vendu')
+    expect(wrapper.text()).toContain('− dettes ouvertes')
   })
 
   it('hides the fond de roulement detail by default and toggles it with the eye button', async () => {

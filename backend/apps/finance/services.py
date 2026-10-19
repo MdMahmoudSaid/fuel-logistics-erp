@@ -3319,84 +3319,42 @@ def _manual_profit_total(since=None) -> Decimal:
 
 
 class WorkingCapitalService:
-    """Fond de roulement client (docs/superpowers/specs/2026-09-04-recette-
-    corrections-design.md, Section 3) - a management indicator, NOT the
-    accounting fonds de roulement. Correction (2026-09-04, third pass -
-    confirmed bug during actual client recette testing, reverting the
-    second pass's subtraction which was itself a misreading): open debts
-    are ADDED, not subtracted -
+    """Fond de roulement client - a management indicator, NOT the accounting
+    fonds de roulement.
+
+    Rule (corrected 2026-10-19, confirmed by the client's accountant - the
+    earlier "debts are ADDED" rule, 2026-09-04, was a misreading and is
+    withdrawn): open debts are SUBTRACTED.
+
       gross = treasury_available + customer_receivables
-      total = gross + supplier_debt_total + transporter_debt_total + other_debts
-    Example confirmed with the client: gross 300,000,000 + dettes
-    fournisseurs 45,000,000 + dettes transporteurs 2,925,000 + dettes
-    douane/transit/frais 10,255,000 = 358,180,000. Everywhere else (party
-    balances, ledgers, payment screens) a debt stays displayed as an amount
-    owed, unaffected by this indicator - only here does an open debt
-    increase the figure (mass of funds engaged in operations). Never a
-    source of payment - payments always draw from real BankAccount/
-    CashAccount.
+      stock = company stock + en cours + reliquat at the supplier
+              (fuel bought and not sold yet, at the order's purchase price)
+      debts = supplier_debt_total + transporter_debt_total + other_debts
+              (dettes douane / transit / frais)
+      total = gross + stock - debts
 
-    Stock fournisseur (the unloaded reliquat's monetary value) was added
-    2026-09-10, alongside the debt-total business rule reversal (see
-    ControlledDebtPaymentService.describe_supplier_order): now that the full
-    purchase becomes a debt immediately on confirmation, the value still
-    sitting unloaded at the supplier is company-owned stock, not yet in
-    treasury - it is added to `total` the same way open debts are, as
-    "money engaged in operations". "prets entrants" is still NOT included
-    here: no reliable aggregate financial figure exists yet for it (see the
-    module's git history / spec Section 3 for the reasoning) - add it later
-    behind its own tested aggregate rather than approximating now.
+    Same layout as the client's own "Etat de la tresorerie" sheet: cash,
+    receivables and supplier stock are listed as positives, the unpaid
+    debts as a deduction.
 
-    Bug fix (client-reported, confirmed during live recette testing,
-    2026-09-14): the first cut of the reliquat asset above counted
-    get_purchase_reliquat_amount() (total_amount - loaded_amount) in full,
-    regardless of how much of the order had actually been paid. Since
-    supplier_debt_total already books the FULL order total as an open debt
-    immediately on confirmation (see describe_supplier_order), an unpaid
-    order's reliquat value was the exact same money being added twice -
-    once as "owed to the supplier", once as "stock we hold" - for fuel that
-    hasn't cost the company a single franc yet. Example that surfaced this:
-    buy 720,000 L for 532,800,000 XOF, load nothing, pay nothing ->
-    supplier_debt_total=532,800,000 + supplier_reliquat_value=532,800,000
-    = 1,065,600,000 added to `total` for a single, entirely unpaid
-    purchase. The reliquat can only be a genuine ADDITIONAL asset once cash
-    has actually left treasury for it - so it is now capped, per order, at
-    min(amount actually paid to the supplier, unloaded reliquat value):
-    unpaid stock stays fully represented by the open debt alone (reliquat
-    contributes 0), and paid-for stock still sitting at the supplier
-    contributes exactly its paid value, never more. debt + capped-reliquat
-    always sums back to the order's total_amount - the same litres are
-    never counted under two different labels.
+    Stock is valued IN FULL, not capped by what has been paid: the whole
+    purchase is booked as an open supplier debt on confirmation, and that
+    debt is now deducted in full, so the fuel it bought must be counted in
+    full too (an unpaid order nets to zero: +stock -debt). The old cap
+    (min(paid, value), see get_supplier_pipeline_breakdown, still used by
+    the Situation financiere page) existed only because the debt used to be
+    added - with the debt deducted it would penalise unpaid fuel twice.
+    Each stock line is valued at the pure purchase price, never the fuller
+    "prix de revient": transport / customs are separate debts already
+    deducted, so costing the stock with them would count them twice.
 
-    Same-day follow-up (client request, 2026-09-14): the client pointed out
-    "en cours" (fuel loaded on a truck, en route) and "stock entreprise"
-    (fuel that has physically arrived at the company's own depot) are the
-    two later stages of the exact same pipeline the reliquat above already
-    covers for the unloaded stage - purchased -> reliquat -> en cours ->
-    stock entreprise -> sold (a customer receivable, tracked separately in
-    customer_receivables). Leaving them out was an inconsistency, not a
-    deliberate choice: paid-for fuel sitting on a truck or in the depot is
-    just as real an asset as paid-for fuel still sitting at the supplier.
-    See get_supplier_pipeline_breakdown() below for how the three stages
-    share a single per-order "paid" budget so they can never jointly
-    exceed it (the same invariant as the reliquat fix above, extended to
-    three buckets instead of one). Both new stages are valued at the pure
-    fuel purchase price only (order.unit_price x quantity), never the
-    Dashboard's fuller "prix de revient" (+transport +customs): those extra
-    costs are separate open debts already added in full via
-    transporter_debt_total/other_debts, so pricing "stock entreprise" at
-    cost basis here would double-count them too (client decision,
-    2026-09-14, choosing the simpler basis specifically to avoid reopening
-    the same class of bug on a second axis).
+    Associates' dues and the capital stay information only: that money is
+    already in treasury or in stock, adding it would count it twice.
+    "Prets entrants" is still not included (no reliable aggregate yet).
 
-    Allocation-order correction (client rule, recette meeting 2026-09-24):
-    the per-order paid budget is consumed company stock -> en cours ->
-    reliquat, not reliquat first. The client's reading is that a payment
-    first covers fuel already taken from the supplier, and only then fuel
-    still sitting at the supplier; with reliquat first, a payment equal to
-    the value of the fuel already loaded showed up entirely as "reliquat"
-    while stock entreprise read 0. The three lines are an allocation of
-    payments, not additional debts - the ordering never changes their sum.
+    Everywhere else (party balances, ledgers, payment screens) a debt stays
+    displayed as an amount owed. Never a source of payment - payments always
+    draw from real BankAccount/CashAccount.
     """
 
     @staticmethod
@@ -3433,6 +3391,25 @@ class WorkingCapitalService:
             "transit": transit,
             "road_transit": road_transit,
             "other": other,
+        }
+
+    @staticmethod
+    @memoize_per_request
+    def get_supplier_stock_breakdown() -> dict:
+        """Fuel bought on confirmed orders and not sold yet, valued in full
+        at purchase price (not capped by what was paid - the supplier debt is
+        deducted in full from the Fond de roulement, see the class
+        docstring): company stock, en cours (on a truck), reliquat (still at
+        the supplier)."""
+        reliquat = in_transit = company_stock = ZERO
+        for order in SupplierOrder.objects.filter(status=SupplierOrder.Status.CONFIRMED):
+            company_stock += SupplierStockService.get_purchase_company_stock_amount(order)
+            in_transit += SupplierStockService.get_purchase_in_transit_amount(order)
+            reliquat += SupplierStockService.get_purchase_reliquat_amount(order)
+        return {
+            "supplier_reliquat_value": reliquat,
+            "supplier_in_transit_value": in_transit,
+            "supplier_company_stock_value": company_stock,
         }
 
     @staticmethod
@@ -3523,25 +3500,21 @@ class WorkingCapitalService:
         other_debts_breakdown = WorkingCapitalService.get_other_debts_breakdown()
         other_debts = sum(other_debts_breakdown.values(), ZERO)
         capital = ShareholderContributionService.get_total_capital()
-        supplier_pipeline = WorkingCapitalService.get_supplier_pipeline_breakdown()
-        supplier_reliquat_value = supplier_pipeline["supplier_reliquat_value"]
-        supplier_in_transit_value = supplier_pipeline["supplier_in_transit_value"]
-        supplier_company_stock_value = supplier_pipeline["supplier_company_stock_value"]
+        supplier_stock = WorkingCapitalService.get_supplier_stock_breakdown()
+        supplier_reliquat_value = supplier_stock["supplier_reliquat_value"]
+        supplier_in_transit_value = supplier_stock["supplier_in_transit_value"]
+        supplier_company_stock_value = supplier_stock["supplier_company_stock_value"]
         # Information only, like `capital`: the associates' money is already in
         # treasury (contributions) or is a share of profit already counted, so
         # adding it as one more debt would count the same money twice (a 1M
         # contribution would read as 2M). It is never part of gross/total.
         shareholder_dues = ShareholderLedgerService.get_company_dues()["total"]
         gross = treasury_available + customer_receivables
-        total = (
-            gross
-            + supplier_debt_total
-            + transporter_debt_total
-            + other_debts
-            + supplier_reliquat_value
-            + supplier_in_transit_value
-            + supplier_company_stock_value
+        debts_total = supplier_debt_total + transporter_debt_total + other_debts
+        stock_total = (
+            supplier_reliquat_value + supplier_in_transit_value + supplier_company_stock_value
         )
+        total = gross + stock_total - debts_total
         return {
             "capital": capital,
             "treasury_available": treasury_available,
@@ -3554,6 +3527,8 @@ class WorkingCapitalService:
             "supplier_in_transit_value": supplier_in_transit_value,
             "supplier_company_stock_value": supplier_company_stock_value,
             "gross": gross,
+            "debts_total": debts_total,
+            "stock_total": stock_total,
             "total": total,
         }
 
@@ -4305,13 +4280,9 @@ class ShareholderProfitPreviewService:
             (row["company_absorbed_loss_amount"] for row in rows), ZERO
         )
 
-        # Client modifications (2026-09-04, third pass - confirmed bug
-        # during actual recette testing): working_capital["total"] now ADDS
-        # open debts (see WorkingCapitalService), so "resultat distribuable
-        # apres dettes et capital" must subtract them back out explicitly,
-        # term by term, to reach the real distributable amount - written
-        # out rather than simplified so the formula stays legible if any
-        # one term changes later.
+        # Fond de roulement now deducts the open debts itself (rule corrected
+        # 2026-10-19), so the "result after debts and capital" is simply the
+        # total less the capital and the profit already committed.
         working_capital = WorkingCapitalService.get_working_capital()
 
         # Recette bug (2026-09-08): the same real profit was distributed
@@ -4340,15 +4311,7 @@ class ShareholderProfitPreviewService:
         # computed - unchanged - so the Benefices page can still show how
         # the treasury stands after debts and capital.
         result_after_debts_and_capital = (
-            working_capital["total"]
-            - working_capital["supplier_debt_total"]
-            - working_capital["transporter_debt_total"]
-            - working_capital["other_debts"]
-            - working_capital["supplier_reliquat_value"]
-            - working_capital["supplier_in_transit_value"]
-            - working_capital["supplier_company_stock_value"]
-            - working_capital["capital"]
-            - already_distributed
+            working_capital["total"] - working_capital["capital"] - already_distributed
         )
 
         # Client decision (2026-09-25): "bénéfice à distribuer" is ONE figure,

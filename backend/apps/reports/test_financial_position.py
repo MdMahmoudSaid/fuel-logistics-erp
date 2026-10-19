@@ -257,18 +257,23 @@ def test_every_fond_de_roulement_figure_is_found_with_the_same_value_and_the_ori
     assert liabilities["transporter_debts"]["amount"] == wc["transporter_debt_total"]
     assert liabilities["trip_fee_debts"]["amount"] == wc["other_debts"]
     assert liabilities["shareholder_dues"]["amount"] == wc["shareholder_dues"]
+    # This page splits the fuel into the part paid (asset) and the part still
+    # financed by the supplier debt ("couvert par les dettes"); the Fond de
+    # roulement values the same fuel in full, so the two parts add up to it.
     stock = {c["key"]: c["amount"] for c in assets["unsold_fuel_paid"]["children"]}
-    assert stock == {
-        "company_stock": wc["supplier_company_stock_value"],
-        "in_transit": wc["supplier_in_transit_value"],
-        "at_supplier": wc["supplier_reliquat_value"],
-    }
+    unpaid = {c["key"]: c["amount"] for c in assets["unsold_unpaid_covered"]["children"]}
+    assert stock["company_stock"] + unpaid["unpaid_company_stock"] == wc["supplier_company_stock_value"]
+    assert stock["in_transit"] + unpaid["unpaid_in_transit"] == wc["supplier_in_transit_value"]
+    assert stock["at_supplier"] + unpaid["unpaid_at_supplier"] == wc["supplier_reliquat_value"]
     assert position["working_capital_total"] == wc["total"]
-    # The Fond de roulement is treasury + receivables + the open debts + the paid fuel.
+    # The Fond de roulement is treasury + receivables + the unsold fuel (in full)
+    # - the open debts.
     assert wc["total"] == (
         assets["banks"]["amount"] + assets["cash"]["amount"] + assets["customer_receivables"]["amount"]
-        + liabilities["supplier_debts"]["amount"] + liabilities["transporter_debts"]["amount"]
-        + liabilities["trip_fee_debts"]["amount"] + assets["unsold_fuel_paid"]["amount"]
+        + assets["unsold_fuel_paid"]["amount"]
+        + sum((unpaid[k] for k in ("unpaid_company_stock", "unpaid_in_transit", "unpaid_at_supplier")), D("0.00"))
+        - liabilities["supplier_debts"]["amount"] - liabilities["transporter_debts"]["amount"]
+        - liabilities["trip_fee_debts"]["amount"]
     )
 
     # Where the treasury comes from adds up to the treasury shown.

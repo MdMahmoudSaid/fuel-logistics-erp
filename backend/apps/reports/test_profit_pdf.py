@@ -154,21 +154,21 @@ def test_render_profit_report_pdf_many_trips_do_not_crash():
 
 
 @pytest.mark.parametrize("lang", ["fr", "en"])
-def test_profit_pdf_pipeline_labels_describe_payment_allocation_not_extra_debts(lang):
+def test_profit_pdf_pipeline_labels_describe_the_unsold_fuel_stock(lang):
     """Client recette 2026-09-24: "Stock fournisseur (reliquat non charge)"
     was read as a second supplier debt. The three lines are now labelled as
     what they are - where supplier payments are allocated."""
     labels = PROFIT_PDF_LABELS[lang]
     expected = {
         "fr": {
-            "supplierReliquat": "Paye : chez le fournisseur",
-            "supplierInTransit": "Paye : en cours",
-            "supplierCompanyStock": "Paye : stock entreprise",
+            "supplierReliquat": "+ Stock : chez le fournisseur",
+            "supplierInTransit": "+ Stock : en cours",
+            "supplierCompanyStock": "+ Stock : stock entreprise",
         },
         "en": {
-            "supplierReliquat": "Paid: at the supplier",
-            "supplierInTransit": "Paid: in transit",
-            "supplierCompanyStock": "Paid: company stock",
+            "supplierReliquat": "+ Stock: at the supplier",
+            "supplierInTransit": "+ Stock: in transit",
+            "supplierCompanyStock": "+ Stock: company stock",
         },
     }[lang]
     for key, text in expected.items():

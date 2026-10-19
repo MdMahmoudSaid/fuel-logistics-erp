@@ -231,12 +231,12 @@ const WC_PDF_LINES = [
   { key: 'shareholder_dues', label: 'dashboard.final.shareholderDues' },
   { key: 'treasury', label: 'dashboard.final.availableTreasury' },
   { key: 'receivables', label: 'dashboard.final.customerReceivables' },
-  { key: 'supplier_debt', label: 'dashboard.final.supplierDebtTotal' },
-  { key: 'transporter_debt', label: 'dashboard.final.transporterDebtTotal' },
-  { key: 'other_debts', label: 'dashboard.final.otherDebts' },
   { key: 'supplier_company_stock', label: 'dashboard.final.supplierCompanyStockValue' },
   { key: 'supplier_in_transit', label: 'dashboard.final.supplierInTransitValue' },
   { key: 'supplier_reliquat', label: 'dashboard.final.supplierReliquatValue' },
+  { key: 'supplier_debt', label: 'dashboard.final.supplierDebtTotal' },
+  { key: 'transporter_debt', label: 'dashboard.final.transporterDebtTotal' },
+  { key: 'other_debts', label: 'dashboard.final.otherDebts' },
 ] as const
 const wcPdfOpen = ref(false)
 const wcPdfSelected = ref<string[]>(WC_PDF_LINES.map((line) => line.key))
@@ -261,23 +261,26 @@ async function onDownloadWcPdf() {
   }
 }
 
+// A deducted debt is shown as a negative amount.
+function negated(value: string): string {
+  const amount = Number(value)
+  return amount === 0 ? '0' : String(-amount)
+}
+
 const workingCapitalCard = computed(() => {
   if (!summary.value) return null
   const wc = summary.value.working_capital
   return {
-    // Client modifications (2026-09-04, third pass - confirmed bug during
-    // actual recette testing): headline figure is tresorerie + creances +
-    // dettes ouvertes, ADDED - brut and the debt buckets are shown as
-    // distinct rows below, purely informational (they already sum into
-    // the headline, never subtracted from it).
+    // Headline = tresorerie + creances + stock carburant - dettes ouvertes
+    // (rule corrected 2026-10-19). The debt rows are shown as negatives.
     totalParts: formatMoneyParts(wc.total),
     negative: Number(wc.total) < 0,
     capitalParts: formatMoneyParts(wc.capital),
     treasuryParts: formatMoneyParts(wc.treasury_available),
     receivablesParts: formatMoneyParts(wc.customer_receivables),
-    supplierParts: formatMoneyParts(wc.supplier_debt_total),
-    transporterParts: formatMoneyParts(wc.transporter_debt_total),
-    otherDebtsParts: formatMoneyParts(wc.other_debts),
+    supplierParts: formatMoneyParts(negated(wc.supplier_debt_total)),
+    transporterParts: formatMoneyParts(negated(wc.transporter_debt_total)),
+    otherDebtsParts: formatMoneyParts(negated(wc.other_debts)),
     shareholderDuesParts: formatMoneyParts(wc.shareholder_dues ?? '0'),
     supplierReliquatParts: formatMoneyParts(wc.supplier_reliquat_value),
     supplierInTransitParts: formatMoneyParts(wc.supplier_in_transit_value),
@@ -662,24 +665,6 @@ const compactEnRouteTrips = computed(() => enRouteTrips.value.slice(0, 5))
                 </dd>
               </div>
               <div class="bg-sable flex items-center justify-between gap-3 rounded-lg px-3 py-2">
-                <dt class="text-texte-2">{{ t('dashboard.final.supplierDebtTotal') }}</dt>
-                <dd class="text-texte font-medium">
-                  <MonoValue v-bind="workingCapitalCard.supplierParts" />
-                </dd>
-              </div>
-              <div class="bg-sable flex items-center justify-between gap-3 rounded-lg px-3 py-2">
-                <dt class="text-texte-2">{{ t('dashboard.final.transporterDebtTotal') }}</dt>
-                <dd class="text-texte font-medium">
-                  <MonoValue v-bind="workingCapitalCard.transporterParts" />
-                </dd>
-              </div>
-              <div class="bg-sable flex items-center justify-between gap-3 rounded-lg px-3 py-2">
-                <dt class="text-texte-2">{{ t('dashboard.final.otherDebts') }}</dt>
-                <dd class="text-texte font-medium">
-                  <MonoValue v-bind="workingCapitalCard.otherDebtsParts" />
-                </dd>
-              </div>
-              <div class="bg-sable flex items-center justify-between gap-3 rounded-lg px-3 py-2">
                 <dt class="text-texte-2">{{ t('dashboard.final.supplierCompanyStockValue') }}</dt>
                 <dd class="text-texte font-medium">
                   <MonoValue v-bind="workingCapitalCard.supplierCompanyStockParts" />
@@ -695,6 +680,24 @@ const compactEnRouteTrips = computed(() => enRouteTrips.value.slice(0, 5))
                 <dt class="text-texte-2">{{ t('dashboard.final.supplierReliquatValue') }}</dt>
                 <dd class="text-texte font-medium">
                   <MonoValue v-bind="workingCapitalCard.supplierReliquatParts" />
+                </dd>
+              </div>
+              <div class="bg-sable flex items-center justify-between gap-3 rounded-lg px-3 py-2">
+                <dt class="text-texte-2">{{ t('dashboard.final.supplierDebtTotal') }}</dt>
+                <dd class="text-texte font-medium">
+                  <MonoValue v-bind="workingCapitalCard.supplierParts" />
+                </dd>
+              </div>
+              <div class="bg-sable flex items-center justify-between gap-3 rounded-lg px-3 py-2">
+                <dt class="text-texte-2">{{ t('dashboard.final.transporterDebtTotal') }}</dt>
+                <dd class="text-texte font-medium">
+                  <MonoValue v-bind="workingCapitalCard.transporterParts" />
+                </dd>
+              </div>
+              <div class="bg-sable flex items-center justify-between gap-3 rounded-lg px-3 py-2">
+                <dt class="text-texte-2">{{ t('dashboard.final.otherDebts') }}</dt>
+                <dd class="text-texte font-medium">
+                  <MonoValue v-bind="workingCapitalCard.otherDebtsParts" />
                 </dd>
               </div>
             </dl>

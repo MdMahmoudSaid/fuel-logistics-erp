@@ -195,8 +195,12 @@ def test_working_capital_gross_and_total_breakdown():
     assert result["other_debts"] == Decimal("1000000.00")
     # gross = treasury + receivables (2,000,000 + 1,000,000)
     assert result["gross"] == Decimal("3000000.00")
-    # total = gross + the 3 debt buckets, ADDED (3,000,000 + 1,000,000 x 3)
-    assert result["total"] == Decimal("6000000.00")
+    # The supplier order is loaded and not sold: its 1,000,000 of fuel is stock
+    # (en cours). total = gross + stock - the 3 debt buckets
+    # = 3,000,000 + 1,000,000 - 3 x 1,000,000.
+    assert result["supplier_in_transit_value"] == Decimal("1000000.00")
+    assert result["debts_total"] == Decimal("3000000.00")
+    assert result["total"] == Decimal("1000000.00")
 
 
 @pytest.mark.django_db
@@ -274,15 +278,16 @@ def test_working_capital_debt_total_is_gross_not_net_of_advances():
 
 @pytest.mark.django_db
 def test_working_capital_matches_client_recette_example():
-    """Confirmed bug during actual client recette testing (2026-09-04,
-    third pass): the dashboard "Fond de roulement net client" card showed
-    dettes ouvertes as positive line items but the headline figure still
-    subtracted them. Client-provided example, reproduced exactly here:
-      gross (tresorerie + creances) = 300 000 000
-      + dettes fournisseurs ouvertes  =  45 000 000
-      + dettes transporteurs ouvertes =   2 925 000
-      + dettes douane/transit/frais   =  10 255 000
-      = 358 180 000
+    """Client example (2026-09-04), re-read with the corrected rule of
+    2026-10-19 (the accountant confirmed that debts are DEDUCTED):
+      gross (tresorerie + creances)   = 300 000 000
+      + stock carburant (45 000 L)    =  45 000 000
+      - dettes fournisseurs ouvertes  =  45 000 000
+      - dettes transporteurs ouvertes =   2 925 000
+      - dettes douane/transit/frais   =  10 255 000
+      = 286 820 000
+    The unpaid fuel nets to zero (stock - supplier debt); only the
+    transporter and customs debts lower the figure.
     """
     BankAccount.objects.create(
         name="WC Recette Bank", opening_balance=Decimal("300000000.00"), is_active=True
@@ -317,7 +322,8 @@ def test_working_capital_matches_client_recette_example():
     assert result["supplier_debt_total"] == Decimal("45000000.00")
     assert result["transporter_debt_total"] == Decimal("2925000.00")
     assert result["other_debts"] == Decimal("10255000.00")
-    assert result["total"] == Decimal("358180000.00")
+    assert result["supplier_in_transit_value"] == Decimal("45000000.00")
+    assert result["total"] == Decimal("286820000.00")
 
 
 def _load_partial(order, quantity, *, suffix):
@@ -344,7 +350,7 @@ def _load_partial(order, quantity, *, suffix):
 
 
 @pytest.mark.django_db
-def test_working_capital_unpaid_reliquat_is_not_double_counted_with_the_debt():
+def test_working_capital_unpaid_purchase_nets_to_zero():
     """Bug fix (client-reported, confirmed during live recette testing,
     2026-09-14): buy 720,000 L for 532,800,000 XOF, load nothing, pay
     nothing - supplier_debt_total already books the full 532,800,000 as an
@@ -361,14 +367,16 @@ def test_working_capital_unpaid_reliquat_is_not_double_counted_with_the_debt():
     result = WorkingCapitalService.get_working_capital()
 
     assert result["supplier_debt_total"] == Decimal("532800000.00")
-    assert result["supplier_reliquat_value"] == Decimal("0.00")
+    # The unloaded fuel is stock in full, the debt is deducted in full: an
+    # unpaid purchase nets to zero (it is neither counted twice nor lost).
+    assert result["supplier_reliquat_value"] == Decimal("532800000.00")
     assert result["supplier_in_transit_value"] == Decimal("0.00")
     assert result["supplier_company_stock_value"] == Decimal("0.00")
-    assert result["total"] == result["gross"] + Decimal("532800000.00")
+    assert result["total"] == result["gross"]
 
 
 @pytest.mark.django_db
-def test_working_capital_includes_paid_reliquat_as_an_asset():
+def test_working_capital_counts_the_unloaded_reliquat_as_stock_and_deducts_the_debt():
     """Business rule reversal (client request, 2026-09-10), refined
     2026-09-14 to cap the reliquat by what was actually paid (see the
     class docstring): purchase 200,000 L at 1,000 XOF/L (debt = 200,000,000
@@ -404,20 +412,21 @@ def test_working_capital_includes_paid_reliquat_as_an_asset():
     # en cours) and only then the reliquat still at the supplier - so the
     # 155,000,000 payment gives 45,000,000 to en cours and the remaining
     # 110,000,000 to the reliquat.
+    #
+    # Since the 2026-10-19 rule the Fond de roulement values the stock IN
+    # FULL (the debt is deducted in full): 45,000,000 en cours and
+    # 155,000,000 at the supplier. The "paid" split above is only used by
+    # the Situation financiere page (get_supplier_pipeline_breakdown).
+    paid_split = WorkingCapitalService.get_supplier_pipeline_breakdown()
+    assert paid_split["supplier_company_stock_value"] == Decimal("0.00")
+    assert paid_split["supplier_in_transit_value"] == Decimal("45000000.00")
+    assert paid_split["supplier_reliquat_value"] == Decimal("110000000.00")
     assert result["supplier_company_stock_value"] == Decimal("0.00")
     assert result["supplier_in_transit_value"] == Decimal("45000000.00")
-    assert result["supplier_reliquat_value"] == Decimal("110000000.00")
-    assert (
-        result["supplier_debt_total"]
-        + result["supplier_reliquat_value"]
-        + result["supplier_in_transit_value"]
-        + result["supplier_company_stock_value"]
-    ) == Decimal("200000000.00")
-    assert result["total"] == (
-        result["gross"] + result["supplier_debt_total"] + result["transporter_debt_total"]
-        + result["other_debts"] + result["supplier_reliquat_value"]
-        + result["supplier_in_transit_value"] + result["supplier_company_stock_value"]
-    )
+    assert result["supplier_reliquat_value"] == Decimal("155000000.00")
+    assert result["stock_total"] == Decimal("200000000.00")
+    assert result["debts_total"] == Decimal("45000000.00")
+    assert result["total"] == result["gross"] + Decimal("200000000.00") - Decimal("45000000.00")
 
 
 @pytest.mark.django_db
@@ -473,8 +482,9 @@ def test_working_capital_supplier_reliquat_is_zero_once_fully_loaded():
     result = WorkingCapitalService.get_working_capital()
 
     assert result["supplier_debt_total"] == Decimal("200000000.00")
+    # Fully loaded and not sold: nothing left at the supplier, all of it en cours.
     assert result["supplier_reliquat_value"] == Decimal("0.00")
-    assert result["supplier_in_transit_value"] == Decimal("0.00")
+    assert result["supplier_in_transit_value"] == Decimal("200000000.00")
     assert result["supplier_company_stock_value"] == Decimal("0.00")
 
 
@@ -528,6 +538,11 @@ def _pipeline_scenario(suffix, *, paid):
     return order
 
 
+def _paid_split():
+    """The capped, allocation-ordered split (Situation financiere page)."""
+    return WorkingCapitalService.get_supplier_pipeline_breakdown()
+
+
 def _three_lines(result):
     return (
         result["supplier_company_stock_value"],
@@ -540,7 +555,7 @@ def _three_lines(result):
 def test_payment_covers_company_stock_then_in_transit_then_reliquat():
     _pipeline_scenario("WCORDER-PARTIAL", paid=Decimal("50000000.00"))
 
-    result = WorkingCapitalService.get_working_capital()
+    result = {**WorkingCapitalService.get_working_capital(), **_paid_split()}
 
     assert _three_lines(result) == (
         Decimal("20000000.00"), Decimal("10000000.00"), Decimal("20000000.00"),
@@ -552,7 +567,7 @@ def test_payment_covers_company_stock_then_in_transit_then_reliquat():
 def test_payment_smaller_than_company_stock_goes_entirely_to_company_stock():
     _pipeline_scenario("WCORDER-SMALL", paid=Decimal("15000000.00"))
 
-    result = WorkingCapitalService.get_working_capital()
+    result = {**WorkingCapitalService.get_working_capital(), **_paid_split()}
 
     assert _three_lines(result) == (
         Decimal("15000000.00"), Decimal("0.00"), Decimal("0.00"),
@@ -563,7 +578,7 @@ def test_payment_smaller_than_company_stock_goes_entirely_to_company_stock():
 def test_payment_covering_company_stock_and_part_of_in_transit_leaves_reliquat_at_zero():
     _pipeline_scenario("WCORDER-MID", paid=Decimal("25000000.00"))
 
-    result = WorkingCapitalService.get_working_capital()
+    result = {**WorkingCapitalService.get_working_capital(), **_paid_split()}
 
     assert _three_lines(result) == (
         Decimal("20000000.00"), Decimal("5000000.00"), Decimal("0.00"),
@@ -593,10 +608,10 @@ def test_fully_paid_order_covers_each_stage_at_its_raw_value():
 
 
 @pytest.mark.django_db
-def test_unpaid_order_counts_nothing_and_keeps_the_full_debt():
+def test_unpaid_order_has_nothing_paid_and_keeps_the_full_debt():
     _pipeline_scenario("WCORDER-UNPAID", paid=None)
 
-    result = WorkingCapitalService.get_working_capital()
+    result = {**WorkingCapitalService.get_working_capital(), **_paid_split()}
 
     assert _three_lines(result) == (Decimal("0.00"), Decimal("0.00"), Decimal("0.00"))
     assert result["supplier_debt_total"] == Decimal("100000000.00")
@@ -660,12 +675,13 @@ def _old_reliquat_first_breakdown():
 
 
 @pytest.mark.django_db
-def test_allocation_order_changes_only_the_split_never_the_total_or_distributable_result(
+def test_allocation_order_changes_only_the_paid_split_never_the_total_or_distributable_result(
     monkeypatch,
 ):
     BankAccount.objects.create(name="WC Order Bank", opening_balance=Decimal("40000000.00"), is_active=True)
     _pipeline_scenario("WCORDER-INVARIANT", paid=Decimal("50000000.00"))
 
+    new_split = _paid_split()
     new_wc = WorkingCapitalService.get_working_capital()
     new_preview = ShareholderProfitPreviewService.get_preview()
 
@@ -673,19 +689,19 @@ def test_allocation_order_changes_only_the_split_never_the_total_or_distributabl
         WorkingCapitalService, "get_supplier_pipeline_breakdown",
         staticmethod(_old_reliquat_first_breakdown),
     )
+    old_split = _paid_split()
     old_wc = WorkingCapitalService.get_working_capital()
     old_preview = ShareholderProfitPreviewService.get_preview()
 
-    # The split differs (old: everything in reliquat first)...
-    assert _three_lines(old_wc) == (
+    # The paid split differs (old: everything in reliquat first)...
+    assert _three_lines(old_split) == (
         Decimal("0.00"), Decimal("0.00"), Decimal("50000000.00"),
     )
-    assert _three_lines(new_wc) != _three_lines(old_wc)
-    # ...but nothing else moves.
-    assert sum(_three_lines(new_wc), Decimal("0.00")) == sum(_three_lines(old_wc), Decimal("0.00"))
-    for key in (
-        "treasury_available", "customer_receivables", "supplier_debt_total",
-        "transporter_debt_total", "other_debts", "gross", "total", "capital",
-    ):
-        assert new_wc[key] == old_wc[key], key
+    assert _three_lines(new_split) != _three_lines(old_split)
+    assert sum(_three_lines(new_split), Decimal("0.00")) == sum(
+        _three_lines(old_split), Decimal("0.00")
+    )
+    # ...but the Fond de roulement (stock valued in full) and the profit
+    # do not depend on it at all.
+    assert new_wc == old_wc
     assert new_preview["distributable_result"] == old_preview["distributable_result"]

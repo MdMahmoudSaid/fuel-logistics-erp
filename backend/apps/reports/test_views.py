@@ -1449,7 +1449,9 @@ def test_dashboard_working_capital_matches_client_recette_example():
     assert wc["supplier_debt_total"] == "45000000.00"
     assert wc["transporter_debt_total"] == "2925000.00"
     assert wc["other_debts"] == "10255000.00"
-    assert wc["total"] == "358180000.00"
+    # Debts are deducted (rule 2026-10-19): 300,000,000 + 45,000,000 of fuel
+    # not sold yet - 45,000,000 - 2,925,000 - 10,255,000.
+    assert wc["total"] == "286820000.00"
 
 
 # ---------------------------------------------------------------------------

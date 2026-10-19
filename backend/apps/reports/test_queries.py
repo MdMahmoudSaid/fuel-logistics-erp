@@ -525,11 +525,13 @@ def test_shareholder_profit_preview_indicative_share_uses_distributable_result()
     assert preview["net_profit"] != Decimal("0.00")  # fixture sanity: the trip is profitable
 
     # Client decision 2026-09-25: the distributable amount IS the net
-    # profit after general expenses. The debts/capital-based figure stays
-    # exposed separately (no treasury/receivables/capital seeded -> 0) and
-    # no longer drives it.
+    # profit after general expenses. The Fond de roulement-based figure
+    # stays exposed separately and no longer drives it (here the open
+    # transporter/customs debts, deducted with nothing to set against them,
+    # make it negative).
+    wc = preview["working_capital"]
     assert preview["distributable_result"] == expected_net_profit
-    assert preview["result_after_debts_and_capital"] == Decimal("0.00")
+    assert preview["result_after_debts_and_capital"] == wc["total"] - wc["capital"]
 
     share = next(
         s for s in preview["shareholders"] if s["shareholder_id"] == shareholder.id
@@ -744,13 +746,11 @@ def test_general_expenses_paid_ignores_unpaid_and_allocated_expenses():
 
 
 @pytest.mark.django_db
-def test_distributable_result_cancels_debts_added_into_total():
-    # Client modifications (2026-09-04, third pass - confirmed bug during
-    # actual recette testing): working_capital["total"] ADDS open debts
-    # (see WorkingCapitalService), and distributable_result subtracts them
-    # back out term by term to reach the real distributable amount - so
-    # with zero treasury/receivables/capital, distributable_result is zero
-    # regardless of how large _make_full_trip's open supplier debt is.
+def test_working_capital_total_deducts_the_open_debts_and_adds_the_stock():
+    # Rule corrected 2026-10-19 (the accountant confirmed it): the Fond de
+    # roulement DEDUCTS the open debts and adds the unsold fuel stock, so
+    # with zero treasury/receivables/capital the result after debts and
+    # capital is the stock less the debts.
     admin_user = _make_admin("PAC-NOCAP")
     _make_full_trip("PAC-NOCAP", admin_user)
     Shareholder.objects.create(
@@ -770,11 +770,11 @@ def test_distributable_result_cancels_debts_added_into_total():
     assert wc["gross"] == Decimal("0.00")
     assert wc["supplier_debt_total"] > Decimal("0.00")
     assert wc["total"] == (
-        wc["gross"] + wc["supplier_debt_total"] + wc["transporter_debt_total"]
-        + wc["other_debts"] + wc["supplier_reliquat_value"]
+        wc["gross"] + wc["supplier_reliquat_value"]
         + wc["supplier_in_transit_value"] + wc["supplier_company_stock_value"]
+        - wc["supplier_debt_total"] - wc["transporter_debt_total"] - wc["other_debts"]
     )
-    assert preview["result_after_debts_and_capital"] == Decimal("0.00")
+    assert preview["result_after_debts_and_capital"] == wc["total"]
 
 
 @pytest.mark.django_db
@@ -812,28 +812,19 @@ def test_distributable_result_formula_term_by_term():
     # treasury account in this scenario.
     assert wc["treasury_available"] == Decimal("1000000.00")
     assert wc["customer_receivables"] == Decimal("0.00")
-    # Formula C (docs/superpowers/specs/2026-09-04-recette-corrections-
-    # design.md Section 4, third pass - confirmed bug during actual recette
-    # testing): total = gross + debts (debts ADDED), distributable =
-    # total - debts - capital. The supplier debt _make_full_trip creates is
-    # added into wc["total"] and subtracted right back out via
-    # supplier_debt_total, so distributable_result reduces to gross - capital.
+    # Rule 2026-10-19: total = gross + stock - open debts, and the result
+    # after debts and capital = total - capital - already distributed.
     assert wc["supplier_debt_total"] > Decimal("0.00")
     assert wc["total"] == (
-        wc["gross"] + wc["supplier_debt_total"] + wc["transporter_debt_total"]
-        + wc["other_debts"] + wc["supplier_reliquat_value"]
+        wc["gross"] + wc["supplier_reliquat_value"]
         + wc["supplier_in_transit_value"] + wc["supplier_company_stock_value"]
+        - wc["supplier_debt_total"] - wc["transporter_debt_total"] - wc["other_debts"]
     )
     # Still owed back to the associate, shown for information only: it is not
     # one of the terms of the total (that money is already in treasury).
     assert wc["shareholder_dues"] == Decimal("1000000.00")
-    expected = (
-        wc["total"] - wc["supplier_debt_total"] - wc["transporter_debt_total"]
-        - wc["other_debts"] - wc["supplier_reliquat_value"] - wc["capital"]
-        - wc["supplier_in_transit_value"] - wc["supplier_company_stock_value"]
-    )
+    expected = wc["total"] - wc["capital"]
     assert preview["result_after_debts_and_capital"] == expected
-    assert preview["result_after_debts_and_capital"] == Decimal("-2500000.00")
     # net_profit itself must stay exactly what it was before capital ever
     # entered the picture - distributable_result never feeds it back.
     assert preview["net_profit"] == preview["operational_profit"]

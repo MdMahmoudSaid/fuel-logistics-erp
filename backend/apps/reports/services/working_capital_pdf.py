@@ -32,12 +32,12 @@ WORKING_CAPITAL_LINES = {
     ),
     "treasury": ("Tresorerie disponible", "Available treasury", "treasury_available"),
     "receivables": ("Creances clients", "Customer receivables", "customer_receivables"),
-    "supplier_debt": ("Dettes fournisseurs", "Supplier debts", "supplier_debt_total"),
-    "transporter_debt": ("Dettes transporteurs", "Transporter debts", "transporter_debt_total"),
-    "other_debts": ("Dettes douane / transit / frais", "Customs / transit / fees debts", "other_debts"),
-    "supplier_company_stock": ("Paye : stock entreprise", "Paid: company stock", "supplier_company_stock_value"),
-    "supplier_in_transit": ("Paye : en cours", "Paid: in transit", "supplier_in_transit_value"),
-    "supplier_reliquat": ("Paye : chez le fournisseur", "Paid: at the supplier", "supplier_reliquat_value"),
+    "supplier_company_stock": ("Stock : stock entreprise", "Stock: company stock", "supplier_company_stock_value"),
+    "supplier_in_transit": ("Stock : en cours", "Stock: in transit", "supplier_in_transit_value"),
+    "supplier_reliquat": ("Stock : chez le fournisseur", "Stock: at the supplier", "supplier_reliquat_value"),
+    "supplier_debt": ("- Dettes fournisseurs", "- Supplier debts", "supplier_debt_total"),
+    "transporter_debt": ("- Dettes transporteurs", "- Transporter debts", "transporter_debt_total"),
+    "other_debts": ("- Dettes douane / transit / frais", "- Customs / transit / fees debts", "other_debts"),
 }
 
 _TITLES = {"fr": "Fond de roulement client", "en": "Customer working capital"}
@@ -69,8 +69,17 @@ def render_working_capital_pdf(*, working_capital: dict, lines: list[str], lang:
     elements.append(Spacer(1, 6 * mm))
 
     keys = [key for key in WORKING_CAPITAL_LINES if key in lines]
+    # Debts are deducted in the total (rule 2026-10-19): printed as negatives.
+    deducted = {"supplier_debt", "transporter_debt", "other_debts"}
     rows = [
-        (safe_text(WORKING_CAPITAL_LINES[key][label_index]), _format_money(working_capital[WORKING_CAPITAL_LINES[key][2]]))
+        (
+            safe_text(WORKING_CAPITAL_LINES[key][label_index]),
+            _format_money(
+                -working_capital[WORKING_CAPITAL_LINES[key][2]]
+                if key in deducted
+                else working_capital[WORKING_CAPITAL_LINES[key][2]]
+            ),
+        )
         for key in keys
     ]
     table = Table(rows, colWidths=[105 * mm, 65 * mm])
