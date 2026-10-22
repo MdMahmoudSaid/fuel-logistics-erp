@@ -15,9 +15,9 @@ if [ ! -f /etc/bessma/sahel-app.env ]; then
   printf 'POSTGRES_DB=sahel\nPOSTGRES_USER=sahel\nPOSTGRES_PASSWORD=%s\n' "$DBPW" | sudo install -m 600 /dev/stdin /etc/bessma/sahel-db.env
   # Start from the AZUR app env (same settings module, same options), then
   # override everything that is specific to this installation.
-  sudo grep -v -E '^(DATABASE_URL|DJANGO_SECRET_KEY|DJANGO_ALLOWED_HOSTS|CSRF_TRUSTED_ORIGINS|PUBLIC_HOST|BRAND|CORS_ALLOWED_ORIGINS)=' /etc/bessma/fuel-app.env > /tmp/sahel-app.env.$$ || true
+  # No temp file: the secrets go straight into a root-owned 0600 file.
   {
-    cat /tmp/sahel-app.env.$$
+    sudo grep -v -E '^(DATABASE_URL|DJANGO_SECRET_KEY|DJANGO_ALLOWED_HOSTS|CSRF_TRUSTED_ORIGINS|PUBLIC_HOST|BRAND|CORS_ALLOWED_ORIGINS)=' /etc/bessma/fuel-app.env || true
     echo "BRAND=sahel"
     echo "PUBLIC_HOST=$HOST"
     echo "DJANGO_ALLOWED_HOSTS=$HOST,localhost,127.0.0.1"
@@ -27,7 +27,6 @@ if [ ! -f /etc/bessma/sahel-app.env ]; then
     echo "DATABASE_URL=postgres://sahel:$DBPW@db:5432/sahel"
   } | sudo install -m 600 /dev/stdin /etc/bessma/sahel-app.env
   sudo install -m 600 /etc/bessma/sahel-app.env /etc/bessma/sahel-migrate.env
-  rm -f /tmp/sahel-app.env.$$
 fi
 sudo mkdir -p /home/bouye/apps/sahel-commerce/media
 
