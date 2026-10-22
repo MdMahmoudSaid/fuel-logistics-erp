@@ -7,7 +7,7 @@
 // inside .report-sheet-scroll; the PDF is never cut.
 import { computed } from 'vue'
 import Badge from '@/components/ui/Badge.vue'
-import azurEnergieIcon from '@/assets/azur-energie-icon.png'
+import { BRAND_ICON } from '@/brand'
 import type { ReportDocument, ReportTable } from './types'
 import {
   badgeVariant,
@@ -44,7 +44,7 @@ function openingIndex(table: ReportTable): number {
     >
       <!-- A <div>, not a <header>: style.css hides every <header> (the app topbar) in print. -->
       <div class="report-masthead flex items-center gap-4">
-        <img :src="azurEnergieIcon" alt="" class="size-16 shrink-0" />
+        <img :src="BRAND_ICON" alt="" class="size-16 shrink-0" />
         <p class="text-2xl font-semibold">{{ document.company.name }}</p>
       </div>
 

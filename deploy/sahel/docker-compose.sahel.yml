@@ -1,0 +1,133 @@
+# SAHEL COMMERCE installation (same code as AZUR ÉNERGIE, other brand/domain/database).
+# Derived from docker-compose.production.yml. See deploy/sahel/SETUP.md.
+name: sahel-commerce
+services:
+  db:
+    restart: unless-stopped
+    logging: &id001
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    image: postgres:16
+    env_file:
+    - /etc/bessma/sahel-db.env
+    volumes:
+    - sahel_data:/var/lib/postgresql/data
+    networks:
+    - private
+    mem_limit: 512m
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - psql -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}" -tAc "SELECT 1" | grep -qx
+        1
+      interval: 15s
+      timeout: 5s
+      retries: 5
+  backend:
+    restart: unless-stopped
+    logging: *id001
+    build:
+      context: ./backend
+      args:
+        REQUIREMENTS_FILE: requirements/prod.txt
+    image: bessma/sahel-backend:TAG
+    env_file:
+    - /etc/bessma/sahel-app.env
+    command:
+    - sh
+    - -c
+    - python manage.py collectstatic --noinput && exec gunicorn config.wsgi:application
+      --bind 0.0.0.0:8000 --workers 2 --threads 2 --timeout 60 --access-logfile -
+      --error-logfile -
+    volumes:
+    - /home/bouye/apps/sahel-commerce/media:/app/media
+    networks:
+    - private
+    mem_limit: 768m
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+      - CMD
+      - python
+      - -c
+      - import urllib.request; urllib.request.urlopen("http://127.0.0.1:8000/api/healthz",timeout=4)
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  frontend:
+    restart: unless-stopped
+    logging: *id001
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.production
+      args:
+        VITE_BRAND: sahel
+    image: bessma/sahel-frontend:TAG
+    ports:
+    - 127.0.0.1:5175:8080
+    volumes:
+    - /home/bouye/apps/sahel-commerce/media:/media:ro
+    networks:
+    - private
+    - traefik-public
+    mem_limit: 256m
+    depends_on:
+      backend:
+        condition: service_healthy
+    labels:
+      traefik.enable: 'true'
+      traefik.docker.network: traefik-public
+      traefik.http.routers.sahel.rule: Host(`sahelcommerce.hasel.food`)
+      traefik.http.routers.sahel.entrypoints: websecure
+      traefik.http.routers.sahel.tls: 'true'
+      traefik.http.routers.sahel.tls.certresolver: letsencrypt
+      traefik.http.routers.sahel.middlewares: sahel-security-headers
+      traefik.http.middlewares.sahel-security-headers.headers.stsSeconds: '604800'
+      traefik.http.middlewares.sahel-security-headers.headers.stsIncludeSubdomains: 'true'
+      traefik.http.middlewares.sahel-security-headers.headers.contentTypeNosniff: 'true'
+      traefik.http.middlewares.sahel-security-headers.headers.frameDeny: 'true'
+      traefik.http.middlewares.sahel-security-headers.headers.referrerPolicy: same-origin
+      traefik.http.middlewares.sahel-security-headers.headers.permissionsPolicy: camera=(), microphone=(), geolocation=()
+      traefik.http.middlewares.sahel-security-headers.headers.contentSecurityPolicy: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+      traefik.http.services.sahel.loadbalancer.server.port: '8080'
+  migrate:
+    restart: 'no'
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    build:
+      context: ./backend
+      args:
+        REQUIREMENTS_FILE: requirements/prod.txt
+    image: bessma/sahel-backend:TAG
+    env_file:
+    - /etc/bessma/sahel-migrate.env
+    command:
+    - python
+    - manage.py
+    - migrate
+    - --noinput
+    volumes:
+    - /home/bouye/apps/sahel-commerce/media:/app/media
+    networks:
+    - private
+    mem_limit: 768m
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles:
+    - tools
+volumes:
+  sahel_data:
+    name: sahel-commerce_production_data
+networks:
+  private:
+    name: sahel-commerce_private
+  traefik-public:
+    external: true

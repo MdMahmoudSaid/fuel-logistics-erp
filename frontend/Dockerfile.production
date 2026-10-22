@@ -3,6 +3,9 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
+# Brand (name + logo) of this build: see frontend/brands/README.md
+ARG VITE_BRAND=azur
+ENV VITE_BRAND=$VITE_BRAND
 RUN npm run build
 FROM nginx:1.28-alpine
 COPY --from=build /app/dist /usr/share/nginx/html

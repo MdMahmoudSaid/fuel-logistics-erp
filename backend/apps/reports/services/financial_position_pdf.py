@@ -16,7 +16,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from apps.reports.services.pdf_template import FOOTER_MARGIN, numbered_canvas_cls
+from apps.reports.services.pdf_template import DEFAULT_COMPANY_NAME, FOOTER_MARGIN, numbered_canvas_cls
 from apps.reports.services.profit_pdf import _format_money
 from apps.reports.services.report_pdf import (
     HEADER_FILL,
@@ -315,7 +315,7 @@ def render_financial_position_pdf(*, position: dict, lang: str = "fr") -> bytes:
     document = {
         "lang": lang,
         "title": labels["title"],
-        "company": {"name": "AZUR ÉNERGIE"},
+        "company": {"name": DEFAULT_COMPANY_NAME},
         "info": [{"label": labels["export_date"], "value": datetime.date.today().strftime("%d/%m/%Y")}],
     }
     elements = _header_block(document, available, rtl)
@@ -326,12 +326,12 @@ def render_financial_position_pdf(*, position: dict, lang: str = "fr") -> bytes:
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer, pagesize=A4, leftMargin=MARGIN, rightMargin=MARGIN, topMargin=MARGIN + 4 * mm,
-        bottomMargin=FOOTER_MARGIN, title=labels["title"], author="AZUR ÉNERGIE",
+        bottomMargin=FOOTER_MARGIN, title=labels["title"], author=DEFAULT_COMPANY_NAME,
     )
     doc.build(
         elements,
         canvasmaker=numbered_canvas_cls(
-            running_title=f"AZUR ÉNERGIE — {labels['title']}", page_label=labels["page"], lang=lang
+            running_title=f"{DEFAULT_COMPANY_NAME} — {labels['title']}", page_label=labels["page"], lang=lang
         ),
     )
     return buffer.getvalue()

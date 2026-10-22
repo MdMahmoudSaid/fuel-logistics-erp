@@ -9,7 +9,7 @@ import { useI18n } from 'vue-i18n'
 import AppAlert from '@/components/ui/AppAlert.vue'
 import Button from '@/components/ui/Button.vue'
 import MonoValue from '@/components/ui/MonoValue.vue'
-import azurEnergieIcon from '@/assets/azur-energie-icon.png'
+import { BRAND_ICON, BRAND_NAME } from '@/brand'
 import { usePrintScope } from '@/composables/usePrintScope'
 import { formatMoney } from '@/utils/currency'
 import { exportFinancialPositionPdf, fetchFinancialPosition } from './api'
@@ -96,9 +96,9 @@ const sides = computed(() =>
   <div ref="pageEl" class="max-w-5xl space-y-6">
     <!-- Print only: logo + company, like the report sheets. -->
     <div class="hidden items-center gap-4 print:flex" data-test="position-print-masthead">
-      <img :src="azurEnergieIcon" alt="" class="size-16 shrink-0" />
+      <img :src="BRAND_ICON" alt="" class="size-16 shrink-0" />
       <div>
-        <p class="text-2xl font-semibold">AZUR ÉNERGIE</p>
+        <p class="text-2xl font-semibold">{{ BRAND_NAME }}</p>
         <p class="text-texte-3 text-sm">{{ today }}</p>
       </div>
     </div>

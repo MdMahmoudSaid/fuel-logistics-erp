@@ -1,14 +1,13 @@
 <script setup lang="ts">
 /**
- * Marque AZUR ÉNERGIE : monogramme AE + goutte (asset PNG transparent
- * recadré depuis le logo fourni - voir frontend/src/assets/
- * azur-energie-icon.png) accompagné, en option, du wordmark.
+ * Marque de ce build (nom + icône, voir frontend/brands/ et src/brand.ts) :
+ * icône PNG transparente accompagnée, en option, du wordmark.
  *
- * Le monogramme est bleu foncé/or : sur fond sombre (`tone="light"`) il est
+ * L'icône peut être sombre : sur fond sombre (`tone="light"`) il est
  * posé sur une pastille blanche pour rester lisible ; le texte du wordmark
  * suit aussi `tone`.
  */
-import azurEnergieIcon from '@/assets/azur-energie-icon.png'
+import { BRAND_ICON, BRAND_NAME } from '@/brand'
 
 withDefaults(
   defineProps<{
@@ -27,7 +26,7 @@ withDefaults(
 <template>
   <div class="inline-flex items-center gap-2.5">
     <img
-      :src="azurEnergieIcon"
+      :src="BRAND_ICON"
       :width="size"
       :height="size"
       alt=""
@@ -42,7 +41,7 @@ withDefaults(
       class="font-display text-lg leading-none font-semibold tracking-wide uppercase"
       :class="tone === 'light' ? 'text-sable' : 'text-texte'"
     >
-      AZUR ÉNERGIE
+      {{ BRAND_NAME }}
     </span>
   </div>
 </template>

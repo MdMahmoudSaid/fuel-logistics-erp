@@ -15,12 +15,13 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import Image, Paragraph, Spacer
 
-# No per-tenant "company name" setting exists anywhere in this codebase - a
-# fixed constant is used for every PDF header (rebrand 2026-09-05: AZUR
-# ÉNERGIE, no "ERP" suffix on PDFs).
-DEFAULT_COMPANY_NAME = "AZUR ÉNERGIE"
+from apps.core.brand import BRAND_LOGO_PATH, BRAND_NAME
 
-LOGO_PATH = Path(__file__).resolve().parent.parent / "assets" / "azur-energie-icon.png"
+# The name/logo of every PDF header come from the installation's brand
+# (BRAND env var, see apps/core/brand.py); no "ERP" suffix on PDFs.
+DEFAULT_COMPANY_NAME = BRAND_NAME
+
+LOGO_PATH = BRAND_LOGO_PATH
 
 
 def safe_text(value) -> str:
