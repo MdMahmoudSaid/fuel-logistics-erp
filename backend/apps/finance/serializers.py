@@ -1631,14 +1631,15 @@ class ShareholderContributionSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(str(exc))
 
     def update(self, instance, validated_data):
-        # Amount and account are never editable (cancel and re-enter).
-        for locked in ("amount", "bank_account", "cash_account"):
+        # The account is never editable; the amount is (service rules:
+        # admin, untouched apport, reason, correcting treasury entry).
+        for locked in ("bank_account", "cash_account"):
             if locked in validated_data:
                 new = validated_data[locked]
                 current = getattr(instance, locked)
                 if new != current:
                     raise serializers.ValidationError(
-                        {locked: "Le montant et le compte ne se modifient pas : annulez puis saisissez a nouveau."}
+                        {locked: "Le compte ne se modifie pas : annulez l'apport puis saisissez-le a nouveau."}
                     )
         shareholder = validated_data.get("shareholder")
         try:
@@ -1650,6 +1651,7 @@ class ShareholderContributionSerializer(serializers.ModelSerializer):
                 reference=validated_data.get("reference"),
                 notes=validated_data.get("notes"),
                 attachment=validated_data.get("attachment"),
+                amount=validated_data.get("amount"),
             )
         except ShareholderContributionError as exc:
             raise serializers.ValidationError(str(exc))

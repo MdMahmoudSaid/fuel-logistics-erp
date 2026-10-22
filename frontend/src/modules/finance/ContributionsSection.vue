@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Capital contributions list with edit / cancel controls (2026-10-15).
-// Edit: associate + date (needs an untouched apport and a reason) and
-// reference / note. Cancel: admin only, contre-passation with a reason.
+// Edit: associate, date and amount (need an untouched apport and a reason;
+// the amount is admin-only) and reference / note. Cancel: admin only, contre-passation with a reason.
 // The backend (ShareholderContributionService) enforces every rule; the
 // buttons only mirror them (`blocked_reason` becomes the tooltip).
 import { computed, onMounted, ref } from 'vue'
@@ -73,16 +73,31 @@ const statusVariant = { cancelled: 'neutre', partial: 'ecart', active: 'livre' }
 
 // --- Edit --------------------------------------------------------------------
 const editing = ref<ShareholderContribution | null>(null)
-const editForm = ref({ shareholder: '', date: '', reference: '', notes: '', reason: '' })
+const editForm = ref({
+  shareholder: '',
+  date: '',
+  amount: '',
+  reference: '',
+  notes: '',
+  reason: '',
+})
 const busy = ref(false)
 const dialogError = ref('')
 
 const canMoveEditing = computed(() => editing.value != null && !editing.value.blocked_reason)
+const canEditAmount = computed(() => canMoveEditing.value && isAdmin.value)
+const amountChanged = computed(
+  () =>
+    editing.value != null &&
+    String(editForm.value.amount) !== '' &&
+    Number(editForm.value.amount) !== Number(editing.value.amount),
+)
 const sensitiveChanged = computed(
   () =>
     editing.value != null &&
     (Number(editForm.value.shareholder) !== editing.value.shareholder ||
-      editForm.value.date !== editing.value.date),
+      editForm.value.date !== editing.value.date ||
+      amountChanged.value),
 )
 
 function openEdit(c: ShareholderContribution) {
@@ -90,6 +105,7 @@ function openEdit(c: ShareholderContribution) {
   editForm.value = {
     shareholder: String(c.shareholder),
     date: c.date,
+    amount: String(Number(c.amount)),
     reference: c.reference,
     notes: c.notes,
     reason: '',
@@ -108,6 +124,7 @@ async function submitEdit() {
         ? {
             shareholder: Number(editForm.value.shareholder),
             date: editForm.value.date,
+            ...(amountChanged.value ? { amount: String(editForm.value.amount) } : {}),
             reason: editForm.value.reason,
           }
         : {}),
@@ -222,7 +239,7 @@ defineExpose({ load })
                 >
                 <Button
                   v-if="isAdmin"
-                  variant="ghost"
+                  variant="danger"
                   :data-test="`cancel-contribution-${c.id}`"
                   :disabled="!!c.blocked_reason"
                   :title="c.blocked_reason ?? ''"
@@ -284,6 +301,25 @@ defineExpose({ load })
           />
         </div>
         <div class="space-y-1.5">
+          <label class="text-texte-2 text-sm font-medium" for="edit_contribution_amount">{{
+            t('finance.shareholder.capital.amount')
+          }}</label>
+          <input
+            id="edit_contribution_amount"
+            v-model="editForm.amount"
+            data-test="edit-contribution-amount"
+            type="number"
+            min="0"
+            step="any"
+            inputmode="decimal"
+            :disabled="!canEditAmount"
+            class="border-ligne-forte w-full rounded-lg border bg-white px-3.5 py-2 disabled:opacity-60"
+          />
+          <p v-if="!isAdmin && !editing.blocked_reason" class="text-texte-3 text-xs">
+            {{ t('finance.shareholder.capitalList.amountAdminOnly') }}
+          </p>
+        </div>
+        <div class="space-y-1.5">
           <label class="text-texte-2 text-sm font-medium" for="edit_contribution_reference">{{
             t('finance.contributionForm.reference')
           }}</label>
@@ -324,7 +360,7 @@ defineExpose({ load })
             variant="primary"
             data-test="save-contribution"
             :loading="busy"
-            :disabled="sensitiveChanged && !editForm.reason.trim()"
+            :disabled="(sensitiveChanged && !editForm.reason.trim()) || Number(editForm.amount) <= 0"
             >{{ t('common.save') }}</Button
           >
         </div>

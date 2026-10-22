@@ -3152,19 +3152,24 @@ class ShareholderContributionService:
     @transaction.atomic
     def update_contribution(
         contribution, actor, *, reason="", shareholder_id=None, date=None,
-        reference=None, notes=None, attachment=None,
+        reference=None, notes=None, attachment=None, amount=None,
     ) -> ShareholderContribution:
         """Reference/notes/proof are always editable. Changing the
-        shareholder or the date needs an untouched contribution (nothing
-        withdrawn, not cancelled) and a reason; amount/account are never
-        edited - cancel and re-enter."""
+        shareholder, the date or the amount needs an untouched contribution
+        (nothing withdrawn, not cancelled) and a reason. The amount is the
+        one that moves money, so it is admin-only like a cancellation: the
+        difference is posted as a correcting treasury entry (history kept,
+        never rewritten) and a decrease is refused when the account no
+        longer holds that money. The account itself is never edited."""
         contribution = ShareholderContribution.objects.select_for_update().get(pk=contribution.pk)
         if contribution.is_cancelled:
             raise ShareholderContributionError("Un apport annule ne peut plus etre modifie.")
 
+        amount_changed = amount is not None and Decimal(amount) != contribution.amount
         sensitive = (
             (shareholder_id is not None and int(shareholder_id) != contribution.shareholder_id)
             or (date is not None and date != contribution.date)
+            or amount_changed
         )
         if sensitive:
             if contribution.amount_returned > ZERO:
@@ -3174,6 +3179,8 @@ class ShareholderContributionService:
                 )
             if not (reason or "").strip():
                 raise ShareholderContributionError("Le motif de la modification est obligatoire.")
+            if amount_changed:
+                ShareholderContributionService._change_amount(contribution, Decimal(amount), actor, reason.strip())
             if shareholder_id is not None and int(shareholder_id) != contribution.shareholder_id:
                 contribution.shareholder = Shareholder.objects.select_for_update().get(pk=shareholder_id)
             if date is not None:
@@ -3192,14 +3199,47 @@ class ShareholderContributionService:
         contribution.save()
 
         # Keep the original MONEY_IN consistent with the edited fields.
-        TreasuryTransaction.objects.filter(
+        original = TreasuryTransaction.objects.filter(
             source_content_type=ContentType.objects.get_for_model(ShareholderContribution),
             source_object_id=contribution.id, type=TreasuryTransaction.Type.MONEY_IN,
-        ).update(
+        ).order_by("id")[:1]
+        # Only the ORIGINAL entry follows the edited fields; correcting
+        # entries posted by an amount change keep their own date and note.
+        TreasuryTransaction.objects.filter(pk__in=list(original.values_list("pk", flat=True))).update(
             date=contribution.date, reference=contribution.reference, note=contribution.notes,
             document=contribution.document, updated_at=timezone.now(),
         )
         return contribution
+
+    @staticmethod
+    def _change_amount(contribution, new_amount, actor, reason) -> None:
+        if not ShareholderContributionService._is_admin(actor):
+            raise ShareholderContributionError("Seul un administrateur peut modifier le montant d'un apport.")
+        if new_amount <= ZERO:
+            raise ShareholderContributionError("Le montant de l'apport doit etre superieur a zero.")
+        difference = new_amount - contribution.amount
+        account = contribution.bank_account or contribution.cash_account
+        account = type(account).objects.select_for_update().get(pk=account.pk)
+        if difference < ZERO and account.current_balance < -difference:
+            raise ShareholderContributionError(
+                "Le solde du compte ne couvre plus la reduction (l'argent a deja ete utilise) : "
+                "annulez d'abord les depenses ou paiements qui l'ont consomme."
+            )
+        TreasuryTransaction.objects.create(
+            bank_account=contribution.bank_account, cash_account=contribution.cash_account,
+            type=(
+                TreasuryTransaction.Type.MONEY_IN if difference > ZERO
+                else TreasuryTransaction.Type.MONEY_OUT
+            ),
+            amount=abs(difference), date=timezone.localdate(),
+            note=(
+                f"Correction apport en capital #{contribution.id} : "
+                f"{contribution.amount} -> {new_amount} ({reason})"
+            ),
+            source_content_type=ContentType.objects.get_for_model(ShareholderContribution),
+            source_object_id=contribution.id, recorded_by=actor,
+        )
+        contribution.amount = new_amount
 
     @staticmethod
     @memoize_per_request

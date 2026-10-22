@@ -497,6 +497,7 @@ export function updateShareholderContribution(
   payload: {
     shareholder?: number
     date?: string
+    amount?: string
     reference?: string
     notes?: string
     reason?: string

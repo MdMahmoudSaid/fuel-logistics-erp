@@ -1310,7 +1310,7 @@
       },
       "capitalList": {
         "title": "Apports en capital",
-        "help": "Corrigez ou annulez un apport. Le montant et le compte ne se modifient pas : annulez puis saisissez à nouveau.",
+        "help": "Corrigez ou annulez un apport. Le montant peut être corrigé tant qu'aucune partie n'a été retirée ; le compte ne se modifie pas : annulez puis saisissez à nouveau.",
         "remaining": "Restant",
         "status": {
           "active": "Actif",
@@ -1322,7 +1322,8 @@
         "cancelWarning": "Le solde de {account} diminuera de {amount}. L'apport reste visible dans l'historique avec le motif.",
         "editTitle": "Modifier l'apport",
         "reason": "Motif (obligatoire)",
-        "amountLocked": "Le montant et le compte ne sont pas modifiables : annulez l'apport puis saisissez-le à nouveau.",
+        "amountLocked": "Le compte n'est pas modifiable : annulez l'apport puis saisissez-le à nouveau. Un changement de montant crée une écriture de correction en trésorerie.",
+        "amountAdminOnly": "Seul un administrateur peut modifier le montant.",
         "loadError": "Impossible de charger les apports.",
         "saveError": "Impossible de modifier cet apport.",
         "cancelError": "Impossible d'annuler cet apport."

@@ -126,4 +126,42 @@ describe('ContributionsSection', () => {
       notes: '',
     })
   })
+
+  it('corrects the amount (pre-filled, reason required) and sends it', async () => {
+    updateFn.mockResolvedValue(row({ amount: '1000000.00' }))
+    const w = mountSection()
+    await flushPromises()
+    await w.find('[data-test="edit-contribution-7"]').trigger('click')
+    const amount = w.find('[data-test="edit-contribution-amount"]')
+    expect((amount.element as HTMLInputElement).value).toBe('179000000')
+    await amount.setValue('1000000')
+    expect(w.find('[data-test="save-contribution"]').attributes('disabled')).toBeDefined()
+    await w.find('[data-test="edit-contribution-reason"]').setValue('Erreur de saisie')
+    await w.find('[data-test="edit-contribution-dialog"]').trigger('submit')
+    await flushPromises()
+    expect(updateFn).toHaveBeenCalledWith(7, {
+      shareholder: 1,
+      date: '2026-10-01',
+      amount: '1000000',
+      reason: 'Erreur de saisie',
+      reference: '',
+      notes: '',
+    })
+  })
+
+  it('locks the amount for non-admins and once part of it was withdrawn', async () => {
+    let w = mountSection('Finance')
+    await flushPromises()
+    await w.find('[data-test="edit-contribution-7"]').trigger('click')
+    expect(w.find('[data-test="edit-contribution-amount"]').attributes('disabled')).toBeDefined()
+
+    list.mockResolvedValue({
+      count: 1,
+      results: [row({ amount_returned: '10.00', blocked_reason: 'Déjà retiré' })],
+    })
+    w = mountSection()
+    await flushPromises()
+    await w.find('[data-test="edit-contribution-7"]').trigger('click')
+    expect(w.find('[data-test="edit-contribution-amount"]').attributes('disabled')).toBeDefined()
+  })
 })

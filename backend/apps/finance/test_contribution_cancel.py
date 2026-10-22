@@ -145,7 +145,7 @@ def test_update_refused_on_cancelled(setup):
         ShareholderContributionService.update_contribution(c, admin, notes="x")
 
 
-def test_api_cancel_admin_only_and_patch_locks_amount(setup):
+def test_api_cancel_admin_only_and_amount_change_needs_a_reason(setup):
     admin, bank, a, b = setup
     c = _contribute(a, bank, admin)
     finance = _user("CC-FIN-2", Role.NAME_FINANCE)
@@ -173,3 +173,91 @@ def test_api_cancel_admin_only_and_patch_locks_amount(setup):
     assert again.status_code == 400
     listing = client.get("/api/shareholders/")
     assert all(Decimal(row["total_contributed"]) == 0 for row in listing.data["results"])
+
+
+def test_amount_decrease_posts_correcting_entry_and_keeps_history(setup):
+    admin, bank, a, _b = setup
+    c = _contribute(a, bank, admin, amount="2000000.00")
+    assert bank.current_balance == Decimal("102000000.00")
+
+    ShareholderContributionService.update_contribution(
+        c, admin, amount=Decimal("1000000.00"), reason="Erreur de saisie"
+    )
+
+    c.refresh_from_db()
+    assert c.amount == Decimal("1000000.00")
+    assert bank.current_balance == Decimal("101000000.00")
+    assert ShareholderContributionService.get_total_capital() == Decimal("1000000.00")
+    assert ShareholderLedgerService.get_available_balance(a.id) == Decimal("1000000.00")
+    kinds = sorted(
+        TreasuryTransaction.objects.filter(
+            source_content_type=ContentType.objects.get_for_model(ShareholderContribution),
+            source_object_id=c.id,
+        ).values_list("type", "amount")
+    )
+    assert kinds == [("MONEY_IN", Decimal("2000000.00")), ("MONEY_OUT", Decimal("1000000.00"))]
+
+
+def test_amount_increase_posts_money_in(setup):
+    admin, bank, a, _b = setup
+    c = _contribute(a, bank, admin, amount="1000000.00")
+    ShareholderContributionService.update_contribution(
+        c, admin, amount=Decimal("3000000.00"), reason="Montant oublie"
+    )
+    assert bank.current_balance == Decimal("103000000.00")
+    assert ShareholderContributionService.get_total_capital() == Decimal("3000000.00")
+
+
+def test_amount_change_controls(setup):
+    admin, bank, a, _b = setup
+    c = _contribute(a, bank, admin, amount="2000000.00")
+    finance = _user("CC-FIN-3", Role.NAME_FINANCE)
+    # reason mandatory
+    with pytest.raises(ShareholderContributionError, match="motif"):
+        ShareholderContributionService.update_contribution(c, admin, amount=Decimal("1.00"))
+    # admin only
+    with pytest.raises(ShareholderContributionError, match="administrateur"):
+        ShareholderContributionService.update_contribution(
+            c, finance, amount=Decimal("1.00"), reason="x"
+        )
+    # positive
+    with pytest.raises(ShareholderContributionError, match="superieur"):
+        ShareholderContributionService.update_contribution(
+            c, admin, amount=Decimal("0"), reason="x"
+        )
+    # already (partly) withdrawn: locked, like the cancellation
+    ShareholderContribution.objects.filter(pk=c.pk).update(amount_returned=Decimal("5.00"))
+    with pytest.raises(ShareholderContributionError, match="retiree"):
+        ShareholderContributionService.update_contribution(
+            c, admin, amount=Decimal("1000000.00"), reason="x"
+        )
+    c.refresh_from_db()
+    assert c.amount == Decimal("2000000.00")
+
+
+def test_amount_decrease_refused_when_account_no_longer_holds_the_money(setup):
+    admin, bank, a, _b = setup
+    c = _contribute(a, bank, admin, amount="2000000.00")
+    TreasuryTransaction.objects.create(
+        bank_account=bank, type=TreasuryTransaction.Type.MONEY_OUT,
+        amount=Decimal("101500000.00"), date="2026-10-02", recorded_by=admin,
+    )
+    with pytest.raises(ShareholderContributionError, match="solde"):
+        ShareholderContributionService.update_contribution(
+            c, admin, amount=Decimal("1000000.00"), reason="x"
+        )
+    c.refresh_from_db()
+    assert c.amount == Decimal("2000000.00")
+
+
+def test_api_amount_edit_and_account_locked(setup):
+    admin, bank, a, _b = setup
+    c = _contribute(a, bank, admin, amount="2000000.00")
+    client = APIClient()
+    client.force_authenticate(admin)
+    done = client.patch(
+        f"/api/shareholder-contributions/{c.id}/", {"amount": "1000000.00", "reason": "erreur"}
+    )
+    assert done.status_code == 200, done.data
+    assert Decimal(done.data["amount"]) == Decimal("1000000.00")
+    assert bank.current_balance == Decimal("101000000.00")
