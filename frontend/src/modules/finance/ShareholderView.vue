@@ -134,6 +134,21 @@ async function onAdvancesChanged() {
   ])
 }
 
+// A capital contribution (added, corrected or cancelled) moves the capital,
+// every associate's balance, the indicative profit, the treasury and the
+// open ledger: refresh them all so nothing waits for a manual reload.
+const contributionsSection = ref<InstanceType<typeof ContributionsSection> | null>(null)
+async function onContributionsChanged() {
+  await Promise.all([
+    loadShareholders(),
+    loadBalancesSummary(),
+    loadPreview(),
+    loadAccounts(),
+    contributionsSection.value?.load() ?? Promise.resolve(),
+    ledger.value ? loadLedger(ledger.value.shareholder.id) : Promise.resolve(),
+  ])
+}
+
 // --- Live profit preview (read-only, indicative) ----------------------------
 // backend/apps/finance/services.py ShareholderProfitPreviewService - never
 // stored, never gates a withdrawal. Shown as a clearly-labelled banner so
@@ -344,8 +359,7 @@ async function onValidateDistribution(distribution: ShareholderProfitDistributio
   distributionError.value = ''
   try {
     await validateShareholderDistribution(distribution.id)
-    await loadDistributions()
-    await loadPreview()
+    await Promise.all([loadDistributions(), loadPreview(), loadBalancesSummary()])
   } catch (e) {
     distributionError.value = extractErrorMessage(
       e,
@@ -358,8 +372,7 @@ async function onCancelDistribution(distribution: ShareholderProfitDistribution)
   if (!(await confirmDialog(t('finance.shareholder.distribution.cancelConfirm')))) return
   try {
     await cancelShareholderDistribution(distribution.id)
-    await loadDistributions()
-    await loadPreview()
+    await Promise.all([loadDistributions(), loadPreview(), loadBalancesSummary()])
   } catch (e) {
     distributionError.value = extractErrorMessage(
       e,
@@ -466,6 +479,7 @@ async function onCreateWithdrawal() {
     await Promise.all([
       loadWithdrawals(),
       loadBalancesSummary(),
+      loadPreview(),
       loadAccounts(),
       ledger.value ? loadLedger(ledger.value.shareholder.id) : Promise.resolve(),
     ])
@@ -808,8 +822,9 @@ async function onWithdrawalShareholderChange() {
 
     <ContributionsSection
       v-if="activeTab === 'associates'"
+      ref="contributionsSection"
       :shareholders="shareholders"
-      @changed="loadShareholders"
+      @changed="onContributionsChanged"
     />
 
     <!-- Section 2: Profit distributions -->
@@ -1489,7 +1504,7 @@ async function onWithdrawalShareholderChange() {
         @success="
           () => {
             showContributionForm = false
-            loadShareholders()
+            onContributionsChanged()
           }
         "
         @cancel="showContributionForm = false"
@@ -1554,7 +1569,7 @@ async function onWithdrawalShareholderChange() {
         @success="
           () => {
             showLedgerContributionForm = false
-            loadLedger(ledger!.shareholder.id)
+            onContributionsChanged()
           }
         "
         @cancel="showLedgerContributionForm = false"
