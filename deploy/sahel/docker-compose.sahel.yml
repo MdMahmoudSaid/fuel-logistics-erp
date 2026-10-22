@@ -29,10 +29,10 @@ services:
     restart: unless-stopped
     logging: *id001
     build:
-      context: ./backend
+      context: ../../backend
       args:
         REQUIREMENTS_FILE: requirements/prod.txt
-    image: bessma/sahel-backend:TAG
+    image: bessma/sahel-backend:brand-20261022
     env_file:
     - /etc/bessma/sahel-app.env
     command:
@@ -62,11 +62,11 @@ services:
     restart: unless-stopped
     logging: *id001
     build:
-      context: ./frontend
+      context: ../../frontend
       dockerfile: Dockerfile.production
       args:
         VITE_BRAND: sahel
-    image: bessma/sahel-frontend:TAG
+    image: bessma/sahel-frontend:brand-20261022
     ports:
     - 127.0.0.1:5175:8080
     volumes:
@@ -102,10 +102,10 @@ services:
         max-size: 10m
         max-file: '3'
     build:
-      context: ./backend
+      context: ../../backend
       args:
         REQUIREMENTS_FILE: requirements/prod.txt
-    image: bessma/sahel-backend:TAG
+    image: bessma/sahel-backend:brand-20261022
     env_file:
     - /etc/bessma/sahel-migrate.env
     command:

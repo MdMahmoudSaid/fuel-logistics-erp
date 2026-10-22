@@ -18,9 +18,7 @@ Meme code que AZUR ENERGIE ; seuls changent : domaine, base de donnees, secrets,
 `/home/bouye/apps/sahel-commerce/media` (cree vide).
 
 ## 4. Premier demarrage
-Copier le depot (meme commit que la prod AZUR), remplacer `TAG` dans
-`docker-compose.sahel.yml`, puis `docker compose -f deploy/sahel/docker-compose.sahel.yml
-build`, `run --rm migrate`, `up -d`, et creer l'admin (`createsuperuser`).
+Lancer `deploy/sahel/provision.sh` (cree les env files avec des secrets neufs, construit, migre, demarre).
 
 ## 5. Mises a jour
 Le meme commit est livre aux deux installations : AZUR avec `fuel-deploy` comme
