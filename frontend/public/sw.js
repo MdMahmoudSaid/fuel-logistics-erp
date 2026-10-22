@@ -26,7 +26,7 @@
 // the screen kept showing the old, unchanged list. /api/ requests must
 // never be cached - always network, matching how dynamic data already
 // worked before this service worker existed at all.
-const CACHE_VERSION = 'v3'
+const CACHE_VERSION = 'v4'
 const CACHE_NAME = `fuel-erp-shell-${CACHE_VERSION}`
 const SHELL_ASSETS = ['/', '/index.html']
 
