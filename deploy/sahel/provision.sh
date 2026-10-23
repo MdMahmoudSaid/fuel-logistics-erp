@@ -10,7 +10,8 @@ COMPOSE="sudo docker compose -f docker-compose.sahel.yml"
 
 getent hosts "$HOST" >/dev/null || { echo "DNS: $HOST ne pointe pas encore vers ce serveur"; exit 1; }
 
-if [ ! -f /etc/bessma/sahel-app.env ]; then
+# sudo: /etc/bessma is not readable by the caller, a plain `-f` would always say "missing".
+if ! sudo test -f /etc/bessma/sahel-app.env; then
   DBPW=$(openssl rand -hex 24)
   SECRET=$(openssl rand -hex 48)
   printf 'POSTGRES_DB=sahel\nPOSTGRES_USER=sahel\nPOSTGRES_PASSWORD=%s\n' "$DBPW" | sudo install -m 600 /dev/stdin /etc/bessma/sahel-db.env
