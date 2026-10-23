@@ -5,7 +5,8 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 HOST=sahelcommerce.hasel.food
-COMPOSE="docker compose -f docker-compose.sahel.yml"
+# sudo: the env files are root-only (0600) and compose reads them as the caller.
+COMPOSE="sudo docker compose -f docker-compose.sahel.yml"
 
 getent hosts "$HOST" >/dev/null || { echo "DNS: $HOST ne pointe pas encore vers ce serveur"; exit 1; }
 
@@ -36,4 +37,4 @@ $COMPOSE --profile tools run --rm migrate
 $COMPOSE up -d backend frontend
 $COMPOSE ps
 echo "Cree l'administrateur :"
-echo "  docker compose -f $PWD/docker-compose.sahel.yml exec backend python manage.py createsuperuser"
+echo "  sudo docker compose -f $PWD/docker-compose.sahel.yml exec backend python manage.py createsuperuser"
