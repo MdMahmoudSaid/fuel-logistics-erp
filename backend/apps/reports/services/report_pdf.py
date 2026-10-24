@@ -33,6 +33,7 @@ from apps.reports.services.pdf_template import FOOTER_MARGIN, logo_image, number
 MARGIN = 12 * mm
 INK = colors.HexColor("#12171c")
 MUTED = colors.HexColor("#6b7280")
+BRAND_BLUE = colors.HexColor("#0b5cab")
 LINE = colors.HexColor("#c9ccd1")
 HEADER_FILL = colors.HexColor("#e6edf5")
 TOTAL_FILL = colors.HexColor("#f3f5f8")
@@ -177,7 +178,8 @@ def _header_block(document: dict, available: float, rtl: bool) -> list:
     if rtl:  # mirrored grid: value | label, and the pair order reversed
         rows = [list(reversed(row)) for row in rows]
         widths = list(reversed(widths))
-    elements = [head, Spacer(1, 3 * mm), _p(title, _cell_style(bold=True, size=17, rtl=rtl), document["lang"]),
+    elements = [head, Spacer(1, 2 * mm), HRFlowable(width="100%", thickness=1.4, color=BRAND_BLUE),
+                Spacer(1, 4 * mm), _p(title, _cell_style(bold=True, size=17, rtl=rtl), document["lang"]),
                 Spacer(1, 3 * mm)]
     if rows:
         info_table = Table(rows, colWidths=widths, hAlign="RIGHT" if rtl else "LEFT")
@@ -187,7 +189,7 @@ def _header_block(document: dict, available: float, rtl: bool) -> list:
         elements.append(info_table)
     return elements + [
         Spacer(1, 2 * mm),
-        HRFlowable(width="100%", thickness=0.8, color=INK, spaceAfter=4 * mm),
+        HRFlowable(width="100%", thickness=0.6, color=colors.HexColor("#d1d5db"), spaceAfter=4 * mm),
     ]
 
 

@@ -147,6 +147,22 @@ describe('ReportSheet', () => {
     expect(wrapper.find('.report-masthead').exists()).toBe(true)
   })
 
+  it('prints the company contact lines and bank accounts in a footer', () => {
+    const wrapper = mountSheet({
+      ...BASE,
+      company: {
+        name: 'AZUR ENERGIE. SARL',
+        lines: ['Tél. : (+223) 76202611 · (+223) 76680484', 'NIF : 085161087V'],
+        banks: [{ bank: 'BDM SA', swift: 'BDMAMLBA', account: 'ML0123' }],
+      },
+    })
+    const footer = clean(wrapper.find('.report-company-footer').text())
+
+    expect(footer).toContain('(+223) 76202611 · (+223) 76680484')
+    expect(footer).toContain('BDM SA : ML0123 (SWIFT BDMAMLBA)')
+    expect(clean(mountSheet().text())).not.toContain('SWIFT')
+  })
+
   it('renders translated headers and formatted cells, never raw values', () => {
     const wrapper = mountSheet()
     const headers = wrapper.findAll('thead th').map((th) => th.text())

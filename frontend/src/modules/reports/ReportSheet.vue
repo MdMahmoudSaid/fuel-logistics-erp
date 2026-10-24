@@ -43,9 +43,14 @@ function openingIndex(table: ReportTable): number {
       :style="{ width: sheetWidth, minWidth: sheetWidth, padding: '12mm' }"
     >
       <!-- A <div>, not a <header>: style.css hides every <header> (the app topbar) in print. -->
-      <div class="report-masthead flex items-center gap-4">
-        <img :src="BRAND_ICON" alt="" class="size-16 shrink-0" />
-        <p class="text-2xl font-semibold">{{ document.company.name }}</p>
+      <div class="report-masthead flex items-center gap-4 border-b-[3px] border-[#0b5cab] pb-3">
+        <img :src="BRAND_ICON" alt="" class="size-14 shrink-0" />
+        <div>
+          <p class="text-2xl leading-tight font-semibold">{{ document.company.name }}</p>
+          <p v-if="document.company.tagline" class="text-texte-3 text-xs">
+            {{ document.company.tagline }}
+          </p>
+        </div>
       </div>
 
       <h2 class="mt-5 text-3xl font-semibold">{{ document.title }}</h2>
@@ -56,7 +61,7 @@ function openingIndex(table: ReportTable): number {
           <dd>{{ item.value }}</dd>
         </div>
       </dl>
-      <hr class="mt-4 mb-5 border-t-2 border-black" />
+      <hr class="mt-4 mb-5 border-t border-black/20" />
 
       <section v-for="(table, tableIndex) in document.tables" :key="table.key" class="mb-5">
         <h3 v-if="table.title" class="mb-1.5 text-base font-semibold">{{ table.title }}</h3>
@@ -164,6 +169,21 @@ function openingIndex(table: ReportTable): number {
           </tr>
         </tbody>
       </table>
+
+      <footer
+        v-if="document.company.lines?.length || document.company.banks?.length"
+        class="report-company-footer text-texte-3 mt-8 border-t border-black/20 pt-2 text-[11px] leading-relaxed"
+      >
+        <p class="text-texte font-semibold">{{ document.company.name }}</p>
+        <p v-if="document.company.lines?.length">{{ document.company.lines.join('   |   ') }}</p>
+        <p v-if="document.company.banks?.length" class="text-[#0b5cab]">
+          {{
+            document.company.banks
+              .map((b) => `${b.bank} : ${b.account}${b.swift ? ` (SWIFT ${b.swift})` : ''}`)
+              .join('   |   ')
+          }}
+        </p>
+      </footer>
     </article>
   </div>
 </template>

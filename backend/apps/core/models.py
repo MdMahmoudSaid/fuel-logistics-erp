@@ -1,3 +1,4 @@
+import re
 from decimal import Decimal
 
 from django.db import models
@@ -99,6 +100,18 @@ class LossToleranceConfig(TimeStampedModel):
         return config.tolerance_litres if config else cls.DEFAULT_TOLERANCE
 
 
+def format_phones(raw: str) -> str:
+    """Phone field -> "(+223) 76202611 · (+223) 76680484": the field may hold
+    several numbers (separated by / , ; or a wide gap); each one gets the
+    country code in brackets unless it already carries its own."""
+    from apps.core.brand import PHONE_COUNTRY_CODE
+
+    numbers = [n.strip(" .-") for n in re.split(r"[/,;]|\s{2,}", raw or "")]
+    return " · ".join(
+        n if n.startswith(("+", "00", "(")) else f"({PHONE_COUNTRY_CODE}) {n}" for n in numbers if n
+    )
+
+
 class CompanyProfile(TimeStampedModel):
     """Company details printed on the commercial documents (proforma,
     delivery note, loading sheet, purchase order - spec 2026-10-11
@@ -137,9 +150,10 @@ class CompanyProfile(TimeStampedModel):
         def join(*parts):
             return " · ".join(p for p in parts if p)
 
+        phones = format_phones(self.phone)
         lines = [
             join(self.address, self.city),
-            join(self.phone and f"Tél. : {self.phone}", self.email, self.website),
+            join(phones and f"Tél. : {phones}", self.email, self.website),
             join(self.tax_id and f"NIF : {self.tax_id}", self.trade_register and f"RC : {self.trade_register}"),
         ]
         return {

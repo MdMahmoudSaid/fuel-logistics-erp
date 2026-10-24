@@ -20,5 +20,9 @@ BRAND_KEY = os.environ.get("BRAND", "azur").strip().lower()
 if BRAND_KEY not in BRANDS:
     raise RuntimeError(f"Unknown BRAND {BRAND_KEY!r}: expected one of {sorted(BRANDS)}")
 
+# International dialling code shown in brackets before every phone number
+# printed on the documents (numbers typed with their own "+"/"00" are kept).
+PHONE_COUNTRY_CODE = "+223"
+
 BRAND_NAME = BRANDS[BRAND_KEY]["name"]
 BRAND_LOGO_PATH = BRANDS[BRAND_KEY]["logo"]

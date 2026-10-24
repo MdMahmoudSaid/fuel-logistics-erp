@@ -199,52 +199,65 @@ def _footer_company() -> dict:
         return {"name": DEFAULT_COMPANY_NAME, "lines": []}
 
 
+def _bank_segment(bank: dict) -> str:
+    text = f"{bank['bank']} : {bank['account']}"
+    return f"{text} (SWIFT {bank['swift']})" if bank.get("swift") else text
+
+
+def _pack(segments: list[str], width: float, size: float, separator: str = "   |   ") -> list[str]:
+    """Greedy packing of short segments into as few lines as fit `width`."""
+    rows: list[str] = []
+    for segment in segments:
+        candidate = f"{rows[-1]}{separator}{segment}" if rows else segment
+        if rows and _run_width(visual_text(candidate), size, False) <= width:
+            rows[-1] = candidate
+        else:
+            rows.append(segment)
+    return rows
+
+
 def draw_company_footer(canvas, *, number: int, total: int, page_label: str, lang: str, side_margin: float):
-    """Footer of one page: brand colour bar, hairline, logo, then the company
-    name and its contact lines (address / phone-email-web / NIF-RC) in a
-    left block, "Page n / N" on the opposite side. Mirrored in Arabic."""
+    """Footer of one page: brand colour bar, hairline, then a compact block -
+    company name (bold) with "Page n / N" on the opposite side, the contact
+    details and the bank accounts packed on as few lines as fit. Mirrored in
+    Arabic."""
     from reportlab.lib import colors
 
     width = canvas._pagesize[0]
     rtl = lang == "ar"
     company = _footer_company()
-    lines = list(company.get("lines") or [])
+    usable = width - 2 * side_margin
+    contact_rows = _pack(list(company.get("lines") or []), usable, 6.5)
+    bank_rows = _pack([_bank_segment(b) for b in company.get("banks") or []], usable, 6.5)
+    rows = (contact_rows + bank_rows)[:4]
 
-    bar_height, x = 1.8 * mm, 0.0
+    bar_height, x = 1.6 * mm, 0.0
     for color, share in _BRAND_BAR:
         canvas.setFillColor(colors.HexColor(color))
         canvas.rect(x, 0, width * share, bar_height, stroke=0, fill=1)
         x += width * share
 
-    line_height = 3.2 * mm
-    block = line_height * (1 + len(lines))
-    top = bar_height + 3.5 * mm + block
+    line_height = 3.1 * mm
+    top = bar_height + 3 * mm + line_height * (1 + len(rows))
     canvas.setStrokeColor(colors.HexColor("#d1d5db"))
     canvas.setLineWidth(0.5)
-    canvas.line(side_margin, top + 1.5 * mm, width - side_margin, top + 1.5 * mm)
+    canvas.line(side_margin, top + 2.2 * mm, width - side_margin, top + 2.2 * mm)
 
-    logo_size = 10 * mm
-    text_inset = (logo_size + 3 * mm) if LOGO_PATH.exists() else 0
-    if LOGO_PATH.exists():
-        logo_x = width - side_margin - logo_size if rtl else side_margin
-        canvas.drawImage(
-            str(LOGO_PATH), logo_x, top - logo_size, width=logo_size, height=logo_size, mask="auto"
-        )
-    text_x = width - side_margin - text_inset if rtl else side_margin + text_inset
+    text_x = width - side_margin if rtl else side_margin
     align = "right" if rtl else "left"
     baseline = top - 2.4 * mm
     canvas.setFillColor(colors.HexColor("#111827"))
     draw_text(canvas, text_x, baseline, company["name"], size=7.5, align=align, bold=True)
     canvas.setFillColor(colors.HexColor("#6b7280"))
-    for line in lines:
-        baseline -= line_height
-        draw_text(canvas, text_x, baseline, line, size=6.5, align=align)
-
-    page_x = side_margin if rtl else width - side_margin
     draw_text(
-        canvas, page_x, bar_height + 3.5 * mm, page_label.format(n=number, total=total),
+        canvas, width - text_x, baseline, page_label.format(n=number, total=total),
         size=7, align="left" if rtl else "right",
     )
+    for index, row in enumerate(rows):
+        baseline -= line_height
+        # Bank accounts sit apart from the contact lines, in the brand blue.
+        canvas.setFillColor(colors.HexColor("#0b5cab" if index >= len(contact_rows) else "#6b7280"))
+        draw_text(canvas, text_x, baseline, row, size=6.5, align=align)
 
 
 def numbered_canvas_cls(*, running_title: str, page_label: str | None = None, lang: str = "fr", side_margin: float = 12 * mm):

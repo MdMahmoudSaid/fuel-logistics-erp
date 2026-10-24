@@ -115,7 +115,12 @@ export interface ReportSummaryLine {
 
 export interface ReportDocument {
   title: string
-  company: { name: string }
+  company: {
+    name: string
+    tagline?: string
+    lines?: string[]
+    banks?: { bank: string; swift: string; account: string }[]
+  }
   generated_on: string
   lang: 'fr' | 'en' | 'ar'
   direction: 'ltr' | 'rtl'

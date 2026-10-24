@@ -8,6 +8,7 @@ from rest_framework.exceptions import NotFound, PermissionDenied, ValidationErro
 from rest_framework.response import Response
 
 from apps.accounts.permissions import HasModulePermission
+from apps.core.models import CompanyProfile
 from apps.reports.date_range import is_current_period, resolve_date_range
 from apps.reports.export import rows_to_csv, rows_to_xlsx
 from apps.reports.queries.capital_report import CapitalReportQuery
@@ -147,13 +148,17 @@ class ReportViewSet(viewsets.ViewSet):
 
     @classmethod
     def _document(cls, report_type, query_class, rows, params, request):
-        return build_report_document(
+        document = build_report_document(
             report_type,
             rows,
             params,
             request.query_params.get("lang", "fr"),
             statement_context=cls._statement_context(query_class, params),
         )
+        # Contact lines + bank accounts of the Informations de l'entreprise
+        # page: the screen sheet prints them in its footer like the PDF does.
+        document["company"] = CompanyProfile.load().pdf_company()
+        return document
 
     @staticmethod
     def _statement_context(query_class, params):
