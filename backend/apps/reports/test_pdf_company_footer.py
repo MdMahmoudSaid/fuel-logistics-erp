@@ -29,6 +29,7 @@ def test_company_footer_is_printed_on_a_report_pdf_that_is_not_a_commercial_docu
 
     text = PdfReader(io.BytesIO(pdf)).pages[0].extract_text()
 
-    assert "AZUR ENERGIE. SARL" in text
+    assert "AZUR ENERGIE" in text
+    assert "SARL" not in text  # the legal form is never printed next to the name
     assert "NIF : 085161087V" in text
     assert "Page 1 / 1" in text

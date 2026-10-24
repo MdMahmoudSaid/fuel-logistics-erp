@@ -1879,6 +1879,7 @@
     }
   },
   "reports": {
+    "allOption": "All",
     "title": "Reports",
     "reportType": "Report type",
     "runReport": "Run report",

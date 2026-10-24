@@ -617,6 +617,15 @@ def _custom_category_names(rows, field, known):
     return dict(ExpenseCategory.objects.filter(code__in=codes).values_list("code", "name"))
 
 
+def _with_scope_column(columns, rows):
+    """An all-parties statement / all-trucks history (no entity picked) has
+    one more column - whose line it is - right after the first one."""
+    for extra in ("party", "truck"):
+        if rows and extra in rows[0]:
+            return (columns[0], (extra, "text"), *columns[1:])
+    return columns
+
+
 def _column(slug, spec_column, labels, rows=()):
     field, kind = spec_column[0], spec_column[1]
     label = labels.get(f"field.{slug}.{field}") or labels[f"field.{field}"]
@@ -668,7 +677,7 @@ def build_report_document(
             {
                 "key": f"t{index}",
                 "title": labels.get(title_key),
-                "columns": [_column(report_type, column, labels, rows) for column in table.columns],
+                "columns": [_column(report_type, column, labels, rows) for column in _with_scope_column(table.columns, rows)],
                 "emphasis": table.emphasis,
                 "section": table.section,
             }

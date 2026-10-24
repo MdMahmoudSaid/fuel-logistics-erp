@@ -189,7 +189,11 @@ function onDateRangeChange(value: DateRangeValue) {
 
       <label v-if="currentOption?.idParam" class="w-64 space-y-1.5 text-sm">
         <span class="text-texte-2 block font-medium">{{ reportIdLabel(currentOption.value) }}</span>
-        <SearchableSelect v-model="entityId" :options="entityOptions" />
+        <SearchableSelect
+          v-model="entityId"
+          :options="entityOptions"
+          :placeholder="t('reports.allOption')"
+        />
       </label>
 
       <label v-if="currentOption?.paramSelect" class="space-y-1.5 text-sm">

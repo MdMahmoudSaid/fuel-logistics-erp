@@ -1883,6 +1883,7 @@
     }
   },
   "reports": {
+    "allOption": "Tous",
     "title": "Rapports",
     "reportType": "Type de rapport",
     "runReport": "Lancer le rapport",

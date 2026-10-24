@@ -40,7 +40,7 @@ from apps.finance.models import (
     ShareholderWithdrawal,
 )
 
-from apps.reports.queries.statement_common import opening_balance, statement_rows
+from apps.reports.queries.statement_common import entries_of, opening_balance, statement_rows
 
 FIELDS = ["date", "type", "reference", "debit", "credit", "balance"]
 ZERO = Decimal("0.00")
@@ -62,6 +62,11 @@ def _period(distribution) -> str:
 
 class ShareholderStatementQuery:
     FIELDS = FIELDS
+
+    @staticmethod
+    def _parties():
+        from apps.finance.models import Shareholder
+        return Shareholder.objects.order_by("name").values_list("id", "name")
     DIRECTION = -1  # credit - debit: a positive balance is what the company owes the shareholder
 
     @classmethod
@@ -178,17 +183,25 @@ class ShareholderStatementQuery:
         return entries
 
     @classmethod
-    def opening_balance(cls, *, shareholder_id, date_from=None, date_to=None):
-        return opening_balance(cls._entries(shareholder_id), date_from=date_from, direction=cls.DIRECTION)
+    def opening_balance(cls, *, shareholder_id=None, date_from=None, date_to=None):
+        return opening_balance(entries_of(cls, shareholder_id, cls._parties()), date_from=date_from, direction=cls.DIRECTION)
 
     @classmethod
-    def statement_context(cls, *, shareholder_id, date_from=None, date_to=None) -> dict:
+    def statement_context(cls, *, shareholder_id=None, date_from=None, date_to=None) -> dict:
         """Opening balance of the period plus the associate's current
         advance position - the same figures as the cards of his Grand
         livre (client request 2026-10-11)."""
         from apps.finance.services import ShareholderLedgerService
 
-        summary = ShareholderLedgerService.get_shareholder_summary(shareholder_id)
+        keys = (
+            "company_advance_debt", "company_advance_undrawn", "shareholder_loan_debt",
+            "shareholder_loan_receivable", "withdrawable_balance",
+        )
+        if shareholder_id in (None, ""):  # every associate: the figures add up
+            summaries = [ShareholderLedgerService.get_shareholder_summary(pk) for pk, _ in cls._parties()]
+            summary = {key: sum((s[key] for s in summaries), ZERO) for key in keys}
+        else:
+            summary = ShareholderLedgerService.get_shareholder_summary(shareholder_id)
         return {
             "opening_balance": cls.opening_balance(
                 shareholder_id=shareholder_id, date_from=date_from, date_to=date_to
@@ -201,7 +214,7 @@ class ShareholderStatementQuery:
         }
 
     @classmethod
-    def run(cls, *, shareholder_id, date_from=None, date_to=None) -> list[dict]:
+    def run(cls, *, shareholder_id=None, date_from=None, date_to=None) -> list[dict]:
         return statement_rows(
-            cls._entries(shareholder_id), date_from=date_from, date_to=date_to, direction=cls.DIRECTION
+            entries_of(cls, shareholder_id, cls._parties()), date_from=date_from, date_to=date_to, direction=cls.DIRECTION
         )

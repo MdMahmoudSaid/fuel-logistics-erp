@@ -8,13 +8,18 @@
 
 from apps.finance.models import OpeningDebt, SupplierAdvance, SupplierPayment
 from apps.purchasing.models import SupplierOrder
-from apps.reports.queries.statement_common import opening_balance, statement_rows
+from apps.reports.queries.statement_common import entries_of, opening_balance, statement_rows
 
 FIELDS = ["date", "type", "reference", "debit", "credit", "balance"]
 
 
 class SupplierStatementQuery:
     FIELDS = FIELDS
+
+    @staticmethod
+    def _parties():
+        from apps.suppliers.models import Supplier
+        return Supplier.objects.order_by("name").values_list("id", "name")
     DIRECTION = 1  # debit - credit: a positive balance is money owed to the supplier
 
     @classmethod
@@ -76,11 +81,11 @@ class SupplierStatementQuery:
         ]
 
     @classmethod
-    def opening_balance(cls, *, supplier_id, date_from=None, date_to=None):
-        return opening_balance(cls._entries(supplier_id), date_from=date_from, direction=cls.DIRECTION)
+    def opening_balance(cls, *, supplier_id=None, date_from=None, date_to=None):
+        return opening_balance(entries_of(cls, supplier_id, cls._parties()), date_from=date_from, direction=cls.DIRECTION)
 
     @classmethod
-    def run(cls, *, supplier_id, date_from=None, date_to=None) -> list[dict]:
+    def run(cls, *, supplier_id=None, date_from=None, date_to=None) -> list[dict]:
         return statement_rows(
-            cls._entries(supplier_id), date_from=date_from, date_to=date_to, direction=cls.DIRECTION
+            entries_of(cls, supplier_id, cls._parties()), date_from=date_from, date_to=date_to, direction=cls.DIRECTION
         )

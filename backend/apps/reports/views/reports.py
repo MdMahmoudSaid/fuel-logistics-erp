@@ -76,6 +76,16 @@ _EXPORT_CONTENT_TYPES = {
 }
 
 
+def _fields(query_class, rows) -> list[str]:
+    """The query's fields, plus the "party"/"truck" column an all-parties
+    report adds (no entity picked) right after the first field."""
+    fields = list(query_class.FIELDS)
+    for extra in ("party", "truck"):
+        if rows and extra in rows[0] and extra not in fields:
+            fields.insert(1, extra)
+    return fields
+
+
 def _user_can_export(user) -> bool:
     if user.is_superuser:
         return True
@@ -141,7 +151,7 @@ class ReportViewSet(viewsets.ViewSet):
         if export_format:
             return self._export(pk, query_class, rows, export_format, request, params)
 
-        payload = {"report_type": pk, "fields": query_class.FIELDS, "rows": rows}
+        payload = {"report_type": pk, "fields": _fields(query_class, rows), "rows": rows}
         if request.query_params.get("document") in ("1", "true"):
             payload["document"] = self._document(pk, query_class, rows, params, request)
         return Response(decimals_to_str(payload))
@@ -177,9 +187,9 @@ class ReportViewSet(viewsets.ViewSet):
             raise NotFound(f"Format d'export inconnu : '{export_format}'.")
 
         if export_format == "csv":
-            content = rows_to_csv(query_class.FIELDS, rows)
+            content = rows_to_csv(_fields(query_class, rows), rows)
         elif export_format == "xlsx":
-            content = rows_to_xlsx(query_class.FIELDS, rows)
+            content = rows_to_xlsx(_fields(query_class, rows), rows)
         else:
             document = self._document(report_type, query_class, rows, params, request)
             content = render_report_pdf(document, rows)

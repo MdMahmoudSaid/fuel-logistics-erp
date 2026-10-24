@@ -8,7 +8,7 @@
 # total received" formula one line at a time instead of as a single total.
 
 from apps.finance.models import CustomerPayment, OpeningDebt
-from apps.reports.queries.statement_common import opening_balance, statement_rows
+from apps.reports.queries.statement_common import entries_of, opening_balance, statement_rows
 from apps.sales.models import Invoice
 
 FIELDS = ["date", "type", "reference", "debit", "credit", "balance"]
@@ -16,6 +16,11 @@ FIELDS = ["date", "type", "reference", "debit", "credit", "balance"]
 
 class CustomerStatementQuery:
     FIELDS = FIELDS
+
+    @staticmethod
+    def _parties():
+        from apps.customers.models import Customer
+        return Customer.objects.order_by("name").values_list("id", "name")
     DIRECTION = 1  # debit - credit: a positive balance is money owed by the customer
 
     @classmethod
@@ -59,11 +64,11 @@ class CustomerStatementQuery:
         ]
 
     @classmethod
-    def opening_balance(cls, *, customer_id, date_from=None, date_to=None):
-        return opening_balance(cls._entries(customer_id), date_from=date_from, direction=cls.DIRECTION)
+    def opening_balance(cls, *, customer_id=None, date_from=None, date_to=None):
+        return opening_balance(entries_of(cls, customer_id, cls._parties()), date_from=date_from, direction=cls.DIRECTION)
 
     @classmethod
-    def run(cls, *, customer_id, date_from=None, date_to=None) -> list[dict]:
+    def run(cls, *, customer_id=None, date_from=None, date_to=None) -> list[dict]:
         return statement_rows(
-            cls._entries(customer_id), date_from=date_from, date_to=date_to, direction=cls.DIRECTION
+            entries_of(cls, customer_id, cls._parties()), date_from=date_from, date_to=date_to, direction=cls.DIRECTION
         )

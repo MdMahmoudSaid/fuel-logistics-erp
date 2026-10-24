@@ -15,13 +15,18 @@ from django.contrib.contenttypes.models import ContentType
 from django.db.models import Q
 
 from apps.finance.models import OpeningDebt, TransporterAdvance, TransportPayment, TreasuryTransaction
-from apps.reports.queries.statement_common import opening_balance, statement_rows
+from apps.reports.queries.statement_common import entries_of, opening_balance, statement_rows
 
 FIELDS = ["date", "type", "reference", "debit", "credit", "balance"]
 
 
 class TransporterStatementQuery:
     FIELDS = FIELDS
+
+    @staticmethod
+    def _parties():
+        from apps.transport.models import Transporter
+        return Transporter.objects.order_by("name").values_list("id", "name")
     DIRECTION = 1  # debit - credit: a positive balance is money owed to the transporter
 
     @classmethod
@@ -94,11 +99,11 @@ class TransporterStatementQuery:
         )
 
     @classmethod
-    def opening_balance(cls, *, transporter_id, date_from=None, date_to=None):
-        return opening_balance(cls._entries(transporter_id), date_from=date_from, direction=cls.DIRECTION)
+    def opening_balance(cls, *, transporter_id=None, date_from=None, date_to=None):
+        return opening_balance(entries_of(cls, transporter_id, cls._parties()), date_from=date_from, direction=cls.DIRECTION)
 
     @classmethod
-    def run(cls, *, transporter_id, date_from=None, date_to=None) -> list[dict]:
+    def run(cls, *, transporter_id=None, date_from=None, date_to=None) -> list[dict]:
         return statement_rows(
-            cls._entries(transporter_id), date_from=date_from, date_to=date_to, direction=cls.DIRECTION
+            entries_of(cls, transporter_id, cls._parties()), date_from=date_from, date_to=date_to, direction=cls.DIRECTION
         )

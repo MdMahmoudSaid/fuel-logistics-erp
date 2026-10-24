@@ -157,7 +157,7 @@ class CompanyProfile(TimeStampedModel):
             join(self.tax_id and f"NIF : {self.tax_id}", self.trade_register and f"RC : {self.trade_register}"),
         ]
         return {
-            "name": self.name or DEFAULT_COMPANY_NAME,
+            "name": re.sub(r"[\s.,\-]*\bSARL\b\.?\s*$", "", self.name, flags=re.I) or DEFAULT_COMPANY_NAME,
             "tagline": self.tagline,
             "lines": [line for line in lines if line],
             "banks": [

@@ -1879,6 +1879,7 @@
     }
   },
   "reports": {
+    "allOption": "الكل",
     "title": "التقارير",
     "reportType": "نوع التقرير",
     "runReport": "تشغيل التقرير",

@@ -45,14 +45,28 @@ def statement_rows(entries, *, date_from, date_to, direction):
         if date_to and entry["date"] > date_to:
             continue
         balance += _signed(entry, direction)
-        rows.append(
-            {
-                "date": entry["date"],
-                "type": entry["type"],
-                "reference": entry["reference"],
-                "debit": entry["debit"],
-                "credit": entry["credit"],
-                "balance": balance,
-            }
-        )
+        row = {
+            "date": entry["date"],
+            "type": entry["type"],
+            "reference": entry["reference"],
+            "debit": entry["debit"],
+            "credit": entry["credit"],
+            "balance": balance,
+        }
+        if "party" in entry:  # all-parties statement: who the line belongs to
+            row["party"] = entry["party"]
+        rows.append(row)
     return rows
+
+
+def entries_of(query_class, party_id, parties) -> list[dict]:
+    """The statement entries of one party, or - when no party is picked - of
+    every party in `parties` ((id, name) pairs), each tagged with its name:
+    the statement then covers the whole book (running balance = total owed)."""
+    if party_id not in (None, ""):
+        return query_class._entries(party_id)
+    return [
+        {**entry, "party": name}
+        for pk, name in parties
+        for entry in query_class._entries(pk)
+    ]
