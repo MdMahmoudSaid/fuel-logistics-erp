@@ -5,6 +5,7 @@ export const MODULES = [
   'sales',
   'purchasing',
   'admin',
+  'reports',
   'shareholders',
 ] as const
 export const ACTIONS = ['view', 'create', 'edit', 'validate', 'cancel', 'export'] as const

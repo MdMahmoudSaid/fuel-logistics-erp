@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { MODULES } from '@/modules/roles/permissionSchema'
 import RoleFormModal from '@/modules/roles/RoleFormModal.vue'
 
 describe('RoleFormModal', () => {
@@ -27,5 +28,22 @@ describe('RoleFormModal', () => {
       (emitted[emitted.length - 1]![0] as { permissions: Record<string, string[]> }).permissions
         .operations,
     ).toEqual([])
+  })
+
+  it('offers every module the backend gates on, including reports', () => {
+    const wrapper = mount(RoleFormModal, {
+      props: { modelValue: { name: 'Custom', permissions: {} } },
+    })
+    // Must stay in sync with Role.MODULES in backend/apps/accounts/models.py.
+    expect(MODULES).toEqual([
+      'operations',
+      'finance',
+      'sales',
+      'purchasing',
+      'admin',
+      'reports',
+      'shareholders',
+    ])
+    expect(wrapper.findAll('tbody tr')).toHaveLength(MODULES.length)
   })
 })

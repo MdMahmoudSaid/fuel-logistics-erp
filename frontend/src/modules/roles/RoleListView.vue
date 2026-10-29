@@ -92,7 +92,7 @@ onMounted(load)
       class="fixed inset-0 z-30 flex items-center justify-center bg-black/40 p-4"
     >
       <div
-        class="bg-surface border-ligne max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border p-6"
+        class="bg-surface border-ligne max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border p-6"
       >
         <h2 class="font-display mb-4 text-lg leading-none font-semibold uppercase">
           {{ editingId === null ? t('roles.newRole') : t('roles.editRole') }}
