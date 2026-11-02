@@ -78,7 +78,7 @@ def test_registered_customer_with_quantity_creates_invoice_for_received_quantity
 
     trip.refresh_from_db()
     sale = Sale.objects.get(trip=trip)
-    assert trip.status == Trip.Status.DELIVERED
+    assert trip.status == Trip.Status.COMPLETED
     assert trip.pending_unit_selling_price is None
     assert sale.delivered_quantity == D("44900.00")
     assert sale.billing_invoice.total_amount == D("44900.00") * PRICE
@@ -128,7 +128,7 @@ def test_walk_in_deferred_then_confirm_pays_on_confirm():
 
     trip.refresh_from_db()
     invoice = Sale.objects.get(trip=trip).billing_invoice
-    assert trip.status == Trip.Status.DELIVERED and trip.pending_unit_selling_price is None
+    assert trip.status == Trip.Status.COMPLETED and trip.pending_unit_selling_price is None
     assert CustomerPayment.objects.get(customer=trip.client).amount == invoice.total_amount
     assert PaymentAllocationService.get_invoice_outstanding(invoice) == D("0")
 
@@ -328,7 +328,7 @@ def test_direct_sale_endpoint_registered_and_walk_in():
         format="json",
     )
     assert second.status_code == 200, second.data
-    assert second.data[0]["status"] == "DELIVERED"
+    assert second.data[0]["status"] == "COMPLETED"
     assert second.data[0]["client_detail"]["is_walk_in"] is True
     assert CustomerPayment.objects.count() == 1
 
@@ -379,7 +379,7 @@ def test_confirm_received_quantity_endpoint():
     )
 
     assert response.status_code == 200, response.data
-    assert response.data["status"] == "DELIVERED"
+    assert response.data["status"] == "COMPLETED"
     assert Sale.objects.get(trip=trip).delivered_quantity == D("44000.00")
 
 
@@ -440,3 +440,81 @@ def test_customer_refusal_clears_the_parked_price():
     trip.refresh_from_db()
     assert trip.client_id == second.id
     assert trip.pending_unit_selling_price is None
+
+
+@pytest.mark.django_db
+def test_quantity_entered_here_is_the_final_client_verification():
+    from apps.sales.models import Invoice
+    from apps.trips.models import DeliveryControl
+
+    fx = _setup_fixtures("DS40")
+    trip = _stocked_trip(fx, "DS40")
+    customer = Customer.objects.create(name="Client A")
+
+    _assign(fx, [trip], customer_id=customer.id, received_quantities={trip.id: D("44800")})
+
+    trip.refresh_from_db()
+    invoice = Sale.objects.get(trip=trip).billing_invoice
+    assert trip.status == Trip.Status.COMPLETED
+    assert invoice.status == Invoice.Status.VALIDATED
+    assert invoice.total_amount == D("44800") * PRICE
+    control = DeliveryControl.objects.get(trip=trip)
+    assert control.verified_at is not None and control.received_quantity == D("44800")
+
+
+@pytest.mark.django_db
+def test_no_second_client_verification_is_possible_afterwards():
+    from apps.trips.services import DeliveryService
+
+    fx = _setup_fixtures("DS41")
+    trip = _stocked_trip(fx, "DS41")
+    customer = Customer.objects.create(name="Client A")
+    _assign(fx, [trip], customer_id=customer.id, received_quantities={trip.id: D("44800")})
+
+    with pytest.raises(ValueError):
+        DeliveryService.record_client_verification(
+            trip.id, D("44800"), timezone_today(), fx["admin_user"]
+        )
+
+
+def timezone_today():
+    from django.utils import timezone
+
+    return timezone.localdate()
+
+
+@pytest.mark.django_db
+def test_shortage_is_charged_to_the_transporter_exactly_once():
+    from apps.finance.models import TransportDeduction
+
+    fx = _setup_fixtures("DS42")
+    trip = _stocked_trip(fx, "DS42")
+    customer = Customer.objects.create(name="Client A")
+
+    _assign(fx, [trip], customer_id=customer.id, received_quantities={trip.id: D("44800")})
+
+    deductions = TransportDeduction.objects.filter(trip=trip)
+    assert deductions.count() == 1
+    assert deductions.get().chargeable_quantity == D("100.00")  # 200 L short, 100 L tolerance
+
+
+@pytest.mark.django_db
+def test_group_invoice_is_validated_once_every_trip_is_verified():
+    from apps.sales.models import Invoice
+
+    fx = _setup_fixtures("DS43")
+    first, second = _stocked_trip(fx, "DS43A"), _stocked_trip(fx, "DS43B")
+    customer = Customer.objects.create(name="Client A")
+    admin = fx["admin_user"]
+    _assign(fx, [first, second], customer_id=customer.id)
+
+    DirectSaleService.confirm_received_quantity(
+        first.id, D("45000"), payment_destination=None, confirm_loss=False, actor=admin
+    )
+    DirectSaleService.confirm_received_quantity(
+        second.id, D("44000"), payment_destination=None, confirm_loss=False, actor=admin
+    )
+
+    invoice = Sale.objects.get(trip=first).billing_invoice
+    assert invoice.status == Invoice.Status.VALIDATED
+    assert invoice.total_amount == (D("45000") + D("44000")) * PRICE

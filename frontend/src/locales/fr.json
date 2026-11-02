@@ -471,7 +471,7 @@
       "awaitingQuantity": "En attente de la quantité reçue",
       "enterQuantity": "Saisir la quantité reçue",
       "quantityTitle": "Quantité reçue",
-      "quantityHint": "Entrez la quantité réellement reçue par le client : la facture sera créée à partir de cette quantité.",
+      "quantityHint": "Entrez la quantité réellement reçue par le client. Elle vaut vérification client : le trajet est clôturé et la facture validée.",
       "quantitySave": "Confirmer et facturer",
       "quantityError": "Impossible d'enregistrer la quantité reçue.",
       "continue": "Continuer ({count})"

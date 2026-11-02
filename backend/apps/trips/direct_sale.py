@@ -143,6 +143,15 @@ class DirectSaleService:
             unit_selling_price=trip.pending_unit_selling_price,
             confirm_loss=confirm_loss,
         )
+        # The quantity typed here IS the client's final word: record it as the
+        # client verification too, so the trip closes (COMPLETED) and its invoice
+        # is validated right away - no second "Enregistrer la quantité reçue par
+        # le client" step. The delivery already holds this quantity, so the
+        # verification changes no amount; a later fix goes through the audited
+        # "Corriger la vérification client".
+        DeliveryService.record_client_verification(
+            trip.id, received_quantity, timezone.localdate(), actor
+        )
         Trip.objects.filter(pk=trip.id).update(
             pending_unit_selling_price=None, updated_at=timezone.now()
         )

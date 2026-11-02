@@ -470,7 +470,7 @@
       "awaitingQuantity": "Awaiting received quantity",
       "enterQuantity": "Enter received quantity",
       "quantityTitle": "Received quantity",
-      "quantityHint": "Enter the quantity the customer actually received: the invoice will be created from it.",
+      "quantityHint": "Enter the quantity the customer actually received. It counts as the customer verification: the trip is closed and the invoice validated.",
       "quantitySave": "Confirm and invoice",
       "quantityError": "Could not save the received quantity.",
       "continue": "Continue ({count})"
