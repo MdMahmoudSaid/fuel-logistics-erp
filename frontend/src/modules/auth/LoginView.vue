@@ -88,7 +88,13 @@ async function onSubmit() {
             <p class="text-texte-2 mt-1 text-sm">{{ t('auth.subtitle') }}</p>
           </div>
 
-          <CountryPhoneInput id="phone" v-model="phone" :label="t('auth.phoneLabel')" required />
+          <CountryPhoneInput
+            id="phone"
+            v-model="phone"
+            :label="t('auth.phoneLabel')"
+            default-iso2="ML"
+            required
+          />
 
           <div class="space-y-1.5">
             <label for="pin" class="text-texte-2 text-sm font-medium">

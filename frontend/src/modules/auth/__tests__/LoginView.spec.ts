@@ -30,6 +30,24 @@ describe('LoginView', () => {
     expect(wrapper.find('button[type="submit"]').text()).toContain('Se connecter')
   })
 
+  it('starts on Mali (+223) as the default country', async () => {
+    const router = createRouter({
+      history: createWebHistory(),
+      routes: [
+        { path: '/', name: 'home', component: { template: '<div />' } },
+        { path: '/login', name: 'login', component: LoginView },
+      ],
+    })
+    router.push('/login')
+    await router.isReady()
+
+    const wrapper = mount(LoginView, { global: { plugins: [router, i18n] } })
+    const countryInput = wrapper.findAll('input')[0].element as HTMLInputElement
+
+    expect(countryInput.value).toContain('+223')
+    expect(countryInput.value).not.toContain('+222')
+  })
+
   it('blocks a typed letter in the PIN field before it is inserted', async () => {
     const router = createRouter({
       history: createWebHistory(),

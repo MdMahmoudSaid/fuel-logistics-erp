@@ -21,8 +21,11 @@ const props = withDefaults(
     required?: boolean
     disabled?: boolean
     error?: string
+    // Country preselected when the value is empty (the login page opens on Mali);
+    // other forms keep the app-wide default (Mauritanie).
+    defaultIso2?: string
   }>(),
-  { label: undefined, required: false, disabled: false, error: undefined },
+  { label: undefined, required: false, disabled: false, error: undefined, defaultIso2: DEFAULT_ISO2 },
 )
 
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
@@ -30,13 +33,13 @@ const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
 const { t, locale } = useI18n()
 
 function parsePhone(value: string): { iso2: string; national: string } {
-  if (!value) return { iso2: DEFAULT_ISO2, national: '' }
+  if (!value) return { iso2: props.defaultIso2, national: '' }
   const match = findCountryForPhone(value)
-  if (!match) return { iso2: DEFAULT_ISO2, national: value.replace(/\D/g, '') }
+  if (!match) return { iso2: props.defaultIso2, national: value.replace(/\D/g, '') }
   return { iso2: match.iso2, national: value.slice(match.dialCode.length) }
 }
 
-const selectedIso2 = ref(DEFAULT_ISO2)
+const selectedIso2 = ref(props.defaultIso2)
 const nationalNumber = ref('')
 const query = ref('')
 const open = ref(false)

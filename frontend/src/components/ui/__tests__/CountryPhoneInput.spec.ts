@@ -15,6 +15,17 @@ describe('CountryPhoneInput', () => {
     expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual(['+22212345678'])
   })
 
+  it('uses the defaultIso2 prop as the starting country (Mali on the login page)', async () => {
+    const wrapper = mount(CountryPhoneInput, {
+      props: { id: 'phone', modelValue: '', defaultIso2: 'ML' },
+      global: { plugins: [i18n] },
+    })
+
+    await wrapper.find('input#phone').setValue('12345678')
+
+    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual(['+22312345678'])
+  })
+
   it('parses an existing normalized value back into country + national number', () => {
     const wrapper = mount(CountryPhoneInput, {
       props: { id: 'phone', modelValue: '+22112345678' },
