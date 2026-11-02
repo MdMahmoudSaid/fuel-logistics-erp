@@ -94,7 +94,7 @@ class GeneralReceivableReportQuery:
         }
 
         rows = []
-        for customer in Customer.objects.filter(id__in=set(invoiced) | set(received)).order_by("name", "id"):
+        for customer in Customer.objects.filter(id__in=set(invoiced) | set(received), is_walk_in=False).order_by("name", "id"):
             outstanding = invoiced[customer.id] - (received.get(customer.id) or ZERO)
             if outstanding == ZERO:
                 continue

@@ -58,7 +58,7 @@ class ReceivablesSummaryReportQuery:
     @memoize_per_request
     def run(cls, *, date_from=None, date_to=None) -> list[dict]:
         rows = []
-        for customer in Customer.objects.filter(id__in=customer_ids_with_activity()).order_by("name", "id"):
+        for customer in Customer.objects.filter(id__in=customer_ids_with_activity(), is_walk_in=False).order_by("name", "id"):
             outstanding = PaymentAllocationService.get_customer_outstanding(customer)
             if outstanding > ZERO:
                 rows.append({"party_type": "customer", "party": customer.name, "amount": outstanding})

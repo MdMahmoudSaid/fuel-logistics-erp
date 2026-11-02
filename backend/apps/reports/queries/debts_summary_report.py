@@ -56,7 +56,7 @@ class DebtsSummaryReportQuery:
             for group in Debts.get_payable_debts(fee_type):
                 if group["remaining_amount"] > ZERO:
                     rows.append({"party_type": f"fee_{fee_type}", "party": None, "amount": group["remaining_amount"]})
-        for customer in Customer.objects.filter(id__in=customer_ids_with_activity()).order_by("name", "id"):
+        for customer in Customer.objects.filter(id__in=customer_ids_with_activity(), is_walk_in=False).order_by("name", "id"):
             outstanding = PaymentAllocationService.get_customer_outstanding(customer)
             if outstanding < ZERO:
                 rows.append({"party_type": "customer_credit", "party": customer.name, "amount": -outstanding})

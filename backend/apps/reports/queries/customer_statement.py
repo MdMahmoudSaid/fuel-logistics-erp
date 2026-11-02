@@ -20,7 +20,7 @@ class CustomerStatementQuery:
     @staticmethod
     def _parties():
         from apps.customers.models import Customer
-        return Customer.objects.order_by("name").values_list("id", "name")
+        return Customer.objects.filter(is_walk_in=False).order_by("name").values_list("id", "name")
     DIRECTION = 1  # debit - credit: a positive balance is money owed by the customer
 
     @classmethod

@@ -39,7 +39,7 @@ class SearchView(APIView):
                 {
                     "trucks": self._search_trucks(query),
                     "customers": list(
-                        Customer.objects.filter(name__icontains=query).values("id", "name")[
+                        Customer.objects.filter(name__icontains=query, is_walk_in=False).values("id", "name")[
                             :_RESULT_LIMIT
                         ]
                     ),

@@ -175,3 +175,29 @@ def test_endpoint_document_and_pdf_work_and_period_is_as_of():
     _, pages = pdf_pages(render_report_pdf(_document("debts-summary-report", DebtsSummaryReportQuery.run()),
                                            DebtsSummaryReportQuery.run(), "fr"))
     assert "SAHEL" in pages[0] and "31 500 000" in pages[0]
+
+
+@pytest.mark.django_db
+def test_walk_in_customers_are_never_listed_as_customers_or_receivables():
+    from apps.reports.queries.customer_outstanding_report import CustomerOutstandingReportQuery
+    from apps.reports.queries.customer_statement import CustomerStatementQuery
+    from apps.reports.queries.general_receivable_report import GeneralReceivableReportQuery
+
+    admin = _make_admin("WALKIN1")
+    regular = Customer.objects.create(name="Client Normal")
+    walk_in = Customer.objects.create(name="Passage Moussa", is_walk_in=True)
+    _opening(admin, "100000.00", customer=regular)
+    _opening(admin, "50000.00", customer=walk_in)
+
+    assert [r["party"] for r in ReceivablesSummaryReportQuery.run() if r["party_type"] == "customer"] == [
+        "Client Normal"
+    ]
+    assert "Passage Moussa" not in [r["customer"] for r in GeneralReceivableReportQuery.run()]
+    assert "Passage Moussa" not in [r["customer"] for r in CustomerOutstandingReportQuery.run()]
+    assert [name for _id, name in CustomerStatementQuery._parties()] == ["Client Normal"]
+
+    client = APIClient()
+    client.force_authenticate(admin)
+    found = client.get("/api/search/", {"q": "Passage"})
+    assert found.status_code == 200
+    assert found.data["customers"] == []

@@ -32,7 +32,7 @@ class CustomerOutstandingReportQuery:
             OpeningDebt.objects.filter(cancelled_at__isnull=True, customer__isnull=False)
             .values_list("customer_id", flat=True)
         )
-        customers = Customer.objects.filter(id__in=customer_ids)
+        customers = Customer.objects.filter(id__in=customer_ids, is_walk_in=False)
         return [
             {
                 "customer": customer.name,
