@@ -58,15 +58,17 @@ const tripListMock = vi.fn(async () => ({
   previous: null,
   results: [makeTrip()],
 }))
-const assignTripCustomer = vi.fn(async (_tripId: number, _customerId: number) => makeTrip())
+const postDirectSale = vi.fn(async (_payload: unknown) => [makeTrip()])
 
 vi.mock('@/modules/trips/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/modules/trips/api')>()
   return {
     ...actual,
     tripResource: { ...actual.tripResource, list: () => tripListMock() },
-    assignTripCustomer: (tripId: number, customerId: number) =>
-      assignTripCustomer(tripId, customerId),
+    postDirectSale: (payload: unknown) => postDirectSale(payload),
+    fetchTripCostBasis: async () => {
+      throw new Error('no cost in this spec')
+    },
   }
 })
 
@@ -155,7 +157,7 @@ describe('SaleList', () => {
     expect(rows[0]!.text()).toContain('AA-111 / BB-222')
   })
 
-  it('assigns the selected trip to a customer and navigates to the trip detail page', async () => {
+  it('assigns the selected trip to a customer in one call and stays on Ventes', async () => {
     const { wrapper, router } = await mountAt()
     const pushSpy = vi.spyOn(router, 'push')
 
@@ -171,10 +173,16 @@ describe('SaleList', () => {
 
     const select = wrapper.findComponent({ name: 'UiSearchableSelect' })
     await select.vm.$emit('update:modelValue', '30')
+    await wrapper.find('[data-test="unit-price"]').setValue('900')
     await wrapper.find('form').trigger('submit.prevent')
     await flushPromises()
 
-    expect(assignTripCustomer).toHaveBeenCalledWith(21, 30)
-    expect(pushSpy).toHaveBeenCalledWith({ name: 'trip-detail', params: { id: 21 } })
+    expect(postDirectSale).toHaveBeenCalledWith({
+      trips: [21],
+      customer: 30,
+      unit_selling_price: '900',
+    })
+    expect(pushSpy).not.toHaveBeenCalledWith({ name: 'trip-detail', params: { id: 21 } })
+    expect(wrapper.find('form').exists()).toBe(false) // popup closed
   })
 })

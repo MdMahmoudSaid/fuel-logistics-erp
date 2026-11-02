@@ -6,85 +6,193 @@ const customers = [
   { id: 1, name: 'Client A' },
   { id: 2, name: 'Client B' },
 ]
+const lists: Record<string, unknown[]> = {
+  '/customers/': customers,
+  '/bank-accounts/': [{ id: 1, name: 'BNP' }],
+  '/cash-accounts/': [{ id: 5, name: 'Caisse 1' }],
+}
 
 vi.mock('@/api/resource', () => ({
-  createResourceApi: vi.fn(() => ({
-    list: vi.fn(async () => ({ count: customers.length, next: null, previous: null, results: customers })),
+  createResourceApi: vi.fn((url: string) => ({
+    list: vi.fn(async () => ({
+      count: lists[url].length,
+      next: null,
+      previous: null,
+      results: lists[url],
+    })),
   })),
 }))
 
-const assignTripCustomer = vi.fn(async (_tripId: number, _customerId: number) => ({}) as never)
+const costBasis = {
+  quantity: '45000.00',
+  unit_cost: '725.8889',
+  unit_components_per_litre: {
+    supplier: '500',
+    commission_transporter: '0',
+    transit: '0.6667',
+    road_transit: '0',
+    border: '0',
+    customs: '225',
+    loading: '0.2222',
+    other: '0',
+  },
+}
+const postDirectSale = vi.fn(async (_payload: unknown) => [] as never)
 vi.mock('../api', () => ({
-  assignTripCustomer: (tripId: number, customerId: number) =>
-    assignTripCustomer(tripId, customerId),
+  fetchTripCostBasis: vi.fn(async () => costBasis),
+  postDirectSale: (payload: unknown) => postDirectSale(payload),
 }))
+
+type Wrapper = Awaited<ReturnType<typeof mountForm>>
 
 async function mountForm() {
   const wrapper = mount(AssignCustomerForm, {
-    props: { tripId: 9, tripReference: 'TRIP-000009' },
+    props: { trips: [{ id: 9, reference: 'TRIP-000009' }] },
   })
   await flushPromises()
   return wrapper
 }
 
-async function pickCustomer(wrapper: Awaited<ReturnType<typeof mountForm>>, label: string) {
-  const input = wrapper.find('input')
-  await input.trigger('focus')
+async function pickCustomer(wrapper: Wrapper, label: string) {
+  await wrapper.find('input').trigger('focus')
   await flushPromises()
   const item = wrapper.findAll('li').find((li) => li.text() === label)
   expect(item).toBeDefined()
   await item!.trigger('mousedown')
+  await flushPromises()
 }
 
-describe('AssignCustomerForm', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-  })
+async function setPrice(wrapper: Wrapper, price: string) {
+  await wrapper.find('[data-test="unit-price"]').setValue(price)
+}
 
-  it('shows the trip reference and lists customers to pick from', async () => {
+describe('AssignCustomerForm (direct sale)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('offers a walk-in option and then asks only for a name', async () => {
     const wrapper = await mountForm()
+    await pickCustomer(wrapper, 'Client de passage')
+
+    expect(wrapper.find('[data-test="walk-in-name"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('TRIP-000009')
-
-    await wrapper.find('input').trigger('focus')
-    await flushPromises()
-    expect(wrapper.text()).toContain('Client A')
-    expect(wrapper.text()).toContain('Client B')
   })
 
-  it('disables the save button until a customer is picked', async () => {
+  it('shows one cost line, with the full breakdown behind the eye', async () => {
     const wrapper = await mountForm()
-    const saveButton = wrapper.findAll('button').find((b) => b.text() === 'Attribuer')
-    expect(saveButton?.attributes('disabled')).toBeDefined()
-
     await pickCustomer(wrapper, 'Client A')
-    expect(saveButton?.attributes('disabled')).toBeUndefined()
+
+    expect(wrapper.find('[data-test="cost-line"]').text()).toContain('725')
+    expect(wrapper.text()).not.toContain('Douane')
+
+    await wrapper.find('[data-test="cost-eye"]').trigger('click')
+    expect(wrapper.text()).toContain('Douane')
   })
 
-  it('calls assignTripCustomer with the trip and picked customer, then emits success', async () => {
+  it('shows profit above cost and the loss confirmation below cost', async () => {
+    const wrapper = await mountForm()
+    await pickCustomer(wrapper, 'Client A')
+
+    await setPrice(wrapper, '900')
+    expect(wrapper.text()).toContain('Bénéfice')
+    expect(wrapper.find('[data-test="loss-confirm"]').exists()).toBe(false)
+
+    await setPrice(wrapper, '700')
+    expect(wrapper.find('[data-test="loss-confirm"]').exists()).toBe(true)
+  })
+
+  it('submits a registered customer without quantity (quantity later)', async () => {
     const wrapper = await mountForm()
     await pickCustomer(wrapper, 'Client B')
+    await setPrice(wrapper, '900')
 
     await wrapper.find('form').trigger('submit.prevent')
     await flushPromises()
 
-    expect(assignTripCustomer).toHaveBeenCalledWith(9, 2)
+    expect(postDirectSale).toHaveBeenCalledWith({
+      trips: [9],
+      customer: 2,
+      unit_selling_price: '900',
+    })
     expect(wrapper.emitted('success')).toBeTruthy()
   })
 
-  it('emits cancel when the cancel button is clicked', async () => {
+  it('submits the received quantity keyed by trip id when entered now', async () => {
     const wrapper = await mountForm()
-    const cancelButton = wrapper.findAll('button').find((b) => b.text() === 'Annuler')
-    await cancelButton!.trigger('click')
+    await pickCustomer(wrapper, 'Client A')
+    await setPrice(wrapper, '900')
+    await wrapper.find('[data-test="quantity-now"]').setValue(true)
 
+    const qty = wrapper.find('[data-test="qty-9"]')
+    expect((qty.element as HTMLInputElement).value).toBe('45000.00')
+    await qty.setValue('44000')
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(postDirectSale).toHaveBeenCalledWith({
+      trips: [9],
+      customer: 1,
+      unit_selling_price: '900',
+      received_quantities: { '9': '44000' },
+    })
+  })
+
+  it('walk-in with a quantity needs a payment account', async () => {
+    const wrapper = await mountForm()
+    await pickCustomer(wrapper, 'Client de passage')
+    await wrapper.find('[data-test="walk-in-name"]').setValue('Moussa')
+    await setPrice(wrapper, '900')
+    await wrapper.find('[data-test="quantity-now"]').setValue(true)
+
+    const submit = wrapper.find('[data-test="submit"]')
+    expect(submit.attributes('disabled')).toBeDefined()
+
+    await wrapper.find('[data-test="pay-account"]').setValue('5')
+    expect(submit.attributes('disabled')).toBeUndefined()
+
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+    expect(postDirectSale).toHaveBeenCalledWith({
+      trips: [9],
+      walk_in_name: 'Moussa',
+      unit_selling_price: '900',
+      received_quantities: { '9': '45000.00' },
+      payment_destination: { destination: 'CASH', cash_account: 5 },
+    })
+  })
+
+  it('below cost: blocks submit until the loss is confirmed, then sends confirm_loss', async () => {
+    const wrapper = await mountForm()
+    await pickCustomer(wrapper, 'Client A')
+    await setPrice(wrapper, '700')
+
+    const submit = wrapper.find('[data-test="submit"]')
+    expect(submit.attributes('disabled')).toBeDefined()
+    await wrapper.find('[data-test="loss-confirm"]').setValue(true)
+    expect(submit.attributes('disabled')).toBeUndefined()
+
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+    expect(postDirectSale).toHaveBeenCalledWith({
+      trips: [9],
+      customer: 1,
+      unit_selling_price: '700',
+      confirm_loss: true,
+    })
+  })
+
+  it('emits cancel', async () => {
+    const wrapper = await mountForm()
+    await wrapper.findAll('button').find((b) => b.text() === 'Annuler')!.trigger('click')
     expect(wrapper.emitted('cancel')).toBeTruthy()
   })
 
-  it('shows a translated error message when the backend rejects the assignment', async () => {
-    assignTripCustomer.mockRejectedValueOnce({
+  it('shows an error and stays open when the backend refuses', async () => {
+    postDirectSale.mockRejectedValueOnce({
       response: { data: { detail: 'Le trajet TRIP-000009 a deja une vente enregistree.' } },
     })
     const wrapper = await mountForm()
     await pickCustomer(wrapper, 'Client A')
+    await setPrice(wrapper, '900')
 
     await wrapper.find('form').trigger('submit.prevent')
     await flushPromises()

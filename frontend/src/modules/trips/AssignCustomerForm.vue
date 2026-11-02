@@ -1,25 +1,26 @@
 <script setup lang="ts">
 import AppAlert from '@/components/ui/AppAlert.vue'
-// Client modifications plan Task 9 (gap-closure): lets an operator earmark
-// a COMPANY_STOCK trip for a customer once cost/logistics work is done -
-// the core client workflow (spec section 3 / section 11 "Workflow global")
-// of "create trip without client -> do the cost work -> then pick who it's
-// sold to". Opened from TripDetail.vue's "Attribuer un client" action,
-// only while destination_type is still COMPANY_STOCK and no Sale exists
-// yet (TripDetail computes both - the backend re-validates the latter
-// regardless via TripCostService.assign_customer_for_sale's
-// CustomerAlreadySoldError).
+// Direct sale (docs/superpowers/specs/2026-11-02-attribution-client-directe-
+// design.md): opened from Ventes ("Attribuer un client", one or several
+// picked trips) and from TripDetail (one trip). Picks a registered customer
+// or a walk-in ("client de passage": name only, pays everything in cash),
+// shows the cost price (single line, eye = full breakdown), takes the selling
+// price with a live profit/loss, and optionally the received quantity. One
+// POST (/trips/direct-sale/) links, arrives, parks the price and - when the
+// quantity is given - delivers and invoices (walk-in: plus the cash payment).
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { createResourceApi } from '@/api/resource'
 import { translateApiError } from '@/i18n/apiErrors'
-import { assignTripCustomer, assignTripsCustomer } from './api'
-import type { CustomerBrief } from './types'
+import { fetchTripCostBasis, postDirectSale, type PaymentDestination } from './api'
+import type { CustomerBrief, TripCostBasis } from './types'
 import Button from '@/components/ui/Button.vue'
 import SearchableSelect from '@/components/ui/SearchableSelect.vue'
+import PaymentAccountPicker from './PaymentAccountPicker.vue'
+import { formatUnitMoney } from '@/utils/currency'
 
 // Single trip (tripId + tripReference) or several trips billed on one
-// invoice (`trips`, from the Ventes "Attribuer un client" picker).
+// invoice (`trips`, from the Ventes picker).
 const props = defineProps<{
   tripId?: number
   tripReference?: string
@@ -28,18 +29,18 @@ const props = defineProps<{
 const emit = defineEmits<{ success: []; cancel: [] }>()
 const { t } = useI18n()
 
+const WALK_IN = '__walk_in__'
+
 const customerResource = createResourceApi<CustomerBrief>('/customers/')
 const customers = ref<CustomerBrief[]>([])
 const customerId = ref('')
+const walkInName = ref('')
 
-const customerOptions = computed(() =>
-  customers.value.map((c) => ({ value: String(c.id), label: c.name })),
-)
-
-onMounted(async () => {
-  const data = await customerResource.list()
-  customers.value = data.results
-})
+const customerOptions = computed(() => [
+  { value: WALK_IN, label: t('trips.assignCustomer.walkIn') },
+  ...customers.value.map((c) => ({ value: String(c.id), label: c.name })),
+])
+const isWalkIn = computed(() => customerId.value === WALK_IN)
 
 const selectedTrips = computed(
   () =>
@@ -50,22 +51,104 @@ const selectedTrips = computed(
 )
 const tripsLabel = computed(() => selectedTrips.value.map((trip) => trip.reference).join(', '))
 
+const costBases = ref<Record<number, TripCostBasis>>({})
+onMounted(async () => {
+  const data = await customerResource.list()
+  customers.value = data.results
+  await Promise.all(
+    selectedTrips.value.map(async (trip) => {
+      try {
+        costBases.value[trip.id] = await fetchTripCostBasis(trip.id)
+      } catch {
+        // Cost unavailable: the hints stay hidden, the backend still guards below-cost sales.
+      }
+    }),
+  )
+})
+
+// Quantity-weighted per-litre cost across the picked trips (one trip = its own).
+function weighted(pick: (basis: TripCostBasis) => string): number | null {
+  const bases = selectedTrips.value.map((trip) => costBases.value[trip.id]).filter(Boolean)
+  if (bases.length !== selectedTrips.value.length || bases.length === 0) return null
+  const litres = bases.reduce((sum, b) => sum + Number(b.quantity), 0)
+  if (litres === 0) return null
+  return bases.reduce((sum, b) => sum + Number(pick(b)) * Number(b.quantity), 0) / litres
+}
+const customerChosen = computed(() => customerId.value !== '')
+const unitCost = computed(() => weighted((b) => b.unit_cost))
+const showCostDetails = ref(false)
+const componentRows = computed(() => {
+  const rows: [string, (b: TripCostBasis) => string][] = [
+    ['supplierPrice', (b) => b.unit_components_per_litre.supplier],
+    ['transporterCommission', (b) => b.unit_components_per_litre.commission_transporter],
+    ['roadTransit', (b) => b.unit_components_per_litre.road_transit],
+    ['transit', (b) => b.unit_components_per_litre.transit],
+    ['border', (b) => b.unit_components_per_litre.border],
+    ['customs', (b) => b.unit_components_per_litre.customs],
+    ['loading', (b) => b.unit_components_per_litre.loading],
+    ['otherFees', (b) => b.unit_components_per_litre.other],
+  ]
+  return rows.map(([key, pick]) => ({
+    label: t(`trips.delivery.${key}`),
+    value: weighted(pick) ?? 0,
+  }))
+})
+
+const unitPrice = ref('')
+const hasPrice = computed(() => unitPrice.value !== '' && Number(unitPrice.value) > 0)
+const benefit = computed(() =>
+  unitCost.value !== null && hasPrice.value ? Number(unitPrice.value) - unitCost.value : null,
+)
+const isLoss = computed(() => benefit.value !== null && benefit.value < 0)
+const lossConfirmed = ref(false)
+const resultText = computed(() => {
+  if (benefit.value === null) return ''
+  const amount = formatUnitMoney(Math.abs(benefit.value))
+  if (benefit.value > 0) return t('trips.delivery.profitResult', { amount })
+  if (benefit.value < 0) return t('trips.delivery.lossResult', { amount })
+  return t('trips.delivery.breakEvenResult')
+})
+
+const quantityNow = ref(false)
+const quantities = ref<Record<number, string>>({})
+function quantityFor(tripId: number): string {
+  return quantities.value[tripId] ?? costBases.value[tripId]?.quantity ?? ''
+}
+const payment = ref<PaymentDestination | null>(null)
+
+const canSubmit = computed(() => {
+  if (!customerChosen.value || !hasPrice.value) return false
+  if (isWalkIn.value && !walkInName.value.trim()) return false
+  if (isLoss.value && !lossConfirmed.value) return false
+  if (quantityNow.value) {
+    if (selectedTrips.value.some((trip) => !(Number(quantityFor(trip.id)) > 0))) return false
+    if (isWalkIn.value && !payment.value) return false
+  }
+  return true
+})
+
 const saving = ref(false)
 const error = ref('')
 
 async function onSubmit() {
-  if (!customerId.value) return
+  if (!canSubmit.value) return
   saving.value = true
   error.value = ''
   try {
-    if (selectedTrips.value.length > 1) {
-      await assignTripsCustomer(
-        selectedTrips.value.map((trip) => trip.id),
-        Number(customerId.value),
-      )
-    } else {
-      await assignTripCustomer(selectedTrips.value[0].id, Number(customerId.value))
+    const payload: Parameters<typeof postDirectSale>[0] = {
+      trips: selectedTrips.value.map((trip) => trip.id),
+      unit_selling_price: String(unitPrice.value),
     }
+    if (isWalkIn.value) payload.walk_in_name = walkInName.value.trim()
+    else payload.customer = Number(customerId.value)
+    if (quantityNow.value) {
+      payload.received_quantities = Object.fromEntries(
+        selectedTrips.value.map((trip) => [String(trip.id), quantityFor(trip.id)]),
+      )
+      if (isWalkIn.value) payload.payment_destination = payment.value
+    }
+    if (isLoss.value) payload.confirm_loss = true
+    await postDirectSale(payload)
     emit('success')
   } catch (e) {
     const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
@@ -74,6 +157,9 @@ async function onSubmit() {
     saving.value = false
   }
 }
+
+const inputClass =
+  'border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2'
 </script>
 
 <template>
@@ -107,12 +193,151 @@ async function onSubmit() {
         />
       </label>
 
+      <div v-if="isWalkIn" class="space-y-1.5">
+        <label class="block space-y-1.5">
+          <span class="text-texte-2 text-sm font-medium">{{
+            t('trips.assignCustomer.walkInName')
+          }}</span>
+          <input v-model="walkInName" data-test="walk-in-name" type="text" :class="inputClass" />
+        </label>
+        <p class="text-texte-3 text-xs">{{ t('trips.assignCustomer.walkInHint') }}</p>
+      </div>
+
+      <template v-if="customerChosen">
+        <div
+          v-if="unitCost !== null"
+          class="border-ligne space-y-2 rounded-lg border bg-sable p-3 text-sm"
+        >
+          <div class="flex items-center justify-between gap-2" data-test="cost-line">
+            <span class="text-texte font-semibold">{{ t('trips.assignCustomer.costLine') }}</span>
+            <span class="flex items-center gap-2">
+              <span class="text-texte font-semibold">{{ formatUnitMoney(unitCost) }}</span>
+              <button
+                type="button"
+                data-test="cost-eye"
+                class="text-texte-2 rounded p-1 hover:bg-white"
+                :aria-label="t('trips.assignCustomer.showCostDetails')"
+                :aria-expanded="showCostDetails"
+                @click="showCostDetails = !showCostDetails"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  class="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  aria-hidden="true"
+                >
+                  <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+              </button>
+            </span>
+          </div>
+          <dl v-if="showCostDetails" class="divide-ligne divide-y">
+            <div
+              v-for="row in componentRows"
+              :key="row.label"
+              class="flex items-center justify-between py-1.5"
+            >
+              <dt class="text-texte-2">{{ row.label }}</dt>
+              <dd class="text-texte font-medium">{{ formatUnitMoney(row.value) }}</dd>
+            </div>
+          </dl>
+        </div>
+
+        <label class="block space-y-1.5">
+          <span class="text-texte-2 text-sm font-medium">{{
+            t('trips.assignCustomer.sellingPrice')
+          }}</span>
+          <input
+            v-model="unitPrice"
+            data-test="unit-price"
+            type="number"
+            step="0.0001"
+            min="0"
+            :class="inputClass"
+          />
+        </label>
+        <p
+          v-if="benefit !== null"
+          class="text-sm font-medium"
+          :class="isLoss ? 'text-critique' : benefit === 0 ? 'text-texte' : 'text-livre'"
+        >
+          {{ resultText }}
+        </p>
+
+        <div v-if="isLoss" class="border-critique bg-critique-tint space-y-2 rounded-lg border p-3">
+          <p class="text-critique-texte text-sm font-medium">
+            {{ t('trips.delivery.lossWarning') }}
+          </p>
+          <label class="text-critique-texte flex items-center gap-2 text-sm">
+            <input
+              v-model="lossConfirmed"
+              data-test="loss-confirm"
+              type="checkbox"
+              class="border-ligne-forte accent-orange h-5 w-5 rounded"
+            />
+            {{ t('trips.delivery.lossConfirm') }}
+          </label>
+        </div>
+
+        <div class="space-y-3">
+          <label class="flex items-center gap-2 text-sm font-medium">
+            <input
+              v-model="quantityNow"
+              data-test="quantity-now"
+              type="checkbox"
+              class="border-ligne-forte accent-orange h-5 w-5 rounded"
+            />
+            {{ t('trips.assignCustomer.quantityNow') }}
+          </label>
+          <p v-if="!quantityNow" class="text-texte-3 text-xs">
+            {{ t('trips.assignCustomer.quantityLater') }}
+          </p>
+          <template v-else>
+            <label v-for="trip in selectedTrips" :key="trip.id" class="block space-y-1.5">
+              <span class="text-texte-2 text-sm font-medium">{{
+                t('trips.assignCustomer.receivedQuantity', { reference: trip.reference })
+              }}</span>
+              <input
+                :value="quantityFor(trip.id)"
+                :data-test="`qty-${trip.id}`"
+                type="number"
+                step="0.01"
+                min="0"
+                :max="costBases[trip.id]?.quantity"
+                :class="inputClass"
+                @input="quantities[trip.id] = ($event.target as HTMLInputElement).value"
+              />
+            </label>
+            <div v-if="isWalkIn" class="space-y-2">
+              <p class="text-sm font-semibold">{{ t('trips.assignCustomer.paymentTitle') }}</p>
+              <p class="text-texte-3 text-xs">{{ t('trips.assignCustomer.paymentHint') }}</p>
+              <PaymentAccountPicker v-model="payment" />
+            </div>
+          </template>
+        </div>
+      </template>
+
       <div class="flex justify-end gap-2">
         <Button type="button" variant="ghost" @click="emit('cancel')">
           {{ t('common.cancel') }}
         </Button>
-        <Button type="submit" variant="primary" :disabled="!customerId" :loading="saving">
-          {{ saving ? t('trips.assignCustomer.saving') : t('trips.assignCustomer.save') }}
+        <Button
+          type="submit"
+          variant="primary"
+          data-test="submit"
+          :disabled="!canSubmit"
+          :loading="saving"
+        >
+          {{
+            saving
+              ? t('trips.assignCustomer.saving')
+              : quantityNow
+                ? t('trips.assignCustomer.confirmAndInvoice')
+                : t('trips.assignCustomer.assignLater')
+          }}
         </Button>
       </div>
     </form>

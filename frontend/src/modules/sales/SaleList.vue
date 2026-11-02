@@ -10,7 +10,6 @@ import AppAlert from '@/components/ui/AppAlert.vue'
 // is still created later, at delivery confirmation.
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { createResourceApi } from '@/api/resource'
 import { formatMoney, formatQuantity, formatUnitMoney } from '@/utils/currency'
@@ -25,7 +24,6 @@ import Button from '@/components/ui/Button.vue'
 import Modal from '@/components/ui/Modal.vue'
 
 const { t } = useI18n()
-const router = useRouter()
 const auth = useAuthStore()
 
 const sales = ref<Sale[]>([])
@@ -114,10 +112,11 @@ function continueAssign() {
   )
 }
 
-function onCustomerAssigned() {
-  const trips = confirmedTrips.value ?? []
+// Direct sale: everything (customer, price, quantity) was handled in the
+// popup, so stay on Ventes and refresh instead of jumping to the trip page.
+async function onCustomerAssigned() {
   closeAssignModal()
-  if (trips.length === 1) router.push({ name: 'trip-detail', params: { id: trips[0].id } })
+  await loadSales()
 }
 </script>
 
