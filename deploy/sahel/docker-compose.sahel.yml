@@ -81,7 +81,7 @@ services:
     labels:
       traefik.enable: 'true'
       traefik.docker.network: traefik-public
-      traefik.http.routers.sahel.rule: Host(`sahelcommerce.hasel.food`)
+      traefik.http.routers.sahel.rule: Host(`sahelcommerce.yasserai.net`)
       traefik.http.routers.sahel.entrypoints: websecure
       traefik.http.routers.sahel.tls: 'true'
       traefik.http.routers.sahel.tls.certresolver: letsencrypt
