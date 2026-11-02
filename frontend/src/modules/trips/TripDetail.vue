@@ -16,6 +16,7 @@ import {
 import { translateApiError } from '@/i18n/apiErrors'
 import { confirmDialog } from '@/composables/useConfirmDialog'
 import DeliveryControlForm from './DeliveryControlForm.vue'
+import ConfirmQuantityForm from './ConfirmQuantityForm.vue'
 import ClientVerificationForm from './ClientVerificationForm.vue'
 import ClientVerificationCorrectionForm from './ClientVerificationCorrectionForm.vue'
 import type { Trip, TripMargin, TripStatus, TripStatusHistoryEntry } from './types'
@@ -243,6 +244,12 @@ async function onCustomerAssigned() {
   await Promise.all([load(), loadMargin()])
   await loadAllowedStatuses()
 }
+
+// Attributed from the Ventes popup without a quantity (spec section 3).
+const awaitingReceivedQuantity = computed(
+  () =>
+    trip.value?.status === 'ARRIVED_AT_CLIENT' && trip.value.pending_unit_selling_price != null,
+)
 
 async function onDeliveryConfirmed() {
   await Promise.all([load(), loadMargin()])
@@ -809,8 +816,18 @@ const cessionProofUrl = computed(
         </div>
       </Card>
 
+      <!-- Direct sale attributed without a quantity: the price is parked on the
+           trip, so only the received quantity (and, for a walk-in, the payment
+           account) is left to enter. -->
+      <ConfirmQuantityForm
+        v-if="awaitingReceivedQuantity && canChangeStatus"
+        :trip-id="trip.id"
+        :quantity-loaded="trip.quantity_loaded"
+        :is-walk-in="!!trip.client_detail?.is_walk_in"
+        @success="onDeliveryConfirmed"
+      />
       <DeliveryControlForm
-        v-if="['ARRIVED_AT_CLIENT', 'QUANTITY_CONTROL'].includes(trip.status) && canChangeStatus"
+        v-else-if="['ARRIVED_AT_CLIENT', 'QUANTITY_CONTROL'].includes(trip.status) && canChangeStatus"
         :trip-id="trip.id"
         :quantity-loaded="trip.quantity_loaded"
         @confirmed="onDeliveryConfirmed"

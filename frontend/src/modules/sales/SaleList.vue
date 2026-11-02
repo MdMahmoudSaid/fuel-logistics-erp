@@ -19,6 +19,7 @@ import { tripResource } from '@/modules/trips/api'
 import type { Trip } from '@/modules/trips/types'
 import { formatTruckPlates } from '@/modules/trips/formatTruckPlates'
 import AssignCustomerForm from '@/modules/trips/AssignCustomerForm.vue'
+import ConfirmQuantityForm from '@/modules/trips/ConfirmQuantityForm.vue'
 import MonoValue from '@/components/ui/MonoValue.vue'
 import Button from '@/components/ui/Button.vue'
 import Modal from '@/components/ui/Modal.vue'
@@ -53,6 +54,27 @@ async function loadSales() {
   }
 }
 
+// Trips attributed to a customer whose received quantity is still to be
+// entered (no Sale/invoice yet): shown as rows so the operator can finish.
+const pendingTrips = ref<Trip[]>([])
+const quantityTrip = ref<Trip | null>(null)
+
+async function loadPendingTrips() {
+  try {
+    const data = await tripResource.list({ status: 'ARRIVED_AT_CLIENT' })
+    pendingTrips.value = data.results.filter(
+      (trip) => trip.client && trip.pending_unit_selling_price != null,
+    )
+  } catch {
+    pendingTrips.value = []
+  }
+}
+
+async function onQuantityConfirmed() {
+  quantityTrip.value = null
+  await Promise.all([loadSales(), loadPendingTrips()])
+}
+
 onMounted(async () => {
   const [customerData, productData] = await Promise.all([
     customerResource.list(),
@@ -60,7 +82,7 @@ onMounted(async () => {
   ])
   customers.value = customerData.results
   products.value = productData.results
-  await loadSales()
+  await Promise.all([loadSales(), loadPendingTrips()])
 })
 
 // Same "assign_customer" permission tier as the action on TripDetail.vue
@@ -116,7 +138,7 @@ function continueAssign() {
 // popup, so stay on Ventes and refresh instead of jumping to the trip page.
 async function onCustomerAssigned() {
   closeAssignModal()
-  await loadSales()
+  await Promise.all([loadSales(), loadPendingTrips()])
 }
 </script>
 
@@ -172,6 +194,40 @@ async function onCustomerAssigned() {
         </thead>
         <tbody>
           <tr
+            v-for="trip in pendingTrips"
+            :key="`pending-${trip.id}`"
+            data-test="pending-row"
+            class="border-ligne hover:bg-sable border-b"
+          >
+            <td class="px-3 py-2.5">
+              <RouterLink
+                class="text-texte-2 hover:text-texte underline decoration-dotted"
+                :to="{ name: 'trip-detail', params: { id: trip.id } }"
+              >
+                {{ trip.reference }}
+              </RouterLink>
+            </td>
+            <td class="px-3 py-2.5 font-medium">{{ trip.client_detail?.name }}</td>
+            <td class="px-3 py-2.5">{{ trip.product_detail?.name }}</td>
+            <td colspan="3" class="px-3 py-2.5">
+              <div class="flex flex-wrap items-center justify-end gap-3">
+                <span class="text-texte-2">
+                  {{ t('trips.assignCustomer.awaitingQuantity') }} ·
+                  <MonoValue :value="formatUnitMoney(trip.pending_unit_selling_price ?? 0)" />
+                </span>
+                <Button
+                  v-if="canAssignCustomer"
+                  type="button"
+                  variant="ghost"
+                  data-test="enter-quantity"
+                  @click="quantityTrip = trip"
+                >
+                  {{ t('trips.assignCustomer.enterQuantity') }}
+                </Button>
+              </div>
+            </td>
+          </tr>
+          <tr
             v-for="sale in sales"
             :key="sale.id"
             class="border-ligne hover:bg-sable border-b last:border-0"
@@ -196,7 +252,7 @@ async function onCustomerAssigned() {
               <MonoValue :value="formatMoney(sale.subtotal)" />
             </td>
           </tr>
-          <tr v-if="!loading && sales.length === 0">
+          <tr v-if="!loading && sales.length === 0 && pendingTrips.length === 0">
             <td colspan="6" class="text-texte-3 px-3 py-8 text-center">
               {{ t('sales.saleList.noSales') }}
             </td>
@@ -204,6 +260,21 @@ async function onCustomerAssigned() {
         </tbody>
       </table>
     </div>
+
+    <Modal
+      v-if="quantityTrip"
+      :title="t('trips.assignCustomer.quantityTitle')"
+      max-width="max-w-lg"
+      @close="quantityTrip = null"
+    >
+      <ConfirmQuantityForm
+        :trip-id="quantityTrip.id"
+        :quantity-loaded="quantityTrip.quantity_loaded"
+        :is-walk-in="!!quantityTrip.client_detail?.is_walk_in"
+        @success="onQuantityConfirmed"
+        @cancel="quantityTrip = null"
+      />
+    </Modal>
 
     <Modal
       v-if="showAssignModal"

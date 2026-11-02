@@ -55,6 +55,13 @@ const badgeVariant = computed(() => {
       </div>
       <UiBadge :variant="badgeVariant">{{ statusLabel(trip.status) }}</UiBadge>
     </div>
+    <div
+      v-if="trip.status === 'ARRIVED_AT_CLIENT' && trip.pending_unit_selling_price != null"
+      class="text-texte-2 text-xs"
+      data-test="awaiting-quantity"
+    >
+      {{ t('trips.assignCustomer.awaitingQuantity') }}
+    </div>
 
     <div class="space-y-1">
       <p class="text-texte-2 text-xs">{{ t('trips.table.cessionLetter') }}</p>

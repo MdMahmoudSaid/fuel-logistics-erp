@@ -125,6 +125,7 @@ async function mountAt(permissions: Record<string, string[]> = { operations: ['v
 describe('SaleList', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    tripListMock.mockResolvedValue({ count: 1, next: null, previous: null, results: [makeTrip()] })
     setActivePinia(createPinia())
   })
 
@@ -136,7 +137,7 @@ describe('SaleList', () => {
   })
 
   it('opens the picker with only unassigned company-stock trips', async () => {
-    tripListMock.mockResolvedValueOnce({
+    tripListMock.mockResolvedValue({
       count: 2,
       next: null,
       previous: null,
@@ -184,5 +185,34 @@ describe('SaleList', () => {
     })
     expect(pushSpy).not.toHaveBeenCalledWith({ name: 'trip-detail', params: { id: 21 } })
     expect(wrapper.find('form').exists()).toBe(false) // popup closed
+  })
+
+  it('lists trips awaiting their received quantity and opens the quantity form', async () => {
+    tripListMock.mockResolvedValue({
+      count: 1,
+      next: null,
+      previous: null,
+      results: [
+        makeTrip({
+          id: 31,
+          reference: 'TRIP-031',
+          status: 'ARRIVED_AT_CLIENT',
+          client: 30,
+          client_detail: { id: 30, name: 'Client Test Mohamed' },
+          destination_type: 'CUSTOMER',
+          pending_unit_selling_price: '900.0000',
+        }),
+      ],
+    })
+    const { wrapper } = await mountAt()
+
+    const row = wrapper.find('[data-test="pending-row"]')
+    expect(row.exists()).toBe(true)
+    expect(row.text()).toContain('TRIP-031')
+    expect(row.text()).toContain('Client Test Mohamed')
+
+    await row.find('[data-test="enter-quantity"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-test="received-quantity"]').exists()).toBe(true)
   })
 })

@@ -1110,6 +1110,25 @@ describe('TripDetail expenses section', () => {
     ).toBeUndefined()
   })
 
+  it('shows the quantity form (not the delivery form) for a trip attributed with a parked price', async () => {
+    setUser({ operations: ['view', 'edit'], finance: ['view'] })
+    tripResourceGet.mockResolvedValueOnce(
+      makeTrip({
+        status: 'ARRIVED_AT_CLIENT',
+        client: 10,
+        client_detail: { id: 10, name: 'Moussa', is_walk_in: true },
+        pending_unit_selling_price: '900.0000',
+      }),
+    )
+    allowedStatusesToReturn = ['CANCELLED', 'BLOCKED']
+
+    const wrapper = await mountAt()
+
+    expect(wrapper.find('#control_date').exists()).toBe(false)
+    expect(wrapper.find('[data-test="received-quantity"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="pay-account"]').exists()).toBe(true) // walk-in
+  })
+
   it('shows the client-verification action once the trip is DELIVERED, and records a verification', async () => {
     setUser({ operations: ['view', 'edit'], finance: ['view'] })
     tripResourceGet
