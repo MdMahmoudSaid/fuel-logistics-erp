@@ -569,7 +569,7 @@ describe('DashboardView', () => {
       expect.stringContaining('Clients'),
       expect.stringContaining('Fournisseurs'),
       expect.stringContaining('Transporteurs'),
-      expect.stringContaining('Douane / Transit / Autres frais'),
+      expect.stringContaining('Transit BMK / Ts / Autres frais'),
     ])
     const partyRouterLinks = wrapper
       .findAllComponents({ name: 'RouterLink' })
@@ -681,7 +681,7 @@ describe('DashboardView', () => {
     // Each debt line is shown as a negative amount (a minus sign before it).
     expect(rowFor('Dettes fournisseurs')).toMatch(/[-−]\s?45 000 000/)
     expect(rowFor('Dettes transporteurs')).toMatch(/[-−]\s?2 925 000/)
-    expect(rowFor('Dettes douane / transit / frais')).toMatch(/[-−]\s?10 255 000/)
+    expect(rowFor('Dettes transit BMK / Ts / frais')).toMatch(/[-−]\s?10 255 000/)
     expect(rowFor('Stock : en cours')).toContain('45 000 000')
   })
 

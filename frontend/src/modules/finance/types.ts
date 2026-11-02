@@ -215,13 +215,13 @@ export type ExpenseCategory =
   | 'other'
 
 export const EXPENSE_CATEGORIES: { value: ExpenseCategory; label: string }[] = [
+  { value: 'loading', label: 'Loading' },
+  { value: 'road_transit', label: 'Road transit' },
+  { value: 'transit', label: 'Transit' },
+  { value: 'road', label: 'Road' },
   { value: 'customs', label: 'Customs' },
   { value: 'import_intention', label: 'Import intention' },
-  { value: 'transit', label: 'Transit' },
-  { value: 'road_transit', label: 'Road transit' },
-  { value: 'loading', label: 'Loading' },
   { value: 'unloading', label: 'Unloading' },
-  { value: 'road', label: 'Road' },
   { value: 'administration', label: 'Administration' },
   { value: 'rent', label: 'Rent' },
   { value: 'salary', label: 'Salary' },

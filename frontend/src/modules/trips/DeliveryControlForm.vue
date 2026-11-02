@@ -98,11 +98,11 @@ const componentRows = computed(() => {
       label: t('trips.delivery.transporterCommission'),
       value: Number(components.commission_transporter),
     },
+    { label: t('trips.delivery.loading'), value: Number(components.loading) },
     { label: t('trips.delivery.roadTransit'), value: Number(components.road_transit) },
     { label: t('trips.delivery.transit'), value: Number(components.transit) },
     { label: t('trips.delivery.border'), value: Number(components.border) },
     { label: t('trips.delivery.customs'), value: Number(components.customs) },
-    { label: t('trips.delivery.loading'), value: Number(components.loading) },
     { label: t('trips.delivery.otherFees'), value: Number(components.other) },
   ]
 })

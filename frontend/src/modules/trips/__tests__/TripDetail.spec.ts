@@ -1601,7 +1601,7 @@ describe('TripDetail expenses section', () => {
 
     const wrapper = await mountAt()
 
-    expect(wrapper.text()).toContain('Transit routière')
+    expect(wrapper.text()).toContain('Transit frontière')
     expect(wrapper.text().replace(/[⁦⁩]/g, '')).toContain('-450 000 XOF')
   })
 

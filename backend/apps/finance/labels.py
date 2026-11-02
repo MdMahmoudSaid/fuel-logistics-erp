@@ -5,9 +5,9 @@ from apps.finance.models import TreasuryTransaction
 # journal must describe a paid expense the same way the payment modal's
 # "Type de dette" field does, not by its raw Expense.Category value.
 _EXPENSE_COUNTERPARTY_BY_CATEGORY = {
-    "customs": "Douane",
-    "import_intention": "Transit",
-    "road": "Frontiere",
+    "customs": "Ts",
+    "import_intention": "Transit BMK",
+    "road": "Douane",
     "loading": "Chargement",
 }
 

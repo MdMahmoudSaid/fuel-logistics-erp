@@ -51,7 +51,7 @@ export const REPORT_TYPES: ReportTypeOption[] = [
     periodless: true,
     paramSelect: {
       param: 'fee_type',
-      options: ['all', 'customs', 'transit', 'road_transit', 'border', 'loading'],
+      options: ['all', 'loading', 'road_transit', 'transit', 'border', 'customs'],
       defaultValue: 'all',
     },
   },

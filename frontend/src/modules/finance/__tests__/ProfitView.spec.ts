@@ -413,11 +413,11 @@ describe('ProfitView', () => {
     const wrapper = mount(ProfitView)
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Frais transit routière des trajets comptabilisés')
+    expect(wrapper.text()).toContain('Frais transit frontière des trajets comptabilisés')
 
     const cards = wrapper.findAll('[data-test="profit-cost-card"]')
     const roadTransitCard = cards.find((card) =>
-      card.text().includes('Frais transit routière des trajets comptabilisés'),
+      card.text().includes('Frais transit frontière des trajets comptabilisés'),
     )
     expect(roadTransitCard).toBeDefined()
     expect(roadTransitCard!.text()).toContain('50 000 XOF')

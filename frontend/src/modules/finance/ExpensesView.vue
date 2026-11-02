@@ -46,7 +46,7 @@ const actionError = ref('')
 const cancellingId = ref<number | null>(null)
 const deletingId = ref<number | null>(null)
 
-const monitoredDebtTypes = ['customs', 'transit', 'road_transit', 'border', 'loading'] as const
+const monitoredDebtTypes = ['loading', 'road_transit', 'transit', 'border', 'customs'] as const
 
 const categoryNames = computed(() =>
   Object.fromEntries(categories.value.map((category) => [category.code, category.name])),

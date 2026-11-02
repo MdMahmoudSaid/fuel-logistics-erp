@@ -44,7 +44,7 @@ WORKING_CAPITAL_LINES = {
     ),
     "supplier_debt": ("- Dettes fournisseurs", "- Supplier debts", "supplier_debt_total"),
     "transporter_debt": ("- Dettes transporteurs", "- Transporter debts", "transporter_debt_total"),
-    "other_debts": ("- Dettes douane / transit / frais", "- Customs / transit / fees debts", "other_debts"),
+    "other_debts": ("- Dettes transit BMK / Ts / frais", "- BMK transit / TS / fees debts", "other_debts"),
 }
 
 _TITLES = {"fr": "Fond de roulement client", "en": "Customer working capital"}

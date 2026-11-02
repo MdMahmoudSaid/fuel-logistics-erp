@@ -264,11 +264,11 @@ describe('ReportsView', () => {
 
       expect(feeSelect.findAll('option').map((o) => o.text())).toEqual([
         'Tous',
-        'Douane',
-        'Transit',
-        'Transit routière',
-        'Frontière',
         'Chargement',
+        'Transit frontière',
+        'Transit BMK',
+        'Douane',
+        'Ts',
       ])
       await feeSelect.setValue('customs')
       await wrapper

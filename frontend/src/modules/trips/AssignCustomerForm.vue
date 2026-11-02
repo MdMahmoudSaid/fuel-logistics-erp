@@ -81,11 +81,11 @@ const componentRows = computed(() => {
   const rows: [string, (b: TripCostBasis) => string][] = [
     ['supplierPrice', (b) => b.unit_components_per_litre.supplier],
     ['transporterCommission', (b) => b.unit_components_per_litre.commission_transporter],
+    ['loading', (b) => b.unit_components_per_litre.loading],
     ['roadTransit', (b) => b.unit_components_per_litre.road_transit],
     ['transit', (b) => b.unit_components_per_litre.transit],
     ['border', (b) => b.unit_components_per_litre.border],
     ['customs', (b) => b.unit_components_per_litre.customs],
-    ['loading', (b) => b.unit_components_per_litre.loading],
     ['otherFees', (b) => b.unit_components_per_litre.other],
   ]
   return rows.map(([key, pick]) => ({

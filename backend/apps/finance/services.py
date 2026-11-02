@@ -2267,10 +2267,10 @@ class ControlledDebtPaymentService:
     @classmethod
     def _expense_group_label(cls, debt_type):
         return {
-            cls.CUSTOMS: "Douane",
-            cls.TRANSIT: "Transit",
-            cls.ROAD_TRANSIT: "Transit routiere",
-            cls.BORDER: "Frontiere",
+            cls.CUSTOMS: "Ts",
+            cls.TRANSIT: "Transit BMK",
+            cls.ROAD_TRANSIT: "Transit frontiere",
+            cls.BORDER: "Douane",
             cls.LOADING: "Chargement",
         }.get(debt_type, debt_type)
 

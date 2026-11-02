@@ -547,7 +547,7 @@ def test_existing_tables_have_no_section():
 
 @pytest.mark.parametrize(
     "lang,expected",
-    [("fr", ("Type de frais", "Douane")), ("en", ("Fee type", "Customs")), ("ar", ("نوع الرسوم", "الجمارك"))],
+    [("fr", ("Type de frais", "Ts")), ("en", ("Fee type", "TS")), ("ar", ("نوع الرسوم", "TS"))],
 )
 def test_fee_type_entity_is_translated(monkeypatch, lang, expected):
     monkeypatch.setitem(

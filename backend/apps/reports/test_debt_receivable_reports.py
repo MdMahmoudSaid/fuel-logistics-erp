@@ -165,7 +165,7 @@ def test_fee_debt_endpoint_exports_pdf_in_french_and_arabic_and_keeps_fields_bus
     payload = client.get("/api/reports/trip-fee-debt-report/", {"fee_type": "customs"}).json()
 
     assert french.status_code == arabic.status_code == 200
-    assert "Douane" in "\n".join(pdf_pages(french.content)[1])
+    assert "Type de frais Ts" in " ".join("\n".join(pdf_pages(french.content)[1]).split())
     assert "section" not in payload["fields"] and payload["rows"][0]["section"] == "line"
 
 

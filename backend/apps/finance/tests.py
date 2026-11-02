@@ -5935,7 +5935,7 @@ def test_describe_treasury_transaction_labels_a_customs_expense():
         recorded_by=admin_user,
     )
 
-    assert describe_treasury_transaction(txn) == {"counterparty": "Douane"}
+    assert describe_treasury_transaction(txn) == {"counterparty": "Ts"}
 
 
 @pytest.mark.django_db
@@ -7358,3 +7358,14 @@ def test_receipt_above_the_debt_keeps_only_the_surplus_as_advance(finance_client
     invoice.refresh_from_db()
     assert invoice.status == Invoice.Status.PAID
     assert PaymentAllocationService.get_customer_available_credit(customer) == Decimal("1000000.00")
+
+
+@pytest.mark.django_db
+def test_trip_fee_categories_are_listed_loading_border_transit_bmk_douane_ts():
+    """Renaming pass (2026-11): the five trip fees are shown in this order everywhere
+    (Chargement, Transit frontière, Transit BMK, Douane, Ts)."""
+    from apps.finance.models import ExpenseCategory
+
+    codes = ["loading", "road_transit", "transit", "road", "customs"]
+    listed = [c for c in ExpenseCategory.objects.values_list("code", flat=True) if c in codes]
+    assert listed == codes

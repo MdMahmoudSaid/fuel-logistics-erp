@@ -197,14 +197,14 @@ describe('ExpenseForm', () => {
   // The "road" category is entered as a trip fee under one name but paid
   // in "Nouveau paiement" under the debt type "Frontière" - the picker
   // must use that same term, not the stale "Route".
-  it('labels the "road" trip category "Frontière", consistent with the debt type', async () => {
+  it('labels the "road" trip category "Douane", consistent with the debt type', async () => {
     const wrapper = mount(ExpenseForm, {
       props: { presetAllocation: { kind: 'trip', objectId: 42, label: 'TRIP-042' } },
     })
     await flushPromises()
 
     const options = wrapper.find('#category').text()
-    expect(options).toContain('Frontière')
+    expect(options).toContain('Douane')
     expect(options).not.toContain('Route')
   })
 

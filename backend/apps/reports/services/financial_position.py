@@ -59,7 +59,7 @@ from apps.trips.models import Trip
 
 ZERO = Decimal("0.00")
 
-_FEE_KEYS = ("customs", "transit", "road_transit", "border", "loading")
+_FEE_KEYS = ("loading", "road_transit", "transit", "border", "customs")
 
 
 def _line(key, amount, children=None):

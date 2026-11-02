@@ -329,7 +329,7 @@ describe('DebtPaymentForm', () => {
     await flushPromises()
 
     const typeSelect = wrapper.findAll('select')[0]
-    expect(typeSelect.text()).toContain('Transit routière')
+    expect(typeSelect.text()).toContain('Transit frontière')
     await typeSelect.setValue('road_transit')
     await flushPromises()
 

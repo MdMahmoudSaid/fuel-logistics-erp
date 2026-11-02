@@ -343,13 +343,13 @@ const partyCards = computed(() => {
       // "transit" and "other" existed in the API response and were simply
       // never read here.
       detail:
-        t('dashboard.final.customs', { amount: formatMoney(p.customs_and_other.customs) }) +
-        ' · ' +
-        t('dashboard.final.transit', { amount: formatMoney(p.customs_and_other.transit) }),
-      sub:
         t('dashboard.final.roadTransit', {
           amount: formatMoney(p.customs_and_other.road_transit),
         }) +
+        ' · ' +
+        t('dashboard.final.transit', { amount: formatMoney(p.customs_and_other.transit) }),
+      sub:
+        t('dashboard.final.customs', { amount: formatMoney(p.customs_and_other.customs) }) +
         ' · ' +
         t('dashboard.final.other', { amount: formatMoney(p.customs_and_other.other) }),
       icon: 'shield' as IconName,

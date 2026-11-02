@@ -43,11 +43,11 @@ interface BankOption {
 const DEBT_TYPES: { value: DebtPaymentType; labelKey: string }[] = [
   { value: 'supplier', labelKey: 'finance.debtPayment.types.supplier' },
   { value: 'transporter', labelKey: 'finance.debtPayment.types.transporter' },
-  { value: 'customs', labelKey: 'finance.debtPayment.types.customs' },
-  { value: 'transit', labelKey: 'finance.debtPayment.types.transit' },
-  { value: 'road_transit', labelKey: 'finance.debtPayment.types.roadTransit' },
-  { value: 'border', labelKey: 'finance.debtPayment.types.border' },
   { value: 'loading', labelKey: 'finance.debtPayment.types.loading' },
+  { value: 'road_transit', labelKey: 'finance.debtPayment.types.roadTransit' },
+  { value: 'transit', labelKey: 'finance.debtPayment.types.transit' },
+  { value: 'border', labelKey: 'finance.debtPayment.types.border' },
+  { value: 'customs', labelKey: 'finance.debtPayment.types.customs' },
 ]
 
 const bankAccountResource = createResourceApi<BankOption>('/bank-accounts/')
