@@ -616,6 +616,47 @@ const cessionProofUrl = computed(
     <p v-else-if="loading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
     <template v-else-if="trip">
+      <Card v-if="canChangeStatus" :title="t('trips.detail.changeStatus')">
+        <div class="space-y-3">
+          <AppAlert v-if="statusError" :message="statusError" />
+
+          <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:gap-2">
+            <div class="flex flex-col gap-1">
+              <label class="text-texte-2 text-sm font-medium" for="next_status">{{
+                t('trips.detail.nextStatus')
+              }}</label>
+              <select
+                id="next_status"
+                v-model="nextStatus"
+                class="border-ligne-forte h-11 w-full rounded-lg border bg-white px-3 text-sm sm:w-auto"
+              >
+                <option value="" disabled>{{ t('trips.detail.selectStatus') }}</option>
+                <option v-for="s in visibleNextStatuses" :key="s" :value="s">
+                  {{ statusLabel(s) }}
+                </option>
+              </select>
+            </div>
+            <div class="flex flex-1 flex-col gap-1">
+              <label class="text-texte-2 text-sm font-medium" for="status_notes">{{
+                t('trips.detail.notes')
+              }}</label>
+              <input
+                id="status_notes"
+                v-model="statusNotes"
+                class="border-ligne-forte h-11 w-full rounded-lg border bg-white px-3 text-sm"
+              />
+            </div>
+            <Button
+              class="w-full sm:w-auto"
+              :disabled="!nextStatus || changingStatus"
+              @click="onChangeStatus"
+            >
+              {{ changingStatus ? t('trips.detail.updating') : t('trips.detail.apply') }}
+            </Button>
+          </div>
+        </div>
+      </Card>
+
       <section
         class="border-ligne grid grid-cols-1 md:grid-cols-2 gap-4 rounded-xl border bg-white p-4 text-sm"
       >
@@ -773,47 +814,6 @@ const cessionProofUrl = computed(
             <p class="text-texte-2 whitespace-pre-line">{{ entry.reason }}</p>
           </li>
         </ol>
-      </Card>
-
-      <Card v-if="canChangeStatus" :title="t('trips.detail.changeStatus')">
-        <div class="space-y-3">
-          <AppAlert v-if="statusError" :message="statusError" />
-
-          <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:gap-2">
-            <div class="flex flex-col gap-1">
-              <label class="text-texte-2 text-sm font-medium" for="next_status">{{
-                t('trips.detail.nextStatus')
-              }}</label>
-              <select
-                id="next_status"
-                v-model="nextStatus"
-                class="border-ligne-forte h-11 w-full rounded-lg border bg-white px-3 text-sm sm:w-auto"
-              >
-                <option value="" disabled>{{ t('trips.detail.selectStatus') }}</option>
-                <option v-for="s in visibleNextStatuses" :key="s" :value="s">
-                  {{ statusLabel(s) }}
-                </option>
-              </select>
-            </div>
-            <div class="flex flex-1 flex-col gap-1">
-              <label class="text-texte-2 text-sm font-medium" for="status_notes">{{
-                t('trips.detail.notes')
-              }}</label>
-              <input
-                id="status_notes"
-                v-model="statusNotes"
-                class="border-ligne-forte h-11 w-full rounded-lg border bg-white px-3 text-sm"
-              />
-            </div>
-            <Button
-              class="w-full sm:w-auto"
-              :disabled="!nextStatus || changingStatus"
-              @click="onChangeStatus"
-            >
-              {{ changingStatus ? t('trips.detail.updating') : t('trips.detail.apply') }}
-            </Button>
-          </div>
-        </div>
       </Card>
 
       <!-- Direct sale attributed without a quantity: the price is parked on the

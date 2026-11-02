@@ -117,7 +117,12 @@ async function onSubmit() {
     if (isNew.value) {
       const created = await cessionLetterResource.create(payload)
       await uploadSelectedDocument(created.id)
-      router.replace({ name: 'cession-letter-detail', params: { id: created.id } })
+      // Stay on the saved letter when the proof upload failed so the error stays visible.
+      router.replace(
+        uploadError.value
+          ? { name: 'cession-letter-detail', params: { id: created.id } }
+          : { name: 'cession-letters' },
+      )
     } else {
       cession.value = await cessionLetterResource.update(cessionId.value!, payload)
       await loadOrder(Number(form.value.supplier_order))

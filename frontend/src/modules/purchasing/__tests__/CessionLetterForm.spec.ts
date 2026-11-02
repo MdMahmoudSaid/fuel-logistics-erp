@@ -60,6 +60,7 @@ function makeRouter(query: Record<string, string> = {}) {
     routes: [
       { path: '/cession-letters/new', name: 'cession-letter-new', component: CessionLetterForm },
       { path: '/cession-letters/:id', name: 'cession-letter-detail', component: stub },
+      { path: '/cession-letters', name: 'cession-letters', component: stub },
       { path: '/supplier-orders', name: 'supplier-orders', component: stub },
     ],
   })
@@ -149,6 +150,7 @@ describe('CessionLetterForm', () => {
         objectId: 17,
       }),
     )
+    expect(router.currentRoute.value.name).toBe('cession-letters')
   })
 
   it('rejects a PDF proof before calling the API', async () => {

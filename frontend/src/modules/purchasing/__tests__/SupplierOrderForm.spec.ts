@@ -170,8 +170,7 @@ describe('SupplierOrderForm', () => {
       2,
       expect.objectContaining({ file: files[1], contentTypeName: 'supplierorder', objectId: 77 }),
     )
-    expect(router.currentRoute.value.name).toBe('supplier-order-detail')
-    expect(router.currentRoute.value.params.id).toBe('77')
+    expect(router.currentRoute.value.name).toBe('supplier-orders')
   })
 
   it('keeps the created order accessible and shows a clear message when a post-create upload fails', async () => {

@@ -32,7 +32,7 @@ const form = ref({
   currency: 'XOF',
   optional_costs: '',
   notes: '',
-  status: 'DRAFT' as SupplierOrderStatus,
+  status: 'CONFIRMED' as SupplierOrderStatus,
 })
 
 // A CONFIRMED order's quantity / price / costs can be corrected in place, but
@@ -140,7 +140,12 @@ async function onSubmit() {
       if (uploadFailed) {
         uploadError.value = t('purchasing.orderForm.uploadAfterCreateError')
       }
-      router.replace({ name: 'supplier-order-detail', params: { id: created.id } })
+      // Stay on the saved order when an upload failed so the error stays visible.
+      router.replace(
+        uploadFailed
+          ? { name: 'supplier-order-detail', params: { id: created.id } }
+          : { name: 'supplier-orders' },
+      )
     } else {
       order.value = await supplierOrderResource.update(orderId.value!, payload)
       amendReason.value = ''
