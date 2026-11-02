@@ -116,6 +116,8 @@ export interface ProductBrief {
 export interface CustomerBrief {
   id: number
   name: string
+  // "Client de passage": created per direct sale, hidden from customer lists.
+  is_walk_in?: boolean
 }
 
 export interface UserBrief {
@@ -163,6 +165,9 @@ export interface Trip {
   unit_cost?: string
   client: number | null
   client_detail: CustomerBrief | null
+  // Direct sale: selling price typed in the Ventes popup, parked until the
+  // received quantity is confirmed (null otherwise).
+  pending_unit_selling_price?: string | null
   customer_order: number | null
   destination_type: TripDestinationType
   loading_date: string

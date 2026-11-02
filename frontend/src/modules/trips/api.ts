@@ -77,6 +77,48 @@ export function assignTripsCustomer(tripIds: number[], customerId: number): Prom
     .then((r) => r.data)
 }
 
+// Where a walk-in customer's full cash payment lands (backend
+// DirectSaleService / CustomerPaymentSerializer destination + account).
+export interface PaymentDestination {
+  destination: 'BANK' | 'CASH'
+  bank_account?: number | null
+  cash_account?: number | null
+}
+
+// POST /trips/direct-sale/: attribute trips to a registered customer
+// (`customer`) or a walk-in (`walk_in_name`), arrive them, park the selling
+// price and - when `received_quantities` (keyed by trip id) is given -
+// deliver and invoice, all in one transaction.
+export interface DirectSalePayload {
+  trips: number[]
+  customer?: number | null
+  walk_in_name?: string | null
+  unit_selling_price: string
+  received_quantities?: Record<string, string>
+  payment_destination?: PaymentDestination | null
+  confirm_loss?: boolean
+}
+
+export function postDirectSale(payload: DirectSalePayload): Promise<Trip[]> {
+  return apiClient.post<Trip[]>('/trips/direct-sale/', payload).then((r) => r.data)
+}
+
+export interface ConfirmQuantityPayload {
+  received_quantity: string
+  payment_destination?: PaymentDestination | null
+  confirm_loss?: boolean
+}
+
+// Enter the received quantity of a trip attributed without one.
+export function confirmReceivedQuantity(
+  tripId: number,
+  payload: ConfirmQuantityPayload,
+): Promise<Trip> {
+  return apiClient
+    .post<Trip>(`/trips/${tripId}/confirm-received-quantity/`, payload)
+    .then((r) => r.data)
+}
+
 export interface DeliveryControlPayload {
   // Client modifications (2026-09-04 recette corrections): now optional -
   // DeliveryControlForm.vue never sends it any more, so the backend
