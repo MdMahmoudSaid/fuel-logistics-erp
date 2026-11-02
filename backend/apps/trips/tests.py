@@ -4099,3 +4099,21 @@ def test_trip_api_exposes_unit_cost_starting_at_supplier_price_then_growing_with
     # 1 200 000 / 40 000 L = +30 per litre, live on the very next read.
     listed = client.get("/api/trips/").data["results"]
     assert next(t for t in listed if t["id"] == trip.id)["unit_cost"] == "630.0000"
+
+
+@pytest.mark.django_db
+def test_trip_serializer_exposes_pending_price_and_walk_in_flag():
+    from apps.customers.models import Customer
+    from apps.trips.serializers import TripSerializer
+
+    fx = _setup_fixtures("PEND")
+    walk_in = Customer.objects.create(name="Passage", is_walk_in=True)
+    trip = _make_trip(fx, _make_truck("PEND-T"), "TRIP-PEND-1")
+    trip.client = walk_in
+    trip.pending_unit_selling_price = Decimal("800.5000")
+    trip.save()
+
+    data = TripSerializer(trip, context={"request": _FakeRequest(fx["admin_user"])}).data
+
+    assert data["pending_unit_selling_price"] == "800.5000"
+    assert data["client_detail"]["is_walk_in"] is True

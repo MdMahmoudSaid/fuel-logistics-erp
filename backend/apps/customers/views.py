@@ -24,6 +24,14 @@ class CustomerViewSet(viewsets.ModelViewSet):
     permission_classes = [HasModulePermission]
     module = "sales"
 
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        # Walk-in customers are per-sale records: never offered in the list,
+        # but still reachable by id (their invoices link to them).
+        if self.action == "list":
+            queryset = queryset.filter(is_walk_in=False)
+        return queryset
+
     @action(detail=True, methods=["get"])
     def ledger(self, request, pk=None):
         """Customer account statement: invoices, payments received and the

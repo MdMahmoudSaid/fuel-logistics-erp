@@ -150,6 +150,7 @@ class TripSerializer(serializers.ModelSerializer):
             "quantity_loaded",
             "client",
             "client_detail",
+            "pending_unit_selling_price",
             "customer_order",
             "destination_type",
             "loading_date",
@@ -173,6 +174,8 @@ class TripSerializer(serializers.ModelSerializer):
             # _normalize_destination_type below), never taken from client
             # input directly.
             "destination_type",
+            # Only ever written by DirectSaleService.
+            "pending_unit_selling_price",
             "created_by",
             "created_at",
             "updated_at",

@@ -146,6 +146,11 @@ class Trip(TimeStampedModel):
     # share a non-empty value are billed on ONE invoice (DeliveryService
     # attaches each later delivery's Sale to the group's DRAFT invoice).
     invoice_group = models.CharField(max_length=36, blank=True, default="", db_index=True)
+    # Direct sale from the Ventes popup: the selling price typed there is parked
+    # here until the received quantity is confirmed and the Sale is created.
+    pending_unit_selling_price = models.DecimalField(
+        max_digits=14, decimal_places=4, null=True, blank=True
+    )
     loading_date = models.DateField()
     bl_reference = models.CharField(max_length=100)
     status = models.CharField(

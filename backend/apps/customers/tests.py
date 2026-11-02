@@ -39,3 +39,20 @@ def test_customer_crud_requires_sales_create_permission():
     updated = client.patch(f"/api/customers/{customer_id}/", {"address": "Bamako"})
     assert updated.status_code == 200
     assert updated.data["address"] == "Bamako"
+
+
+@pytest.mark.django_db
+def test_customer_list_excludes_walk_in():
+    Customer.objects.create(name="A")
+    walk_in = Customer.objects.create(name="Passage", is_walk_in=True)
+    admin_role = Role.objects.get(name=Role.NAME_ADMIN)
+    admin = User.objects.create_user(phone="+2220000003", pin="1234", role=admin_role)
+    client = APIClient()
+    client.force_authenticate(admin)
+
+    listed = client.get("/api/customers/")
+    names = [c["name"] for c in listed.data["results"]]
+    assert names == ["A"]
+
+    # Invoices/ledger links to the walk-in must keep resolving.
+    assert client.get(f"/api/customers/{walk_in.id}/").status_code == 200

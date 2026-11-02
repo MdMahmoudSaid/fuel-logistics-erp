@@ -16,7 +16,7 @@ class CustomerBriefSerializer(serializers.ModelSerializer):
         model = Customer
         fields = [
             "id", "name", "company_name", "phone", "address",
-            "contact_name", "notes", "is_active", "created_at", "updated_at",
+            "contact_name", "notes", "is_active", "is_walk_in", "created_at", "updated_at",
         ]
         read_only_fields = fields
 
@@ -33,9 +33,9 @@ class CustomerSerializer(serializers.ModelSerializer):
             "id", "name", "company_name", "phone", "address",
             "contact_name", "notes", "total_invoiced", "total_collected",
             "outstanding_balance", "open_invoices_count", "last_payment_date",
-            "is_active", "created_at", "updated_at",
+            "is_active", "is_walk_in", "created_at", "updated_at",
         ]
-        read_only_fields = ["id", "created_at", "updated_at"]
+        read_only_fields = ["id", "is_walk_in", "created_at", "updated_at"]
 
     def get_total_invoiced(self, obj) -> str:
         total = obj.sales.aggregate(total=Sum("invoice__total_amount"))["total"] or Decimal("0.00")
