@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const post = vi.fn(async () => ({ data: [] }))
-vi.mock('@/api/client', () => ({ apiClient: { post: (...args: unknown[]) => post(...args), get: vi.fn() } }))
+const post = vi.fn(async (_url: string, _payload: unknown) => ({ data: [] }))
+vi.mock('@/api/client', () => ({
+  apiClient: { post: (url: string, payload: unknown) => post(url, payload), get: vi.fn() },
+}))
 
 import { postDirectSale, confirmReceivedQuantity } from '../api'
 

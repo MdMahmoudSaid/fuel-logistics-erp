@@ -17,6 +17,9 @@ import type { CustomerBrief, TripCostBasis } from './types'
 import Button from '@/components/ui/Button.vue'
 import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import PaymentAccountPicker from './PaymentAccountPicker.vue'
+import LossEstimate from './LossEstimate.vue'
+import { blockNonDigitInput } from '@/utils/numeric-input'
+import { isWholeLitres, wholeLitres } from '@/utils/litres'
 import { formatUnitMoney } from '@/utils/currency'
 
 // Single trip (tripId + tripReference) or several trips billed on one
@@ -126,7 +129,7 @@ const resultText = computed(() => {
 const quantityNow = ref(false)
 const quantities = ref<Record<number, string>>({})
 function quantityFor(tripId: number): string {
-  return quantities.value[tripId] ?? costBases.value[tripId]?.quantity ?? ''
+  return quantities.value[tripId] ?? wholeLitres(costBases.value[tripId]?.quantity)
 }
 const payment = ref<PaymentDestination | null>(null)
 
@@ -135,7 +138,7 @@ const canSubmit = computed(() => {
   if (isWalkIn.value && !walkInName.value.trim()) return false
   if (isLoss.value && !lossConfirmed.value) return false
   if (quantityNow.value) {
-    if (selectedTrips.value.some((trip) => !(Number(quantityFor(trip.id)) > 0))) return false
+    if (selectedTrips.value.some((trip) => !isWholeLitres(quantityFor(trip.id)))) return false
     if (isWalkIn.value && !payment.value) return false
   }
   return true
@@ -345,11 +348,17 @@ const inputClass =
                 :value="quantityFor(trip.id)"
                 :data-test="`qty-${trip.id}`"
                 type="number"
-                step="0.01"
+                step="1"
                 min="0"
-                :max="costBases[trip.id]?.quantity"
+                :max="wholeLitres(costBases[trip.id]?.quantity)"
                 :class="inputClass"
+                @beforeinput="blockNonDigitInput"
                 @input="quantities[trip.id] = ($event.target as HTMLInputElement).value"
+              />
+              <LossEstimate
+                v-if="costBases[trip.id]"
+                :quantity-loaded="costBases[trip.id]!.quantity"
+                :received-quantity="quantityFor(trip.id)"
               />
             </label>
             <div v-if="isWalkIn" class="space-y-2">

@@ -37,6 +37,10 @@ const costBasis = {
     other: '0',
   },
 }
+vi.mock('@/modules/settings/api', () => ({
+  fetchLossTolerance: vi.fn(async () => ({ tolerance_litres: '100' })),
+}))
+
 const postDirectSale = vi.fn(async (_payload: unknown) => [] as never)
 const costBasisById: Record<number, typeof costBasis> = {
   10: { ...costBasis, unit_cost: '560.0000', quantity: '45000.00' },
@@ -139,7 +143,7 @@ describe('AssignCustomerForm (direct sale)', () => {
     await wrapper.find('[data-test="quantity-now"]').setValue(true)
 
     const qty = wrapper.find('[data-test="qty-9"]')
-    expect((qty.element as HTMLInputElement).value).toBe('45000.00')
+    expect((qty.element as HTMLInputElement).value).toBe('45000')
     await qty.setValue('44000')
     await wrapper.find('form').trigger('submit.prevent')
     await flushPromises()
@@ -171,7 +175,7 @@ describe('AssignCustomerForm (direct sale)', () => {
       trips: [9],
       walk_in_name: 'Moussa',
       unit_selling_price: '900',
-      received_quantities: { '9': '45000.00' },
+      received_quantities: { '9': '45000' },
       payment_destination: { destination: 'CASH', cash_account: 5 },
     })
   })
@@ -251,5 +255,22 @@ describe('AssignCustomerForm (direct sale)', () => {
       confirm_loss: true,
     })
     expect(wrapper.emitted('success')).toBeTruthy()
+  })
+
+  it('takes whole litres only and shows the loss estimate under each trip quantity', async () => {
+    const wrapper = await mountForm()
+    await pickCustomer(wrapper, 'Client A')
+    await setPrice(wrapper, '900')
+    await wrapper.find('[data-test="quantity-now"]').setValue(true)
+
+    const qty = wrapper.find('[data-test="qty-9"]')
+    expect(qty.attributes('step')).toBe('1')
+    await qty.setValue('44800')
+    await flushPromises()
+    expect(wrapper.find('[data-test="company-absorbed"]').text()).toContain('100 L')
+    expect(wrapper.find('[data-test="transporter-chargeable"]').text()).toContain('100 L')
+
+    await qty.setValue('44800.5')
+    expect(wrapper.find('[data-test="submit"]').attributes('disabled')).toBeDefined()
   })
 })

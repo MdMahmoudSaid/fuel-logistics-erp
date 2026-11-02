@@ -13,6 +13,10 @@ vi.mock('@/api/resource', () => ({
   }),
 }))
 
+vi.mock('@/modules/settings/api', () => ({
+  fetchLossTolerance: vi.fn(async () => ({ tolerance_litres: '100' })),
+}))
+
 const confirmReceivedQuantity = vi.fn(async (_id: number, _payload: unknown) => ({}) as never)
 vi.mock('../api', () => ({
   confirmReceivedQuantity: (id: number, payload: unknown) => confirmReceivedQuantity(id, payload),
@@ -32,7 +36,7 @@ describe('ConfirmQuantityForm', () => {
   it('defaults to the loaded quantity and posts the entered quantity', async () => {
     const wrapper = await mountForm()
     const input = wrapper.find('[data-test="received-quantity"]')
-    expect((input.element as HTMLInputElement).value).toBe('45000.00')
+    expect((input.element as HTMLInputElement).value).toBe('45000')
 
     await input.setValue('44000')
     await wrapper.find('form').trigger('submit.prevent')
@@ -53,7 +57,7 @@ describe('ConfirmQuantityForm', () => {
     await wrapper.find('form').trigger('submit.prevent')
     await flushPromises()
     expect(confirmReceivedQuantity).toHaveBeenCalledWith(7, {
-      received_quantity: '45000.00',
+      received_quantity: '45000',
       payment_destination: { destination: 'CASH', cash_account: 5 },
     })
   })
@@ -72,9 +76,30 @@ describe('ConfirmQuantityForm', () => {
     await wrapper.find('form').trigger('submit.prevent')
     await flushPromises()
     expect(confirmReceivedQuantity).toHaveBeenLastCalledWith(7, {
-      received_quantity: '45000.00',
+      received_quantity: '45000',
       confirm_loss: true,
     })
     expect(wrapper.emitted('success')).toBeTruthy()
+  })
+
+  it('takes whole litres only: step 1 and a fractional quantity cannot be submitted', async () => {
+    const wrapper = await mountForm()
+    const input = wrapper.find('[data-test="received-quantity"]')
+    expect(input.attributes('step')).toBe('1')
+
+    await input.setValue('44000.5')
+    expect(wrapper.find('[data-test="submit"]').attributes('disabled')).toBeDefined()
+    await input.setValue('44000')
+    expect(wrapper.find('[data-test="submit"]').attributes('disabled')).toBeUndefined()
+  })
+
+  it('shows the company/transporter loss estimate under the quantity as soon as it is typed', async () => {
+    const wrapper = await mountForm()
+
+    await wrapper.find('[data-test="received-quantity"]').setValue('44800')
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="company-absorbed"]').text()).toContain('100 L')
+    expect(wrapper.find('[data-test="transporter-chargeable"]').text()).toContain('100 L')
   })
 })

@@ -11,11 +11,12 @@ import AppAlert from '@/components/ui/AppAlert.vue'
 // transporter-chargeable figures shown here while typing are an *estimate*
 // only, using whichever tolerance this browser could read (falls back to
 // the spec's 100 L default) - same convention as DeliveryControlForm.vue.
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { postClientVerification, type ClientVerificationPayload } from './api'
 import { translateApiError } from '@/i18n/apiErrors'
-import { fetchLossTolerance } from '@/modules/settings/api'
+import LossEstimate from './LossEstimate.vue'
+import { blockNonDigitInput } from '@/utils/numeric-input'
 import Button from '@/components/ui/Button.vue'
 import type { DeliveryControl } from './types'
 import { formatQuantity } from '@/utils/currency'
@@ -30,20 +31,6 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 
-const DEFAULT_TOLERANCE_LITRES = 100
-
-const toleranceLitres = ref(DEFAULT_TOLERANCE_LITRES)
-
-onMounted(async () => {
-  try {
-    const config = await fetchLossTolerance()
-    toleranceLitres.value = Number(config.tolerance_litres)
-  } catch {
-    // Not an admin (or the request otherwise failed) - keep the spec
-    // default for the live estimate; the server freezes the real value.
-  }
-})
-
 const form = ref({
   received_quantity: '',
   verified_at: new Date().toISOString().slice(0, 10),
@@ -51,13 +38,7 @@ const form = ref({
 })
 
 const loadedQty = computed(() => Number(props.quantityLoaded))
-const receivedQty = computed(() => Number(form.value.received_quantity) || 0)
 const hasReceivedInput = computed(() => form.value.received_quantity !== '')
-const lossQty = computed(() => loadedQty.value - receivedQty.value)
-const companyAbsorbedQty = computed(() =>
-  Math.max(Math.min(lossQty.value, toleranceLitres.value), 0),
-)
-const transporterChargeableQty = computed(() => Math.max(lossQty.value - toleranceLitres.value, 0))
 
 const canSubmit = computed(() => hasReceivedInput.value && !!form.value.verified_at)
 
@@ -111,9 +92,10 @@ async function onSubmit() {
           v-model="form.received_quantity"
           data-test="received-quantity"
           type="number"
-          step="0.01"
+          step="1"
           min="0"
           required
+          @beforeinput="blockNonDigitInput"
           class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
         />
         <p class="text-texte-3 text-xs">{{ t('trips.clientVerification.receivedQuantityHint') }}</p>
@@ -133,19 +115,7 @@ async function onSubmit() {
       </div>
     </div>
 
-    <div
-      v-if="hasReceivedInput"
-      class="border-ligne grid grid-cols-1 md:grid-cols-2 gap-4 rounded-lg border bg-sable p-3 text-sm"
-    >
-      <div>
-        <span class="text-texte-2">{{ t('trips.clientVerification.companyAbsorbed') }}</span>
-        <p class="text-texte font-medium">{{ formatQuantity(companyAbsorbedQty) }}</p>
-      </div>
-      <div>
-        <span class="text-texte-2">{{ t('trips.clientVerification.transporterChargeable') }}</span>
-        <p class="text-texte font-medium">{{ formatQuantity(transporterChargeableQty) }}</p>
-      </div>
-    </div>
+    <LossEstimate :quantity-loaded="quantityLoaded" :received-quantity="form.received_quantity" />
 
     <div class="space-y-1.5">
       <label class="text-texte-2 text-sm font-medium" for="notes">{{

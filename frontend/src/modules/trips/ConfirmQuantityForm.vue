@@ -11,12 +11,15 @@ import { translateApiError } from '@/i18n/apiErrors'
 import { confirmReceivedQuantity, type PaymentDestination } from './api'
 import Button from '@/components/ui/Button.vue'
 import PaymentAccountPicker from './PaymentAccountPicker.vue'
+import LossEstimate from './LossEstimate.vue'
+import { blockNonDigitInput } from '@/utils/numeric-input'
+import { isWholeLitres, wholeLitres } from '@/utils/litres'
 
 const props = defineProps<{ tripId: number; quantityLoaded: string; isWalkIn: boolean }>()
 const emit = defineEmits<{ success: []; cancel: [] }>()
 const { t } = useI18n()
 
-const quantity = ref(props.quantityLoaded)
+const quantity = ref(wholeLitres(props.quantityLoaded))
 const payment = ref<PaymentDestination | null>(null)
 // The price was frozen at attribution; the backend re-checks it against the
 // cost at invoicing time and answers 422 when it is now below cost.
@@ -24,8 +27,9 @@ const lossRequired = ref(false)
 const lossConfirmed = ref(false)
 
 const canSubmit = computed(() => {
-  const value = Number(quantity.value)
-  if (!(value > 0) || value > Number(props.quantityLoaded)) return false
+  if (!isWholeLitres(quantity.value) || Number(quantity.value) > Number(props.quantityLoaded)) {
+    return false
+  }
   if (props.isWalkIn && !payment.value) return false
   if (lossRequired.value && !lossConfirmed.value) return false
   return true
@@ -77,12 +81,14 @@ async function onSubmit() {
           v-model="quantity"
           data-test="received-quantity"
           type="number"
-          step="0.01"
+          step="1"
           min="0"
-          :max="quantityLoaded"
+          :max="wholeLitres(quantityLoaded)"
+          @beforeinput="blockNonDigitInput"
           class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
         />
       </label>
+      <LossEstimate :quantity-loaded="quantityLoaded" :received-quantity="quantity" />
 
       <div v-if="isWalkIn" class="space-y-2">
         <p class="text-sm font-semibold">{{ t('trips.assignCustomer.paymentTitle') }}</p>

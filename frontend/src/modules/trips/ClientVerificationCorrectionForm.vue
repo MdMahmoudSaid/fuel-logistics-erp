@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { blockNonDigitInput } from '@/utils/numeric-input'
 import AppAlert from '@/components/ui/AppAlert.vue'
 // Feedback (2026-09-10): the "Declarer une perte" button's wording led
 // operators to type the loss instead of the received quantity, with no way
@@ -84,9 +85,10 @@ async function onSubmit() {
           v-model="form.received_quantity"
           data-test="correction-received-quantity"
           type="number"
-          step="0.01"
+          step="1"
           min="0"
           required
+          @beforeinput="blockNonDigitInput"
           class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
         />
       </div>
