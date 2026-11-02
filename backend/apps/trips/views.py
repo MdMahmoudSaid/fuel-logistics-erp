@@ -10,18 +10,22 @@ from rest_framework.exceptions import MethodNotAllowed
 from rest_framework.response import Response
 
 from apps.accounts.permissions import HasModulePermission
+from apps.customers.models import Customer
 from apps.core.reference import generate_monthly_reference
 from apps.reports.serialization import decimals_to_str
 from apps.reports.services.profit import TripProfitService
 
+from .direct_sale import DirectSaleService
 from .models import Trip, TripCustomerRefusal
 from .serializers import (
     AssignCustomerRequestSerializer,
     AssignCustomersRequestSerializer,
     ClientVerificationCorrectionRequestSerializer,
     ClientVerificationRequestSerializer,
+    ConfirmReceivedQuantityRequestSerializer,
     DeliveryControlRequestSerializer,
     DeliveryControlSerializer,
+    DirectSaleRequestSerializer,
     TripSerializer,
     TripStatusHistorySerializer,
     prime_trip_list,
@@ -386,6 +390,67 @@ class TripViewSet(viewsets.ModelViewSet):
         return Response(
             TripSerializer(trips, many=True, context={"request": request}).data
         )
+
+    @staticmethod
+    def _direct_sale_error(exc):
+        """422 for the confirmation gates (same as delivery-control), 400 for
+        any other business-rule ValueError."""
+        if isinstance(exc, (DeliveryAnomalyConfirmationRequired, SaleBelowCostConfirmationRequired)):
+            code = http_status.HTTP_422_UNPROCESSABLE_ENTITY
+        else:
+            code = http_status.HTTP_400_BAD_REQUEST
+        return Response({"detail": str(exc)}, status=code)
+
+    @action(detail=False, methods=["post"], url_path="direct-sale")
+    def direct_sale(self, request):
+        """Attribute trips to a registered or walk-in customer, arrive them,
+        park the selling price and (optionally) deliver/invoice - one atomic
+        operation (DirectSaleService.assign_and_arrive).
+
+        POST /api/trips/direct-sale/
+        """
+        input_serializer = DirectSaleRequestSerializer(data=request.data)
+        input_serializer.is_valid(raise_exception=True)
+        data = input_serializer.validated_data
+        try:
+            trips = DirectSaleService.assign_and_arrive(
+                data["trips"],
+                customer_id=data.get("customer"),
+                walk_in_name=data.get("walk_in_name"),
+                unit_selling_price=data["unit_selling_price"],
+                received_quantities={
+                    int(trip_id): qty for trip_id, qty in data.get("received_quantities", {}).items()
+                },
+                payment_destination=data.get("payment_destination"),
+                confirm_loss=data.get("confirm_loss", False),
+                actor=request.user,
+            )
+        except (ValueError, Customer.DoesNotExist) as exc:
+            return self._direct_sale_error(exc)
+        return Response(TripSerializer(trips, many=True, context={"request": request}).data)
+
+    @action(detail=True, methods=["post"], url_path="confirm-received-quantity")
+    def confirm_received_quantity(self, request, pk=None):
+        """Enter the received quantity of a trip attributed without one:
+        delivers, invoices and (walk-in) books the cash payment.
+
+        POST /api/trips/{id}/confirm-received-quantity/
+        """
+        trip = self.get_object()
+        input_serializer = ConfirmReceivedQuantityRequestSerializer(data=request.data)
+        input_serializer.is_valid(raise_exception=True)
+        data = input_serializer.validated_data
+        try:
+            trip = DirectSaleService.confirm_received_quantity(
+                trip.id,
+                data["received_quantity"],
+                payment_destination=data.get("payment_destination"),
+                confirm_loss=data.get("confirm_loss", False),
+                actor=request.user,
+            )
+        except ValueError as exc:
+            return self._direct_sale_error(exc)
+        return Response(TripSerializer(trip, context={"request": request}).data)
 
     @action(detail=True, methods=["get"], url_path="suggested-selling-price")
     def suggested_selling_price(self, request, pk=None):

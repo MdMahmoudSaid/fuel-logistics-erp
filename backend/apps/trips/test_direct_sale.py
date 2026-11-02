@@ -286,3 +286,120 @@ def test_reassigning_a_customer_clears_the_parked_price():
 
     trip.refresh_from_db()
     assert trip.pending_unit_selling_price is None
+
+
+# --- API -------------------------------------------------------------------
+
+
+def _api(user):
+    from rest_framework.test import APIClient
+
+    client = APIClient()
+    client.force_authenticate(user)
+    return client
+
+
+@pytest.mark.django_db
+def test_direct_sale_endpoint_registered_and_walk_in():
+    fx = _setup_fixtures("DS20")
+    registered, walk = _stocked_trip(fx, "DS20A"), _stocked_trip(fx, "DS20B")
+    customer = Customer.objects.create(name="Client A")
+    api = _api(fx["admin_user"])
+
+    first = api.post(
+        "/api/trips/direct-sale/",
+        {"trips": [registered.id], "customer": customer.id, "unit_selling_price": "800.0000"},
+        format="json",
+    )
+    assert first.status_code == 200, first.data
+    assert first.data[0]["status"] == "ARRIVED_AT_CLIENT"
+    assert first.data[0]["pending_unit_selling_price"] == "800.0000"
+
+    cash = _cash()
+    second = api.post(
+        "/api/trips/direct-sale/",
+        {
+            "trips": [walk.id],
+            "walk_in_name": "Moussa",
+            "unit_selling_price": "800.0000",
+            "received_quantities": {str(walk.id): "45000.00"},
+            "payment_destination": cash,
+        },
+        format="json",
+    )
+    assert second.status_code == 200, second.data
+    assert second.data[0]["status"] == "DELIVERED"
+    assert second.data[0]["client_detail"]["is_walk_in"] is True
+    assert CustomerPayment.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_direct_sale_endpoint_forbidden_without_operations_edit():
+    from apps.accounts.models import Role, User
+
+    fx = _setup_fixtures("DS21")
+    trip = _stocked_trip(fx, "DS21")
+    role = Role.objects.get(name=Role.NAME_MANAGEMENT)  # operations: view/export only
+    viewer = User.objects.create_user(phone="+2220009921", pin="1234", role=role)
+
+    response = _api(viewer).post(
+        "/api/trips/direct-sale/",
+        {"trips": [trip.id], "walk_in_name": "X", "unit_selling_price": "800"},
+        format="json",
+    )
+
+    assert response.status_code == 403
+
+
+@pytest.mark.django_db
+def test_direct_sale_endpoint_rejects_bad_choice_with_400():
+    fx = _setup_fixtures("DS22")
+    trip = _stocked_trip(fx, "DS22")
+
+    response = _api(fx["admin_user"]).post(
+        "/api/trips/direct-sale/",
+        {"trips": [trip.id], "unit_selling_price": "800"},
+        format="json",
+    )
+
+    assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_confirm_received_quantity_endpoint():
+    fx = _setup_fixtures("DS23")
+    trip = _stocked_trip(fx, "DS23")
+    customer = Customer.objects.create(name="Client A")
+    _assign(fx, [trip], customer_id=customer.id)
+
+    response = _api(fx["admin_user"]).post(
+        f"/api/trips/{trip.id}/confirm-received-quantity/",
+        {"received_quantity": "44000.00"},
+        format="json",
+    )
+
+    assert response.status_code == 200, response.data
+    assert response.data["status"] == "DELIVERED"
+    assert Sale.objects.get(trip=trip).delivered_quantity == D("44000.00")
+
+
+@pytest.mark.django_db
+def test_direct_sale_below_cost_returns_confirmation_error():
+    fx = _setup_fixtures("DS24")
+    trip = _stocked_trip(fx, "DS24")
+    customer = Customer.objects.create(name="Client A")
+    payload = {
+        "trips": [trip.id],
+        "customer": customer.id,
+        "unit_selling_price": "100.0000",
+        "received_quantities": {str(trip.id): "45000.00"},
+    }
+    api = _api(fx["admin_user"])
+
+    refused = api.post("/api/trips/direct-sale/", payload, format="json")
+    assert refused.status_code == 422
+    trip.refresh_from_db()
+    assert trip.client_id is None
+
+    accepted = api.post("/api/trips/direct-sale/", {**payload, "confirm_loss": True}, format="json")
+    assert accepted.status_code == 200, accepted.data

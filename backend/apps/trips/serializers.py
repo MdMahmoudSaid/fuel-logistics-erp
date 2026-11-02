@@ -526,3 +526,34 @@ class AssignCustomersRequestSerializer(serializers.Serializer):
     trips = serializers.ListField(
         child=serializers.IntegerField(), allow_empty=False
     )
+
+
+class PaymentDestinationSerializer(serializers.Serializer):
+    """Where a walk-in customer's cash payment lands (same shape as
+    CustomerPaymentSerializer's destination + account)."""
+
+    destination = serializers.ChoiceField(choices=["BANK", "CASH"])
+    bank_account = serializers.IntegerField(required=False, allow_null=True)
+    cash_account = serializers.IntegerField(required=False, allow_null=True)
+
+
+class DirectSaleRequestSerializer(serializers.Serializer):
+    """Input for POST /api/trips/direct-sale/ (see DirectSaleService)."""
+
+    trips = serializers.ListField(child=serializers.IntegerField(), allow_empty=False)
+    customer = serializers.IntegerField(required=False, allow_null=True)
+    walk_in_name = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    unit_selling_price = serializers.DecimalField(max_digits=14, decimal_places=4)
+    received_quantities = serializers.DictField(
+        child=serializers.DecimalField(max_digits=14, decimal_places=2), required=False
+    )
+    payment_destination = PaymentDestinationSerializer(required=False, allow_null=True)
+    confirm_loss = serializers.BooleanField(required=False, default=False)
+
+
+class ConfirmReceivedQuantityRequestSerializer(serializers.Serializer):
+    """Input for POST /api/trips/{id}/confirm-received-quantity/."""
+
+    received_quantity = serializers.DecimalField(max_digits=14, decimal_places=2)
+    payment_destination = PaymentDestinationSerializer(required=False, allow_null=True)
+    confirm_loss = serializers.BooleanField(required=False, default=False)

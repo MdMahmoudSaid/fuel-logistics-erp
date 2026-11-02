@@ -85,6 +85,8 @@ ACTION_MAP = {
     # same "edit" tier as a trip status transition/delivery confirmation.
     "assign_customer": "edit",
     "assign_customers": "edit",
+    "direct_sale": "edit",
+    "confirm_received_quantity": "edit",
     # Invoice validation freezes financial data - gate it behind "validate"
     # (Role.ACTIONS), same tier as SupplierOrder/CessionLetter confirmation.
     "validate": "validate",
