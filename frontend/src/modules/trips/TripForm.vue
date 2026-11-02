@@ -343,8 +343,9 @@ async function onSubmit() {
             id="quantity_loaded"
             v-model="form.quantity_loaded"
             type="number"
-            step="0.01"
-            min="0.01"
+            step="1"
+            min="1"
+            inputmode="numeric"
             required
             class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
             :class="isOverLimit || exceedsCapacity ? 'border-critique' : ''"

@@ -205,6 +205,17 @@ describe('TripForm', () => {
     expect(wrapper.text()).toContain('Flotte propre / Interne')
   })
 
+  it('accepts whole litres only in the loaded-quantity field', async () => {
+    const router = makeRouter()
+    await router.isReady()
+    const wrapper = mount(TripForm, { global: { plugins: [router] } })
+    await flushPromises()
+
+    const input = wrapper.find('#quantity_loaded')
+    expect(input.attributes('step')).toBe('1')
+    expect(input.attributes('min')).toBe('1')
+  })
+
   it('submits the derived internal transporter for a company-owned truck trip', async () => {
     const router = makeRouter()
     await router.isReady()
