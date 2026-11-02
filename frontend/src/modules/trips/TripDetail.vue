@@ -657,6 +657,41 @@ const cessionProofUrl = computed(
         </div>
       </Card>
 
+      <!-- Direct sale attributed without a quantity: the price is parked on the
+           trip, so only the received quantity (and, for a walk-in, the payment
+           account) is left to enter. -->
+      <ConfirmQuantityForm
+        v-if="awaitingReceivedQuantity && canChangeStatus"
+        :trip-id="trip.id"
+        :quantity-loaded="trip.quantity_loaded"
+        :is-walk-in="!!trip.client_detail?.is_walk_in"
+        @success="onDeliveryConfirmed"
+      />
+      <DeliveryControlForm
+        v-else-if="['ARRIVED_AT_CLIENT', 'QUANTITY_CONTROL'].includes(trip.status) && canChangeStatus"
+        :trip-id="trip.id"
+        :quantity-loaded="trip.quantity_loaded"
+        @confirmed="onDeliveryConfirmed"
+      />
+
+      <div
+        v-if="
+          ['DELIVERED', 'COMPLETED'].includes(trip.status) &&
+          canChangeStatus &&
+          !clientAlreadyVerified
+        "
+      >
+        <Button v-if="!showVerificationForm" @click="showVerificationForm = true">
+          {{ t('trips.detail.clientVerificationAction') }}
+        </Button>
+        <ClientVerificationForm
+          v-else
+          :trip-id="trip.id"
+          :quantity-loaded="trip.quantity_loaded"
+          @verified="onClientVerified"
+        />
+      </div>
+
       <section
         class="border-ligne grid grid-cols-1 md:grid-cols-2 gap-4 rounded-xl border bg-white p-4 text-sm"
       >
@@ -815,41 +850,6 @@ const cessionProofUrl = computed(
           </li>
         </ol>
       </Card>
-
-      <!-- Direct sale attributed without a quantity: the price is parked on the
-           trip, so only the received quantity (and, for a walk-in, the payment
-           account) is left to enter. -->
-      <ConfirmQuantityForm
-        v-if="awaitingReceivedQuantity && canChangeStatus"
-        :trip-id="trip.id"
-        :quantity-loaded="trip.quantity_loaded"
-        :is-walk-in="!!trip.client_detail?.is_walk_in"
-        @success="onDeliveryConfirmed"
-      />
-      <DeliveryControlForm
-        v-else-if="['ARRIVED_AT_CLIENT', 'QUANTITY_CONTROL'].includes(trip.status) && canChangeStatus"
-        :trip-id="trip.id"
-        :quantity-loaded="trip.quantity_loaded"
-        @confirmed="onDeliveryConfirmed"
-      />
-
-      <div
-        v-if="
-          ['DELIVERED', 'COMPLETED'].includes(trip.status) &&
-          canChangeStatus &&
-          !clientAlreadyVerified
-        "
-      >
-        <Button v-if="!showVerificationForm" @click="showVerificationForm = true">
-          {{ t('trips.detail.clientVerificationAction') }}
-        </Button>
-        <ClientVerificationForm
-          v-else
-          :trip-id="trip.id"
-          :quantity-loaded="trip.quantity_loaded"
-          @verified="onClientVerified"
-        />
-      </div>
 
       <section
         v-if="clientAlreadyVerified && deliveryData"
