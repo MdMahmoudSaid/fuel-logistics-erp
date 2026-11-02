@@ -178,24 +178,30 @@ def test_endpoint_document_and_pdf_work_and_period_is_as_of():
 
 
 @pytest.mark.django_db
-def test_walk_in_customers_are_never_listed_as_customers_or_receivables():
+def test_walk_in_is_hidden_from_customer_lists_but_money_owed_or_held_is_never_hidden():
     from apps.reports.queries.customer_outstanding_report import CustomerOutstandingReportQuery
     from apps.reports.queries.customer_statement import CustomerStatementQuery
     from apps.reports.queries.general_receivable_report import GeneralReceivableReportQuery
 
     admin = _make_admin("WALKIN1")
     regular = Customer.objects.create(name="Client Normal")
-    walk_in = Customer.objects.create(name="Passage Moussa", is_walk_in=True)
+    owing = Customer.objects.create(name="Passage Doit", is_walk_in=True)
+    settled = Customer.objects.create(name="Passage Solde", is_walk_in=True)
     _opening(admin, "100000.00", customer=regular)
-    _opening(admin, "50000.00", customer=walk_in)
+    _opening(admin, "50000.00", customer=owing)  # a walk-in that still owes money
+    debt = _opening(admin, "20000.00", customer=settled)
+    _payment(settled, "20000.00", admin)  # fully settled -> zero balance
+    assert debt is not None
 
-    assert [r["party"] for r in ReceivablesSummaryReportQuery.run() if r["party_type"] == "customer"] == [
-        "Client Normal"
-    ]
-    assert "Passage Moussa" not in [r["customer"] for r in GeneralReceivableReportQuery.run()]
-    assert "Passage Moussa" not in [r["customer"] for r in CustomerOutstandingReportQuery.run()]
+    receivables = [r["party"] for r in ReceivablesSummaryReportQuery.run() if r["party_type"] == "customer"]
+    assert "Passage Doit" in receivables and "Passage Solde" not in receivables
+    general = [r["customer"] for r in GeneralReceivableReportQuery.run()]
+    assert "Passage Doit" in general and "Passage Solde" not in general
+    outstanding = [r["customer"] for r in CustomerOutstandingReportQuery.run()]
+    assert "Passage Doit" in outstanding and "Passage Solde" not in outstanding
+
+    # Never offered as a customer to pick / search.
     assert [name for _id, name in CustomerStatementQuery._parties()] == ["Client Normal"]
-
     client = APIClient()
     client.force_authenticate(admin)
     found = client.get("/api/search/", {"q": "Passage"})

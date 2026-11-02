@@ -99,7 +99,21 @@ const hasPrice = computed(() => unitPrice.value !== '' && Number(unitPrice.value
 const benefit = computed(() =>
   unitCost.value !== null && hasPrice.value ? Number(unitPrice.value) - unitCost.value : null,
 )
-const isLoss = computed(() => benefit.value !== null && benefit.value < 0)
+// The backend checks every trip against its own cost, so a loss on ANY trip
+// needs the confirmation, whatever the weighted average says. `lossRequired`
+// covers the case the client cannot see (cost unavailable): the backend's 422.
+const belowCostOnATrip = computed(
+  () =>
+    hasPrice.value &&
+    selectedTrips.value.some((trip) => {
+      const basis = costBases.value[trip.id]
+      return basis !== undefined && Number(unitPrice.value) < Number(basis.unit_cost)
+    }),
+)
+const lossRequired = ref(false)
+const isLoss = computed(
+  () => (benefit.value !== null && benefit.value < 0) || belowCostOnATrip.value || lossRequired.value,
+)
 const lossConfirmed = ref(false)
 const resultText = computed(() => {
   if (benefit.value === null) return ''
@@ -151,8 +165,9 @@ async function onSubmit() {
     await postDirectSale(payload)
     emit('success')
   } catch (e) {
-    const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-    error.value = translateApiError(detail) || t('trips.assignCustomer.saveError')
+    const response = (e as { response?: { status?: number; data?: { detail?: string } } })?.response
+    if (response?.status === 422) lossRequired.value = true
+    error.value = translateApiError(response?.data?.detail) || t('trips.assignCustomer.saveError')
   } finally {
     saving.value = false
   }

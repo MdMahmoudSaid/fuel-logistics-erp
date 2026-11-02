@@ -160,7 +160,14 @@ class DirectSaleService:
     def _record_full_cash_payment(customer, invoice, payment_destination, actor):
         # Imported lazily (same circular-import reason as TripCancellationService).
         from apps.finance.serializers import CustomerPaymentSerializer
+        from apps.sales.models import Invoice
+        from apps.sales.services import InvoiceService
 
+        # Paid at invoicing, so it must be payable: a DRAFT invoice is never
+        # moved to PAID by an allocation (and stays editable under a
+        # payment). Validate first, then the allocation settles it.
+        if invoice.status == Invoice.Status.DRAFT:
+            invoice = InvoiceService.validate_invoice(invoice.id, actor)
         destination = payment_destination["destination"]
         data = {
             "customer": customer.id,

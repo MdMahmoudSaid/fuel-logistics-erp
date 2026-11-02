@@ -403,3 +403,40 @@ def test_direct_sale_below_cost_returns_confirmation_error():
 
     accepted = api.post("/api/trips/direct-sale/", {**payload, "confirm_loss": True}, format="json")
     assert accepted.status_code == 200, accepted.data
+
+
+@pytest.mark.django_db
+def test_walk_in_invoice_ends_up_paid_not_draft():
+    from apps.sales.models import Invoice
+
+    fx = _setup_fixtures("DS30")
+    trip = _stocked_trip(fx, "DS30")
+
+    _assign(
+        fx,
+        [trip],
+        walk_in_name="Moussa",
+        received_quantities={trip.id: D("45000.00")},
+        payment_destination=_cash(),
+    )
+
+    invoice = Sale.objects.get(trip=trip).billing_invoice
+    assert invoice.status == Invoice.Status.PAID
+
+
+@pytest.mark.django_db
+def test_customer_refusal_clears_the_parked_price():
+    from apps.trips.services import TripCustomerRefusalService
+
+    fx = _setup_fixtures("DS31")
+    trip = _stocked_trip(fx, "DS31")
+    first, second = Customer.objects.create(name="A"), Customer.objects.create(name="B")
+    _assign(fx, [trip], customer_id=first.id)
+
+    TripCustomerRefusalService.refuse(
+        trip.id, "CHANGE_CUSTOMER", "refus", fx["admin_user"], customer_id=second.id
+    )
+
+    trip.refresh_from_db()
+    assert trip.client_id == second.id
+    assert trip.pending_unit_selling_price is None

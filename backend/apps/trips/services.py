@@ -1322,11 +1322,13 @@ class TripCustomerRefusalService:
             if old_order is not None and old_order.customer_id != new_customer.id:
                 trip.customer_order = None
         trip.invoice_group = ""
+        trip.pending_unit_selling_price = None
         previous_status = trip.status
         trip.status = TripCustomerRefusalService._status_after(trip, action)
         trip.save(
             update_fields=[
                 "client", "customer_order", "destination_type", "invoice_group", "status",
+                "pending_unit_selling_price",
                 "updated_at",
             ]
         )

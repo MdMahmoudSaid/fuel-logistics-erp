@@ -32,11 +32,12 @@ class CustomerOutstandingReportQuery:
             OpeningDebt.objects.filter(cancelled_at__isnull=True, customer__isnull=False)
             .values_list("customer_id", flat=True)
         )
-        customers = Customer.objects.filter(id__in=customer_ids, is_walk_in=False)
-        return [
-            {
-                "customer": customer.name,
-                "outstanding": PaymentAllocationService.get_customer_outstanding(customer),
-            }
-            for customer in customers
-        ]
+        rows = []
+        for customer in Customer.objects.filter(id__in=customer_ids):
+            outstanding = PaymentAllocationService.get_customer_outstanding(customer)
+            # A settled walk-in (the normal case) is not a customer to list;
+            # one that still owes or holds credit never disappears.
+            if customer.is_walk_in and outstanding == 0:
+                continue
+            rows.append({"customer": customer.name, "outstanding": outstanding})
+        return rows

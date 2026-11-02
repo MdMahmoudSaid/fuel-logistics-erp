@@ -38,17 +38,18 @@ const costBasis = {
   },
 }
 const postDirectSale = vi.fn(async (_payload: unknown) => [] as never)
+const costBasisById: Record<number, typeof costBasis> = {
+  10: { ...costBasis, unit_cost: '560.0000', quantity: '45000.00' },
+}
 vi.mock('../api', () => ({
-  fetchTripCostBasis: vi.fn(async () => costBasis),
+  fetchTripCostBasis: vi.fn(async (id: number) => costBasisById[id] ?? costBasis),
   postDirectSale: (payload: unknown) => postDirectSale(payload),
 }))
 
 type Wrapper = Awaited<ReturnType<typeof mountForm>>
 
-async function mountForm() {
-  const wrapper = mount(AssignCustomerForm, {
-    props: { trips: [{ id: 9, reference: 'TRIP-000009' }] },
-  })
+async function mountForm(trips = [{ id: 9, reference: 'TRIP-000009' }]) {
+  const wrapper = mount(AssignCustomerForm, { props: { trips } })
   await flushPromises()
   return wrapper
 }
@@ -199,5 +200,41 @@ describe('AssignCustomerForm (direct sale)', () => {
 
     expect(wrapper.emitted('success')).toBeUndefined()
     expect(wrapper.find('.text-critique').exists()).toBe(true)
+  })
+
+  it('flags a loss when any single trip is below cost, even if the weighted average is a profit', async () => {
+    const wrapper = await mountForm([
+      { id: 9, reference: 'TRIP-000009' }, // cost 725.8889
+      { id: 10, reference: 'TRIP-000010' }, // cost 560
+    ])
+    await pickCustomer(wrapper, 'Client A')
+    // 700 is above trip 10's cost (560) and above the average (643), but below trip 9's cost.
+    await setPrice(wrapper, '700')
+
+    expect(wrapper.find('[data-test="loss-confirm"]').exists()).toBe(true)
+  })
+
+  it('when the backend answers 422 it shows the loss confirmation and resends with confirm_loss', async () => {
+    postDirectSale.mockRejectedValueOnce({
+      response: { status: 422, data: { detail: 'Vente a perte' } },
+    })
+    const wrapper = await mountForm()
+    await pickCustomer(wrapper, 'Client A')
+    await setPrice(wrapper, '900')
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(wrapper.emitted('success')).toBeUndefined()
+    await wrapper.find('[data-test="loss-confirm"]').setValue(true)
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(postDirectSale).toHaveBeenLastCalledWith({
+      trips: [9],
+      customer: 1,
+      unit_selling_price: '900',
+      confirm_loss: true,
+    })
+    expect(wrapper.emitted('success')).toBeTruthy()
   })
 })
