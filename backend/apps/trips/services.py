@@ -302,8 +302,12 @@ class TripCostService:
         trip.client_id = customer_id
         trip.destination_type = Trip.DestinationType.CUSTOMER
         trip.invoice_group = ""
+        trip.pending_unit_selling_price = None
         trip.save(
-            update_fields=["client", "destination_type", "invoice_group", "updated_at"]
+            update_fields=[
+                "client", "destination_type", "invoice_group",
+                "pending_unit_selling_price", "updated_at",
+            ]
         )
         return trip
 
@@ -330,8 +334,12 @@ class TripCostService:
             trip.client_id = customer_id
             trip.destination_type = Trip.DestinationType.CUSTOMER
             trip.invoice_group = group
+            trip.pending_unit_selling_price = None
             trip.save(
-                update_fields=["client", "destination_type", "invoice_group", "updated_at"]
+                update_fields=[
+                    "client", "destination_type", "invoice_group",
+                    "pending_unit_selling_price", "updated_at",
+                ]
             )
         return trips
 
@@ -769,7 +777,7 @@ class DeliveryService:
             current_price = DeliveryService.get_latest_selling_price(
                 trip.product_id, customer.id
             )
-            if current_price != unit_selling_price:
+            if current_price != unit_selling_price and not customer.is_walk_in:
                 ProductSellingPriceHistory.objects.create(
                     product=trip.product,
                     customer=customer,
