@@ -63,6 +63,11 @@ async function pickCustomer(wrapper: Wrapper, label: string) {
   await flushPromises()
 }
 
+async function chooseWalkIn(wrapper: Wrapper) {
+  await wrapper.find('[data-test="mode-walk-in"]').trigger('click')
+  await flushPromises()
+}
+
 async function setPrice(wrapper: Wrapper, price: string) {
   await wrapper.find('[data-test="unit-price"]').setValue(price)
 }
@@ -70,11 +75,21 @@ async function setPrice(wrapper: Wrapper, price: string) {
 describe('AssignCustomerForm (direct sale)', () => {
   beforeEach(() => vi.clearAllMocks())
 
+  it('offers walk-in as a toggle above the customer field, not as a list entry', async () => {
+    const wrapper = await mountForm()
+    await wrapper.find('input').trigger('focus')
+    await flushPromises()
+    expect(wrapper.findAll('li').map((li) => li.text())).not.toContain('Client de passage')
+    expect(wrapper.find('[data-test="mode-walk-in"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="mode-registered"]').exists()).toBe(true)
+  })
+
   it('offers a walk-in option and then asks only for a name', async () => {
     const wrapper = await mountForm()
-    await pickCustomer(wrapper, 'Client de passage')
+    await chooseWalkIn(wrapper)
 
     expect(wrapper.find('[data-test="walk-in-name"]').exists()).toBe(true)
+    expect(wrapper.findComponent({ name: 'UiSearchableSelect' }).exists()).toBe(false)
     expect(wrapper.text()).toContain('TRIP-000009')
   })
 
@@ -139,7 +154,7 @@ describe('AssignCustomerForm (direct sale)', () => {
 
   it('walk-in with a quantity needs a payment account', async () => {
     const wrapper = await mountForm()
-    await pickCustomer(wrapper, 'Client de passage')
+    await chooseWalkIn(wrapper)
     await wrapper.find('[data-test="walk-in-name"]').setValue('Moussa')
     await setPrice(wrapper, '900')
     await wrapper.find('[data-test="quantity-now"]').setValue(true)

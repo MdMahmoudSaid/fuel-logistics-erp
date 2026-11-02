@@ -29,18 +29,18 @@ const props = defineProps<{
 const emit = defineEmits<{ success: []; cancel: [] }>()
 const { t } = useI18n()
 
-const WALK_IN = '__walk_in__'
-
 const customerResource = createResourceApi<CustomerBrief>('/customers/')
 const customers = ref<CustomerBrief[]>([])
 const customerId = ref('')
 const walkInName = ref('')
 
-const customerOptions = computed(() => [
-  { value: WALK_IN, label: t('trips.assignCustomer.walkIn') },
-  ...customers.value.map((c) => ({ value: String(c.id), label: c.name })),
-])
-const isWalkIn = computed(() => customerId.value === WALK_IN)
+const customerOptions = computed(() =>
+  customers.value.map((c) => ({ value: String(c.id), label: c.name })),
+)
+// "Client de passage" is a mode of the sale, not a customer: a toggle above
+// the customer field, so it is never mistaken for a registered customer's name.
+const mode = ref<'registered' | 'walk_in'>('registered')
+const isWalkIn = computed(() => mode.value === 'walk_in')
 
 const selectedTrips = computed(
   () =>
@@ -74,7 +74,7 @@ function weighted(pick: (basis: TripCostBasis) => string): number | null {
   if (litres === 0) return null
   return bases.reduce((sum, b) => sum + Number(pick(b)) * Number(b.quantity), 0) / litres
 }
-const customerChosen = computed(() => customerId.value !== '')
+const customerChosen = computed(() => isWalkIn.value || customerId.value !== '')
 const unitCost = computed(() => weighted((b) => b.unit_cost))
 const showCostDetails = ref(false)
 const componentRows = computed(() => {
@@ -197,7 +197,33 @@ const inputClass =
         </p>
       </div>
 
-      <label class="block space-y-1.5">
+      <div
+        class="bg-sable grid grid-cols-2 gap-1 rounded-lg p-1"
+        role="group"
+        :aria-label="t('trips.assignCustomer.customer')"
+      >
+        <button
+          v-for="option in [
+            { key: 'registered', label: t('trips.assignCustomer.registeredCustomer') },
+            { key: 'walk_in', label: t('trips.assignCustomer.walkIn') },
+          ] as const"
+          :key="option.key"
+          type="button"
+          :data-test="`mode-${option.key === 'walk_in' ? 'walk-in' : 'registered'}`"
+          :aria-pressed="mode === option.key"
+          class="h-10 rounded-md text-sm font-medium transition"
+          :class="
+            mode === option.key
+              ? 'bg-white text-texte shadow-sm'
+              : 'text-texte-2 hover:text-texte'
+          "
+          @click="mode = option.key"
+        >
+          {{ option.label }}
+        </button>
+      </div>
+
+      <label v-if="!isWalkIn" class="block space-y-1.5">
         <span class="text-texte-2 text-sm font-medium">{{
           t('trips.assignCustomer.customer')
         }}</span>

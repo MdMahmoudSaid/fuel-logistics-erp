@@ -454,6 +454,7 @@
       "noEligibleTrips": "No company-stock trip without a customer right now.",
       "singleInvoiceHint": "These trips will be billed on a single invoice (created at the first delivery).",
       "walkIn": "Walk-in customer",
+      "registeredCustomer": "Registered customer",
       "walkInName": "Walk-in customer name",
       "walkInHint": "Unregistered customer: pays the full amount in cash. The name will appear on the invoice.",
       "costLine": "Cost price",

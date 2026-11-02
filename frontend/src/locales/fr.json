@@ -455,6 +455,7 @@
       "noEligibleTrips": "Aucun trajet en stock entreprise sans client pour le moment.",
       "singleInvoiceHint": "Ces trajets seront facturés sur une seule facture (créée à la première livraison).",
       "walkIn": "Client de passage",
+      "registeredCustomer": "Client enregistré",
       "walkInName": "Nom du client de passage",
       "walkInHint": "Client non enregistré : il paie la totalité en espèces. Son nom apparaîtra sur la facture.",
       "costLine": "Prix de revient",
