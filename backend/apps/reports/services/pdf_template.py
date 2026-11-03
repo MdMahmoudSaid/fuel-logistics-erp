@@ -51,6 +51,7 @@ def masthead(*, company_name: str, doc_title: str, styles, heading_style) -> lis
         elements.append(logo)
         elements.append(Spacer(1, 3 * mm))
     elements.append(Paragraph(safe_text(company_name), styles["Title"]))
+    elements.extend(contact_paragraphs(styles))
     elements.append(Paragraph(safe_text(doc_title), heading_style))
     return elements
 
@@ -181,22 +182,42 @@ def draw_text(canvas, x: float, y: float, text: str, *, size: float = 7, align: 
             cursor += pdfmetrics.stringWidth(chunk, font, size)
 
 
-# Space every PDF keeps free at the bottom of each page for the company footer.
-FOOTER_MARGIN = 27 * mm
+# Space every PDF keeps free at the bottom of each page for the footer (bank
+# accounts + page number).
+FOOTER_MARGIN = 24 * mm
 
 _PAGE_LABELS = {"fr": "Page {n} / {total}", "en": "Page {n} / {total}", "ar": "صفحة {n} / {total}"}
+_BANK_TITLES = {"fr": "COORDONNÉES BANCAIRES", "en": "BANK DETAILS", "ar": "البيانات المصرفية"}
 _BRAND_BAR = (("#0b5cab", 0.7), ("#1e90d6", 0.2), ("#f39200", 0.1))
 
 
-def _footer_company() -> dict:
-    """The company block printed in every footer (Informations de l'entreprise
-    page). Like the logo, a footer problem never blocks an export."""
+def _company_profile_block() -> dict:
+    """The company block of the Informations de l'entreprise page. Like the
+    logo, a profile problem never blocks an export."""
     try:
         from apps.core.models import CompanyProfile
 
         return CompanyProfile.load().pdf_company()
     except Exception:
-        return {"name": DEFAULT_COMPANY_NAME, "lines": []}
+        return {"name": DEFAULT_COMPANY_NAME, "lines": [], "banks": []}
+
+
+def company_contact_lines() -> list[str]:
+    """Address, phones / e-mail and NIF / RC lines printed in the header of
+    the first page (letterhead); the footer only carries the bank accounts."""
+    return list(_company_profile_block().get("lines") or [])
+
+
+def contact_paragraphs(styles) -> list:
+    """Contact lines as small grey paragraphs, for the stacked mastheads."""
+    from reportlab.lib import colors
+    from reportlab.lib.styles import ParagraphStyle
+
+    style = ParagraphStyle(
+        "companyContact", parent=styles["Normal"], fontSize=8, leading=10, textColor=colors.HexColor("#6b7280")
+    )
+    lines = [Paragraph(safe_text(line), style) for line in company_contact_lines()]
+    return lines + [Spacer(1, 3 * mm)] if lines else []
 
 
 def _bank_segment(bank: dict) -> str:
@@ -204,32 +225,17 @@ def _bank_segment(bank: dict) -> str:
     return f"{text} (SWIFT {bank['swift']})" if bank.get("swift") else text
 
 
-def _pack(segments: list[str], width: float, size: float, separator: str = "   |   ") -> list[str]:
-    """Greedy packing of short segments into as few lines as fit `width`."""
-    rows: list[str] = []
-    for segment in segments:
-        candidate = f"{rows[-1]}{separator}{segment}" if rows else segment
-        if rows and _run_width(visual_text(candidate), size, False) <= width:
-            rows[-1] = candidate
-        else:
-            rows.append(segment)
-    return rows
-
-
 def draw_company_footer(canvas, *, number: int, total: int, page_label: str, lang: str, side_margin: float):
-    """Footer of one page: brand colour bar, hairline, then a compact block -
-    company name (bold) with "Page n / N" on the opposite side, the contact
-    details and the bank accounts packed on as few lines as fit. Mirrored in
-    Arabic."""
+    """Footer of one page: brand colour bar, hairline, then only the bank
+    accounts (one per line under a small title) with "Page n / N" on the
+    opposite side of the title. Mirrored in Arabic. Contact details live in
+    the header."""
     from reportlab.lib import colors
 
     width = canvas._pagesize[0]
     rtl = lang == "ar"
-    company = _footer_company()
-    usable = width - 2 * side_margin
-    contact_rows = _pack(list(company.get("lines") or []), usable, 6.5)
-    bank_rows = _pack([_bank_segment(b) for b in company.get("banks") or []], usable, 6.5)
-    rows = (contact_rows + bank_rows)[:4]
+    banks = _company_profile_block().get("banks") or []
+    rows = [_bank_segment(b) for b in banks][:3]
 
     bar_height, x = 1.6 * mm, 0.0
     for color, share in _BRAND_BAR:
@@ -246,18 +252,18 @@ def draw_company_footer(canvas, *, number: int, total: int, page_label: str, lan
     text_x = width - side_margin if rtl else side_margin
     align = "right" if rtl else "left"
     baseline = top - 2.4 * mm
-    canvas.setFillColor(colors.HexColor("#111827"))
-    draw_text(canvas, text_x, baseline, company["name"], size=7.5, align=align, bold=True)
+    if rows:
+        canvas.setFillColor(colors.HexColor("#0b5cab"))
+        draw_text(canvas, text_x, baseline, _BANK_TITLES.get(lang, _BANK_TITLES["fr"]), size=6.5, align=align, bold=True)
     canvas.setFillColor(colors.HexColor("#6b7280"))
     draw_text(
         canvas, width - text_x, baseline, page_label.format(n=number, total=total),
         size=7, align="left" if rtl else "right",
     )
-    for index, row in enumerate(rows):
+    canvas.setFillColor(colors.HexColor("#374151"))
+    for row in rows:
         baseline -= line_height
-        # Bank accounts sit apart from the contact lines, in the brand blue.
-        canvas.setFillColor(colors.HexColor("#0b5cab" if index >= len(contact_rows) else "#6b7280"))
-        draw_text(canvas, text_x, baseline, row, size=6.5, align=align)
+        draw_text(canvas, text_x, baseline, row, size=7, align=align)
 
 
 def numbered_canvas_cls(*, running_title: str, page_label: str | None = None, lang: str = "fr", side_margin: float = 12 * mm):

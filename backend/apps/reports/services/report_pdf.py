@@ -28,7 +28,13 @@ from reportlab.platypus import (
 )
 
 from apps.reports.services.ledger_pdf import _format_money, _format_quantity, _format_unit_money
-from apps.reports.services.pdf_template import FOOTER_MARGIN, logo_image, numbered_canvas_cls, para_text
+from apps.reports.services.pdf_template import (
+    FOOTER_MARGIN,
+    company_contact_lines,
+    logo_image,
+    numbered_canvas_cls,
+    para_text,
+)
 
 MARGIN = 12 * mm
 INK = colors.HexColor("#12171c")
@@ -152,12 +158,20 @@ def _header_block(document: dict, available: float, rtl: bool) -> list:
     tagline = document["company"].get("tagline")
     if tagline:  # document PDFs (spec 2026-10-11 documents-commerciaux)
         company_par = [company_par, _p(tagline, _cell_style(size=8, color=MUTED, rtl=rtl), document["lang"])]
-    if logo is None:
-        head = Table([[company_par]], colWidths=[available])
-    elif rtl:
-        head = Table([[company_par, logo]], colWidths=[available - 22 * mm, 22 * mm])
-    else:
-        head = Table([[logo, company_par]], colWidths=[22 * mm, available - 22 * mm])
+    contact_style = _cell_style(size=8, color=MUTED, rtl=rtl)
+    contact_style.leading = 10.5
+    contact_style.alignment = TA_LEFT if rtl else TA_RIGHT
+    contact = [_p(line, contact_style, document["lang"]) for line in company_contact_lines()]
+    contact_w = 100 * mm if contact else 0
+    # Letterhead: logo + name on the leading side, contact details opposite.
+    cells = [logo, company_par] if logo is not None else [company_par]
+    widths = [22 * mm, available - 22 * mm - contact_w] if logo is not None else [available - contact_w]
+    if contact:
+        cells.append(contact)
+        widths.append(contact_w)
+    if rtl:
+        cells, widths = cells[::-1], widths[::-1]
+    head = Table([cells], colWidths=widths)
     head.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("LEFTPADDING", (0, 0), (-1, -1), 0),
                               ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
 

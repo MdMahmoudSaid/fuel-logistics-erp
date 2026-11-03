@@ -1,5 +1,6 @@
-# The company footer (Informations de l'entreprise page) is stamped on every
-# page of every PDF the app renders, not only the commercial documents.
+# The company details (Informations de l'entreprise page) are laid out like a
+# letterhead on every PDF the app renders: contact details in the header of
+# the first page, only the bank accounts and the page number in the footer.
 
 import io
 
@@ -25,11 +26,18 @@ def test_company_footer_is_printed_on_a_report_pdf_that_is_not_a_commercial_docu
             "phone": "76202611", "email": "azur@example.com", "tax_id": "085161087V", "trade_register": "ML",
         },
     )
+    profile = CompanyProfile.load()
+    profile.bank_accounts.all().delete()
+    profile.bank_accounts.create(bank="BDM SA", account_number="ML13 0001", swift="BDMAMLBA")
     pdf = render_working_capital_pdf(working_capital={k: 0 for k in _KEYS}, lines=["total"], lang="fr")
 
     text = PdfReader(io.BytesIO(pdf)).pages[0].extract_text()
+    header, footer = text.split("COORDONNÉES BANCAIRES")
 
-    assert "AZUR ENERGIE" in text
+    assert "AZUR ÉNERGIE" in header
     assert "SARL" not in text  # the legal form is never printed next to the name
-    assert "NIF : 085161087V" in text
+    assert "NIF : 085161087V" in header
+    assert "azur@example.com" in header
+    assert "azur@example.com" not in footer
+    assert "BDM SA : ML13 0001 (SWIFT BDMAMLBA)" in footer
     assert "Page 1 / 1" in text

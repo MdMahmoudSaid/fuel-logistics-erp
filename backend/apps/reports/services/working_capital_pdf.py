@@ -17,6 +17,7 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 from apps.reports.services.pdf_template import (
     DEFAULT_COMPANY_NAME,
     FOOTER_MARGIN,
+    contact_paragraphs,
     logo_image,
     numbered_canvas_cls,
     safe_text,
@@ -143,6 +144,7 @@ def render_working_capital_pdf(
         elements.append(logo)
         elements.append(Spacer(1, 3 * mm))
     elements.append(Paragraph(safe_text(DEFAULT_COMPANY_NAME), styles["Title"]))
+    elements.extend(contact_paragraphs(styles))
     elements.append(
         Paragraph(f"{_EXPORT_DATE[language]}: {datetime.date.today().isoformat()}", styles["Normal"])
     )
