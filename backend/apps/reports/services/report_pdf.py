@@ -29,9 +29,12 @@ from reportlab.platypus import (
 
 from apps.reports.services.ledger_pdf import _format_money, _format_quantity, _format_unit_money
 from apps.reports.services.pdf_template import (
-    FOOTER_MARGIN,
-    company_contact_lines,
-    logo_image,
+    LABEL_GREY,
+    NAVY,
+    SANS,
+    SANS_BOLD,
+    footer_margin,
+    letterhead,
     numbered_canvas_cls,
     para_text,
 )
@@ -71,10 +74,10 @@ def _p(text, style, lang, width=None) -> Paragraph:
     )
 
 
-def _cell_style(*, bold=False, numeric=False, size=8, color=INK, rtl=False) -> ParagraphStyle:
+def _cell_style(*, bold=False, numeric=False, size=8.5, color=INK, rtl=False) -> ParagraphStyle:
     return ParagraphStyle(
         f"cell-{int(bold)}-{int(numeric)}-{size}-{int(rtl)}",
-        fontName="Helvetica-Bold" if bold else "Helvetica",
+        fontName=SANS_BOLD if bold else SANS,
         fontSize=size,
         leading=size * 1.45,
         textColor=color,
@@ -152,31 +155,14 @@ def _column_widths(columns: list[dict], available: float) -> list[float]:
 
 
 def _header_block(document: dict, available: float, rtl: bool) -> list:
-    company, title = document["company"]["name"], document["title"]
-    logo = logo_image(16 * mm)
-    company_par = _p(company, _cell_style(bold=True, size=15, rtl=rtl), document["lang"])
-    tagline = document["company"].get("tagline")
-    if tagline:  # document PDFs (spec 2026-10-11 documents-commerciaux)
-        company_par = [company_par, _p(tagline, _cell_style(size=8, color=MUTED, rtl=rtl), document["lang"])]
-    contact_style = _cell_style(size=8, color=MUTED, rtl=rtl)
-    contact_style.leading = 10.5
-    contact_style.alignment = TA_LEFT if rtl else TA_RIGHT
-    contact = [_p(line, contact_style, document["lang"]) for line in company_contact_lines()]
-    contact_w = 100 * mm if contact else 0
-    # Letterhead: logo + name on the leading side, contact details opposite.
-    cells = [logo, company_par] if logo is not None else [company_par]
-    widths = [22 * mm, available - 22 * mm - contact_w] if logo is not None else [available - contact_w]
-    if contact:
-        cells.append(contact)
-        widths.append(contact_w)
-    if rtl:
-        cells, widths = cells[::-1], widths[::-1]
-    head = Table([cells], colWidths=widths)
-    head.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("LEFTPADDING", (0, 0), (-1, -1), 0),
-                              ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
+    title = document["title"]
+    head = letterhead(
+        available, company_name=document["company"]["name"], tagline=document["company"].get("tagline"),
+        lang=document["lang"], rtl=rtl,
+    )
 
-    label_style = _cell_style(bold=True, size=8, color=MUTED, rtl=rtl)
-    value_style = _cell_style(size=9, rtl=rtl)
+    label_style = _cell_style(size=10, color=LABEL_GREY, rtl=rtl)
+    value_style = _cell_style(size=10, rtl=rtl)
     info = document["info"]
     label_w, value_w = 30 * mm, (available - 60 * mm) / 2
     rows = []
@@ -192,8 +178,7 @@ def _header_block(document: dict, available: float, rtl: bool) -> list:
     if rtl:  # mirrored grid: value | label, and the pair order reversed
         rows = [list(reversed(row)) for row in rows]
         widths = list(reversed(widths))
-    elements = [head, Spacer(1, 2 * mm), HRFlowable(width="100%", thickness=1.4, color=BRAND_BLUE),
-                Spacer(1, 4 * mm), _p(title, _cell_style(bold=True, size=17, rtl=rtl), document["lang"]),
+    elements = [*head, Spacer(1, 6 * mm), _p(title, _cell_style(bold=True, size=16, color=NAVY, rtl=rtl), document["lang"]),
                 Spacer(1, 3 * mm)]
     if rows:
         info_table = Table(rows, colWidths=widths, hAlign="RIGHT" if rtl else "LEFT")
@@ -359,7 +344,7 @@ def render_report_pdf(document: dict, rows: list[dict], lang: str | None = None)
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer, pagesize=page, leftMargin=MARGIN, rightMargin=MARGIN, topMargin=MARGIN + 4 * mm,
-        bottomMargin=FOOTER_MARGIN, title=document["title"], author=document["company"]["name"],
+        bottomMargin=footer_margin(MARGIN), title=document["title"], author=document["company"]["name"],
     )
     doc.build(
         flowables,

@@ -39,5 +39,5 @@ def test_company_footer_is_printed_on_a_report_pdf_that_is_not_a_commercial_docu
     assert "NIF : 085161087V" in header
     assert "azur@example.com" in header
     assert "azur@example.com" not in footer
-    assert "BDM SA : ML13 0001 (SWIFT BDMAMLBA)" in footer
+    assert "BDM SA" in footer and "Compte : ML13 0001" in footer and "SWIFT : BDMAMLBA" in footer
     assert "Page 1 / 1" in text

@@ -16,7 +16,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from apps.reports.services.pdf_template import DEFAULT_COMPANY_NAME, FOOTER_MARGIN, numbered_canvas_cls
+from apps.reports.services.pdf_template import DEFAULT_COMPANY_NAME, footer_margin, numbered_canvas_cls
 from apps.reports.services.profit_pdf import _format_money
 from apps.reports.services.report_pdf import (
     HEADER_FILL,
@@ -326,7 +326,7 @@ def render_financial_position_pdf(*, position: dict, lang: str = "fr") -> bytes:
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer, pagesize=A4, leftMargin=MARGIN, rightMargin=MARGIN, topMargin=MARGIN + 4 * mm,
-        bottomMargin=FOOTER_MARGIN, title=labels["title"], author=DEFAULT_COMPANY_NAME,
+        bottomMargin=footer_margin(MARGIN), title=labels["title"], author=DEFAULT_COMPANY_NAME,
     )
     doc.build(
         elements,

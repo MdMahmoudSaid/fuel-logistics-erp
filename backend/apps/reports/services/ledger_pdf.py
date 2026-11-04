@@ -35,13 +35,16 @@ from django.utils import timezone
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_RIGHT
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from apps.reports.services.pdf_template import (
     DEFAULT_COMPANY_NAME,
-    FOOTER_MARGIN,
+    SANS,
+    SANS_BOLD,
+    footer_margin,
+    sans_styles,
     masthead,
     numbered_canvas_cls,
     safe_text,
@@ -545,7 +548,7 @@ def _cell_style(lang: str, *, header: bool = False, numeric: bool = False) -> Pa
     width; the text alignment has to live in the Paragraph's own style."""
     return ParagraphStyle(
         f"cell-{'header' if header else 'body'}-{'num' if numeric else 'txt'}-{lang}",
-        fontName="Helvetica-Bold" if header else "Helvetica",
+        fontName=SANS_BOLD if header else SANS,
         fontSize=8,
         leading=9.5,
         textColor=colors.white if header else colors.HexColor("#12171c"),
@@ -569,7 +572,7 @@ def _doc_template(buffer, *, title: str) -> SimpleDocTemplate:
         leftMargin=15 * mm,
         rightMargin=15 * mm,
         topMargin=15 * mm,
-        bottomMargin=FOOTER_MARGIN,
+        bottomMargin=footer_margin(15 * mm),
         title=title,
     )
 
@@ -720,7 +723,7 @@ def _label_value_style(lang: str, *, bold: bool = False) -> ParagraphStyle:
     plain value column."""
     return ParagraphStyle(
         f"labelvalue-{'bold' if bold else 'normal'}-{lang}",
-        fontName="Helvetica-Bold" if bold else "Helvetica",
+        fontName=SANS_BOLD if bold else SANS,
         fontSize=9,
         leading=11,
         textColor=colors.HexColor("#12171c"),
@@ -757,7 +760,7 @@ def _label_value_pdf(*, title: str, field_rows: list[tuple[str, object]], lang: 
 
     buffer = io.BytesIO()
     doc = _doc_template(buffer, title=title)
-    styles = getSampleStyleSheet()
+    styles = sans_styles()
     heading_style = ParagraphStyle(
         "headingAligned", parent=styles["Heading2"], alignment=TA_RIGHT if is_rtl else 0
     )

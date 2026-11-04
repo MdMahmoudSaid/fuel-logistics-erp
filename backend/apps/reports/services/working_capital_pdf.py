@@ -10,15 +10,16 @@ import io
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT
-from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from apps.reports.services.pdf_template import (
     DEFAULT_COMPANY_NAME,
-    FOOTER_MARGIN,
-    contact_paragraphs,
-    logo_image,
+    SANS_BOLD,
+    footer_margin,
+    letterhead,
+    sans_styles,
     numbered_canvas_cls,
     safe_text,
 )
@@ -125,10 +126,10 @@ def render_working_capital_pdf(
     text = _SHEET_TEXT[language]
     title = _TITLES[language]
 
-    styles = getSampleStyleSheet()
-    cell = ParagraphStyle("wcCell", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=9, leading=11, alignment=TA_CENTER)
+    styles = sans_styles()
+    cell = ParagraphStyle("wcCell", parent=styles["Normal"], fontName=SANS_BOLD, fontSize=9, leading=11, alignment=TA_CENTER)
     amount_style = ParagraphStyle("wcAmount", parent=cell, alignment=TA_RIGHT)
-    band = ParagraphStyle("wcBand", parent=cell, fontName="Helvetica-BoldOblique")
+    band = ParagraphStyle("wcBand", parent=cell, fontName=SANS_BOLD)
 
     def band_text(value: str) -> Paragraph:
         return Paragraph(f"<u>{safe_text(value)}</u>", band)
@@ -136,19 +137,15 @@ def render_working_capital_pdf(
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer, pagesize=A4, leftMargin=20 * mm, rightMargin=20 * mm,
-        topMargin=15 * mm, bottomMargin=FOOTER_MARGIN, title=title,
+        topMargin=15 * mm, bottomMargin=footer_margin(20 * mm), title=title,
     )
     elements: list = []
-    logo = logo_image()
-    if logo is not None:
-        elements.append(logo)
-        elements.append(Spacer(1, 3 * mm))
-    elements.append(Paragraph(safe_text(DEFAULT_COMPANY_NAME), styles["Title"]))
-    elements.extend(contact_paragraphs(styles))
+    elements.extend(letterhead(A4[0] - 40 * mm, lang=language))
+    elements.append(Spacer(1, 5 * mm))
     elements.append(
         Paragraph(f"{_EXPORT_DATE[language]}: {datetime.date.today().isoformat()}", styles["Normal"])
     )
-    elements.append(Spacer(1, 6 * mm))
+    elements.append(Spacer(1, 5 * mm))
 
     rows: list = [[band_text(f"{text['title']} - {DEFAULT_COMPANY_NAME}"), "", ""]]
     style: list = [

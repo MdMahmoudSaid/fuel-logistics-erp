@@ -156,10 +156,20 @@ class CompanyProfile(TimeStampedModel):
             join(phones and f"Tél. : {phones}", self.email, self.website),
             join(self.tax_id and f"NIF : {self.tax_id}", self.trade_register and f"RC : {self.trade_register}"),
         ]
+        # One fact per line for the PDF letterhead: address, phones, e-mail,
+        # website, then the administrative identifiers.
+        contact = [
+            ", ".join(p for p in (self.address, self.city) if p),
+            phones and f"Tél. : {phones}",
+            self.email,
+            self.website,
+            join(self.tax_id and f"NIF : {self.tax_id}", self.trade_register and f"RC : {self.trade_register}"),
+        ]
         return {
             "name": re.sub(r"[\s.,\-]*\bSARL\b\.?\s*$", "", self.name, flags=re.I) or DEFAULT_COMPANY_NAME,
             "tagline": self.tagline,
             "lines": [line for line in lines if line],
+            "contact": [line for line in contact if line],
             "banks": [
                 {"bank": b.bank, "swift": b.swift, "account": b.account_number}
                 for b in self.bank_accounts.filter(is_active=True)

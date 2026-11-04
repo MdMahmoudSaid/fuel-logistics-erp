@@ -18,13 +18,15 @@ from decimal import ROUND_HALF_UP, Decimal
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_RIGHT
 from reportlab.lib.pagesizes import A4, landscape
-from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from apps.reports.services.pdf_template import (
     DEFAULT_COMPANY_NAME,
-    FOOTER_MARGIN,
+    SANS_BOLD,
+    footer_margin,
+    sans_styles,
     masthead,
     numbered_canvas_cls,
     safe_text,
@@ -151,7 +153,7 @@ _SUMMARY_TABLE_STYLE = TableStyle(
 def _bold_row(row_index: int):
     """A TableStyle command bolding one full row (both label and value
     columns) of a 2-column label/value summary table."""
-    return ("FONTNAME", (0, row_index), (-1, row_index), "Helvetica-Bold")
+    return ("FONTNAME", (0, row_index), (-1, row_index), SANS_BOLD)
 
 _DETAIL_TABLE_STYLE = TableStyle(
     [
@@ -234,7 +236,7 @@ def _doc_template(buffer, *, title: str) -> SimpleDocTemplate:
         leftMargin=15 * mm,
         rightMargin=15 * mm,
         topMargin=15 * mm,
-        bottomMargin=FOOTER_MARGIN,
+        bottomMargin=footer_margin(15 * mm),
         title=title,
     )
 
@@ -259,7 +261,7 @@ def render_profit_report_pdf(
     "since the last validated distribution".
     """
     labels = _labels(lang)
-    styles = getSampleStyleSheet()
+    styles = sans_styles()
     heading_style = ParagraphStyle("headingCustom", parent=styles["Heading2"])
     # Bug fix (found in visual review, 2026-09-06): the detail table's
     # "client" column is free text of unbounded length (a customer's real
@@ -357,7 +359,7 @@ def render_profit_report_pdf(
         fields = list(table_labels.keys())
         text_fields = {"trip_reference", "client", "product"}
         header_left = ParagraphStyle(
-            "detailHeaderLeft", parent=styles["Normal"], fontName="Helvetica-Bold",
+            "detailHeaderLeft", parent=styles["Normal"], fontName=SANS_BOLD,
             fontSize=7, leading=8, textColor=colors.white,
         )
         header_right = ParagraphStyle("detailHeaderRight", parent=header_left, alignment=TA_RIGHT)
