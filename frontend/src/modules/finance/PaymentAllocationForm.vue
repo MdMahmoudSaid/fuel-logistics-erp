@@ -119,9 +119,17 @@ async function loadInvoices() {
   }
 }
 
+function resetLines() {
+  autoAllocateDirty.value = false
+  lines.value = [{ invoice: '', amount: '' }]
+}
+
 function runFifoAutoAllocate() {
   const amount = Number(form.value.amount)
-  if (!amount || amount <= 0 || unpaidInvoices.value.length === 0) return
+  // No amount (cleared or zero): the lines below must follow, not keep the
+  // previous allocation.
+  if (!amount || amount <= 0) return resetLines()
+  if (unpaidInvoices.value.length === 0) return
 
   const oldestFirst = [...unpaidInvoices.value].sort((a, b) =>
     a.issued_date === b.issued_date ? a.id - b.id : a.issued_date < b.issued_date ? -1 : 1,
@@ -184,7 +192,9 @@ watch(
 watch(
   () => form.value.amount,
   () => {
-    if (!autoAllocateDirty.value) runFifoAutoAllocate()
+    // An emptied amount always clears the allocation, even hand-edited lines.
+    if (!(Number(form.value.amount) > 0)) resetLines()
+    else if (!autoAllocateDirty.value) runFifoAutoAllocate()
     // Invoice chosen before the amount was typed: fill that line now.
     else lines.value.forEach(fillLineAmount)
   },
@@ -192,9 +202,9 @@ watch(
 
 onMounted(async () => {
   const [customerData, bankData, cashData] = await Promise.all([
-    customerResource.list(),
-    bankAccountResource.list(),
-    cashAccountResource.list(),
+    customerResource.list({ status: 'active,legacy' }),
+    bankAccountResource.list({ is_active: true }),
+    cashAccountResource.list({ is_active: true }),
   ])
   customers.value = customerData.results
   bankAccounts.value = bankData.results
@@ -522,7 +532,8 @@ async function onSubmit() {
           >
             <option value="">{{ t('finance.payment.unallocatedCredit') }}</option>
             <option v-for="inv in unpaidInvoices" :key="inv.id" :value="inv.id">
-              {{ inv.invoice_number }} — {{ t('finance.payment.invoiceOptionRemaining') }}
+              {{ inv.invoice_number }}
+              — {{ t('finance.payment.invoiceOptionRemaining') }}
               {{ formatMoney(inv.outstanding) }}
             </option>
           </select>

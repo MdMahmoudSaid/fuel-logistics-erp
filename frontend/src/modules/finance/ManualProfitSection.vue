@@ -44,8 +44,8 @@ async function load() {
   try {
     const [list, b, c] = await Promise.all([
       manualProfitResource.list({}),
-      bankAccountResource.list({}),
-      cashAccountResource.list({}),
+      bankAccountResource.list({ is_active: true }),
+      cashAccountResource.list({ is_active: true }),
     ])
     profits.value = [...list.results]
     banks.value = [...b.results]

@@ -1,6 +1,8 @@
 from decimal import Decimal
 from rest_framework import serializers
 
+from apps.core.account_status import RejectInactiveMixin
+
 from apps.accounts.serializers import UserSerializer
 from apps.core.serializers import ProductSerializer
 from apps.documents.serializers import DocumentSerializer
@@ -66,7 +68,8 @@ class CessionLetterSerializer(serializers.ModelSerializer):
         return data
 
 
-class SupplierOrderSerializer(serializers.ModelSerializer):
+class SupplierOrderSerializer(RejectInactiveMixin, serializers.ModelSerializer):
+    reject_inactive_fields = ('supplier', 'product')
     reliquat = serializers.SerializerMethodField()
     loaded_quantity = serializers.SerializerMethodField()
     supplier_detail = SupplierBriefSerializer(source="supplier", read_only=True)

@@ -41,7 +41,7 @@ vi.mock('@/api/resource', () => ({
 async function mountAndOpenCreate() {
   const wrapper = mount(TruckView, { global: { plugins: [i18n] } })
   await flushPromises()
-  await wrapper.find('button').trigger('click') // "Ajouter"
+  await wrapper.findAll('button').find((b) => b.text() === 'Ajouter')!.trigger('click') // "Ajouter"
   await flushPromises()
   return wrapper
 }

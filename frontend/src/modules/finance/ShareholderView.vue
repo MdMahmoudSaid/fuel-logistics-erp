@@ -43,7 +43,10 @@ import Card from '@/components/ui/Card.vue'
 import Modal from '@/components/ui/Modal.vue'
 import MonoValue from '@/components/ui/MonoValue.vue'
 import EntityForm from '@/components/master-data/EntityForm.vue'
-import type { FieldSchema } from '@/components/master-data/types'
+import type { AccountStatus, FieldSchema } from '@/components/master-data/types'
+import { buildStatusActions, statusPayload } from '@/components/master-data/statusActions'
+import ActionMenu from '@/components/ui/ActionMenu.vue'
+import SegmentedControl from '@/components/ui/SegmentedControl.vue'
 import ContributionForm from './ContributionForm.vue'
 import ContributionsSection from './ContributionsSection.vue'
 import ShareholderAdvancesPanel, {
@@ -85,12 +88,59 @@ const today = () => new Date().toISOString().slice(0, 10)
 const shareholders = ref<Shareholder[]>([])
 // Client request 2026-10-11: an inactive associate is archived - he only
 // appears in the associates list's "Inactifs" view, never in a picker.
-const activeShareholders = computed(() => shareholders.value.filter((s) => s.is_active))
-const inactiveShareholders = computed(() => shareholders.value.filter((s) => !s.is_active))
-const showInactive = ref(false)
-const listedShareholders = computed(() =>
-  showInactive.value ? inactiveShareholders.value : activeShareholders.value,
+// "Ancien" associates (no longer partners, account not settled) get their own
+// view; like inactive ones they never appear in a distribution, advance or
+// contribution picker, but they can still withdraw what they are owed.
+const activeShareholders = computed(() =>
+  shareholders.value.filter((s) => s.is_active && !s.is_legacy),
 )
+const legacyShareholders = computed(() => shareholders.value.filter((s) => s.is_legacy))
+const inactiveShareholders = computed(() =>
+  shareholders.value.filter((s) => !s.is_active && !s.is_legacy),
+)
+const withdrawableShareholders = computed(() => [
+  ...activeShareholders.value,
+  ...legacyShareholders.value,
+])
+const statusTab = ref<AccountStatus>('active')
+const showInactive = computed(() => statusTab.value === 'inactive')
+const listedShareholders = computed(() =>
+  statusTab.value === 'legacy'
+    ? legacyShareholders.value
+    : statusTab.value === 'inactive'
+      ? inactiveShareholders.value
+      : activeShareholders.value,
+)
+const statusOptions = computed(() => [
+  {
+    value: 'active' as AccountStatus,
+    label: t('masterData.tabActive'),
+    count: activeShareholders.value.length,
+    testId: 'associates-active',
+  },
+  {
+    value: 'legacy' as AccountStatus,
+    label: t('masterData.tabLegacy'),
+    count: legacyShareholders.value.length,
+    testId: 'associates-legacy',
+  },
+  {
+    value: 'inactive' as AccountStatus,
+    label: t('masterData.tabInactive'),
+    count: inactiveShareholders.value.length,
+    testId: 'associates-inactive',
+  },
+])
+const statusError = ref('')
+async function onSetShareholderStatus(shareholder: Shareholder, status: AccountStatus) {
+  try {
+    await shareholderResource.update(shareholder.id, statusPayload(status, true))
+    statusError.value = ''
+    await loadShareholders()
+  } catch (e) {
+    statusError.value = extractErrorMessage(e, t('masterData.toggleError'))
+  }
+}
 
 const bankAccountResource = createResourceApi<TreasuryAccountOption>('/bank-accounts/')
 const cashAccountResource = createResourceApi<TreasuryAccountOption>('/cash-accounts/')
@@ -216,12 +266,11 @@ const shareholderFields = computed<FieldSchema[]>(() => [
   },
   { key: 'phone', label: t('masterData.fields.phone'), type: 'phone' },
   { key: 'notes', label: t('masterData.fields.notes'), type: 'textarea' },
-  { key: 'is_active', label: t('masterData.fields.active'), type: 'checkbox' },
 ])
 
 function openCreateShareholder() {
   editingShareholderId.value = null
-  shareholderFormValue.value = { is_active: true }
+  shareholderFormValue.value = {}
   shareholderError.value = ''
   showShareholderForm.value = true
 }
@@ -234,11 +283,15 @@ function openEditShareholder(shareholder: Shareholder) {
 }
 
 async function onShareholderSubmit() {
+  // Status is changed from the list's "⋯" menu, never from the form.
+  const { is_active: _a, is_legacy: _l, ...payload } = shareholderFormValue.value
+  void _a
+  void _l
   try {
     if (editingShareholderId.value === null) {
-      await shareholderResource.create(shareholderFormValue.value)
+      await shareholderResource.create(payload)
     } else {
-      await shareholderResource.update(editingShareholderId.value, shareholderFormValue.value)
+      await shareholderResource.update(editingShareholderId.value, payload)
     }
     showShareholderForm.value = false
     await loadShareholders()
@@ -716,29 +769,12 @@ async function onWithdrawalShareholderChange() {
     <Card v-if="activeTab === 'associates'" :title="t('finance.shareholder.listTitle')">
       <template #actions>
         <div class="flex flex-wrap items-center justify-end gap-2">
-          <div
+          <SegmentedControl
+            v-model="statusTab"
             data-test="associates-filter"
-            class="border-ligne flex rounded-lg border bg-white p-0.5 text-sm"
-          >
-            <button
-              type="button"
-              data-test="associates-active"
-              class="rounded-md px-3 py-1.5 whitespace-nowrap"
-              :class="!showInactive ? 'bg-bitume text-sable' : 'text-texte-2'"
-              @click="showInactive = false"
-            >
-              {{ t('finance.shareholder.activeCount', { n: activeShareholders.length }) }}
-            </button>
-            <button
-              type="button"
-              data-test="associates-inactive"
-              class="rounded-md px-3 py-1.5 whitespace-nowrap"
-              :class="showInactive ? 'bg-bitume text-sable' : 'text-texte-2'"
-              @click="showInactive = true"
-            >
-              {{ t('finance.shareholder.inactiveCount', { n: inactiveShareholders.length }) }}
-            </button>
-          </div>
+            :options="statusOptions"
+            :aria-label="t('masterData.statusFilter')"
+          />
           <Button
             data-testid="new-contribution-button"
             variant="secondary"
@@ -752,6 +788,14 @@ async function onWithdrawalShareholderChange() {
         </div>
       </template>
 
+      <AppAlert v-if="statusError" :message="statusError" />
+      <p
+        v-if="statusTab === 'legacy'"
+        data-test="legacy-notice"
+        class="border-ligne bg-sable text-texte-2 mb-3 rounded-lg border p-2.5 text-sm"
+      >
+        {{ t('finance.shareholder.legacyNotice') }}
+      </p>
       <p
         v-if="showInactive"
         data-test="inactive-notice"
@@ -800,14 +844,33 @@ async function onWithdrawalShareholderChange() {
                 {{ s.phone ? formatPhoneDisplay(s.phone) : '—' }}
               </td>
               <td class="px-3 py-2.5">
-                <Badge :variant="s.is_active ? 'livre' : 'neutre'">
-                  {{ s.is_active ? t('masterData.statusActive') : t('masterData.statusInactive') }}
+                <Badge :variant="s.is_legacy ? 'ecart' : s.is_active ? 'livre' : 'neutre'">
+                  {{
+                    s.is_legacy
+                      ? t('masterData.statusLegacy')
+                      : s.is_active
+                        ? t('masterData.statusActive')
+                        : t('masterData.statusInactive')
+                  }}
                 </Badge>
               </td>
-              <td class="px-3 py-2.5 text-end">
-                <Button variant="ghost" @click="openEditShareholder(s)">{{
-                  t('masterData.edit')
-                }}</Button>
+              <td class="px-3 py-2.5 text-end whitespace-nowrap">
+                <span class="inline-flex items-center gap-1">
+                  <Button variant="ghost" @click="openEditShareholder(s)">{{
+                    t('masterData.edit')
+                  }}</Button>
+                  <ActionMenu
+                    :label="t('masterData.moreActions')"
+                    :items="
+                      buildStatusActions(s, true, t).map((a) => ({
+                        key: a.target,
+                        label: a.label,
+                        tone: a.tone,
+                      }))
+                    "
+                    @select="onSetShareholderStatus(s, $event as AccountStatus)"
+                  />
+                </span>
               </td>
             </tr>
             <tr v-if="listedShareholders.length === 0">
@@ -1177,7 +1240,9 @@ async function onWithdrawalShareholderChange() {
             @change="onWithdrawalShareholderChange"
           >
             <option value="" disabled>{{ t('finance.shareholder.selectShareholder') }}</option>
-            <option v-for="s in activeShareholders" :key="s.id" :value="s.id">{{ s.name }}</option>
+            <option v-for="s in withdrawableShareholders" :key="s.id" :value="s.id">
+              {{ s.name }}
+            </option>
           </select>
         </div>
         <div v-if="withdrawalAvailableBalance" class="space-y-1.5">
@@ -1310,7 +1375,9 @@ async function onWithdrawalShareholderChange() {
             class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
           >
             <option value="" disabled>{{ t('finance.shareholder.selectShareholder') }}</option>
-            <option v-for="s in activeShareholders" :key="s.id" :value="s.id">{{ s.name }}</option>
+            <option v-for="s in withdrawableShareholders" :key="s.id" :value="s.id">
+              {{ s.name }}
+            </option>
           </select>
         </div>
         <Button variant="primary" @click="onViewLedger">{{

@@ -95,7 +95,7 @@ function togglePick(trip: DeliverableTrip, picked: boolean) {
 onMounted(async () => {
   try {
     const [all, note] = await Promise.all([
-      listAll(createResourceApi<CustomerOption>('/customers/')),
+      listAll(createResourceApi<CustomerOption>('/customers/'), { is_active: true }),
       load(),
     ])
     customers.value = all

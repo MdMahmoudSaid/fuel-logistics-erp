@@ -7,6 +7,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.accounts.permissions import HasModulePermission
+from apps.core.account_status import AccountStatusFilterMixin
 from apps.reports.services.ledger_pdf import (
     DEFAULT_COMPANY_NAME,
     get_ledger_pdf_labels,
@@ -17,7 +18,7 @@ from .models import Customer
 from .serializers import CustomerSerializer
 
 
-class CustomerViewSet(viewsets.ModelViewSet):
+class CustomerViewSet(AccountStatusFilterMixin, viewsets.ModelViewSet):
     queryset = Customer.objects.all()
     serializer_class = CustomerSerializer
     filterset_fields = ["is_active"]

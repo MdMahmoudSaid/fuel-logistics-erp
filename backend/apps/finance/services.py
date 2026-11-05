@@ -15,6 +15,7 @@ from django.db import connection, transaction
 from django.db.models import F, Q, Sum
 from django.utils import timezone
 
+from apps.core.account_status import HAS_OPEN_ACCOUNT
 from apps.accounts.models import Role
 
 from apps.core.models import CompanyProfile
@@ -2913,7 +2914,8 @@ class ShareholderWithdrawalService:
         ShareholderLedgerService.get_profit_and_capital_remaining.
         """
         shareholder = Shareholder.objects.select_for_update().get(pk=shareholder_id)
-        if not shareholder.is_active:
+        # A former associate ("Ancien") can still withdraw what he is owed.
+        if not (shareholder.is_active or shareholder.is_legacy):
             raise ShareholderWithdrawalError(f"L'associe {shareholder.name} est inactif.")
         amount_decimal = Decimal(str(amount))
 
@@ -3531,14 +3533,14 @@ class WorkingCapitalService:
         supplier_debt_total = sum(
             (
                 ControlledDebtPaymentService.describe_supplier_balance(s)["total_due"]
-                for s in Supplier.objects.filter(is_active=True)
+                for s in Supplier.objects.filter(HAS_OPEN_ACCOUNT)
             ),
             ZERO,
         )
         transporter_debt_total = sum(
             (
                 ControlledDebtPaymentService.describe_transporter_balance(t)["total_due"]
-                for t in Transporter.objects.filter(is_active=True)
+                for t in Transporter.objects.filter(HAS_OPEN_ACCOUNT)
             ),
             ZERO,
         )
@@ -4062,7 +4064,7 @@ class ShareholderLedgerService:
         page."""
         shareholders = [
             {"id": s.id, "name": s.name}
-            for s in Shareholder.objects.filter(is_active=True).order_by("name")
+            for s in Shareholder.objects.filter(HAS_OPEN_ACCOUNT).order_by("name")
         ]
         rows = [
             {

@@ -4,6 +4,8 @@ from decimal import Decimal
 from django.db.models import Count, Sum
 from rest_framework import serializers
 
+from apps.core.account_status import RejectInactiveMixin
+
 from apps.accounts.models import Role, User
 from apps.accounts.serializers import UserSerializer
 from apps.core.request_cache import memoize_per_request
@@ -95,7 +97,8 @@ def prime_trip_list(trips) -> None:
         )
 
 
-class TripSerializer(serializers.ModelSerializer):
+class TripSerializer(RejectInactiveMixin, serializers.ModelSerializer):
+    reject_inactive_fields = ('truck', 'supplier', 'product', 'transporter')
     truck_detail =TruckSerializer(source="truck", read_only=True)
     transporter_detail = TransporterBriefSerializer(source="transporter", read_only=True)
     driver_detail = DriverSerializer(source="driver", read_only=True)
@@ -188,10 +191,23 @@ class TripSerializer(serializers.ModelSerializer):
         self._validate_truck_capacity(data)
         self._validate_truck_availability(data, force)
         self._validate_and_derive_transporter(data)
+        self._reject_inactive_derived_transporter(data)
         self._validate_client_customer_order_consistency(data)
         self._normalize_destination_type(data)
 
         return data
+
+    def _reject_inactive_derived_transporter(self, data):
+        # The transporter is derived from the truck's owner; a legacy or
+        # inactive transporter no longer takes new trips.
+        transporter = data.get("transporter")
+        if transporter is None or transporter.is_active:
+            return
+        if self.instance is not None and self.instance.transporter_id == transporter.id:
+            return
+        raise serializers.ValidationError(
+            {"transporter": "Ce transporteur est inactif : il ne peut plus prendre de trajet."}
+        )
 
     def get_unit_cost(self, obj) -> str:
         unit_cost = TripCostService.calculate_trip_cost_basis(obj)["unit_cost"]
@@ -505,7 +521,8 @@ class ClientVerificationCorrectionRequestSerializer(serializers.Serializer):
     reason = serializers.CharField()
 
 
-class AssignCustomerRequestSerializer(serializers.Serializer):
+class AssignCustomerRequestSerializer(RejectInactiveMixin, serializers.Serializer):
+    reject_inactive_fields = ('customer',)
     """Input validation for POST /api/trips/{id}/assign-customer/.
 
     Not a ModelSerializer: the actual mutation (plus its "reject once a
@@ -518,7 +535,8 @@ class AssignCustomerRequestSerializer(serializers.Serializer):
     customer = serializers.PrimaryKeyRelatedField(queryset=Customer.objects.all())
 
 
-class AssignCustomersRequestSerializer(serializers.Serializer):
+class AssignCustomersRequestSerializer(RejectInactiveMixin, serializers.Serializer):
+    reject_inactive_fields = ('customer',)
     """Input for POST /api/trips/assign-customers/ (several trips, one
     customer, one invoice)."""
 

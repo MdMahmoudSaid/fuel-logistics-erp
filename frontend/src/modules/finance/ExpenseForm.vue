@@ -234,8 +234,8 @@ const treasuryForm = ref({
 onMounted(async () => {
   if (!props.showTreasuryPayment) return
   const [bankData, cashData] = await Promise.all([
-    bankAccountResource.list(),
-    cashAccountResource.list(),
+    bankAccountResource.list({ is_active: true }),
+    cashAccountResource.list({ is_active: true }),
   ])
   bankAccounts.value = bankData.results
   cashAccounts.value = cashData.results
@@ -251,7 +251,7 @@ const customerInvoices = ref<CustomerLedgerInvoice[]>([])
 const indirectForm = ref({ customer: '', invoice: '' })
 
 onMounted(async () => {
-  customers.value = (await customerResource.list()).results
+  customers.value = (await customerResource.list({ status: 'active,legacy' })).results
 })
 
 async function onCustomerChange() {

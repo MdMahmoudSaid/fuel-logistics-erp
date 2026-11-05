@@ -56,7 +56,7 @@ const tripsLabel = computed(() => selectedTrips.value.map((trip) => trip.referen
 
 const costBases = ref<Record<number, TripCostBasis>>({})
 onMounted(async () => {
-  const data = await customerResource.list()
+  const data = await customerResource.list({ is_active: true })
   customers.value = data.results
   await Promise.all(
     selectedTrips.value.map(async (trip) => {

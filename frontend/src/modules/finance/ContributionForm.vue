@@ -81,9 +81,9 @@ async function load() {
   error.value = ''
   try {
     const [shareholderData, bankData, cashData] = await Promise.all([
-      shareholderResource.list(),
-      bankAccountResource.list(),
-      cashAccountResource.list(),
+      shareholderResource.list({ is_active: true }),
+      bankAccountResource.list({ is_active: true }),
+      cashAccountResource.list({ is_active: true }),
     ])
     shareholders.value = shareholderData.results
     banks.value = bankData.results

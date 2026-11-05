@@ -51,3 +51,6 @@ export interface FieldSchema {
   trueLabel?: string
   falseLabel?: string
 }
+
+// Customers / suppliers / transporters: see backend apps/core/account_status.py.
+export type AccountStatus = 'active' | 'legacy' | 'inactive'

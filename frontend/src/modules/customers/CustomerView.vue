@@ -26,6 +26,7 @@ const fields = computed<FieldSchema[]>(() => [
 
 <template>
   <MasterDataView
+    legacy-support
     :title="t('masterData.titles.customers')"
     :item-label="t('masterData.itemLabels.customers')"
     :resource="resource"

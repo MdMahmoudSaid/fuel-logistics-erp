@@ -138,8 +138,8 @@ async function load() {
   loading.value = true
   try {
     const [bankData, cashData] = await Promise.all([
-      bankAccountResource.list(),
-      cashAccountResource.list(),
+      bankAccountResource.list({ is_active: true }),
+      cashAccountResource.list({ is_active: true }),
       loadParties(),
     ])
     banks.value = bankData.results

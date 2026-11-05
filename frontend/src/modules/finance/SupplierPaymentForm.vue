@@ -34,7 +34,7 @@ const saving = ref(false)
 const error = ref('')
 
 onMounted(async () => {
-  const bankData = await bankAccountResource.list()
+  const bankData = await bankAccountResource.list({ is_active: true })
   bankAccounts.value = bankData.results
 })
 

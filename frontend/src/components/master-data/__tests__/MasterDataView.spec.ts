@@ -27,6 +27,18 @@ const fields: FieldSchema[] = [
   { key: 'is_active', label: 'Active', type: 'checkbox' },
 ]
 
+// Status actions live in the row's "⋯" menu (teleported to <body>).
+async function clickRowAction(
+  wrapper: { find: (s: string) => { trigger: (e: string) => Promise<void> } },
+  label: string,
+) {
+  await wrapper.find('button[aria-label="Plus d\'actions"]').trigger('click')
+  const item = Array.from(document.body.querySelectorAll('[role=menuitem]')).find(
+    (el) => el.textContent?.trim() === label,
+  ) as HTMLElement
+  item.click()
+}
+
 function makeResource(initialRows: Record<string, unknown>[]) {
   const rows = [...initialRows]
   return {
@@ -69,7 +81,10 @@ describe('MasterDataView', () => {
     })
     await flushPromises()
 
-    await wrapper.find('button').trigger('click') // "Add" button
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Ajouter')!
+      .trigger('click') // "Add" button
     await wrapper.find('input#name').setValue('Shell Mali')
     await wrapper.find('form').trigger('submit.prevent')
     await flushPromises()
@@ -110,8 +125,7 @@ describe('MasterDataView', () => {
     expect(wrapper.text()).toContain('Total Senegal')
     expect(wrapper.findAll('button').find((b) => b.text() === 'Supprimer')).toBeUndefined()
 
-    const toggleButton = wrapper.findAll('button').find((b) => b.text() === 'Désactiver')
-    await toggleButton!.trigger('click')
+    await clickRowAction(wrapper, 'Désactiver')
     await flushPromises()
 
     expect(resource.update).toHaveBeenCalledWith(1, { is_active: false })
@@ -119,26 +133,76 @@ describe('MasterDataView', () => {
     expect(wrapper.text()).not.toContain('Total Senegal')
   })
 
-  it('reveals inactive records when "Afficher les inactifs" is checked', async () => {
-    const resource = makeResource([{ id: 1, name: 'Total Senegal', is_active: false }])
+  it('shows each group under its own Actifs / Inactifs button, with counts', async () => {
+    const resource = makeResource([
+      { id: 1, name: 'Total Senegal', is_active: true },
+      { id: 2, name: 'Old Depot', is_active: false },
+    ])
     const wrapper = mount(MasterDataView, {
       props: { title: 'Suppliers', resource, fields },
       global: { plugins: [i18n] },
     })
     await flushPromises()
 
+    const tab = (label: string) => wrapper.findAll('[role=tab]').find((b) => b.text() === label)
+    expect(tab('Actifs (1)')).toBeDefined()
+    expect(tab('Inactifs (1)')).toBeDefined()
+    expect(tab('Anciens (0)')).toBeUndefined() // legacy only where legacy-support is set
+    expect(wrapper.text()).toContain('Total Senegal')
+    expect(wrapper.text()).not.toContain('Old Depot')
+
+    await tab('Inactifs (1)')!.trigger('click')
+    expect(wrapper.text()).toContain('Old Depot')
     expect(wrapper.text()).not.toContain('Total Senegal')
 
-    await wrapper.find('input[type=checkbox]').setValue(true)
+    await clickRowAction(wrapper, 'Activer')
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Total Senegal')
+    expect(resource.update).toHaveBeenCalledWith(2, { is_active: true })
+  })
 
-    const toggleButton = wrapper.findAll('button').find((b) => b.text() === 'Activer')
-    await toggleButton!.trigger('click')
+  it('offers an Anciens group and moves a record there when legacy-support is set', async () => {
+    const resource = makeResource([
+      { id: 1, name: 'Total Senegal', is_active: true, is_legacy: false },
+      { id: 2, name: 'Former Client', is_active: false, is_legacy: true },
+      { id: 3, name: 'Settled Depot', is_active: false, is_legacy: false },
+    ])
+    const wrapper = mount(MasterDataView, {
+      props: { title: 'Suppliers', resource, fields, legacySupport: true },
+      global: { plugins: [i18n] },
+    })
     await flushPromises()
 
-    expect(resource.update).toHaveBeenCalledWith(1, { is_active: true })
+    const tab = (label: string) => wrapper.findAll('[role=tab]').find((b) => b.text() === label)
+    expect(tab('Actifs (1)')).toBeDefined()
+    expect(tab('Anciens (1)')).toBeDefined()
+    expect(tab('Inactifs (1)')).toBeDefined()
+
+    await tab('Anciens (1)')!.trigger('click')
+    expect(wrapper.text()).toContain('Former Client')
+    expect(wrapper.text()).not.toContain('Settled Depot')
+
+    await tab('Actifs (1)')!.trigger('click')
+    await clickRowAction(wrapper, 'Passer en ancien')
+    await flushPromises()
+    expect(resource.update).toHaveBeenCalledWith(1, { is_legacy: true, is_active: false })
+  })
+
+  it('shows the backend refusal when deactivating an account that still has a balance', async () => {
+    const resource = makeResource([{ id: 1, name: 'Total Senegal', is_active: true }])
+    resource.update = vi.fn(async () => {
+      throw { response: { status: 400, data: { is_active: ['Solde non nul.'] } } }
+    })
+    const wrapper = mount(MasterDataView, {
+      props: { title: 'Suppliers', resource, fields },
+      global: { plugins: [i18n] },
+    })
+    await flushPromises()
+
+    await clickRowAction(wrapper, 'Désactiver')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Solde non nul.')
   })
 
   it('surfaces the backend field error instead of a generic save message', async () => {
@@ -161,14 +225,15 @@ describe('MasterDataView', () => {
     })
     await flushPromises()
 
-    await wrapper.find('button').trigger('click')
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Ajouter')!
+      .trigger('click')
     await wrapper.find('input#name').setValue('TRK-EXT')
     await wrapper.find('form').trigger('submit.prevent')
     await flushPromises()
 
-    expect(wrapper.text()).toContain(
-      'Le transporteur est obligatoire pour un camion externe.',
-    )
+    expect(wrapper.text()).toContain('Le transporteur est obligatoire pour un camion externe.')
   })
 
   // UI recette fix (2026-09-05): a field's options can now depend on the
@@ -208,7 +273,10 @@ describe('MasterDataView', () => {
     })
     await flushPromises()
 
-    await wrapper.find('button').trigger('click') // "Add"
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Ajouter')!
+      .trigger('click') // "Add"
     expect(wrapper.find('select#detail option').text()).toBe('Detail for A')
 
     await wrapper.find('select#kind').setValue('B')

@@ -105,7 +105,7 @@ onMounted(async () => {
       .then((all) => (trucks.value = all))
       .catch(() => (trucks.value = []))
     const [allSuppliers, sheet] = await Promise.all([
-      listAll(createResourceApi<{ id: number; name: string }>('/suppliers/')),
+      listAll(createResourceApi<{ id: number; name: string }>('/suppliers/'), { is_active: true }),
       load(),
     ])
     suppliers.value = allSuppliers

@@ -11,6 +11,7 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from apps.core.account_status import HAS_OPEN_ACCOUNT
 from apps.accounts.permissions import HasModulePermission
 from apps.finance.models import (
     BankAccount,
@@ -386,13 +387,13 @@ class DashboardViewSet(viewsets.ViewSet):
         # Dashboard can never disagree with them.
         supplier_balances = [
             ControlledDebtPaymentService.describe_supplier_balance(supplier)
-            for supplier in Supplier.objects.filter(is_active=True)
+            for supplier in Supplier.objects.filter(HAS_OPEN_ACCOUNT)
         ]
         supplier_net_total = sum((row["net_balance"] for row in supplier_balances), ZERO)
 
         transporter_balances = [
             ControlledDebtPaymentService.describe_transporter_balance(transporter)
-            for transporter in Transporter.objects.filter(is_active=True)
+            for transporter in Transporter.objects.filter(HAS_OPEN_ACCOUNT)
         ]
         transporter_net_total = sum((row["net_balance"] for row in transporter_balances), ZERO)
 

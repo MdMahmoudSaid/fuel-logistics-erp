@@ -9,6 +9,7 @@
 # convenience, but TruckAvailabilityService is the actual source of truth
 # used for locking decisions.
 
+import re
 import uuid
 from decimal import Decimal
 
@@ -34,6 +35,22 @@ from apps.trips.models import (
 
 
 _INVOICE_REFERENCE_PREFIX = "FAC"
+# invoice_number is max_length=50 ("FAC-YYYYMM-NNNN-" takes 16).
+_INVOICE_TRUCK_TOKEN_MAX = 34
+
+
+def invoice_truck_token(sales) -> str:
+    """The truck number(s) written into an invoice's number, e.g. "AA123BB"
+    (several trucks on a grouped invoice: "AA123BB+CC456DD"). Built from the
+    tractor registration of each distinct truck, reduced to letters, digits
+    and "-" so the number stays safe in URLs and PDF file names."""
+    plates = []
+    for sale in sales:
+        raw = sale.trip.truck.tractor_registration or ""
+        plate = re.sub(r"[^A-Za-z0-9-]+", "", raw).upper()
+        if plate and plate not in plates:
+            plates.append(plate)
+    return "+".join(plates)[:_INVOICE_TRUCK_TOKEN_MAX]
 _MAX_INVOICE_REFERENCE_ATTEMPTS = 5
 
 _ZERO = Decimal("0.00")
@@ -100,7 +117,8 @@ class TruckAvailabilityService:
         active_truck_ids = Trip.objects.exclude(
             status__in=Trip.NON_OCCUPYING_STATUSES
         ).values_list("truck_id", flat=True)
-        return Truck.objects.exclude(pk__in=active_truck_ids)
+        # An inactive truck is never offered for a new trip.
+        return Truck.objects.filter(is_active=True).exclude(pk__in=active_truck_ids)
 
 
 class TransporterAvailabilityService:
@@ -114,7 +132,7 @@ class TransporterAvailabilityService:
         active_transporter_ids = Trip.objects.exclude(
             status__in=Trip.NON_OCCUPYING_STATUSES
         ).values_list("transporter_id", flat=True)
-        return Transporter.objects.exclude(pk__in=active_transporter_ids)
+        return Transporter.objects.filter(is_active=True).exclude(pk__in=active_transporter_ids)
 
 
 class TripCostService:
@@ -649,10 +667,13 @@ class DeliveryService:
     def _create_invoice(sale: Sale, issued_date, *, extra_sales=()) -> Invoice:
         """Create the DRAFT invoice of `sale` (plus, for a multi-trip
         invoice, the `extra_sales` grouped onto it)."""
+        truck_token = invoice_truck_token([sale, *extra_sales])
         for _ in range(_MAX_INVOICE_REFERENCE_ATTEMPTS):
             invoice_number = generate_monthly_reference(
-                Invoice, "invoice_number", _INVOICE_REFERENCE_PREFIX
+                Invoice, "invoice_number", _INVOICE_REFERENCE_PREFIX, allow_suffix=True
             )
+            if truck_token:
+                invoice_number = f"{invoice_number}-{truck_token}"
             try:
                 with transaction.atomic():
                     invoice = Invoice.objects.create(

@@ -134,6 +134,43 @@ describe('PaymentAllocationForm FIFO auto-allocation', () => {
     expect(amountInputs()[0].element.value).toBe('123.45')
   })
 
+  it('empties the invoice lines when the global amount is cleared', async () => {
+    const wrapper = mount(PaymentAllocationForm)
+    await flushPromises()
+    await selectCustomer(wrapper)
+
+    await wrapper.find('#amount').setValue('600')
+    await flushPromises()
+    expect(findAllTyped<HTMLInputElement>(wrapper, '[data-test="line-amount"]')).toHaveLength(2)
+
+    await wrapper.find('#amount').setValue('')
+    await flushPromises()
+
+    const amountInputs = findAllTyped<HTMLInputElement>(wrapper, '[data-test="line-amount"]')
+    const invoiceSelects = findAllTyped<HTMLSelectElement>(wrapper, '[data-test="line-invoice"]')
+    expect(amountInputs).toHaveLength(1)
+    expect(amountInputs[0].element.value).toBe('')
+    expect(invoiceSelects[0].element.value).toBe('')
+  })
+
+  it('also clears hand-edited lines when the global amount is emptied', async () => {
+    const wrapper = mount(PaymentAllocationForm)
+    await flushPromises()
+    await selectCustomer(wrapper)
+
+    await wrapper.find('#amount').setValue('600')
+    await flushPromises()
+    await findAllTyped<HTMLInputElement>(wrapper, '[data-test="line-amount"]')[0].setValue('123.45')
+    await flushPromises()
+
+    await wrapper.find('#amount').setValue('')
+    await flushPromises()
+
+    const amountInputs = findAllTyped<HTMLInputElement>(wrapper, '[data-test="line-amount"]')
+    expect(amountInputs).toHaveLength(1)
+    expect(amountInputs[0].element.value).toBe('')
+  })
+
   it('fills the amount of an invoice picked before the payment amount (2026-10-09 bug)', async () => {
     const wrapper = mount(PaymentAllocationForm)
     await flushPromises()

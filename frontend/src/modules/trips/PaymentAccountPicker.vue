@@ -29,8 +29,8 @@ const accounts = computed(() =>
 
 onMounted(async () => {
   const [banks, cashes] = await Promise.all([
-    createResourceApi<Account>('/bank-accounts/').list(),
-    createResourceApi<Account>('/cash-accounts/').list(),
+    createResourceApi<Account>('/bank-accounts/').list({ is_active: true }),
+    createResourceApi<Account>('/cash-accounts/').list({ is_active: true }),
   ])
   bankAccounts.value = banks.results
   cashAccounts.value = cashes.results
@@ -66,7 +66,9 @@ const selectClass =
       </label>
       <label class="block space-y-1.5">
         <span class="text-texte-2 text-sm font-medium">{{
-          destination === 'BANK' ? t('finance.payment.bankAccount') : t('finance.payment.cashAccount')
+          destination === 'BANK'
+            ? t('finance.payment.bankAccount')
+            : t('finance.payment.cashAccount')
         }}</span>
         <select v-model="accountId" data-test="pay-account" :class="selectClass">
           <option value="" disabled>

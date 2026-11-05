@@ -6,6 +6,8 @@ from rest_framework import serializers
 from apps.purchasing.models import SupplierOrder
 from apps.purchasing.services import SupplierStockService
 
+from apps.core.account_status import AccountStatusSerializerMixin
+
 from .models import Supplier
 
 
@@ -17,11 +19,11 @@ class SupplierBriefSerializer(serializers.ModelSerializer):
         model = Supplier
         fields = [
             "id", "name", "company_name", "country", "phone",
-            "contact_name", "notes", "is_active", "created_at", "updated_at",
+            "contact_name", "notes", "is_active", "is_legacy", "created_at", "updated_at",
         ]
         read_only_fields = fields
 
-class SupplierSerializer(serializers.ModelSerializer):
+class SupplierSerializer(AccountStatusSerializerMixin, serializers.ModelSerializer):
     total_purchased = serializers.SerializerMethodField()
     total_paid = serializers.SerializerMethodField()
     outstanding_balance = serializers.SerializerMethodField()
@@ -34,9 +36,21 @@ class SupplierSerializer(serializers.ModelSerializer):
             "id", "name", "company_name", "country", "phone",
             "contact_name", "notes", "total_purchased", "total_paid",
             "outstanding_balance", "total_reliquat", "last_payment_date",
-            "is_active", "created_at", "updated_at",
+            "is_active", "is_legacy", "created_at", "updated_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
+
+    def status_blockers(self, instance) -> list[str]:
+        from apps.trips.models import Trip
+
+        blockers = []
+        if Decimal(self.get_outstanding_balance(instance)) != Decimal("0.00"):
+            blockers.append("le solde du fournisseur n'est pas soldé")
+        if Decimal(self.get_total_reliquat(instance)) != Decimal("0.00"):
+            blockers.append("il reste du reliquat chez ce fournisseur")
+        if Trip.objects.filter(supplier=instance).exclude(status__in=Trip.TERMINAL_STATUSES).exists():
+            blockers.append("il a des trajets en cours")
+        return blockers
 
     def get_total_purchased(self, obj) -> str:
         total = (

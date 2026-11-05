@@ -146,7 +146,10 @@ async function loadDebts() {
 async function load() {
   loading.value = true
   try {
-    const [bankData] = await Promise.all([bankAccountResource.list(), loadDebts()])
+    const [bankData] = await Promise.all([
+      bankAccountResource.list({ is_active: true }),
+      loadDebts(),
+    ])
     banks.value = bankData.results
     bankAccountId.value = banks.value[0]?.id ? String(banks.value[0].id) : ''
   } catch {

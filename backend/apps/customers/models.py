@@ -11,6 +11,9 @@ class Customer(TimeStampedModel):
     contact_name = models.CharField(max_length=150, blank=True)
     notes = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
+    # "Ancien": no longer trading but a balance is still open (see
+    # apps.core.account_status). Implies is_active=False.
+    is_legacy = models.BooleanField(default=False)
     # "Client de passage": created per direct sale with the name typed in the
     # attribution popup, paid in full cash at invoicing. Hidden from customer
     # lists and receivables (see CustomerViewSet.get_queryset).

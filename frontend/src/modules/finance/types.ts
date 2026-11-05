@@ -464,6 +464,8 @@ export interface Shareholder {
   phone: string
   notes: string
   is_active: boolean
+  // "Ancien": no longer an associate, account not settled yet.
+  is_legacy?: boolean
   created_at: string
   updated_at: string
 }

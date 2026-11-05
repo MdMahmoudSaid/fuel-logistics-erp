@@ -90,7 +90,7 @@ function onPrefill() {
 onMounted(async () => {
   try {
     const [allSuppliers, allOrders, order] = await Promise.all([
-      listAll(createResourceApi<{ id: number; name: string }>('/suppliers/')),
+      listAll(createResourceApi<{ id: number; name: string }>('/suppliers/'), { is_active: true }),
       listAll(createResourceApi<SupplierOrderOption>('/supplier-orders/')),
       load(),
     ])

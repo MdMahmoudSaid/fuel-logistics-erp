@@ -4,6 +4,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { createResourceApi } from '@/api/resource'
+import { listAll } from '@/modules/documents/api'
 import { useAuthStore } from '@/stores/auth'
 import { cessionLetterResource, supplierOrderResource } from '@/modules/purchasing/api'
 import type { CessionLetter, SupplierOrder } from '@/modules/purchasing/types'
@@ -54,9 +55,11 @@ const transporterResource = createResourceApi<TransporterBrief>('/transporters/'
 const driverResource = createResourceApi<DriverBrief>('/drivers/')
 
 async function loadTransporters() {
-  const params = showBusyTrucks.value ? {} : { available: true }
-  const data = await transporterResource.list(params)
-  transporters.value = data.results
+  // Only transporters still working: an "Ancien" one keeps its balance but
+  // is never offered for a new trip.
+  const params = showBusyTrucks.value ? { is_active: true } : { available: true, is_active: true }
+  // Every page: the API pages by 25 and a picker must not silently stop there.
+  transporters.value = await listAll(transporterResource, params)
 }
 
 const form = ref({
@@ -76,9 +79,8 @@ const error = ref('')
 const fieldErrors = ref<Record<string, string>>({})
 
 async function loadTrucks() {
-  const params = showBusyTrucks.value ? {} : { available: true }
-  const data = await trucksResource.list(params)
-  trucks.value = data.results
+  const params = showBusyTrucks.value ? { is_active: true } : { available: true, is_active: true }
+  trucks.value = await listAll(trucksResource, params)
 }
 
 watch(showBusyTrucks, () => Promise.all([loadTrucks(), loadTransporters()]))
@@ -114,14 +116,13 @@ function onTruckChange() {
 }
 
 onMounted(async () => {
-  const [cessionData, driverData] = await Promise.all([
-    cessionLetterResource.list({ status: 'ACTIVE' }),
-    driverResource.list(),
+  const [cessionRows, driverRows] = await Promise.all([
+    listAll(cessionLetterResource, { status: 'ACTIVE' }),
+    listAll(driverResource),
   ])
-  cessions.value = cessionData.results
-  drivers.value = driverData.results
-  const allTransportersData = await transporterResource.list()
-  allTransporters.value = allTransportersData.results
+  cessions.value = cessionRows
+  drivers.value = driverRows
+  allTransporters.value = await listAll(transporterResource)
   await Promise.all([loadTrucks(), loadTransporters()])
 })
 
@@ -238,7 +239,10 @@ async function onSubmit() {
 
       <div v-if="selectedCession" class="border-ligne space-y-2 rounded-lg border bg-sable p-3">
         <div class="text-texte-2 flex justify-between text-xs">
-          <span>{{ t('trips.newForm.cessionAuthorized') }} {{ formatQuantity(cessionAuthorized) }}</span>
+          <span
+            >{{ t('trips.newForm.cessionAuthorized') }}
+            {{ formatQuantity(cessionAuthorized) }}</span
+          >
           <span>{{ t('trips.newForm.remaining') }} {{ formatQuantity(cessionRemaining) }}</span>
           <span :class="isOverLimit ? 'text-critique font-semibold' : ''">
             {{ t('trips.newForm.requested') }} {{ formatQuantity(requested) }}

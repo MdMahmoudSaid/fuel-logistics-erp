@@ -3,10 +3,13 @@ from decimal import Decimal
 
 from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
+from django.db import models
 from django.db.models import Sum
 from django.utils.text import slugify
 from django.utils import timezone
 from rest_framework import serializers
+
+from apps.core.account_status import AccountStatusSerializerMixin, RejectInactiveMixin
 
 from apps.accounts.serializers import UserSerializer
 from apps.customers.serializers import CustomerBriefSerializer
@@ -68,7 +71,14 @@ from .services import (
 )
 
 
-class BankAccountSerializer(serializers.ModelSerializer):
+class _TreasuryAccountStatusMixin(AccountStatusSerializerMixin):
+    def status_blockers(self, instance) -> list[str]:
+        if instance.current_balance != Decimal("0.00"):
+            return ["le solde de ce compte n'est pas nul"]
+        return []
+
+
+class BankAccountSerializer(_TreasuryAccountStatusMixin, serializers.ModelSerializer):
     current_balance = serializers.DecimalField(max_digits=18, decimal_places=2, read_only=True)
 
     class Meta:
@@ -80,7 +90,7 @@ class BankAccountSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_at", "updated_at"]
 
 
-class CashAccountSerializer(serializers.ModelSerializer):
+class CashAccountSerializer(_TreasuryAccountStatusMixin, serializers.ModelSerializer):
     current_balance = serializers.DecimalField(max_digits=18, decimal_places=2, read_only=True)
 
     class Meta:
@@ -201,7 +211,8 @@ class ExistingCreditAllocationRequestSerializer(serializers.Serializer):
     allocations = ExistingCreditAllocationInputSerializer(many=True, allow_empty=False)
 
 
-class CustomerPaymentSerializer(serializers.ModelSerializer):
+class CustomerPaymentSerializer(RejectInactiveMixin, serializers.ModelSerializer):
+    reject_inactive_fields = ('bank_account', 'cash_account')
     """docs/PHASE_5_PLAN.md Etape 7.
 
     `allocations` is write-only input (a plain list of {invoice, amount})
@@ -413,7 +424,8 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
         return payment
 
 
-class SupplierPaymentSerializer(serializers.ModelSerializer):
+class SupplierPaymentSerializer(RejectInactiveMixin, serializers.ModelSerializer):
+    reject_inactive_fields = ('bank_account', 'cash_account')
     supplier_detail = SupplierBriefSerializer(source="supplier", read_only=True)
     recorded_by_detail = UserSerializer(source="recorded_by", read_only=True)
     proof_url = serializers.SerializerMethodField()
@@ -528,7 +540,8 @@ class SupplierPaymentSerializer(serializers.ModelSerializer):
         )
 
 
-class SupplierAdvanceSerializer(serializers.ModelSerializer):
+class SupplierAdvanceSerializer(RejectInactiveMixin, serializers.ModelSerializer):
+    reject_inactive_fields = ('bank_account', 'cash_account')
     supplier_detail = SupplierBriefSerializer(source="supplier", read_only=True)
     attachment = serializers.FileField(write_only=True, required=False, allow_null=True, default=None)
     proof_url = serializers.SerializerMethodField()
@@ -589,7 +602,8 @@ class SupplierAdvanceSerializer(serializers.ModelSerializer):
         raise serializers.ValidationError("Une avance enregistree ne peut pas etre modifiee.")
 
 
-class TransporterAdvanceSerializer(serializers.ModelSerializer):
+class TransporterAdvanceSerializer(RejectInactiveMixin, serializers.ModelSerializer):
+    reject_inactive_fields = ('bank_account', 'cash_account')
     transporter_detail = TransporterBriefSerializer(source="transporter", read_only=True)
     attachment = serializers.FileField(write_only=True, required=False, allow_null=True, default=None)
     proof_url = serializers.SerializerMethodField()
@@ -828,7 +842,8 @@ class ExpenseCategorySerializer(serializers.ModelSerializer):
         return code
 
 
-class ExpenseSerializer(serializers.ModelSerializer):
+class ExpenseSerializer(RejectInactiveMixin, serializers.ModelSerializer):
+    reject_inactive_fields = ('bank_account', 'cash_account')
     # Phase 5 (docs/superpowers/specs/2026-09-02-business-corrections-6-
     # phases-design.md): a trip-allocated fee only ever uses one of these
     # two methods - other methods (FIXED, PERCENTAGE, PER_ORDER, MANUAL)
@@ -1161,10 +1176,20 @@ class TreasuryTransferRequestSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 "Impossible de transferer un compte vers lui-meme."
             )
+        from .models import BankAccount, CashAccount
+
+        for side in ("source", "dest"):
+            model = BankAccount if data[f"{side}_account_type"] == "bank" else CashAccount
+            account = model.objects.filter(pk=data[f"{side}_account_id"]).first()
+            if account is not None and not account.is_active:
+                raise serializers.ValidationError(
+                    "Un compte inactif ne peut pas être utilisé dans un transfert."
+                )
         return data
 
 
-class ControlledDebtPaymentRequestSerializer(serializers.Serializer):
+class ControlledDebtPaymentRequestSerializer(RejectInactiveMixin, serializers.Serializer):
+    reject_inactive_fields = ('bank_account',)
     """Input for POST /api/treasury-transactions/record-debt-payment/.
 
     The serializer handles shape/type validation only; the cross-row
@@ -1208,7 +1233,7 @@ class ShareholderBriefSerializer(serializers.ModelSerializer):
         fields = ["id", "name", "participation_percent", "contribution"]
 
 
-class ShareholderSerializer(serializers.ModelSerializer):
+class ShareholderSerializer(AccountStatusSerializerMixin, serializers.ModelSerializer):
     # Real cash actually put in via ShareholderContribution (Phase 1),
     # distinct from `contribution` (a historical opening-balance figure set
     # at Shareholder creation, never updated by new contributions - see
@@ -1222,7 +1247,7 @@ class ShareholderSerializer(serializers.ModelSerializer):
         model = Shareholder
         fields = [
             "id", "name", "participation_percent", "contribution", "total_contributed",
-            "phone", "notes", "is_active", "created_at", "updated_at",
+            "phone", "notes", "is_active", "is_legacy", "created_at", "updated_at",
         ]
         # `contribution` is read-only through this API (bug fix, 2026-09-10:
         # the Associes "Ajouter/Modifier" form exposed it as an ordinary
@@ -1235,6 +1260,24 @@ class ShareholderSerializer(serializers.ModelSerializer):
         # capital contributions must go through ShareholderContribution /
         # "Nouvel apport en capital", which requires a real account.
         read_only_fields = ["id", "contribution", "created_at", "updated_at"]
+
+    def status_blockers(self, instance) -> list[str]:
+        from .models import ShareholderLoan
+        from .services import ShareholderLedgerService
+
+        blockers = []
+        if ShareholderLedgerService.get_available_balance(instance.id) != Decimal("0.00"):
+            blockers.append("son solde d'associé n'est pas soldé")
+        open_loans = [
+            loan
+            for loan in ShareholderLoan.objects.filter(
+                models.Q(borrower=instance) | models.Q(lender=instance)
+            )
+            if loan.remaining_amount > Decimal("0.00")
+        ]
+        if open_loans:
+            blockers.append("il a des avances ou dettes en cours")
+        return blockers
 
     def get_total_contributed(self, obj) -> str:
         annotated = getattr(obj, "total_contributed", None)
@@ -1410,7 +1453,8 @@ class ShareholderProfitPeriodSerializer(serializers.ModelSerializer):
         )
 
 
-class ShareholderLoanRepaymentSerializer(serializers.ModelSerializer):
+class ShareholderLoanRepaymentSerializer(RejectInactiveMixin, serializers.ModelSerializer):
+    reject_inactive_fields = ('bank_account', 'cash_account')
     """Read-only history - rows are only created by ShareholderLoanService."""
 
     account_name = serializers.SerializerMethodField()
@@ -1431,7 +1475,9 @@ class ShareholderLoanRepaymentSerializer(serializers.ModelSerializer):
         return f"{distribution.period_start} - {distribution.period_end}"
 
 
-class ShareholderLoanSerializer(serializers.ModelSerializer):
+class ShareholderLoanSerializer(RejectInactiveMixin, serializers.ModelSerializer):
+    reject_inactive_fields = ('borrower', 'lender')
+
     borrower_detail = ShareholderBriefSerializer(source="borrower", read_only=True)
     lender_detail = ShareholderBriefSerializer(source="lender", read_only=True)
     remaining_amount = serializers.DecimalField(max_digits=16, decimal_places=2, read_only=True)
@@ -1507,7 +1553,9 @@ class ShareholderWithdrawalAllocationSerializer(serializers.ModelSerializer):
         fields = ["profit_share", "contribution", "advance", "amount"]
 
 
-class ShareholderWithdrawalSerializer(serializers.ModelSerializer):
+class ShareholderWithdrawalSerializer(RejectInactiveMixin, serializers.ModelSerializer):
+    # A former associate ("Ancien") may still withdraw what he is owed.
+    reject_inactive_fields = ('bank_account', 'cash_account')
     shareholder_detail = ShareholderBriefSerializer(source="shareholder", read_only=True)
     recorded_by_detail = UserSerializer(source="recorded_by", read_only=True)
     allocations = ShareholderWithdrawalAllocationSerializer(many=True, read_only=True)
@@ -1557,7 +1605,8 @@ class ShareholderWithdrawalSerializer(serializers.ModelSerializer):
         )
 
 
-class ShareholderContributionSerializer(serializers.ModelSerializer):
+class ShareholderContributionSerializer(RejectInactiveMixin, serializers.ModelSerializer):
+    reject_inactive_fields = ('bank_account', 'cash_account', 'shareholder')
     """Creation is delegated to
     ShareholderContributionService.record_contribution() (Phase 1) - it,
     not this serializer, owns the Document creation and the
@@ -1657,7 +1706,8 @@ class ShareholderContributionSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(str(exc))
 
 
-class ManualProfitSerializer(serializers.ModelSerializer):
+class ManualProfitSerializer(RejectInactiveMixin, serializers.ModelSerializer):
+    reject_inactive_fields = ('bank_account', 'cash_account')
     """Creation goes through ManualProfitService.record (admin only), which
     also posts the treasury MONEY_IN when an account is given."""
 

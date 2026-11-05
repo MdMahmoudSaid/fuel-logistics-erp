@@ -3,6 +3,8 @@ from decimal import Decimal
 from django.db.models import Sum
 from rest_framework import serializers
 
+from apps.core.account_status import AccountStatusSerializerMixin
+
 from .models import Driver, Transporter, Truck
 
 
@@ -36,11 +38,11 @@ class TransporterBriefSerializer(serializers.ModelSerializer):
         model = Transporter
         fields = [
             "id", "name", "company_name", "phone", "address",
-            "is_active", "is_internal", "created_at", "updated_at",
+            "is_active", "is_legacy", "is_internal", "created_at", "updated_at",
         ]
         read_only_fields = fields
 
-class TransporterSerializer(serializers.ModelSerializer):
+class TransporterSerializer(AccountStatusSerializerMixin, serializers.ModelSerializer):
     gross_earned = serializers.SerializerMethodField()
     deductions = serializers.SerializerMethodField()
     advances_applied = serializers.SerializerMethodField()
@@ -52,7 +54,7 @@ class TransporterSerializer(serializers.ModelSerializer):
         fields = [
             "id", "name", "company_name", "phone", "address",
             "gross_earned", "deductions", "advances_applied", "already_paid", "net_balance",
-            "is_active", "is_internal", "created_at", "updated_at",
+            "is_active", "is_legacy", "is_internal", "created_at", "updated_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
 
@@ -80,7 +82,17 @@ class TransporterSerializer(serializers.ModelSerializer):
                         )
                     }
                 )
-        return data
+        return super().validate(data)
+
+    def status_blockers(self, instance) -> list[str]:
+        from apps.trips.models import Trip
+
+        blockers = []
+        if Decimal(self.get_net_balance(instance)) != Decimal("0.00"):
+            blockers.append("le solde du transporteur n'est pas soldé")
+        if Trip.objects.filter(transporter=instance).exclude(status__in=Trip.TERMINAL_STATUSES).exists():
+            blockers.append("il a des trajets en cours")
+        return blockers
 
     def _active_payments(self, obj):
         # Bug fix (2026-09-18): a CANCELLED TransportPayment never really
@@ -135,7 +147,14 @@ class DriverSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_at", "updated_at"]
 
 
-class TruckSerializer(serializers.ModelSerializer):
+class TruckSerializer(AccountStatusSerializerMixin, serializers.ModelSerializer):
+    def status_blockers(self, instance) -> list[str]:
+        from apps.trips.models import Trip
+
+        if Trip.objects.filter(truck=instance).exclude(status__in=Trip.TERMINAL_STATUSES).exists():
+            return ["ce camion est sur un trajet en cours"]
+        return []
+
     class Meta:
         model = Truck
         fields = [

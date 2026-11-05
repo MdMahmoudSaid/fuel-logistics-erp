@@ -3,7 +3,9 @@ import re
 from django.utils import timezone
 
 
-def generate_monthly_reference(model, field_name, prefix, width=4, now=None) -> str:
+def generate_monthly_reference(
+    model, field_name, prefix, width=4, now=None, allow_suffix=False
+) -> str:
     """Next PREFIX-YYYYMM-NNNN for `model.field_name`, scoped to the current
     calendar month.
 
@@ -21,7 +23,10 @@ def generate_monthly_reference(model, field_name, prefix, width=4, now=None) -> 
     now = now or timezone.now()
     yyyymm = now.strftime("%Y%m")
     full_prefix = f"{prefix}-{yyyymm}-"
-    pattern = rf"^{re.escape(full_prefix)}\d{{{width}}}$"
+    # allow_suffix: references like PREFIX-YYYYMM-NNNN-<free text> (invoices
+    # carry their truck number after the sequence) still count in the sequence.
+    tail = r"(-.+)?" if allow_suffix else ""
+    pattern = rf"^{re.escape(full_prefix)}\d{{{width}}}{tail}$"
 
     last = (
         model.objects.filter(**{f"{field_name}__regex": pattern})
@@ -31,7 +36,7 @@ def generate_monthly_reference(model, field_name, prefix, width=4, now=None) -> 
     last_number = 0
     if last:
         try:
-            last_number = int(getattr(last, field_name)[len(full_prefix) :])
+            last_number = int(getattr(last, field_name)[len(full_prefix) : len(full_prefix) + width])
         except ValueError:
             last_number = 0
 

@@ -12,6 +12,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import MethodNotAllowed, ValidationError
 from rest_framework.response import Response
 
+from apps.core.account_status import HAS_OPEN_ACCOUNT, AccountStatusFilterMixin
 from apps.accounts.permissions import HasModulePermission
 from apps.customers.models import Customer
 from apps.reports.date_range import is_current_period, resolve_date_range
@@ -695,12 +696,12 @@ class TreasuryTransactionViewSet(viewsets.ModelViewSet):
         if debt_type == ControlledDebtPaymentService.SUPPLIER:
             rows = [
                 ControlledDebtPaymentService.describe_supplier_balance(supplier)
-                for supplier in Supplier.objects.filter(is_active=True).order_by("name", "id")
+                for supplier in Supplier.objects.filter(HAS_OPEN_ACCOUNT).order_by("name", "id")
             ]
         elif debt_type == ControlledDebtPaymentService.TRANSPORTER:
             rows = [
                 ControlledDebtPaymentService.describe_transporter_balance(transporter)
-                for transporter in Transporter.objects.filter(is_active=True).order_by("name", "id")
+                for transporter in Transporter.objects.filter(HAS_OPEN_ACCOUNT).order_by("name", "id")
             ]
         else:
             return Response({"detail": "Type de tiers inconnu."}, status=http_status.HTTP_400_BAD_REQUEST)
@@ -756,7 +757,7 @@ class TreasuryTransactionViewSet(viewsets.ModelViewSet):
 # ---------------------------------------------------------------------------
 
 
-class ShareholderViewSet(viewsets.ModelViewSet):
+class ShareholderViewSet(AccountStatusFilterMixin, viewsets.ModelViewSet):
     # total_contributed annotated here (rather than a per-row aggregate in
     # the serializer) so the Associes list page doesn't run N extra queries
     # to show each shareholder's real capital apporte (bug fix, 2026-09-03

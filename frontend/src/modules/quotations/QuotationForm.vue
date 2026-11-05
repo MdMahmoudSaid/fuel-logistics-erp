@@ -86,8 +86,8 @@ async function loadQuotation() {
 
 onMounted(async () => {
   const [customerData, productData] = await Promise.all([
-    customerResource.list(),
-    productResource.list(),
+    customerResource.list({ is_active: true }),
+    productResource.list({ is_active: true }),
   ])
   customers.value = customerData.results
   products.value = productData.results

@@ -271,7 +271,9 @@ function badgeVariant(status: string) {
                 :title="t('sales.invoiceList.selectionHint')"
               />
             </td>
-            <td class="px-3 py-2.5"><MonoValue :value="invoice.invoice_number" align="left" /></td>
+            <td class="px-3 py-2.5" data-test="invoice-name">
+              <MonoValue :value="invoice.invoice_number" align="left" />
+            </td>
             <td class="px-3 py-2.5">{{ invoice.sale_detail?.customer_detail?.name }}</td>
             <td class="px-3 py-2.5 text-right">
               <MonoValue :value="formatMoney(invoice.total_amount)" />

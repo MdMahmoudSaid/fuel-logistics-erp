@@ -6,7 +6,9 @@ import { confirmDialog } from '@/composables/useConfirmDialog'
 import DataTable from './DataTable.vue'
 import EntityForm from './EntityForm.vue'
 import Button from '@/components/ui/Button.vue'
-import type { FieldSchema } from './types'
+import SegmentedControl from '@/components/ui/SegmentedControl.vue'
+import type { AccountStatus, FieldSchema } from './types'
+import { statusPayload } from './statusActions'
 import type { ResourceApi } from '@/api/resource'
 import { translateApiError, extractFieldErrors } from '@/i18n/apiErrors'
 
@@ -30,6 +32,9 @@ const props = defineProps<{
   // number in French). Optional singular label for that modal only;
   // falls back to `title` for any caller that doesn't pass it.
   itemLabel?: string
+  // Customers, suppliers and transporters only: adds the "Anciens" group
+  // (no longer trading, balance still open).
+  legacySupport?: boolean
 }>()
 
 const rows = ref<Record<string, unknown>[]>([])
@@ -37,7 +42,7 @@ const showForm = ref(false)
 const editingId = ref<number | null>(null)
 const formValue = ref<Record<string, unknown>>({})
 const error = ref('')
-const showInactive = ref(false)
+const statusTab = ref<AccountStatus>('active')
 
 const columns = computed(() =>
   props.fields
@@ -52,16 +57,46 @@ const columns = computed(() =>
     })),
 )
 
-const resolvedFormFields = computed(() =>
-  props.formFields ? props.formFields(formValue.value) : props.fields,
-)
+// With the Actifs / Anciens / Inactifs switch the status is changed from the
+// list, never from the form (a stale checkbox could fight the "Ancien" flag).
+const resolvedFormFields = computed(() => {
+  const base = props.formFields ? props.formFields(formValue.value) : props.fields
+  return props.legacySupport ? base.filter((f) => f.key !== 'is_active') : base
+})
 
 const hasActiveField = computed(() => props.fields.some((f) => f.key === 'is_active'))
 
+function rowStatus(row: Record<string, unknown>): AccountStatus {
+  if (props.legacySupport && row.is_legacy === true) return 'legacy'
+  return row.is_active === false ? 'inactive' : 'active'
+}
+
+const statusCounts = computed(() => {
+  const counts: Record<AccountStatus, number> = { active: 0, legacy: 0, inactive: 0 }
+  for (const row of rows.value) counts[rowStatus(row)]++
+  return counts
+})
+
+const statusOptions = computed(() => {
+  const options: { value: AccountStatus; label: string; count: number }[] = [
+    { value: 'active', label: t('masterData.tabActive'), count: statusCounts.value.active },
+  ]
+  if (props.legacySupport)
+    options.push({
+      value: 'legacy',
+      label: t('masterData.tabLegacy'),
+      count: statusCounts.value.legacy,
+    })
+  options.push({
+    value: 'inactive',
+    label: t('masterData.tabInactive'),
+    count: statusCounts.value.inactive,
+  })
+  return options
+})
+
 const visibleRows = computed(() =>
-  hasActiveField.value && !showInactive.value
-    ? rows.value.filter((r) => r.is_active !== false)
-    : rows.value,
+  hasActiveField.value ? rows.value.filter((r) => rowStatus(r) === statusTab.value) : rows.value,
 )
 
 async function load() {
@@ -90,7 +125,9 @@ function openEdit(row: Record<string, unknown>) {
 async function onSubmit() {
   const payload = Object.fromEntries(
     Object.entries(formValue.value).filter(
-      ([key]) => !props.fields.some((field) => field.key === key && field.readOnly),
+      ([key]) =>
+        !props.fields.some((field) => field.key === key && field.readOnly) &&
+        !(props.legacySupport && (key === 'is_active' || key === 'is_legacy')),
     ),
   )
   try {
@@ -131,12 +168,20 @@ async function onDelete(row: Record<string, unknown>) {
   }
 }
 
-async function onToggleActive(row: Record<string, unknown>) {
+async function onSetStatus(row: Record<string, unknown>, status: AccountStatus) {
+  const payload = statusPayload(status, props.legacySupport)
   try {
-    await props.resource.update(row.id as number, { is_active: !row.is_active })
+    await props.resource.update(row.id as number, payload)
     await load()
-  } catch {
-    error.value = t('masterData.toggleError')
+    error.value = ''
+  } catch (e) {
+    // e.g. "balance not zero: cannot be deactivated, move to Ancien" - the
+    // backend wording is shown as-is.
+    const response = (e as { response?: { status?: number; data?: Record<string, unknown> } })
+      ?.response
+    const body = response?.status === 400 ? response.data : undefined
+    const first = Object.values(extractFieldErrors(body))[0]
+    error.value = first ?? t('masterData.toggleError')
   }
 }
 
@@ -148,24 +193,29 @@ onMounted(load)
     <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <h1 class="font-display text-2xl leading-none font-semibold uppercase">{{ title }}</h1>
       <div class="flex flex-wrap items-center gap-4">
-        <label v-if="hasActiveField" class="text-texte-2 flex items-center gap-2 text-sm">
-          <input v-model="showInactive" type="checkbox" class="accent-orange" />
-          {{ t('masterData.showInactive') }}
-        </label>
+        <SegmentedControl
+          v-if="hasActiveField"
+          v-model="statusTab"
+          :options="statusOptions"
+          :aria-label="t('masterData.statusFilter')"
+        />
         <slot name="header-actions" :reload="load" />
         <Button variant="primary" @click="openCreate">{{ t('masterData.add') }}</Button>
       </div>
     </div>
+
+    <AppAlert v-if="error && !showForm" :message="error" />
 
     <div class="border-ligne overflow-x-auto rounded-xl border bg-white">
       <DataTable
         :columns="columns"
         :rows="visibleRows"
         :active-toggle="hasActiveField"
+        :legacy-support="legacySupport"
         :ledger-route-name="ledgerRouteName"
         @edit="openEdit"
         @delete="onDelete"
-        @toggle-active="onToggleActive"
+        @set-status="onSetStatus"
       />
     </div>
 

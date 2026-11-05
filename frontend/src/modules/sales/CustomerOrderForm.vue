@@ -66,8 +66,8 @@ async function loadOrder() {
 
 onMounted(async () => {
   const [customerData, productData] = await Promise.all([
-    customerResource.list(),
-    productResource.list(),
+    customerResource.list({ is_active: true }),
+    productResource.list({ is_active: true }),
   ])
   customers.value = customerData.results
   products.value = productData.results
@@ -144,7 +144,9 @@ function badgeVariant(status: TripStatus) {
     <AppAlert v-if="error" :message="error" />
 
     <div v-if="order" class="border-ligne space-y-2 rounded-xl border bg-surface p-4">
-      <h2 class="font-display text-sm font-semibold uppercase">{{ t('sales.orderForm.progress') }}</h2>
+      <h2 class="font-display text-sm font-semibold uppercase">
+        {{ t('sales.orderForm.progress') }}
+      </h2>
       <div class="text-texte-2 space-y-2 text-xs">
         <div class="space-y-0.5">
           <div class="flex justify-between">
@@ -332,7 +334,9 @@ function badgeVariant(status: TripStatus) {
                 {{ formatQuantity(trip.quantity_loaded) }}
               </td>
               <td class="px-2 py-1.5">
-                <Badge :variant="badgeVariant(trip.status)">{{ tripStatusLabel(trip.status) }}</Badge>
+                <Badge :variant="badgeVariant(trip.status)">{{
+                  tripStatusLabel(trip.status)
+                }}</Badge>
               </td>
             </tr>
             <tr v-if="!trips.length">

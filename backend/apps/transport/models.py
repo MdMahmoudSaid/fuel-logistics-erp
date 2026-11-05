@@ -9,6 +9,9 @@ class Transporter(TimeStampedModel):
     phone = models.CharField(max_length=30, blank=True)
     address = models.CharField(max_length=255, blank=True)
     is_active = models.BooleanField(default=True)
+    # "Ancien": no longer trading but a balance is still open (see
+    # apps.core.account_status). Implies is_active=False.
+    is_legacy = models.BooleanField(default=False)
     # Bug fix (2026-09-03 recette manuelle): every Truck must be linked to
     # a transporter, even when it belongs to the company - rather than
     # leaving Truck.owner_transporter/Trip.transporter null for that case

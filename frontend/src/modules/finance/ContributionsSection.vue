@@ -46,8 +46,8 @@ async function load() {
   try {
     const [list, b, c] = await Promise.all([
       shareholderContributionResource.list({}),
-      bankAccountResource.list({}),
-      cashAccountResource.list({}),
+      bankAccountResource.list({ is_active: true }),
+      cashAccountResource.list({ is_active: true }),
     ])
     contributions.value = [...list.results]
     banks.value = [...b.results]
@@ -360,7 +360,9 @@ defineExpose({ load })
             variant="primary"
             data-test="save-contribution"
             :loading="busy"
-            :disabled="(sensitiveChanged && !editForm.reason.trim()) || Number(editForm.amount) <= 0"
+            :disabled="
+              (sensitiveChanged && !editForm.reason.trim()) || Number(editForm.amount) <= 0
+            "
             >{{ t('common.save') }}</Button
           >
         </div>

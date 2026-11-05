@@ -3,6 +3,8 @@ from decimal import Decimal
 from django.db.models import Sum, Max
 from rest_framework import serializers
 
+from apps.core.account_status import AccountStatusSerializerMixin
+
 from .models import Customer
 
 
@@ -16,11 +18,11 @@ class CustomerBriefSerializer(serializers.ModelSerializer):
         model = Customer
         fields = [
             "id", "name", "company_name", "phone", "address",
-            "contact_name", "notes", "is_active", "is_walk_in", "created_at", "updated_at",
+            "contact_name", "notes", "is_active", "is_legacy", "is_walk_in", "created_at", "updated_at",
         ]
         read_only_fields = fields
 
-class CustomerSerializer(serializers.ModelSerializer):
+class CustomerSerializer(AccountStatusSerializerMixin, serializers.ModelSerializer):
     total_invoiced = serializers.SerializerMethodField()
     total_collected = serializers.SerializerMethodField()
     outstanding_balance = serializers.SerializerMethodField()
@@ -33,9 +35,34 @@ class CustomerSerializer(serializers.ModelSerializer):
             "id", "name", "company_name", "phone", "address",
             "contact_name", "notes", "total_invoiced", "total_collected",
             "outstanding_balance", "open_invoices_count", "last_payment_date",
-            "is_active", "is_walk_in", "created_at", "updated_at",
+            "is_active", "is_legacy", "is_walk_in", "created_at", "updated_at",
         ]
         read_only_fields = ["id", "is_walk_in", "created_at", "updated_at"]
+
+    def status_blockers(self, instance) -> list[str]:
+        # Imported lazily: apps.trips/apps.sales sit above apps.customers.
+        from apps.sales.models import CustomerOrder
+        from apps.trips.models import Trip
+
+        blockers = []
+        if Decimal(self.get_outstanding_balance(instance)) != Decimal("0.00"):
+            blockers.append("le solde du client n'est pas soldé")
+        if (
+            Trip.objects.filter(client=instance).exclude(status__in=Trip.TERMINAL_STATUSES).exists()
+            or Trip.objects.filter(customer_order__customer=instance)
+            .exclude(status__in=Trip.TERMINAL_STATUSES)
+            .exists()
+        ):
+            blockers.append("il a des trajets en cours")
+        open_order_statuses = [
+            CustomerOrder.Status.CONFIRMED,
+            CustomerOrder.Status.PARTIALLY_ASSIGNED,
+            CustomerOrder.Status.IN_PROGRESS,
+            CustomerOrder.Status.PARTIALLY_DELIVERED,
+        ]
+        if instance.orders.filter(status__in=open_order_statuses).exists():
+            blockers.append("il a des commandes ouvertes")
+        return blockers
 
     def get_total_invoiced(self, obj) -> str:
         total = obj.sales.aggregate(total=Sum("invoice__total_amount"))["total"] or Decimal("0.00")

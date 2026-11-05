@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-import type { FieldOption, FieldType } from './types'
+import type { AccountStatus, FieldOption, FieldType } from './types'
 import { formatPhoneDisplay } from '@/data/countries'
 import { formatMoney, formatQuantity } from '@/utils/currency'
 import MonoValue from '@/components/ui/MonoValue.vue'
+import ActionMenu from '@/components/ui/ActionMenu.vue'
+import { buildStatusActions } from './statusActions'
 
 defineProps<{
   columns: {
@@ -16,6 +18,9 @@ defineProps<{
   }[]
   rows: Record<string, unknown>[]
   activeToggle?: boolean
+  // Customers / suppliers / transporters: a third "Ancien" state (no longer
+  // trading, balance still open) next to active / inactive.
+  legacySupport?: boolean
   ledgerRouteName?: string
 }>()
 
@@ -32,7 +37,7 @@ function isNumericColumn(type?: FieldType): boolean {
 defineEmits<{
   edit: [row: Record<string, unknown>]
   delete: [row: Record<string, unknown>]
-  'toggle-active': [row: Record<string, unknown>]
+  'set-status': [row: Record<string, unknown>, status: AccountStatus]
 }>()
 
 const { t } = useI18n()
@@ -49,6 +54,8 @@ type Column = {
 // les cartes (téléphone).
 function cellText(col: Column, row: Record<string, unknown>): string {
   const value = row[col.key]
+  if (col.type === 'checkbox' && col.key === 'is_active' && row.is_legacy)
+    return t('masterData.statusLegacy')
   if (col.type === 'checkbox')
     return value
       ? (col.trueLabel ?? t('masterData.statusActive'))
@@ -62,6 +69,17 @@ function cellText(col: Column, row: Record<string, unknown>): string {
 }
 
 const cardAction = 'border-ligne-forte h-10 rounded-lg border bg-white px-3 text-sm'
+
+// The status column: Actif reads green, Ancien amber, Inactif muted.
+function statusCellClass(col: Column, row: Record<string, unknown>): string {
+  if (col.type !== 'checkbox' || col.key !== 'is_active') return ''
+  if (row.is_legacy) return 'text-ecart font-medium'
+  return row.is_active ? 'text-livre font-medium' : 'text-texte-3'
+}
+
+function statusActions(row: Record<string, unknown>, legacySupport: boolean | undefined) {
+  return buildStatusActions(row, legacySupport, t)
+}
 </script>
 
 <template>
@@ -81,7 +99,7 @@ const cardAction = 'border-ligne-forte h-10 rounded-lg border bg-white px-3 text
             <dt class="text-texte-3 shrink-0">{{ col.label }}</dt>
             <dd class="text-texte min-w-0 text-end break-words">
               <MonoValue v-if="isNumericColumn(col.type)" :value="cellText(col, row)" />
-              <template v-else>{{ cellText(col, row) || '—' }}</template>
+              <span v-else :class="statusCellClass(col, row)">{{ cellText(col, row) || '—' }}</span>
             </dd>
           </div>
         </dl>
@@ -96,14 +114,17 @@ const cardAction = 'border-ligne-forte h-10 rounded-lg border bg-white px-3 text
           <button type="button" :class="[cardAction, 'text-texte']" @click="$emit('edit', row)">
             {{ t('masterData.edit') }}
           </button>
-          <button
-            v-if="activeToggle"
-            type="button"
-            :class="[cardAction, row.is_active ? 'text-critique' : 'text-livre']"
-            @click="$emit('toggle-active', row)"
-          >
-            {{ row.is_active ? t('masterData.deactivate') : t('masterData.activate') }}
-          </button>
+          <template v-if="activeToggle">
+            <button
+              v-for="action in statusActions(row, legacySupport)"
+              :key="action.target"
+              type="button"
+              :class="[cardAction, action.tone]"
+              @click="$emit('set-status', row, action.target)"
+            >
+              {{ action.label }}
+            </button>
+          </template>
           <button
             v-else
             type="button"
@@ -146,7 +167,7 @@ const cardAction = 'border-ligne-forte h-10 rounded-lg border bg-white px-3 text
             :class="isNumericColumn(col.type) ? 'text-end' : 'text-start'"
           >
             <MonoValue v-if="isNumericColumn(col.type)" :value="cellText(col, row)" />
-            <template v-else>{{ cellText(col, row) }}</template>
+            <span v-else :class="statusCellClass(col, row)">{{ cellText(col, row) }}</span>
           </td>
           <td class="px-3 py-2.5 text-end align-middle whitespace-nowrap">
             <span class="inline-flex items-center gap-3">
@@ -160,14 +181,18 @@ const cardAction = 'border-ligne-forte h-10 rounded-lg border bg-white px-3 text
               <button class="text-texte-2 hover:text-texte" @click="$emit('edit', row)">
                 {{ t('masterData.edit') }}
               </button>
-              <button
+              <ActionMenu
                 v-if="activeToggle"
-                class="hover:brightness-90"
-                :class="row.is_active ? 'text-critique' : 'text-livre'"
-                @click="$emit('toggle-active', row)"
-              >
-                {{ row.is_active ? t('masterData.deactivate') : t('masterData.activate') }}
-              </button>
+                :label="t('masterData.moreActions')"
+                :items="
+                  statusActions(row, legacySupport).map((a) => ({
+                    key: a.target,
+                    label: a.label,
+                    tone: a.tone,
+                  }))
+                "
+                @select="$emit('set-status', row, $event as AccountStatus)"
+              />
               <button
                 v-else
                 class="text-critique hover:brightness-90"

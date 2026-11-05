@@ -105,8 +105,8 @@ async function loadOrder() {
 
 onMounted(async () => {
   const [supplierData, productData] = await Promise.all([
-    supplierResource.list(),
-    productResource.list(),
+    supplierResource.list({ is_active: true }),
+    productResource.list({ is_active: true }),
   ])
   suppliers.value = supplierData.results
   products.value = productData.results

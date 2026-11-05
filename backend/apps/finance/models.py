@@ -948,6 +948,9 @@ class Shareholder(TimeStampedModel):
     phone = models.CharField(max_length=20, blank=True)
     notes = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
+    # "Ancien": no longer an associate but his account is not settled yet
+    # (see apps.core.account_status). Implies is_active=False.
+    is_legacy = models.BooleanField(default=False)
 
     class Meta:
         ordering = ["name"]

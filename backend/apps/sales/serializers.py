@@ -3,6 +3,8 @@ from decimal import Decimal
 from django.contrib.contenttypes.models import ContentType
 from rest_framework import serializers
 
+from apps.core.account_status import RejectInactiveMixin
+
 from apps.accounts.serializers import UserSerializer
 from apps.core.serializers import ProductSerializer
 from apps.customers.serializers import CustomerBriefSerializer
@@ -26,7 +28,8 @@ _MANUALLY_SETTABLE_STATUSES = {
 }
 
 
-class CustomerOrderSerializer(serializers.ModelSerializer):
+class CustomerOrderSerializer(RejectInactiveMixin, serializers.ModelSerializer):
+    reject_inactive_fields = ('customer', 'product')
     customer_detail = CustomerBriefSerializer(source="customer", read_only=True)
     product_detail = ProductSerializer(source="product", read_only=True)
     assigned_quantity = serializers.SerializerMethodField()

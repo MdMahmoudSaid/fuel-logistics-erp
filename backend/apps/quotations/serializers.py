@@ -4,6 +4,8 @@ from django.db import transaction
 from django.db.models import Sum
 from rest_framework import serializers
 
+from apps.core.account_status import RejectInactiveMixin
+
 from apps.core.serializers import ProductSerializer
 from apps.customers.serializers import CustomerBriefSerializer
 
@@ -37,7 +39,8 @@ class QuotationLineSerializer(serializers.ModelSerializer):
         return data
 
 
-class QuotationSerializer(serializers.ModelSerializer):
+class QuotationSerializer(RejectInactiveMixin, serializers.ModelSerializer):
+    reject_inactive_fields = ('customer',)
     """docs/superpowers - AZUR ÉNERGIE quotation feature (2026-09-05).
 
     `lines` is a writable nested list (full replace on every write - see
