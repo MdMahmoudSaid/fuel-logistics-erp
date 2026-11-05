@@ -100,12 +100,18 @@ const visibleRows = computed(() =>
 )
 
 async function load() {
-  const data = await props.resource.list()
-  // Copy defensively: some resource implementations (and this component's
-  // own test doubles) return the same array reference across calls and
-  // mutate it in place, which Vue's ref would otherwise treat as an
-  // unchanged value and skip re-rendering.
-  rows.value = [...data.results]
+  // Every page: the API pages by 25, and a list (with its Actifs / Inactifs
+  // counts) that stops at the first page silently hides the other records.
+  const all: Record<string, unknown>[] = []
+  for (let page = 1; page <= 200; page++) {
+    const data = await props.resource.list(page === 1 ? undefined : { page })
+    all.push(...data.results)
+    if (!data.next) break
+  }
+  // A fresh array: some resource implementations (and this component's own
+  // test doubles) return the same array reference across calls and mutate it
+  // in place, which Vue's ref would otherwise treat as unchanged.
+  rows.value = all
 }
 
 function openCreate() {

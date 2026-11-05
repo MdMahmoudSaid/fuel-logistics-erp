@@ -133,6 +133,34 @@ describe('MasterDataView', () => {
     expect(wrapper.text()).not.toContain('Total Senegal')
   })
 
+  it('loads every page of the API, not just the first 25 records', async () => {
+    const page1 = Array.from({ length: 25 }, (_, i) => ({
+      id: i + 1,
+      name: `Row ${i + 1}`,
+      is_active: false,
+    }))
+    const page2 = [{ id: 26, name: 'Row 26', is_active: true }]
+    const resource = makeResource([])
+    const listPages = vi.fn(async (params?: Record<string, unknown>) =>
+      params?.page === 2
+        ? { count: 26, next: null, previous: 'x', results: page2 }
+        : { count: 26, next: 'page2', previous: null, results: page1 },
+    )
+    resource.list = listPages as unknown as typeof resource.list
+    const wrapper = mount(MasterDataView, {
+      props: { title: 'Trucks', resource, fields },
+      global: { plugins: [i18n] },
+    })
+    await flushPromises()
+
+    expect(listPages).toHaveBeenCalledTimes(2)
+    expect(wrapper.findAll('[role=tab]').map((b) => b.text())).toEqual([
+      'Actifs (1)',
+      'Inactifs (25)',
+    ])
+    expect(wrapper.text()).toContain('Row 26')
+  })
+
   it('shows each group under its own Actifs / Inactifs button, with counts', async () => {
     const resource = makeResource([
       { id: 1, name: 'Total Senegal', is_active: true },
