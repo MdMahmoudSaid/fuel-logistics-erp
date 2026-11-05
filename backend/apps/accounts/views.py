@@ -3,6 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from apps.core.account_status import InactiveOnlyDeleteMixin
 from .models import Role, User
 from .permissions import HasModulePermission
 from .serializers import RoleSerializer, UserSerializer
@@ -15,7 +16,7 @@ class RoleViewSet(viewsets.ModelViewSet):
     module = "admin"
 
 
-class UserViewSet(viewsets.ModelViewSet):
+class UserViewSet(InactiveOnlyDeleteMixin, viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
     permission_classes = [HasModulePermission]

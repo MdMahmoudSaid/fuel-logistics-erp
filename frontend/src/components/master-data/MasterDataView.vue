@@ -168,9 +168,12 @@ async function onDelete(row: Record<string, unknown>) {
   }
   try {
     await props.resource.remove(row.id as number)
+    error.value = ''
     await load()
-  } catch {
-    error.value = t('masterData.deleteError')
+  } catch (e) {
+    // The server explains why (e.g. still linked to operations): show it.
+    const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+    error.value = detail ?? t('masterData.deleteError')
   }
 }
 
@@ -218,6 +221,7 @@ onMounted(load)
         :rows="visibleRows"
         :active-toggle="hasActiveField"
         :legacy-support="legacySupport"
+        :allow-delete="true"
         :ledger-route-name="ledgerRouteName"
         @edit="openEdit"
         @delete="onDelete"

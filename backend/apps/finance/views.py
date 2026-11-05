@@ -12,7 +12,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import MethodNotAllowed, ValidationError
 from rest_framework.response import Response
 
-from apps.core.account_status import HAS_OPEN_ACCOUNT, AccountStatusFilterMixin
+from apps.core.account_status import AccountStatusFilterMixin, HAS_OPEN_ACCOUNT, InactiveOnlyDeleteMixin
 from apps.accounts.permissions import HasModulePermission
 from apps.customers.models import Customer
 from apps.reports.date_range import is_current_period, resolve_date_range
@@ -118,7 +118,7 @@ _NO_HARD_DELETE_DETAIL = (
 )
 
 
-class BankAccountViewSet(viewsets.ModelViewSet):
+class BankAccountViewSet(InactiveOnlyDeleteMixin, viewsets.ModelViewSet):
     queryset = BankAccount.objects.all()
     serializer_class = BankAccountSerializer
     filterset_fields = ["is_active"]
@@ -126,7 +126,7 @@ class BankAccountViewSet(viewsets.ModelViewSet):
     module = "finance"
 
 
-class CashAccountViewSet(viewsets.ModelViewSet):
+class CashAccountViewSet(InactiveOnlyDeleteMixin, viewsets.ModelViewSet):
     queryset = CashAccount.objects.all()
     serializer_class = CashAccountSerializer
     filterset_fields = ["is_active"]

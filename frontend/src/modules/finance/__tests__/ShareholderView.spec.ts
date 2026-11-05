@@ -582,10 +582,13 @@ describe('ShareholderView', () => {
       .findAll('button')
       .find((b) => b.text() === 'Associés')!
       .trigger('click')
-    await wrapper
-      .findAll('button')
-      .find((b) => b.text() === 'Modifier')!
-      .trigger('click')
+    // "Modifier" lives in the row's "..." menu (teleported to <body>).
+    await wrapper.find('button[aria-label="Plus d\'actions"]').trigger('click')
+    ;(
+      Array.from(document.body.querySelectorAll('[role=menuitem]')).find(
+        (el) => el.textContent?.trim() === 'Modifier',
+      ) as HTMLElement
+    ).click()
     await flushPromises()
 
     const form = wrapper.find('[data-test="shareholder-form"]')

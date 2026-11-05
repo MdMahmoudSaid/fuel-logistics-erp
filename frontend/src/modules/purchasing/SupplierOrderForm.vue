@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { todayIso } from '@/utils/date'
 import AppAlert from '@/components/ui/AppAlert.vue'
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -26,7 +27,7 @@ const form = ref({
   reference: '',
   supplier: '',
   product: '',
-  purchase_date: '',
+  purchase_date: todayIso(),
   quantity_litres: '',
   unit_price: '',
   currency: 'XOF',

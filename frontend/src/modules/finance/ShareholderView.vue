@@ -855,22 +855,22 @@ async function onWithdrawalShareholderChange() {
                 </Badge>
               </td>
               <td class="px-3 py-2.5 text-end whitespace-nowrap">
-                <span class="inline-flex items-center gap-1">
-                  <Button variant="ghost" @click="openEditShareholder(s)">{{
-                    t('masterData.edit')
-                  }}</Button>
-                  <ActionMenu
-                    :label="t('masterData.moreActions')"
-                    :items="
-                      buildStatusActions(s, true, t).map((a) => ({
-                        key: a.target,
-                        label: a.label,
-                        tone: a.tone,
-                      }))
-                    "
-                    @select="onSetShareholderStatus(s, $event as AccountStatus)"
-                  />
-                </span>
+                <ActionMenu
+                  :label="t('masterData.moreActions')"
+                  :items="[
+                    { key: 'edit', label: t('masterData.edit') },
+                    ...buildStatusActions(s, true, t).map((a) => ({
+                      key: a.target,
+                      label: a.label,
+                      tone: a.tone,
+                    })),
+                  ]"
+                  @select="
+                    $event === 'edit'
+                      ? openEditShareholder(s)
+                      : onSetShareholderStatus(s, $event as AccountStatus)
+                  "
+                />
               </td>
             </tr>
             <tr v-if="listedShareholders.length === 0">

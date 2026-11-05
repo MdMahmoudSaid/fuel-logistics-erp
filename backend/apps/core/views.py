@@ -1,13 +1,14 @@
 from rest_framework import generics, viewsets
 from rest_framework.permissions import SAFE_METHODS, IsAuthenticated
 
+from apps.core.account_status import InactiveOnlyDeleteMixin
 from apps.accounts.permissions import HasModulePermission
 
 from .models import CompanyProfile, LossToleranceConfig, Product
 from .serializers import CompanyProfileSerializer, LossToleranceConfigSerializer, ProductSerializer
 
 
-class ProductViewSet(viewsets.ModelViewSet):
+class ProductViewSet(InactiveOnlyDeleteMixin, viewsets.ModelViewSet):
     queryset = Product.objects.all()
     serializer_class = ProductSerializer
     filterset_fields = ["is_active"]

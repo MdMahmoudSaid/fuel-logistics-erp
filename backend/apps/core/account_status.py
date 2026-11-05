@@ -12,7 +12,10 @@ Three states, derived from two booleans:
 """
 from decimal import Decimal
 
-from rest_framework import serializers
+from django.db import transaction
+from django.db.models import ProtectedError
+from rest_framework import serializers, status
+from rest_framework.response import Response
 
 # Parties whose account is still live: working (active) or no longer working
 # but not settled yet (legacy). Use it for every balance / debt aggregate.
@@ -124,3 +127,40 @@ class RejectInactiveMixin:
         if errors:
             raise serializers.ValidationError(errors)
         return attrs
+
+
+class InactiveOnlyDeleteMixin:
+    """ViewSet mixin: permanent deletion, only for an inactive record.
+
+    An active or "Ancien" record must be deactivated first (which itself is
+    refused while it has open work or a balance). A record that history still
+    points at (trips, invoices, payments...) cannot disappear: that comes back
+    as a clear 409 instead of a server error.
+    """
+
+    def destroy(self, request, *args, **kwargs):
+        obj = self.get_object()
+        if obj == request.user:
+            return Response(
+                {"detail": "Vous ne pouvez pas supprimer votre propre compte."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if getattr(obj, "is_active", False) or getattr(obj, "is_legacy", False):
+            return Response(
+                {"detail": "Désactivez d'abord cet élément avant de le supprimer définitivement."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            with transaction.atomic():
+                self.perform_destroy(obj)
+        except ProtectedError:
+            return Response(
+                {
+                    "detail": (
+                        "Suppression impossible : cet élément est lié à des opérations "
+                        "existantes. Laissez-le inactif."
+                    )
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+        return Response(status=status.HTTP_204_NO_CONTENT)

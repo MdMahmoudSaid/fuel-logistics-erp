@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatDateDMY } from '../date'
+import { formatDateDMY, todayIso } from '../date'
 
 describe('formatDateDMY', () => {
   it('formats an ISO date as JJ/MM/AAAA', () => {
@@ -14,5 +14,12 @@ describe('formatDateDMY', () => {
   it('returns anything that is not an ISO date unchanged', () => {
     expect(formatDateDMY('n/a')).toBe('n/a')
     expect(formatDateDMY('')).toBe('')
+  })
+})
+
+describe('todayIso', () => {
+  it('uses the local calendar date, padded', () => {
+    expect(todayIso(new Date(2026, 10, 5, 23, 30))).toBe('2026-11-05')
+    expect(todayIso(new Date(2026, 0, 9, 0, 5))).toBe('2026-01-09')
   })
 })

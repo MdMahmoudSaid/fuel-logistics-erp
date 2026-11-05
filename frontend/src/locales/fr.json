@@ -240,7 +240,7 @@
     "edit": "Modifier",
     "saveError": "Impossible d'enregistrer — vérifiez les champs et vos droits.",
     "deleteError": "Impossible de supprimer — vérifiez vos droits.",
-    "confirmDelete": "Voulez-vous vraiment supprimer cet enregistrement ?",
+    "confirmDelete": "Voulez-vous vraiment supprimer cet enregistrement ? La suppression est définitive.",
     "noRecords": "Aucun enregistrement.",
     "statusActive": "Actif",
     "statusInactive": "Inactif",

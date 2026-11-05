@@ -240,7 +240,7 @@
     "edit": "Edit",
     "saveError": "Could not save — check the fields and your permissions.",
     "deleteError": "Could not delete — check your permissions.",
-    "confirmDelete": "Are you sure you want to delete this record?",
+    "confirmDelete": "Do you really want to delete this record? Deletion is permanent.",
     "noRecords": "No records yet.",
     "statusActive": "Active",
     "statusInactive": "Inactive",

@@ -7,7 +7,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.accounts.permissions import HasModulePermission
-from apps.core.account_status import AccountStatusFilterMixin
+from apps.core.account_status import AccountStatusFilterMixin, InactiveOnlyDeleteMixin
 from apps.reports.serialization import decimals_to_str
 from apps.reports.services.ledger_pdf import (
     DEFAULT_COMPANY_NAME,
@@ -44,7 +44,7 @@ def _reliquat_by_product(confirmed_orders) -> list[dict]:
     return list(product_reliquats.values())
 
 
-class SupplierViewSet(AccountStatusFilterMixin, viewsets.ModelViewSet):
+class SupplierViewSet(InactiveOnlyDeleteMixin, AccountStatusFilterMixin, viewsets.ModelViewSet):
     queryset = Supplier.objects.all()
     serializer_class = SupplierSerializer
     filterset_fields = ["is_active", "country"]

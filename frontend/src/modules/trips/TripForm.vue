@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import { todayIso } from '@/utils/date'
 import AppAlert from '@/components/ui/AppAlert.vue'
 import { ref, computed, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { createResourceApi } from '@/api/resource'
+import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { listAll } from '@/modules/documents/api'
 import { useAuthStore } from '@/stores/auth'
 import { cessionLetterResource, supplierOrderResource } from '@/modules/purchasing/api'
@@ -68,7 +70,7 @@ const form = ref({
   transporter: '',
   driver: '',
   quantity_loaded: '',
-  loading_date: '',
+  loading_date: todayIso(),
   bl_reference: '',
   customer_order: prefilledOrderId.value ? String(prefilledOrderId.value) : '',
   notes: '',
@@ -106,6 +108,19 @@ const lockedTransporterName = computed(
     allTransporters.value.find((tr) => tr.id === selectedTruck.value?.owner_transporter)?.name ??
     '',
 )
+
+const truckOptions = computed(() =>
+  trucks.value.map((truck) => ({
+    value: String(truck.id),
+    label:
+      formatTruckPlates(truck) +
+      (truck.status !== 'AVAILABLE'
+        ? ' ' + t('trips.newForm.occupied', { status: truckStatusLabel(truck.status) })
+        : ''),
+  })),
+)
+
+watch(() => form.value.truck, onTruckChange)
 
 function onTruckChange() {
   const truck = trucks.value.find((t) => t.id === Number(form.value.truck))
@@ -275,21 +290,13 @@ async function onSubmit() {
           <label class="text-texte-2 text-sm font-medium" for="truck">{{
             t('trips.newForm.truck')
           }}</label>
-          <select
-            id="truck"
+          <!-- Searchable: typing the start of a plate narrows the list; the
+               list itself scrolls. -->
+          <SearchableSelect
             v-model="form.truck"
-            required
-            class="border-ligne-forte h-12 w-full rounded-lg border bg-white px-3.5 focus-visible:outline-bitume focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-            @change="onTruckChange"
-          >
-            <option value="" disabled>{{ t('trips.newForm.selectTruck') }}</option>
-            <option v-for="truck in trucks" :key="truck.id" :value="truck.id">
-              {{ formatTruckPlates(truck) }}
-              <template v-if="truck.status !== 'AVAILABLE'">
-                {{ ' ' + t('trips.newForm.occupied', { status: truckStatusLabel(truck.status) }) }}
-              </template>
-            </option>
-          </select>
+            :options="truckOptions"
+            :placeholder="t('trips.newForm.selectTruck')"
+          />
           <p v-if="fieldErrors.truck" class="text-critique text-xs">{{ fieldErrors.truck }}</p>
         </div>
 

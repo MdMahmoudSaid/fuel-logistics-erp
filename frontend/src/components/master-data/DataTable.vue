@@ -21,6 +21,9 @@ defineProps<{
   // Customers / suppliers / transporters: a third "Ancien" state (no longer
   // trading, balance still open) next to active / inactive.
   legacySupport?: boolean
+  // Inactive rows can be deleted for good from the row menu (confirmed by the
+  // parent). Off for records that must never be hard-deleted (associates).
+  allowDelete?: boolean
   ledgerRouteName?: string
 }>()
 
@@ -34,7 +37,7 @@ function isNumericColumn(type?: FieldType): boolean {
   return type === 'money' || type === 'quantity'
 }
 
-defineEmits<{
+const emit = defineEmits<{
   edit: [row: Record<string, unknown>]
   delete: [row: Record<string, unknown>]
   'set-status': [row: Record<string, unknown>, status: AccountStatus]
@@ -80,6 +83,32 @@ function statusCellClass(col: Column, row: Record<string, unknown>): string {
 function statusActions(row: Record<string, unknown>, legacySupport: boolean | undefined) {
   return buildStatusActions(row, legacySupport, t)
 }
+
+// Everything but "Détail" lives in the row's "..." menu: Modifier, the status
+// moves and, for an inactive record, a permanent Supprimer.
+function rowMenuItems(
+  row: Record<string, unknown>,
+  legacySupport: boolean | undefined,
+  allowDelete: boolean | undefined,
+) {
+  const items: { key: string; label: string; tone?: string }[] = [
+    { key: 'edit', label: t('masterData.edit') },
+    ...statusActions(row, legacySupport).map((a) => ({
+      key: a.target,
+      label: a.label,
+      tone: a.tone,
+    })),
+  ]
+  if (allowDelete && !row.is_active && !row.is_legacy)
+    items.push({ key: 'delete', label: t('common.delete'), tone: 'text-critique' })
+  return items
+}
+
+function onMenuSelect(row: Record<string, unknown>, key: string) {
+  if (key === 'edit') emit('edit', row)
+  else if (key === 'delete') emit('delete', row)
+  else emit('set-status', row, key as AccountStatus)
+}
 </script>
 
 <template>
@@ -123,6 +152,14 @@ function statusActions(row: Record<string, unknown>, legacySupport: boolean | un
               @click="$emit('set-status', row, action.target)"
             >
               {{ action.label }}
+            </button>
+            <button
+              v-if="allowDelete && !row.is_active && !row.is_legacy"
+              type="button"
+              :class="[cardAction, 'text-critique']"
+              @click="$emit('delete', row)"
+            >
+              {{ t('common.delete') }}
             </button>
           </template>
           <button
@@ -178,28 +215,20 @@ function statusActions(row: Record<string, unknown>, legacySupport: boolean | un
               >
                 {{ t('masterData.viewLedger') }}
               </RouterLink>
-              <button class="text-texte-2 hover:text-texte" @click="$emit('edit', row)">
-                {{ t('masterData.edit') }}
-              </button>
               <ActionMenu
                 v-if="activeToggle"
                 :label="t('masterData.moreActions')"
-                :items="
-                  statusActions(row, legacySupport).map((a) => ({
-                    key: a.target,
-                    label: a.label,
-                    tone: a.tone,
-                  }))
-                "
-                @select="$emit('set-status', row, $event as AccountStatus)"
+                :items="rowMenuItems(row, legacySupport, allowDelete)"
+                @select="onMenuSelect(row, $event)"
               />
-              <button
-                v-else
-                class="text-critique hover:brightness-90"
-                @click="$emit('delete', row)"
-              >
-                {{ t('common.delete') }}
-              </button>
+              <template v-else>
+                <button class="text-texte-2 hover:text-texte" @click="$emit('edit', row)">
+                  {{ t('masterData.edit') }}
+                </button>
+                <button class="text-critique hover:brightness-90" @click="$emit('delete', row)">
+                  {{ t('common.delete') }}
+                </button>
+              </template>
             </span>
           </td>
         </tr>

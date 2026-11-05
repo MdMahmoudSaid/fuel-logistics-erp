@@ -10,7 +10,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.accounts.permissions import HasModulePermission
-from apps.core.account_status import AccountStatusFilterMixin
+from apps.core.account_status import AccountStatusFilterMixin, InactiveOnlyDeleteMixin
 from apps.reports.serialization import decimals_to_str
 from apps.reports.services.ledger_pdf import (
     DEFAULT_COMPANY_NAME,
@@ -44,7 +44,7 @@ def _generate_next_truck_internal_id() -> str:
     return f"{_TRUCK_ID_PREFIX}{last_number + 1:0{_TRUCK_ID_WIDTH}d}"
 
 
-class TransporterViewSet(AccountStatusFilterMixin, viewsets.ModelViewSet):
+class TransporterViewSet(InactiveOnlyDeleteMixin, AccountStatusFilterMixin, viewsets.ModelViewSet):
     queryset = Transporter.objects.all()
     serializer_class = TransporterSerializer
     filterset_fields = ["is_active"]
@@ -258,7 +258,7 @@ class DriverViewSet(viewsets.ModelViewSet):
     module = "operations"
 
 
-class TruckViewSet(viewsets.ModelViewSet):
+class TruckViewSet(InactiveOnlyDeleteMixin, viewsets.ModelViewSet):
     queryset = Truck.objects.all()
     serializer_class = TruckSerializer
     filterset_fields = ["status", "ownership_type", "is_active"]

@@ -32,6 +32,8 @@ async function clickRowAction(
   wrapper: { find: (s: string) => { trigger: (e: string) => Promise<void> } },
   label: string,
 ) {
+  // Menus left open by a previous test would be matched first.
+  document.body.querySelectorAll('[role=menu]').forEach((el) => el.remove())
   await wrapper.find('button[aria-label="Plus d\'actions"]').trigger('click')
   const item = Array.from(document.body.querySelectorAll('[role=menuitem]')).find(
     (el) => el.textContent?.trim() === label,
@@ -159,6 +161,57 @@ describe('MasterDataView', () => {
       'Inactifs (25)',
     ])
     expect(wrapper.text()).toContain('Row 26')
+  })
+
+  function menuLabels() {
+    return Array.from(document.body.querySelectorAll('[role=menuitem]')).map((el) =>
+      el.textContent?.trim(),
+    )
+  }
+
+  it('puts Modifier in the row menu, with Supprimer only for an inactive record', async () => {
+    const resource = makeResource([
+      { id: 1, name: 'Active one', is_active: true },
+      { id: 2, name: 'Old one', is_active: false },
+    ])
+    const wrapper = mount(MasterDataView, {
+      props: { title: 'Trucks', resource, fields },
+      global: { plugins: [i18n] },
+    })
+    await flushPromises()
+
+    // Nothing but the menu trigger sits beside the row: no loose Modifier.
+    expect(
+      wrapper
+        .find('table')
+        .findAll('button')
+        .find((b) => b.text() === 'Modifier'),
+    ).toBeUndefined()
+    await wrapper.find('button[aria-label="Plus d\'actions"]').trigger('click')
+    expect(menuLabels()).toEqual(['Modifier', 'Désactiver'])
+    document.body.innerHTML = ''
+
+    await wrapper.findAll('[role=tab]')[1]!.trigger('click')
+    await wrapper.find('button[aria-label="Plus d\'actions"]').trigger('click')
+    expect(menuLabels()).toEqual(['Modifier', 'Activer', 'Supprimer'])
+  })
+
+  it('deletes an inactive record for good from the menu, and shows the server refusal', async () => {
+    const resource = makeResource([{ id: 2, name: 'Old one', is_active: false }])
+    const wrapper = mount(MasterDataView, {
+      props: { title: 'Trucks', resource, fields },
+      global: { plugins: [i18n] },
+    })
+    await flushPromises()
+    await wrapper.findAll('[role=tab]')[1]!.trigger('click')
+
+    resource.remove = vi.fn(async () => {
+      throw { response: { status: 409, data: { detail: 'Suppression impossible : lié.' } } }
+    })
+    await clickRowAction(wrapper, 'Supprimer')
+    await flushPromises()
+    expect(resource.remove).toHaveBeenCalledWith(2)
+    expect(wrapper.text()).toContain('Suppression impossible : lié.')
   })
 
   it('shows each group under its own Actifs / Inactifs button, with counts', async () => {

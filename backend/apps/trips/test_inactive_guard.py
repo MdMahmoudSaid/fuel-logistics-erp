@@ -201,3 +201,40 @@ def test_transfer_refuses_an_inactive_account(api):
         format="json",
     )
     assert resp.status_code == 400
+
+
+# ---- permanent deletion: inactive records only -----------------------------
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("path,model", [("customers", Customer), ("suppliers", Supplier), ("transporters", Transporter)])
+def test_only_an_inactive_record_can_be_deleted_for_good(api, path, model):
+    active = model.objects.create(name="Still active")
+    legacy = model.objects.create(name="Legacy", is_active=False, is_legacy=True)
+    gone = model.objects.create(name="Archived", is_active=False)
+
+    assert api.delete(f"/api/{path}/{active.id}/").status_code == 400
+    assert api.delete(f"/api/{path}/{legacy.id}/").status_code == 400
+    assert api.delete(f"/api/{path}/{gone.id}/").status_code == 204
+    assert not model.objects.filter(pk=gone.pk).exists()
+    assert model.objects.filter(pk__in=[active.pk, legacy.pk]).count() == 2
+
+
+@pytest.mark.django_db
+def test_deleting_an_inactive_record_that_history_points_at_is_a_clear_409(api):
+    fx = _setup_fixtures("G9")
+    truck = _make_truck("TRK-G9")
+    _make_trip(fx, truck, "TRIP-G9", status=Trip.Status.COMPLETED)
+    Truck.objects.filter(pk=truck.pk).update(is_active=False)
+
+    resp = api.delete(f"/api/trucks/{truck.id}/")
+    assert resp.status_code == 409 and "lié" in str(resp.data["detail"])
+    assert Truck.objects.filter(pk=truck.pk).exists()
+
+
+@pytest.mark.django_db
+def test_a_user_cannot_delete_their_own_account(api):
+    me = User.objects.get(phone="+2229990001")
+    resp = api.delete(f"/api/accounts/users/{me.id}/")
+    assert resp.status_code == 400
+    assert User.objects.filter(pk=me.pk).exists()

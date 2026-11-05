@@ -3,6 +3,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createWebHistory } from 'vue-router'
 import { createPinia, setActivePinia } from 'pinia'
 import TripForm from '../TripForm.vue'
+import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { useAuthStore } from '@/stores/auth'
 import type { CessionLetter, SupplierOrder } from '@/modules/purchasing/types'
 
@@ -144,6 +145,12 @@ function makeRouter() {
   return router
 }
 
+// The truck picker is a searchable select (type to filter, list scrolls).
+async function pickTruck(wrapper: ReturnType<typeof mount>, id: string) {
+  wrapper.findComponent(SearchableSelect).vm.$emit('update:modelValue', id)
+  await flushPromises()
+}
+
 describe('TripForm', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -156,10 +163,27 @@ describe('TripForm', () => {
     const wrapper = mount(TripForm, { global: { plugins: [router] } })
     await flushPromises()
 
-    const truckOptions = wrapper.findAll('#truck option').map((option) => option.text())
+    const truckInput = wrapper.findComponent(SearchableSelect).find('input')
+    await truckInput.trigger('focus')
+    const truckOptions = wrapper
+      .findComponent(SearchableSelect)
+      .findAll('li')
+      .map((li) => li.text())
     expect(truckOptions).toContain('AA-001 / BB-001')
     expect(truckOptions).not.toContain('TRK-001')
     expect(truckOptions).not.toContain('AA-002 / BB-002')
+  })
+
+  it('starts with today as the loading date', async () => {
+    const router = makeRouter()
+    await router.isReady()
+    const wrapper = mount(TripForm, { global: { plugins: [router] } })
+    await flushPromises()
+
+    const d = new Date()
+    const pad = (n: number) => String(n).padStart(2, '0')
+    const today = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+    expect((wrapper.find('#loading_date').element as HTMLInputElement).value).toBe(today)
   })
 
   it('defaults the transporter picker to available transporters only', async () => {
@@ -181,7 +205,7 @@ describe('TripForm', () => {
     const wrapper = mount(TripForm, { global: { plugins: [router] } })
     await flushPromises()
 
-    await wrapper.find('#truck').setValue('1') // AVAILABLE_TRUCK, EXTERNAL, owner_transporter 10
+    await pickTruck(wrapper, '1') // AVAILABLE_TRUCK, EXTERNAL, owner_transporter 10
     await flushPromises()
 
     expect(wrapper.find('select#transporter').exists()).toBe(false)
@@ -198,7 +222,7 @@ describe('TripForm', () => {
     const wrapper = mount(TripForm, { global: { plugins: [router] } })
     await flushPromises()
 
-    await wrapper.find('#truck').setValue('3') // COMPANY_OWNED_TRUCK
+    await pickTruck(wrapper, '3') // COMPANY_OWNED_TRUCK
     await flushPromises()
 
     expect(wrapper.find('select#transporter').exists()).toBe(false)
@@ -224,7 +248,7 @@ describe('TripForm', () => {
 
     await wrapper.find('#cession_letter').setValue('9')
     await flushPromises()
-    await wrapper.find('#truck').setValue('3') // COMPANY_OWNED_TRUCK
+    await pickTruck(wrapper, '3') // COMPANY_OWNED_TRUCK
     await wrapper.find('#quantity_loaded').setValue('20000')
     await wrapper.find('#loading_date').setValue('2026-08-18')
     await wrapper.find('#bl_reference').setValue('BL-CO-001')
@@ -246,7 +270,7 @@ describe('TripForm', () => {
 
     await wrapper.find('#cession_letter').setValue('9')
     await flushPromises()
-    await wrapper.find('#truck').setValue('3')
+    await pickTruck(wrapper, '3')
     await wrapper.find('#quantity_loaded').setValue('20000')
     await wrapper.find('#loading_date').setValue('2026-08-18')
     await wrapper.find('form').trigger('submit.prevent')
@@ -265,7 +289,7 @@ describe('TripForm', () => {
 
     await wrapper.find('#cession_letter').setValue('9')
     await flushPromises()
-    await wrapper.find('#truck').setValue('1') // AVAILABLE_TRUCK, EXTERNAL
+    await pickTruck(wrapper, '1') // AVAILABLE_TRUCK, EXTERNAL
     await wrapper.find('#quantity_loaded').setValue('20000')
     await wrapper.find('#loading_date').setValue('2026-08-18')
     await wrapper.find('#bl_reference').setValue('BL-EXT-001')
@@ -315,7 +339,9 @@ describe('TripForm', () => {
     await wrapper.find('#show_busy').setValue(true)
     await flushPromises()
 
-    expect(wrapper.text()).toContain('AA-002 / BB-002')
+    // The truck list opens on focus (searchable select).
+    await wrapper.findComponent(SearchableSelect).find('input').trigger('focus')
+    expect(wrapper.findComponent(SearchableSelect).text()).toContain('AA-002 / BB-002')
     expect(wrapper.text()).toContain('Sow Transport')
   })
 
@@ -331,7 +357,7 @@ describe('TripForm', () => {
     await wrapper.find('#quantity_loaded').setValue('50000')
     await flushPromises()
 
-    expect(wrapper.text()).toContain("Dépasse la quantité restante de la cession")
+    expect(wrapper.text()).toContain('Dépasse la quantité restante de la cession')
   })
 
   it('blocks submission and warns when the quantity exceeds the selected truck capacity', async () => {
@@ -342,7 +368,7 @@ describe('TripForm', () => {
 
     await wrapper.find('#cession_letter').setValue('9')
     await flushPromises()
-    await wrapper.find('#truck').setValue('1') // AVAILABLE_TRUCK, capacity_litres 45000
+    await pickTruck(wrapper, '1') // AVAILABLE_TRUCK, capacity_litres 45000
     // Transporter is derived automatically from the EXTERNAL truck (Phase 6).
     await wrapper.find('#quantity_loaded').setValue('50000')
     await wrapper.find('#loading_date').setValue('2026-08-18')
@@ -374,7 +400,7 @@ describe('TripForm', () => {
 
     await wrapper.find('#cession_letter').setValue('9')
     await flushPromises()
-    await wrapper.find('#truck').setValue('1')
+    await pickTruck(wrapper, '1')
     // Transporter is derived automatically from the EXTERNAL truck (Phase 6) -
     // no need to set it manually.
     await wrapper.find('#quantity_loaded').setValue('20000')
@@ -401,7 +427,7 @@ describe('TripForm', () => {
 
     await wrapper.find('#cession_letter').setValue('9')
     await flushPromises()
-    await wrapper.find('#truck').setValue('1')
+    await pickTruck(wrapper, '1')
     // Transporter is derived automatically from the EXTERNAL truck (Phase 6) -
     // no need to set it manually.
     await wrapper.find('#quantity_loaded').setValue('20000')
@@ -414,7 +440,7 @@ describe('TripForm', () => {
     const blContainer = wrapper.find('#bl_reference').element.closest('div')
     expect(blContainer?.textContent).toContain('Cette référence existe déjà.')
 
-    const truckContainer = wrapper.find('#truck').element.closest('div')
+    const truckContainer = wrapper.findComponent(SearchableSelect).element.parentElement
     expect(truckContainer?.textContent).toContain('Autre erreur.')
   })
 })
