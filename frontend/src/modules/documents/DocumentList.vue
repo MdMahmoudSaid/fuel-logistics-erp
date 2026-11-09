@@ -7,6 +7,7 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { apiClient } from '@/api/client'
 import AppAlert from '@/components/ui/AppAlert.vue'
+import ActionMenu from '@/components/ui/ActionMenu.vue'
 import Button from '@/components/ui/Button.vue'
 import MonoValue from '@/components/ui/MonoValue.vue'
 import { confirmDialog } from '@/composables/useConfirmDialog'
@@ -104,9 +105,25 @@ async function onDelete(row: DocumentRow) {
   }
 }
 
-const actionClass = 'text-bitume hover:text-orange text-sm underline disabled:opacity-50'
-const cardActionClass =
-  'border-ligne-forte text-bitume h-10 rounded-lg border bg-white px-3 text-sm disabled:opacity-50'
+// The row actions live in one "⋯" menu (client request 2026-11-09).
+function rowActions() {
+  const items: { key: string; label: string; tone?: string }[] = []
+  if (config.value.duplicatePath)
+    items.push({ key: 'duplicate', label: t('documents.common.duplicate') })
+  items.push(
+    { key: 'pdf', label: t('documents.common.pdf') },
+    { key: 'print', label: t('documents.common.print') },
+    { key: 'delete', label: t('documents.common.delete'), tone: 'text-critique' },
+  )
+  return items
+}
+
+function onRowAction(row: DocumentRow, key: string) {
+  if (key === 'duplicate') void onDuplicate(row)
+  else if (key === 'pdf') void onPdf(row)
+  else if (key === 'print') void onPrint(row)
+  else if (key === 'delete') void onDelete(row)
+}
 </script>
 
 <template>
@@ -159,38 +176,12 @@ const cardActionClass =
           <span class="text-texte-3 text-xs">{{ row[config.dateField] }}</span>
           <MonoValue :value="displayValue(row)" class="text-base" />
         </div>
-        <div class="border-ligne mt-3 flex flex-wrap gap-2 border-t pt-3" @click.stop>
-          <button
-            v-if="config.duplicatePath"
-            type="button"
-            :class="cardActionClass"
-            @click="onDuplicate(row)"
-          >
-            {{ t('documents.common.duplicate') }}
-          </button>
-          <button
-            type="button"
-            :class="cardActionClass"
-            :disabled="busyId === row.id"
-            @click="onPdf(row)"
-          >
-            {{ t('documents.common.pdf') }}
-          </button>
-          <button
-            type="button"
-            :class="cardActionClass"
-            :disabled="busyId === row.id"
-            @click="onPrint(row)"
-          >
-            {{ t('documents.common.print') }}
-          </button>
-          <button
-            type="button"
-            class="ms-auto h-10 rounded-lg px-3 text-sm text-red-700"
-            @click="onDelete(row)"
-          >
-            {{ t('documents.common.delete') }}
-          </button>
+        <div class="border-ligne mt-3 flex justify-end border-t pt-3" @click.stop>
+          <ActionMenu
+            :label="t('documents.common.actions')"
+            :items="rowActions()"
+            @select="onRowAction(row, $event)"
+          />
         </div>
       </div>
       <p
@@ -236,43 +227,11 @@ const cardActionClass =
               {{ t(`${config.statuses.labelPrefix}${row.status}`) }}
             </td>
             <td class="px-3 py-2.5 text-right" @click.stop>
-              <span class="inline-flex items-center gap-3">
-                <button
-                  v-if="config.duplicatePath"
-                  type="button"
-                  data-test="doc-duplicate"
-                  :class="actionClass"
-                  @click="onDuplicate(row)"
-                >
-                  {{ t('documents.common.duplicate') }}
-                </button>
-                <button
-                  type="button"
-                  data-test="doc-pdf"
-                  :class="actionClass"
-                  :disabled="busyId === row.id"
-                  @click="onPdf(row)"
-                >
-                  {{ t('documents.common.pdf') }}
-                </button>
-                <button
-                  type="button"
-                  data-test="doc-print"
-                  :class="actionClass"
-                  :disabled="busyId === row.id"
-                  @click="onPrint(row)"
-                >
-                  {{ t('documents.common.print') }}
-                </button>
-                <button
-                  type="button"
-                  data-test="doc-delete"
-                  class="text-sm text-red-700 underline"
-                  @click="onDelete(row)"
-                >
-                  {{ t('documents.common.delete') }}
-                </button>
-              </span>
+              <ActionMenu
+                :label="t('documents.common.actions')"
+                :items="rowActions()"
+                @select="onRowAction(row, $event)"
+              />
             </td>
           </tr>
           <tr v-if="!loading && rows.length === 0">

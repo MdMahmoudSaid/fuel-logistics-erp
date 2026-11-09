@@ -19,6 +19,19 @@ vi.mock('../api', async (importOriginal) => ({
 }))
 vi.mock('@/api/client', () => ({ apiClient: { post: (...a: unknown[]) => post(...(a as [])) } }))
 
+// Row actions live in one "⋯" menu (teleported to <body>).
+async function clickRowAction(
+  wrapper: { find: (s: string) => { trigger: (e: string) => Promise<void> } },
+  label: string,
+) {
+  document.body.querySelectorAll('[role=menu]').forEach((el) => el.remove())
+  await wrapper.find('button[aria-label="Actions"]').trigger('click')
+  const item = Array.from(document.body.querySelectorAll('[role=menuitem]')).find(
+    (el) => el.textContent?.trim() === label,
+  ) as HTMLElement
+  item.click()
+}
+
 describe('DocumentList', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -43,14 +56,14 @@ describe('DocumentList', () => {
     expect(wrapper.text()).toContain('Baba')
     expect(wrapper.find('[data-test="doc-status-filter"]').exists()).toBe(false)
 
-    await wrapper.find('[data-test="doc-pdf"]').trigger('click')
+    await clickRowAction(wrapper, 'PDF')
     expect(downloadDocumentPdf).toHaveBeenCalledWith(
       '/delivery-notes/',
       7,
       'bon-livraison-BL-202610-0001.pdf',
       'fr',
     )
-    await wrapper.find('[data-test="doc-print"]').trigger('click')
+    await clickRowAction(wrapper, 'Imprimer')
     expect(printDocumentPdf).toHaveBeenCalledWith('/delivery-notes/', 7, 'fr')
     await wrapper.find('[data-test="doc-new"]').trigger('click')
     expect(push).toHaveBeenCalledWith({ name: 'delivery-note-new' })
@@ -73,10 +86,23 @@ describe('DocumentList', () => {
     await flushPromises()
     expect(wrapper.text()).toContain('Proformas')
     expect(wrapper.find('[data-test="doc-status-filter"]').exists()).toBe(true)
-    await wrapper.find('[data-test="doc-duplicate"]').trigger('click')
+    await clickRowAction(wrapper, 'Dupliquer')
     await flushPromises()
     expect(post).toHaveBeenCalledWith('/quotations/3/duplicate/')
     expect(push).toHaveBeenCalledWith({ name: 'quotation-detail', params: { id: 99 } })
+  })
+
+  it('offers every row action in the single "⋯" menu, delete included', async () => {
+    const wrapper = mount(DocumentList, { props: { kind: 'proforma' } })
+    await flushPromises()
+    document.body.querySelectorAll('[role=menu]').forEach((el) => el.remove())
+    await wrapper.find('button[aria-label="Actions"]').trigger('click')
+    const labels = Array.from(document.body.querySelectorAll('[role=menuitem]')).map((el) =>
+      el.textContent?.trim(),
+    )
+    expect(labels).toEqual(['Dupliquer', 'PDF', 'Imprimer', 'Supprimer'])
+    // No separate inline action buttons remain in the row.
+    expect(wrapper.text()).not.toContain('Dupliquer')
   })
 
   it('loads every page, not only the first 25 documents', async () => {

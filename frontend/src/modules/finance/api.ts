@@ -127,7 +127,7 @@ export async function exportExpensePdf(id: number, lang: string): Promise<void> 
 
 // Prints the same PDF inside the app (hidden iframe, see utils/printPdf.ts).
 export async function printExpensePdf(id: number, lang: string): Promise<void> {
-  await printPdfBlob(await fetchExpensePdf(id, lang))
+  await printPdfBlob(await fetchExpensePdf(id, lang), `depense-${id}.pdf`)
 }
 
 // GET /api/transport-payments/{id}/pdf/?lang=fr|en|ar (backend/apps/

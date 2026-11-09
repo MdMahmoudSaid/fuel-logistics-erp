@@ -51,7 +51,7 @@ export async function downloadDocumentPdf(
 
 // Prints the PDF inside the app (hidden iframe, no new tab - the app is a PWA).
 export async function printDocumentPdf(path: string, id: number, lang: string): Promise<void> {
-  await printPdfBlob(await fetchPdf(path, id, lang))
+  await printPdfBlob(await fetchPdf(path, id, lang), `document-${id}.pdf`)
 }
 
 export function fetchDeliverableTrips(customerId: number): Promise<DeliverableTrip[]> {
