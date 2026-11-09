@@ -85,7 +85,7 @@ class BankAccountSerializer(_TreasuryAccountStatusMixin, serializers.ModelSerial
         model = BankAccount
         fields = [
             "id", "name", "bank_name", "account_number", "currency",
-            "opening_balance", "current_balance", "is_active", "created_at", "updated_at",
+            "opening_balance", "current_balance", "is_active", "notes", "created_at", "updated_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
 
@@ -97,7 +97,7 @@ class CashAccountSerializer(_TreasuryAccountStatusMixin, serializers.ModelSerial
         model = CashAccount
         fields = [
             "id", "name", "location", "currency",
-            "opening_balance", "current_balance", "is_active", "created_at", "updated_at",
+            "opening_balance", "current_balance", "is_active", "notes", "created_at", "updated_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
 

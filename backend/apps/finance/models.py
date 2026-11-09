@@ -43,6 +43,10 @@ class BankAccount(TimeStampedModel):
     currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, default="XOF")
     opening_balance = models.DecimalField(max_digits=18, decimal_places=2, default=0)
     is_active = models.BooleanField(default=True)
+    # Why the account is what it is (e.g. a negative opening balance entered to
+    # settle the starting situation) - shown in the list so it is still
+    # understood months later.
+    notes = models.TextField(blank=True)
 
     class Meta:
         ordering = ["name"]
@@ -61,6 +65,10 @@ class CashAccount(TimeStampedModel):
     currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, default="XOF")
     opening_balance = models.DecimalField(max_digits=18, decimal_places=2, default=0)
     is_active = models.BooleanField(default=True)
+    # Why the account is what it is (e.g. a negative opening balance entered to
+    # settle the starting situation) - shown in the list so it is still
+    # understood months later.
+    notes = models.TextField(blank=True)
 
     class Meta:
         ordering = ["name"]

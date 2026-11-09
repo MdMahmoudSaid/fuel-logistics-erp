@@ -46,7 +46,10 @@ const statusTab = ref<AccountStatus>('active')
 
 const columns = computed(() =>
   props.fields
-    .filter((f) => f.type !== 'textarea' && f.type !== 'password' && f.type !== 'pin')
+    .filter(
+      (f) =>
+        (f.type !== 'textarea' || f.showInList) && f.type !== 'password' && f.type !== 'pin',
+    )
     .map((f) => ({
       key: f.key,
       label: f.label,

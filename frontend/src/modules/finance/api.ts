@@ -1,5 +1,6 @@
 import { apiClient } from '@/api/client'
 import { createResourceApi } from '@/api/resource'
+import { printPdfBlob } from '@/utils/printPdf'
 import type {
   AllocatableKind,
   AllocatableTypeMap,
@@ -124,23 +125,9 @@ export async function exportExpensePdf(id: number, lang: string): Promise<void> 
   downloadBlob(await fetchExpensePdf(id, lang), `depense-${id}.pdf`)
 }
 
-// Loads the same PDF into a hidden iframe and opens the browser print dialog
-// on it, so the page itself is never printed.
+// Prints the same PDF inside the app (hidden iframe, see utils/printPdf.ts).
 export async function printExpensePdf(id: number, lang: string): Promise<void> {
-  const url = window.URL.createObjectURL(await fetchExpensePdf(id, lang))
-  const frame = document.createElement('iframe')
-  frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;'
-  frame.src = url
-  frame.onload = () => {
-    frame.contentWindow?.focus()
-    frame.contentWindow?.print()
-    // Keep the document alive while the print dialog is open.
-    setTimeout(() => {
-      frame.remove()
-      window.URL.revokeObjectURL(url)
-    }, 60_000)
-  }
-  document.body.appendChild(frame)
+  await printPdfBlob(await fetchExpensePdf(id, lang))
 }
 
 // GET /api/transport-payments/{id}/pdf/?lang=fr|en|ar (backend/apps/

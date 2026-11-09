@@ -35,6 +35,7 @@ const fields = computed<FieldSchema[]>(() => [
     readOnly: true,
   },
   { key: 'is_active', label: t('masterData.fields.active'), type: 'checkbox' },
+  { key: 'notes', label: t('masterData.fields.notes'), type: 'textarea', showInList: true },
 ])
 </script>
 

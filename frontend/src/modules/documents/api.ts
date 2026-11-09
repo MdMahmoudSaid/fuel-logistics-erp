@@ -2,6 +2,7 @@
 // API for the four document kinds, plus the delivery note's trip pre-fill.
 import { apiClient } from '@/api/client'
 import { createResourceApi } from '@/api/resource'
+import { printPdfBlob } from '@/utils/printPdf'
 import type { PaginatedResponse } from '@/api/resource'
 import type { DeliverableTrip, DocumentRow } from './types'
 
@@ -48,11 +49,9 @@ export async function downloadDocumentPdf(
   window.URL.revokeObjectURL(url)
 }
 
-// Opens the PDF in a new tab and starts the browser's print dialog there.
+// Prints the PDF inside the app (hidden iframe, no new tab - the app is a PWA).
 export async function printDocumentPdf(path: string, id: number, lang: string): Promise<void> {
-  const url = window.URL.createObjectURL(await fetchPdf(path, id, lang))
-  const tab = window.open(url, '_blank')
-  tab?.addEventListener('load', () => tab.print())
+  await printPdfBlob(await fetchPdf(path, id, lang))
 }
 
 export function fetchDeliverableTrips(customerId: number): Promise<DeliverableTrip[]> {

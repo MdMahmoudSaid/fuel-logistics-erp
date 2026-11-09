@@ -75,6 +75,27 @@ describe('MasterDataView', () => {
     expect(wrapper.text()).toContain('Total Senegal')
   })
 
+  it('shows a textarea field in the list only when it opts in with showInList', async () => {
+    const rows = [{ id: 1, name: 'BDM', notes: 'Ajustement de depart', is_active: true }]
+    const mountWith = (notesField: FieldSchema) =>
+      mount(MasterDataView, {
+        props: {
+          title: 'Banks',
+          resource: makeResource(rows),
+          fields: [...fields, notesField],
+        },
+        global: { plugins: [i18n] },
+      })
+
+    const hidden = mountWith({ key: 'notes', label: 'Note', type: 'textarea' })
+    await flushPromises()
+    expect(hidden.text()).not.toContain('Ajustement de depart')
+
+    const shown = mountWith({ key: 'notes', label: 'Note', type: 'textarea', showInList: true })
+    await flushPromises()
+    expect(shown.text()).toContain('Ajustement de depart')
+  })
+
   it('creates a new record through the Add flow', async () => {
     const resource = makeResource([])
     const wrapper = mount(MasterDataView, {

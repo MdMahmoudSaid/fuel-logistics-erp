@@ -39,6 +39,8 @@ export interface FieldSchema {
   type: FieldType
   required?: boolean
   readOnly?: boolean
+  // A `textarea` is form-only by default; set to also show it as a list column.
+  showInList?: boolean
   options?: FieldOption[]
   quickCreate?: QuickCreateConfig
   // Bug fix (recette manuelle 2026-09-06): DataTable used to render every
