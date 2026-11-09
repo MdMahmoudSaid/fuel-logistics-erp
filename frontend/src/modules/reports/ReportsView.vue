@@ -20,6 +20,7 @@ import { REPORT_TYPES } from './types'
 import type { ReportResponse } from './types'
 import Button from '@/components/ui/Button.vue'
 import ReportSheet from './ReportSheet.vue'
+import { useExpenseCategoryLabel } from '@/modules/finance/expenseCategoryLabel'
 import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import type { SearchableSelectOption } from '@/components/ui/SearchableSelect.vue'
 
@@ -29,7 +30,18 @@ const { t, te, locale } = useI18n()
 // Endpoints backing the searchable ID selectors, one per REPORT_TYPES
 // idParam. `labelKey` is the field to display - most master-data
 // entities use `name`, trucks identify themselves by `internal_id`.
-const ENTITY_ENDPOINTS: Record<string, { path: string; labelKey: string }> = {
+const ENTITY_ENDPOINTS: Record<
+  string,
+  { path: string; labelKey: string; valueKey?: string; params?: Record<string, unknown> }
+> = {
+  // General expense report: pick one category (value = its code). Only the
+  // categories of general expenses - trip-fee categories have their own reports.
+  category: {
+    path: '/expense-categories/',
+    labelKey: 'name',
+    valueKey: 'code',
+    params: { is_system: false },
+  },
   customer_id: { path: '/customers/', labelKey: 'name' },
   supplier_id: { path: '/suppliers/', labelKey: 'name' },
   transporter_id: { path: '/transporters/', labelKey: 'name' },
@@ -39,6 +51,7 @@ const ENTITY_ENDPOINTS: Record<string, { path: string; labelKey: string }> = {
   shareholder_id: { path: '/shareholders/', labelKey: 'name' },
 }
 
+const categoryLabel = useExpenseCategoryLabel()
 const entityOptionsCache = ref<Record<string, SearchableSelectOption[]>>({})
 
 async function loadEntityOptions(idParam: string) {
@@ -47,10 +60,13 @@ async function loadEntityOptions(idParam: string) {
   if (!config) return
   try {
     const resource = createResourceApi<Record<string, unknown>>(config.path)
-    const data = await resource.list()
+    const data = await resource.list(config.params)
     entityOptionsCache.value[idParam] = data.results.map((row) => ({
-      value: String(row.id),
-      label: String(row[config.labelKey] ?? row.id),
+      value: String(row[config.valueKey ?? 'id']),
+      label:
+        idParam === 'category'
+          ? categoryLabel({ code: String(row.code), name: String(row.name ?? '') })
+          : String(row[config.labelKey] ?? row.id),
     }))
   } catch {
     // Background prefetch for the searchable selector - a failure just

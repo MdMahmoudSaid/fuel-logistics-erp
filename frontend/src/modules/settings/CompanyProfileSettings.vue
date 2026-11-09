@@ -11,7 +11,7 @@ import type { CompanyBankAccount, CompanyProfile } from './types'
 
 const { t } = useI18n()
 
-type TextField = Exclude<keyof CompanyProfile, 'bank_accounts'>
+type TextField = Exclude<keyof CompanyProfile, 'bank_accounts' | 'phone' | 'email' | 'website'>
 const FIELDS: { key: TextField; label: string; wide?: boolean }[] = [
   { key: 'name', label: 'name' },
   { key: 'tagline', label: 'tagline' },
@@ -19,10 +19,38 @@ const FIELDS: { key: TextField; label: string; wide?: boolean }[] = [
   { key: 'trade_register', label: 'tradeRegister' },
   { key: 'address', label: 'address', wide: true },
   { key: 'city', label: 'city' },
-  { key: 'phone', label: 'phone' },
-  { key: 'email', label: 'email' },
-  { key: 'website', label: 'website' },
 ]
+
+// Phone numbers and e-mails: any number of them, one input each (stored one
+// per line by the API, printed one per line in the PDF letterhead).
+const MAX_CONTACT_VALUES = 10
+const phones = ref<string[]>([''])
+const emails = ref<string[]>([''])
+const CONTACT_LISTS = [
+  { id: 'phone', values: phones, label: 'phone', add: 'addPhone', type: 'tel' },
+  { id: 'email', values: emails, label: 'email', add: 'addEmail', type: 'email' },
+] as const
+
+function toList(raw: string): string[] {
+  const values = (raw ?? '')
+    .split('\n')
+    .map((v) => v.trim())
+    .filter(Boolean)
+  return values.length ? values : ['']
+}
+function fromList(values: string[]): string {
+  return values
+    .map((v) => v.trim())
+    .filter(Boolean)
+    .join('\n')
+}
+function addValue(values: string[]) {
+  if (values.length < MAX_CONTACT_VALUES) values.push('')
+}
+function removeValue(values: string[], index: number) {
+  values.splice(index, 1)
+  if (!values.length) values.push('')
+}
 
 const profile = ref<CompanyProfile | null>(null)
 const loading = ref(true)
@@ -36,6 +64,8 @@ const inputClass =
 onMounted(async () => {
   try {
     profile.value = await fetchCompanyProfile()
+    phones.value = toList(profile.value.phone)
+    emails.value = toList(profile.value.email)
   } catch {
     error.value = t('settings.company.loadError')
   } finally {
@@ -63,7 +93,14 @@ async function onSubmit() {
       account_number: b.account_number,
       is_active: b.is_active,
     }))
-    profile.value = await updateCompanyProfile({ ...profile.value, bank_accounts })
+    profile.value = await updateCompanyProfile({
+      ...profile.value,
+      phone: fromList(phones.value),
+      email: fromList(emails.value),
+      bank_accounts,
+    })
+    phones.value = toList(profile.value.phone)
+    emails.value = toList(profile.value.email)
     saved.value = true
   } catch {
     error.value = t('settings.company.saveError')
@@ -107,6 +144,52 @@ async function onSubmit() {
               type="text"
               :class="inputClass"
             />
+          </div>
+
+          <div
+            v-for="list in CONTACT_LISTS"
+            :key="list.id"
+            class="space-y-1.5"
+            :data-test="`company-${list.id}-list`"
+          >
+            <label class="text-texte-2 text-sm font-medium" :for="`company-${list.id}-0`">
+              {{ t(`settings.company.${list.label}`) }}
+            </label>
+            <div v-for="(_, index) in list.values.value" :key="index" class="flex gap-2">
+              <input
+                :id="`company-${list.id}-${index}`"
+                v-model="list.values.value[index]"
+                :type="list.type"
+                :data-test="`company-${list.id}-${index}`"
+                :class="inputClass"
+              />
+              <button
+                v-if="list.values.value.length > 1"
+                type="button"
+                :data-test="`company-${list.id}-remove-${index}`"
+                class="border-ligne-forte text-critique hover:bg-sable h-11 shrink-0 rounded-lg border px-3 text-sm"
+                :aria-label="t('settings.company.removeValue')"
+                @click="removeValue(list.values.value, index)"
+              >
+                ✕
+              </button>
+            </div>
+            <button
+              v-if="list.values.value.length < MAX_CONTACT_VALUES"
+              type="button"
+              :data-test="`company-${list.id}-add`"
+              class="text-bitume hover:text-orange text-sm font-medium"
+              @click="addValue(list.values.value)"
+            >
+              + {{ t(`settings.company.${list.add}`) }}
+            </button>
+          </div>
+
+          <div class="space-y-1.5">
+            <label class="text-texte-2 text-sm font-medium" for="company-website">
+              {{ t('settings.company.website') }}
+            </label>
+            <input id="company-website" v-model="profile.website" type="text" :class="inputClass" />
           </div>
         </div>
       </section>

@@ -35,6 +35,7 @@ import { cancelTransportPayment, transportPaymentResource } from '@/modules/fina
 import ExpenseForm from '@/modules/finance/ExpenseForm.vue'
 import TransportPaymentForm from '@/modules/finance/TransportPaymentForm.vue'
 import AssignCustomerForm from './AssignCustomerForm.vue'
+import TripFeeTable from './TripFeeTable.vue'
 import TripCustomerRefusal from './TripCustomerRefusal.vue'
 import type { Expense } from '@/modules/finance/types'
 import type { ExpenseCategory, TransportPayment } from '@/modules/finance/types'
@@ -183,6 +184,7 @@ const showAssignCustomerForm = ref(false)
 // action while margin is still loading rather than flashing it briefly.
 const noSaleYet = computed(() => margin.value !== null && !margin.value.available)
 const customsReachedStatuses: TripStatus[] = [
+  'BORDER',
   'CUSTOMS',
   'ARRIVED_AT_COMPANY_STOCK',
   'STOCKED',
@@ -247,8 +249,7 @@ async function onCustomerAssigned() {
 
 // Attributed from the Ventes popup without a quantity (spec section 3).
 const awaitingReceivedQuantity = computed(
-  () =>
-    trip.value?.status === 'ARRIVED_AT_CLIENT' && trip.value.pending_unit_selling_price != null,
+  () => trip.value?.status === 'ARRIVED_AT_CLIENT' && trip.value.pending_unit_selling_price != null,
 )
 
 async function onDeliveryConfirmed() {
@@ -320,7 +321,6 @@ async function onExpenseSaved() {
   automaticExpense.value = null
   editingExpense.value = null
   await Promise.all([loadExpenses(), loadMargin()])
-  if (inFeeQueue.value) showNextFee()
 }
 
 async function onCancelExpense(expense: Expense) {
@@ -370,8 +370,10 @@ async function onTransportPaymentSaved() {
   transportPaymentFormMode.value = 'edit'
   showTransportPaymentForm.value = false
   automaticTransportTitle.value = null
-  await Promise.all([loadExpenses(), loadMargin()])
-  if (inFeeQueue.value) showNextFee()
+  const fromTable = commissionFromTable.value
+  commissionFromTable.value = false
+  if (fromTable) await advanceToStatus('SENT_FOR_LOADING')
+  else await Promise.all([loadExpenses(), loadMargin()])
 }
 
 // TripProfitService.get_cost_breakdown (guide Section 9.1) - only
@@ -473,67 +475,42 @@ watch(
 
 const visibleNextStatuses = computed(() => allowedStatuses.value as TripStatus[])
 
-const automaticExpenseByStatus: Partial<
-  Record<TripStatus, { title: string; category: ExpenseCategory }>
-> = {
-  LOADING: { title: t('trips.detail.autoExpense.loading'), category: 'loading' },
-  ROAD_TRANSIT: {
-    title: t('trips.detail.autoExpense.roadTransit'),
-    category: 'road_transit',
-  },
-  IN_TRANSIT: { title: t('trips.detail.autoExpense.transit'), category: 'transit' },
-  BORDER: { title: t('trips.detail.autoExpense.border'), category: 'road' },
-  CUSTOMS: { title: t('trips.detail.autoExpense.customs'), category: 'customs' },
-}
+// "Frais & étapes du trajet" table (client request 2026-11-09): replaces the
+// automatic fee popups that used to open after each status change. Saving a
+// fee on a row moves the trip to that row's status when it is ahead of the
+// current one (the backend validates and records every traversed status), so
+// the last fee entered is the trip's current status.
+const commissionFromTable = ref(false)
 
-function openAutomaticFeePopup(targetStatus: TripStatus): boolean {
-  if (!canManageExpenses.value || !trip.value) return false
-  if (targetStatus === 'SENT_FOR_LOADING') {
-    // Bug fix (2026-09-03 recette manuelle): a company-owned truck's trip
-    // is linked to the seeded internal transporter (Truck.save()), so
-    // `!transporter` alone no longer detects "flotte propre" - no commission
-    // is ever due for it, so the popup must still be skipped.
-    if (!trip.value.transporter || trip.value.transporter_detail?.is_internal) return false
-    // A trip has exactly one settlement (bug fix, client feedback 2026-09-10).
-    if (transportPayments.value.length) return false
-    automaticTransportTitle.value = t('trips.detail.autoExpense.transporterCommission')
-    showTransportPaymentForm.value = true
-    return true
+async function advanceToStatus(status: TripStatus) {
+  await Promise.all([loadExpenses(), loadMargin()])
+  if (!allowedStatuses.value.includes(status)) return
+  statusError.value = ''
+  try {
+    await postTripStatus(tripId.value, status, '')
+    await Promise.all([load(), loadMargin()])
+    await loadAllowedStatuses()
+  } catch (e) {
+    const data = (e as { response?: { data?: { detail?: string } } })?.response?.data
+    statusError.value = translateApiError(data?.detail) || t('trips.detail.statusChangeError')
   }
-  const expense = automaticExpenseByStatus[targetStatus]
-  if (!expense) return false
-  automaticExpense.value = expense
-  showExpenseForm.value = true
-  return true
 }
 
-// Fee popups still to show after a status change or a multi-status skip: one
-// per traversed status that carries a fee, in path order. "Passer" (the form's
-// cancel button, relabelled while inFeeQueue) moves on to the next one.
-const feeQueue = ref<TripStatus[]>([])
-const inFeeQueue = ref(false)
-
-function showNextFee() {
-  while (feeQueue.value.length) {
-    if (openAutomaticFeePopup(feeQueue.value.shift()!)) return
+function onOpenCommission() {
+  const existing = transportPayments.value.find((p) => p.status !== 'CANCELLED')
+  commissionFromTable.value = true
+  if (existing) {
+    onEditTransportPayment(existing)
+    return
   }
-  inFeeQueue.value = false
-}
-
-function skipAllFees() {
-  feeQueue.value = []
-  inFeeQueue.value = false
-  showExpenseForm.value = false
-  showTransportPaymentForm.value = false
-  automaticExpense.value = null
-  automaticTransportTitle.value = null
+  automaticTransportTitle.value = t('trips.detail.autoExpense.transporterCommission')
+  showTransportPaymentForm.value = true
 }
 
 function onExpenseCancel() {
   showExpenseForm.value = false
   automaticExpense.value = null
   editingExpense.value = null
-  if (inFeeQueue.value) showNextFee()
 }
 
 function onTransportPaymentCancel() {
@@ -541,23 +518,19 @@ function onTransportPaymentCancel() {
   automaticTransportTitle.value = null
   editingTransportPayment.value = null
   transportPaymentFormMode.value = 'edit'
-  if (inFeeQueue.value) showNextFee()
+  commissionFromTable.value = false
 }
 
 async function onChangeStatus() {
   if (!nextStatus.value) return
-  const targetStatus = nextStatus.value as TripStatus
   changingStatus.value = true
   statusError.value = ''
   try {
-    const result = await postTripStatus(tripId.value, nextStatus.value, statusNotes.value)
+    await postTripStatus(tripId.value, nextStatus.value, statusNotes.value)
     nextStatus.value = ''
     statusNotes.value = ''
-    await Promise.all([load(), loadMargin()])
+    await Promise.all([load(), loadMargin(), loadExpenses()])
     await loadAllowedStatuses()
-    feeQueue.value = [...(result?.traversed_statuses ?? [targetStatus])]
-    inFeeQueue.value = true
-    showNextFee()
   } catch (e) {
     const data = (e as { response?: { data?: { detail?: string } } })?.response?.data
     statusError.value = translateApiError(data?.detail) || t('trips.detail.statusChangeError')
@@ -616,6 +589,18 @@ const cessionProofUrl = computed(
     <p v-else-if="loading" class="text-texte-3 text-sm">{{ t('common.loading') }}</p>
 
     <template v-else-if="trip">
+      <!-- Frais & étapes du trajet: first thing on the page, always open. -->
+      <Card v-if="canManageExpenses" :title="t('trips.feeTable.title')">
+        <TripFeeTable
+          :trip="trip"
+          :expenses="expenses"
+          :transport-payments="transportPayments"
+          :can-manage="canManageExpenses && canChangeStatus"
+          @recorded="advanceToStatus"
+          @open-commission="onOpenCommission"
+        />
+      </Card>
+
       <Card v-if="canChangeStatus" :title="t('trips.detail.changeStatus')">
         <div class="space-y-3">
           <AppAlert v-if="statusError" :message="statusError" />
@@ -668,7 +653,9 @@ const cessionProofUrl = computed(
         @success="onDeliveryConfirmed"
       />
       <DeliveryControlForm
-        v-else-if="['ARRIVED_AT_CLIENT', 'QUANTITY_CONTROL'].includes(trip.status) && canChangeStatus"
+        v-else-if="
+          ['ARRIVED_AT_CLIENT', 'QUANTITY_CONTROL'].includes(trip.status) && canChangeStatus
+        "
         :trip-id="trip.id"
         :quantity-loaded="trip.quantity_loaded"
         @confirmed="onDeliveryConfirmed"
@@ -805,6 +792,149 @@ const cessionProofUrl = computed(
           <p class="text-texte font-medium">{{ trip.notes }}</p>
         </div>
       </section>
+
+      <Card :title="t('trips.detail.expenses')">
+        <div class="space-y-3">
+          <AppAlert v-if="expensesError" :message="expensesError" />
+
+          <ul class="divide-ligne divide-y">
+            <li
+              v-for="payment in transportPayments"
+              :key="`transport-${payment.id}`"
+              class="grid grid-cols-[1fr_auto] gap-3 py-2 text-sm"
+            >
+              <div>
+                <p class="text-texte font-medium">
+                  {{ t('trips.detail.transporterCommission') }}
+                </p>
+                <p class="text-texte-2 text-xs">
+                  {{ formatUnitMoney(transportPaymentUnitPrice(payment)) }} ·
+                  {{ formatQuantity(trip.quantity_loaded) }}
+                </p>
+                <p v-if="payment.status === 'CANCELLED'" class="text-critique text-xs font-medium">
+                  {{ t('trips.detail.transportPaymentCancelled') }}
+                </p>
+              </div>
+              <div class="flex flex-col items-end gap-1">
+                <MonoValue
+                  :value="formatMoney(payment.base_amount)"
+                  align="left"
+                  :class="payment.status === 'CANCELLED' ? 'text-texte-3 line-through' : ''"
+                />
+                <div v-if="payment.can_modify" class="flex gap-2">
+                  <button
+                    v-if="canEditCommission"
+                    type="button"
+                    class="text-bitume text-xs hover:brightness-90 disabled:opacity-50"
+                    :disabled="deletingTransportPaymentId === payment.id"
+                    @click="onEditTransportPayment(payment)"
+                  >
+                    {{ t('trips.detail.editExpense') }}
+                  </button>
+                  <button
+                    v-if="canCancelExpenses"
+                    type="button"
+                    class="text-critique text-xs hover:brightness-90 disabled:opacity-50"
+                    :disabled="deletingTransportPaymentId === payment.id"
+                    @click="onDeleteTransportPayment(payment)"
+                  >
+                    {{ t('trips.detail.deleteExpense') }}
+                  </button>
+                </div>
+                <div
+                  v-else-if="canCancelExpenses && payment.status !== 'CANCELLED'"
+                  class="flex gap-2"
+                >
+                  <button
+                    type="button"
+                    class="text-bitume text-xs hover:brightness-90 disabled:opacity-50"
+                    :disabled="deletingTransportPaymentId === payment.id"
+                    @click="onCorrectTransportPayment(payment)"
+                  >
+                    {{ t('trips.detail.correctExpense') }}
+                  </button>
+                  <button
+                    type="button"
+                    class="text-critique text-xs hover:brightness-90 disabled:opacity-50"
+                    :disabled="deletingTransportPaymentId === payment.id"
+                    @click="onCancelTransportPayment(payment)"
+                  >
+                    {{ t('trips.detail.cancelExpense') }}
+                  </button>
+                </div>
+              </div>
+            </li>
+            <li
+              v-for="expense in expenses"
+              :key="expense.id"
+              class="grid grid-cols-[1fr_auto] items-start gap-3 py-2 text-sm"
+            >
+              <div>
+                <p class="text-texte font-medium">{{ tripExpenseLabel(expense) }}</p>
+                <p class="text-texte-2 text-xs">
+                  {{ expense.date }} · {{ formatUnitMoney(expenseUnitPrice(expense)) }} ·
+                  {{ formatQuantity(trip.quantity_loaded) }}
+                </p>
+                <p v-if="expense.status === 'CANCELLED'" class="text-critique text-xs font-medium">
+                  {{ t('trips.detail.expenseCancelled') }}
+                </p>
+              </div>
+              <div class="flex flex-col items-end gap-1">
+                <MonoValue
+                  :value="formatMoney(tripAllocation(expense)?.allocated_amount ?? expense.amount)"
+                  align="left"
+                  :class="expense.status === 'CANCELLED' ? 'text-texte-3 line-through' : ''"
+                />
+                <button
+                  v-if="
+                    canCancelExpenses &&
+                    (expense.status === 'PAID' || expense.status === 'PARTIALLY_PAID')
+                  "
+                  type="button"
+                  class="text-critique text-xs hover:brightness-90 disabled:opacity-50"
+                  :disabled="cancellingExpenseId === expense.id"
+                  @click="onCancelExpense(expense)"
+                >
+                  {{ t('trips.detail.cancelExpense') }}
+                </button>
+                <div v-if="canManageExpenses && expense.status === 'UNPAID'" class="flex gap-2">
+                  <button
+                    type="button"
+                    class="text-bitume text-xs hover:brightness-90"
+                    @click="onEditExpense(expense)"
+                  >
+                    {{ t('trips.detail.editExpense') }}
+                  </button>
+                  <button
+                    type="button"
+                    class="text-critique text-xs hover:brightness-90 disabled:opacity-50"
+                    :disabled="deletingExpenseId === expense.id"
+                    @click="onDeleteExpense(expense)"
+                  >
+                    {{ t('trips.detail.deleteExpense') }}
+                  </button>
+                </div>
+              </div>
+            </li>
+            <li
+              v-if="!expenses.length && !transportPayments.length"
+              class="text-texte-3 py-2 text-sm"
+            >
+              {{ t('trips.detail.noExpenses') }}
+            </li>
+          </ul>
+
+          <div class="flex gap-2">
+            <Button
+              v-if="canManageExpenses"
+              variant="ghost"
+              @click=";((automaticExpense = null), (showExpenseForm = true))"
+            >
+              {{ t('trips.detail.addExpense') }}
+            </Button>
+          </div>
+        </div>
+      </Card>
 
       <Card
         v-if="refusals.length"
@@ -1008,149 +1138,6 @@ const cessionProofUrl = computed(
         </ol>
       </Card>
 
-      <Card :title="t('trips.detail.expenses')">
-        <div class="space-y-3">
-          <AppAlert v-if="expensesError" :message="expensesError" />
-
-          <ul class="divide-ligne divide-y">
-            <li
-              v-for="payment in transportPayments"
-              :key="`transport-${payment.id}`"
-              class="grid grid-cols-[1fr_auto] gap-3 py-2 text-sm"
-            >
-              <div>
-                <p class="text-texte font-medium">
-                  {{ t('trips.detail.transporterCommission') }}
-                </p>
-                <p class="text-texte-2 text-xs">
-                  {{ formatUnitMoney(transportPaymentUnitPrice(payment)) }} ·
-                  {{ formatQuantity(trip.quantity_loaded) }}
-                </p>
-                <p v-if="payment.status === 'CANCELLED'" class="text-critique text-xs font-medium">
-                  {{ t('trips.detail.transportPaymentCancelled') }}
-                </p>
-              </div>
-              <div class="flex flex-col items-end gap-1">
-                <MonoValue
-                  :value="formatMoney(payment.base_amount)"
-                  align="left"
-                  :class="payment.status === 'CANCELLED' ? 'text-texte-3 line-through' : ''"
-                />
-                <div v-if="payment.can_modify" class="flex gap-2">
-                  <button
-                    v-if="canEditCommission"
-                    type="button"
-                    class="text-bitume text-xs hover:brightness-90 disabled:opacity-50"
-                    :disabled="deletingTransportPaymentId === payment.id"
-                    @click="onEditTransportPayment(payment)"
-                  >
-                    {{ t('trips.detail.editExpense') }}
-                  </button>
-                  <button
-                    v-if="canCancelExpenses"
-                    type="button"
-                    class="text-critique text-xs hover:brightness-90 disabled:opacity-50"
-                    :disabled="deletingTransportPaymentId === payment.id"
-                    @click="onDeleteTransportPayment(payment)"
-                  >
-                    {{ t('trips.detail.deleteExpense') }}
-                  </button>
-                </div>
-                <div
-                  v-else-if="canCancelExpenses && payment.status !== 'CANCELLED'"
-                  class="flex gap-2"
-                >
-                  <button
-                    type="button"
-                    class="text-bitume text-xs hover:brightness-90 disabled:opacity-50"
-                    :disabled="deletingTransportPaymentId === payment.id"
-                    @click="onCorrectTransportPayment(payment)"
-                  >
-                    {{ t('trips.detail.correctExpense') }}
-                  </button>
-                  <button
-                    type="button"
-                    class="text-critique text-xs hover:brightness-90 disabled:opacity-50"
-                    :disabled="deletingTransportPaymentId === payment.id"
-                    @click="onCancelTransportPayment(payment)"
-                  >
-                    {{ t('trips.detail.cancelExpense') }}
-                  </button>
-                </div>
-              </div>
-            </li>
-            <li
-              v-for="expense in expenses"
-              :key="expense.id"
-              class="grid grid-cols-[1fr_auto] items-start gap-3 py-2 text-sm"
-            >
-              <div>
-                <p class="text-texte font-medium">{{ tripExpenseLabel(expense) }}</p>
-                <p class="text-texte-2 text-xs">
-                  {{ expense.date }} · {{ formatUnitMoney(expenseUnitPrice(expense)) }} ·
-                  {{ formatQuantity(trip.quantity_loaded) }}
-                </p>
-                <p v-if="expense.status === 'CANCELLED'" class="text-critique text-xs font-medium">
-                  {{ t('trips.detail.expenseCancelled') }}
-                </p>
-              </div>
-              <div class="flex flex-col items-end gap-1">
-                <MonoValue
-                  :value="formatMoney(tripAllocation(expense)?.allocated_amount ?? expense.amount)"
-                  align="left"
-                  :class="expense.status === 'CANCELLED' ? 'text-texte-3 line-through' : ''"
-                />
-                <button
-                  v-if="
-                    canCancelExpenses &&
-                    (expense.status === 'PAID' || expense.status === 'PARTIALLY_PAID')
-                  "
-                  type="button"
-                  class="text-critique text-xs hover:brightness-90 disabled:opacity-50"
-                  :disabled="cancellingExpenseId === expense.id"
-                  @click="onCancelExpense(expense)"
-                >
-                  {{ t('trips.detail.cancelExpense') }}
-                </button>
-                <div v-if="canManageExpenses && expense.status === 'UNPAID'" class="flex gap-2">
-                  <button
-                    type="button"
-                    class="text-bitume text-xs hover:brightness-90"
-                    @click="onEditExpense(expense)"
-                  >
-                    {{ t('trips.detail.editExpense') }}
-                  </button>
-                  <button
-                    type="button"
-                    class="text-critique text-xs hover:brightness-90 disabled:opacity-50"
-                    :disabled="deletingExpenseId === expense.id"
-                    @click="onDeleteExpense(expense)"
-                  >
-                    {{ t('trips.detail.deleteExpense') }}
-                  </button>
-                </div>
-              </div>
-            </li>
-            <li
-              v-if="!expenses.length && !transportPayments.length"
-              class="text-texte-3 py-2 text-sm"
-            >
-              {{ t('trips.detail.noExpenses') }}
-            </li>
-          </ul>
-
-          <div class="flex gap-2">
-            <Button
-              v-if="canManageExpenses"
-              variant="ghost"
-              @click=";((automaticExpense = null), (showExpenseForm = true))"
-            >
-              {{ t('trips.detail.addExpense') }}
-            </Button>
-          </div>
-        </div>
-      </Card>
-
       <Card :title="t('trips.detail.margin')">
         <AppAlert v-if="marginError" :message="marginError" />
         <p v-else-if="!margin?.available" class="text-texte-3 text-sm">
@@ -1273,24 +1260,11 @@ const cessionProofUrl = computed(
             :initial-calculation-method="automaticExpense ? 'PER_LITRE' : undefined"
             :per-litre-quantity="trip.quantity_loaded"
             :editing-expense="editingExpense"
-            :cancel-label="inFeeQueue ? t('trips.detail.skipFee') : undefined"
-            :commission-available="canAddCommission && !inFeeQueue"
+            :commission-available="canAddCommission"
             @select-commission="onSelectCommission"
             @success="onExpenseSaved"
             @cancel="onExpenseCancel"
-          >
-            <template v-if="inFeeQueue && feeQueue.length" #extra-actions>
-              <Button
-                variant="ghost"
-                type="button"
-                class="me-auto"
-                data-test="skip-all-fees"
-                @click="skipAllFees"
-              >
-                {{ t('trips.detail.skipAllFees') }}
-              </Button>
-            </template>
-          </ExpenseForm>
+          />
         </div>
       </div>
 
@@ -1310,22 +1284,9 @@ const cessionProofUrl = computed(
             :transporter-id="trip.transporter!"
             :transporter-name="trip.transporter_detail?.name ?? ''"
             :quantity-loaded="trip.quantity_loaded"
-            :cancel-label="inFeeQueue ? t('trips.detail.skipFee') : undefined"
             @success="onTransportPaymentSaved"
             @cancel="onTransportPaymentCancel"
-          >
-            <template v-if="inFeeQueue && feeQueue.length" #extra-actions>
-              <Button
-                variant="ghost"
-                type="button"
-                class="me-auto"
-                data-test="skip-all-fees"
-                @click="skipAllFees"
-              >
-                {{ t('trips.detail.skipAllFees') }}
-              </Button>
-            </template>
-          </TransportPaymentForm>
+          />
         </div>
       </div>
 

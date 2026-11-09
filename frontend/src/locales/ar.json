@@ -346,12 +346,12 @@
     "status": {
       "ASSIGNED": "مُسنَد",
       "SENT_FOR_LOADING": "أُرسل للتحميل",
-      "LOADING": "التحميل جارٍ",
+      "LOADING": "التحميل",
       "LOADED": "محمَّل",
-      "ROAD_TRANSIT": "عبور بري",
-      "IN_TRANSIT": "في الطريق",
-      "BORDER": "الحدود",
-      "CUSTOMS": "الجمارك",
+      "ROAD_TRANSIT": "عبور الحدود",
+      "IN_TRANSIT": "عبور BMK",
+      "BORDER": "الجمارك",
+      "CUSTOMS": "TS",
       "GOING_TO_COMPANY_STOCK": "في الطريق إلى مخزون الشركة",
       "ARRIVED_AT_COMPANY_STOCK": "وصل إلى مخزون الشركة",
       "STOCKED": "مخزّن",
@@ -616,6 +616,29 @@
       "historyStock": "رفضها {from} — أُعيدت إلى المخزون",
       "historyChange": "رفضها {from} — أُسندت إلى {to}",
       "historyReleased": "{amount} أُعيدت كسلفة"
+    },
+    "feeTable": {
+      "title": "مصاريف ومراحل الرحلة",
+      "open": "إدخال مصاريف الرحلة",
+      "close": "إغلاق الجدول",
+      "hint": "أدخل مبلغ كل مرحلة ثم اضغط Enter: تنتقل الرحلة إلى هذه المرحلة (آخر مصروف يُدخل هو حالتها). مرحلة بمرحلة وفي أيام مختلفة.",
+      "stage": "المرحلة / المصروف",
+      "state": "الحالة",
+      "method": "طريقة الحساب",
+      "amount": "المبلغ",
+      "total": "الإجمالي",
+      "date": "التاريخ",
+      "action": "إجراء",
+      "toEnter": "للإدخال",
+      "entered": "مُدخل",
+      "paid": "مدفوع",
+      "currentStatus": "الحالة الحالية للرحلة",
+      "commissionHint": "عمولة الناقل",
+      "enter": "إدخال",
+      "edit": "تعديل",
+      "save": "حفظ",
+      "saving": "جارٍ الحفظ…",
+      "amountRequired": "أدخل مبلغاً أكبر من 0."
     }
   },
   "invoiceStatus": {
@@ -794,7 +817,10 @@
         "customer": "عميل",
         "bank": "بنك",
         "cash": "صندوق"
-      }
+      },
+      "pdf": "PDF",
+      "print": "طباعة",
+      "documentError": "تعذّر إنشاء مستند هذا المصروف."
     },
     "transportPayment": {
       "title": "رسوم النقل (لكل لتر)",
@@ -1981,7 +2007,8 @@
         "label": "تقرير رأس المال"
       },
       "general-expense-report": {
-        "label": "المصروفات العامة"
+        "label": "المصروفات العامة",
+        "idLabel": "الفئة"
       },
       "trip-fee-debt-report": {
         "label": "ديون رسوم الرحلات",
@@ -2286,7 +2313,10 @@
       "saving": "جارٍ الحفظ…",
       "saved": "تم حفظ المعلومات.",
       "loadError": "تعذر تحميل معلومات الشركة.",
-      "saveError": "تعذر الحفظ — تحقق من الحقول."
+      "saveError": "تعذر الحفظ — تحقق من الحقول.",
+      "addPhone": "إضافة رقم هاتف",
+      "addEmail": "إضافة بريد إلكتروني",
+      "removeValue": "إزالة"
     }
   },
   "errors": {
@@ -2346,7 +2376,10 @@
       "saveError": "تعذر حفظ الفاتورة الشكلية.",
       "paymentTerms": "شروط الدفع",
       "paymentTermsPlaceholder": "مثال: دفعة مقدمة 30٪ إلزامية",
-      "showBankAccounts": "إظهار الحسابات البنكية في ملف PDF"
+      "showBankAccounts": "إظهار الحسابات البنكية في ملف PDF",
+      "taxMode": "قبل / بعد الضريبة",
+      "taxHT": "قبل الضريبة (HT)",
+      "taxTTC": "شامل الضريبة (TTC)"
     }
   },
   "documents": {

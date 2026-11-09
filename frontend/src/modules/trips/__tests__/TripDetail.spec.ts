@@ -1396,107 +1396,6 @@ describe('TripDetail expenses section', () => {
     expect(wrapper.find('img[src="/media/documents/cession-trip.webp"]').exists()).toBe(true)
   })
 
-  it('opens the transporter commission popup after ASSIGNED -> SENT_FOR_LOADING', async () => {
-    setUser({ operations: ['view', 'edit'], finance: ['view', 'create'] })
-    tripResourceGet.mockResolvedValue(makeTrip({ status: 'ASSIGNED' }))
-    allowedStatusesToReturn = ['SENT_FOR_LOADING']
-
-    const wrapper = await mountAt()
-    await wrapper.find('#next_status').setValue('SENT_FOR_LOADING')
-    await wrapper
-      .findAll('button')
-      .find((b) => b.text() === 'Appliquer')!
-      .trigger('click')
-    await flushPromises()
-
-    expect(postTripStatus).toHaveBeenCalledWith(9, 'SENT_FOR_LOADING', '')
-    expect(wrapper.find('#unit_price_per_litre').exists()).toBe(true)
-    expect(wrapper.text()).toContain('Commission du transporteur')
-  })
-
-  it('does not reopen the transporter commission popup when a payment already exists for the trip', async () => {
-    // Bug fix (found by chance, client feedback 2026-09-10): nothing
-    // stopped a second TransportPayment from being created for a trip
-    // that already has one - this popup was one of the two ways it
-    // happened (the always-visible "Ajouter des frais de transport"
-    // button was the other, covered below).
-    setUser({ operations: ['view', 'edit'], finance: ['view', 'create'] })
-    tripResourceGet.mockResolvedValue(makeTrip({ status: 'ASSIGNED' }))
-    allowedStatusesToReturn = ['SENT_FOR_LOADING']
-    transportPaymentsToReturn = [makeTransportPayment()]
-
-    const wrapper = await mountAt()
-    await wrapper.find('#next_status').setValue('SENT_FOR_LOADING')
-    await wrapper
-      .findAll('button')
-      .find((b) => b.text() === 'Appliquer')!
-      .trigger('click')
-    await flushPromises()
-
-    expect(postTripStatus).toHaveBeenCalledWith(9, 'SENT_FOR_LOADING', '')
-    expect(wrapper.find('#unit_price_per_litre').exists()).toBe(false)
-  })
-
-  it('opens a prefilled per-litre loading expense popup after SENT_FOR_LOADING -> LOADING', async () => {
-    setUser({ operations: ['view', 'edit'], finance: ['view', 'create'] })
-    tripResourceGet.mockResolvedValue(makeTrip({ status: 'SENT_FOR_LOADING' }))
-    allowedStatusesToReturn = ['LOADING']
-
-    const wrapper = await mountAt()
-    await wrapper.find('#next_status').setValue('LOADING')
-    await wrapper
-      .findAll('button')
-      .find((b) => b.text() === 'Appliquer')!
-      .trigger('click')
-    await flushPromises()
-
-    expect((wrapper.find('#category').element as HTMLSelectElement).value).toBe('loading')
-    expect((wrapper.find('#calculation_method').element as HTMLSelectElement).value).toBe(
-      'PER_LITRE',
-    )
-    expect(wrapper.text()).toContain('TRIP-009')
-  })
-
-  it('opens a separate road transit expense popup after LOADED -> ROAD_TRANSIT', async () => {
-    setUser({ operations: ['view', 'edit'], finance: ['view', 'create'] })
-    tripResourceGet.mockResolvedValue(makeTrip({ status: 'LOADED' }))
-    allowedStatusesToReturn = ['ROAD_TRANSIT']
-
-    const wrapper = await mountAt()
-    await wrapper.find('#next_status').setValue('ROAD_TRANSIT')
-    await wrapper
-      .findAll('button')
-      .find((b) => b.text() === 'Appliquer')!
-      .trigger('click')
-    await flushPromises()
-
-    expect(postTripStatus).toHaveBeenCalledWith(9, 'ROAD_TRANSIT', '')
-    expect((wrapper.find('#category').element as HTMLSelectElement).value).toBe('road_transit')
-    expect((wrapper.find('#calculation_method').element as HTMLSelectElement).value).toBe(
-      'PER_LITRE',
-    )
-    expect(wrapper.text()).toContain('Transit routière')
-  })
-
-  it('opens a transit expense popup after ROAD_TRANSIT -> IN_TRANSIT without using transport', async () => {
-    setUser({ operations: ['view', 'edit'], finance: ['view', 'create'] })
-    tripResourceGet.mockResolvedValue(makeTrip({ status: 'ROAD_TRANSIT' }))
-    allowedStatusesToReturn = ['IN_TRANSIT']
-
-    const wrapper = await mountAt()
-    await wrapper.find('#next_status').setValue('IN_TRANSIT')
-    await wrapper
-      .findAll('button')
-      .find((b) => b.text() === 'Appliquer')!
-      .trigger('click')
-    await flushPromises()
-
-    expect(postTripStatus).toHaveBeenCalledWith(9, 'IN_TRANSIT', '')
-    expect((wrapper.find('#category').element as HTMLSelectElement).value).toBe('transit')
-    expect((wrapper.find('#category').element as HTMLSelectElement).value).not.toBe('transport')
-    expect(wrapper.text()).toContain('Frais transit')
-  })
-
   async function applyStatus(wrapper: Awaited<ReturnType<typeof mountAt>>, status: string) {
     await wrapper.find('#next_status').setValue(status)
     await wrapper
@@ -1505,58 +1404,18 @@ describe('TripDetail expenses section', () => {
       .trigger('click')
     await flushPromises()
   }
-  const buttonNamed = (wrapper: Awaited<ReturnType<typeof mountAt>>, label: string) =>
-    wrapper.findAll('button').find((b) => b.text() === label)
+  async function enterFee(
+    wrapper: Awaited<ReturnType<typeof mountAt>>,
+    status: string,
+    amount: string,
+  ) {
+    await wrapper.find(`[data-test="fee-amount-${status}"]`).setValue(amount)
+    await wrapper.find(`[data-test="fee-save-${status}"]`).trigger('click')
+    await flushPromises()
+  }
 
-  it('chains one fee popup per skipped status, each with a "Passer" button', async () => {
+  it('no longer opens fee popups after a status change', async () => {
     setUser({ operations: ['view', 'edit'], finance: ['view', 'create'] })
-    tripResourceGet.mockResolvedValue(makeTrip({ status: 'ASSIGNED' }))
-    allowedStatusesToReturn = ['LOADING']
-    postTripStatus.mockResolvedValueOnce({
-      ...makeTrip({ status: 'ROAD_TRANSIT' }),
-      traversed_statuses: ['SENT_FOR_LOADING', 'LOADING', 'LOADED', 'ROAD_TRANSIT'],
-    })
-
-    const wrapper = await mountAt()
-    await applyStatus(wrapper, 'LOADING')
-
-    // 1) transporter commission
-    expect(wrapper.find('#unit_price_per_litre').exists()).toBe(true)
-    await buttonNamed(wrapper, 'Passer')!.trigger('click')
-    await flushPromises()
-    // 2) loading fee
-    expect((wrapper.find('#category').element as HTMLSelectElement).value).toBe('loading')
-    await buttonNamed(wrapper, 'Passer')!.trigger('click')
-    await flushPromises()
-    // 3) road transit fee (LOADED carries none)
-    expect((wrapper.find('#category').element as HTMLSelectElement).value).toBe('road_transit')
-    await buttonNamed(wrapper, 'Passer')!.trigger('click')
-    await flushPromises()
-
-    expect(wrapper.find('#category').exists()).toBe(false)
-    expect(wrapper.find('#unit_price_per_litre').exists()).toBe(false)
-  })
-
-  it('"Tout passer" closes the whole fee queue at once', async () => {
-    setUser({ operations: ['view', 'edit'], finance: ['view', 'create'] })
-    tripResourceGet.mockResolvedValue(makeTrip({ status: 'ASSIGNED' }))
-    allowedStatusesToReturn = ['LOADING']
-    postTripStatus.mockResolvedValueOnce({
-      ...makeTrip({ status: 'CUSTOMS' }),
-      traversed_statuses: ['SENT_FOR_LOADING', 'LOADING', 'ROAD_TRANSIT', 'CUSTOMS'],
-    })
-
-    const wrapper = await mountAt()
-    await applyStatus(wrapper, 'LOADING')
-    await buttonNamed(wrapper, 'Tout passer')!.trigger('click')
-    await flushPromises()
-
-    expect(wrapper.find('#category').exists()).toBe(false)
-    expect(wrapper.find('#unit_price_per_litre').exists()).toBe(false)
-  })
-
-  it('opens no fee popup and stays usable after a skip without finance create permission', async () => {
-    setUser({ operations: ['view', 'edit'], finance: ['view'] })
     tripResourceGet.mockResolvedValue(makeTrip({ status: 'ASSIGNED' }))
     allowedStatusesToReturn = ['LOADING']
     postTripStatus.mockResolvedValueOnce({
@@ -1567,9 +1426,117 @@ describe('TripDetail expenses section', () => {
     const wrapper = await mountAt()
     await applyStatus(wrapper, 'LOADING')
 
+    expect(postTripStatus).toHaveBeenCalledWith(9, 'LOADING', '')
     expect(wrapper.find('#category').exists()).toBe(false)
     expect(wrapper.find('#unit_price_per_litre').exists()).toBe(false)
     expect(wrapper.find('#next_status').exists()).toBe(true)
+  })
+
+  it('fee table: open at the top of the page, one row per fee stage named after its status', async () => {
+    setUser({ operations: ['view', 'edit'], finance: ['view', 'create'] })
+    tripResourceGet.mockResolvedValue(makeTrip({ status: 'LOADING' }))
+    const wrapper = await mountAt()
+    const table = wrapper.find('[data-test="trip-fee-table"]')
+    expect(table.exists()).toBe(true)
+    for (const status of [
+      'SENT_FOR_LOADING',
+      'LOADING',
+      'ROAD_TRANSIT',
+      'IN_TRANSIT',
+      'BORDER',
+      'CUSTOMS',
+    ]) {
+      expect(table.find(`[data-test="fee-row-${status}"]`).exists()).toBe(true)
+    }
+    const text = table.text()
+    for (const name of ['Chargement', 'Transit frontière', 'Transit BMK', 'Douane', 'Ts']) {
+      expect(text).toContain(name)
+    }
+    expect(table.find('[data-test="fee-row-LOADING"]').text()).toContain('Statut actuel')
+
+    // first block of the page, before "Changer le statut"
+    const html = wrapper.html()
+    expect(html.indexOf('data-test="trip-fee-table"')).toBeLessThan(
+      html.indexOf('id="next_status"'),
+    )
+  })
+
+  it('fee table: saving a fee creates the expense and moves the trip to that status', async () => {
+    setUser({ operations: ['view', 'edit'], finance: ['view', 'create'] })
+    tripResourceGet.mockResolvedValue(makeTrip({ status: 'SENT_FOR_LOADING' }))
+    allowedStatusesToReturn = ['LOADING', 'ROAD_TRANSIT']
+
+    const wrapper = await mountAt()
+    await enterFee(wrapper, 'ROAD_TRANSIT', '10')
+
+    expect(createExpense).toHaveBeenCalledTimes(1)
+    const payload = createExpense.mock.calls[0][0] as Record<string, unknown>
+    expect(payload).toMatchObject({
+      category: 'road_transit',
+      amount: '10',
+      calculation_method: 'PER_LITRE',
+    })
+    expect((payload.allocations as { object_id: number }[])[0].object_id).toBe(9)
+    // skipping LOADING: the server walks the path, the UI only asks for the target
+    expect(postTripStatus).toHaveBeenCalledWith(9, 'ROAD_TRANSIT', '')
+  })
+
+  it('fee table: a fee for a stage already passed does not change the status', async () => {
+    setUser({ operations: ['view', 'edit'], finance: ['view', 'create'] })
+    tripResourceGet.mockResolvedValue(makeTrip({ status: 'IN_TRANSIT' }))
+    allowedStatusesToReturn = ['BORDER']
+
+    const wrapper = await mountAt()
+    await enterFee(wrapper, 'LOADING', '5')
+
+    expect(createExpense).toHaveBeenCalledTimes(1)
+    expect(postTripStatus).not.toHaveBeenCalled()
+  })
+
+  it('fee table: no save without an amount, Enter saves with the chosen calculation', async () => {
+    setUser({ operations: ['view', 'edit'], finance: ['view', 'create'] })
+    tripResourceGet.mockResolvedValue(makeTrip({ status: 'SENT_FOR_LOADING' }))
+    const wrapper = await mountAt()
+    // nothing typed: no save button, nothing sent
+    expect(wrapper.find('[data-test="fee-save-LOADING"]').exists()).toBe(false)
+    await wrapper.find('[data-test="fee-amount-LOADING"]').trigger('keydown', { key: 'Enter' })
+    await flushPromises()
+    expect(createExpense).not.toHaveBeenCalled()
+
+    // Enter in the amount field saves, with the per-truck calculation chosen in the row
+    await wrapper.find('[data-test="fee-method-LOADING"]').setValue('PER_TRUCK')
+    await wrapper.find('[data-test="fee-amount-LOADING"]').setValue('900')
+    await wrapper.find('[data-test="fee-amount-LOADING"]').trigger('keydown', { key: 'Enter' })
+    await flushPromises()
+    expect(createExpense).toHaveBeenCalledWith(
+      expect.objectContaining({
+        category: 'loading',
+        calculation_method: 'PER_TRUCK',
+        amount: '900',
+      }),
+    )
+  })
+
+  it('fee table: the transporter commission row opens the commission form', async () => {
+    setUser({ operations: ['view', 'edit'], finance: ['view', 'create'] })
+    tripResourceGet.mockResolvedValue(makeTrip({ status: 'ASSIGNED' }))
+    const wrapper = await mountAt()
+    await wrapper.find('[data-test="fee-edit-SENT_FOR_LOADING"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('#unit_price_per_litre').exists()).toBe(true)
+  })
+
+  it('fee table: no commission row once a payment exists is still shown as entered, and the card is hidden without finance create', async () => {
+    setUser({ operations: ['view', 'edit'], finance: ['view', 'create'] })
+    tripResourceGet.mockResolvedValue(makeTrip({ status: 'ASSIGNED' }))
+    transportPaymentsToReturn = [makeTransportPayment({ can_modify: true })]
+    const wrapper = await mountAt()
+    expect(wrapper.find('[data-test="fee-row-SENT_FOR_LOADING"]').text()).toContain('Saisi')
+    wrapper.unmount()
+
+    setUser({ operations: ['view', 'edit'], finance: ['view'] })
+    const readonly = await mountAt()
+    expect(readonly.find('[data-test="trip-fee-table"]').exists()).toBe(false)
   })
 
   it('shows road transit as its own line in expenses and margin breakdown', async () => {

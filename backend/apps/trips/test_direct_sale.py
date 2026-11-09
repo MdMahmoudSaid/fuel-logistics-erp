@@ -58,10 +58,13 @@ def test_registered_customer_deferred_quantity():
 
 
 @pytest.mark.django_db
-def test_arrives_from_customs_and_company_stock_too():
+def test_arrives_from_border_customs_and_company_stock_too():
     fx = _setup_fixtures("DS1B")
     customer = Customer.objects.create(name="Client A")
-    for index, status in enumerate((Trip.Status.CUSTOMS, Trip.Status.ARRIVED_AT_COMPANY_STOCK)):
+    # BORDER = "Douane" (the earliest status a client can be attributed from), CUSTOMS = "Ts".
+    for index, status in enumerate(
+        (Trip.Status.BORDER, Trip.Status.CUSTOMS, Trip.Status.ARRIVED_AT_COMPANY_STOCK)
+    ):
         trip = _stocked_trip(fx, f"DS1B{index}", status=status)
         _assign(fx, [trip], customer_id=customer.id)
         trip.refresh_from_db()

@@ -99,10 +99,10 @@ const selectedTripIds = ref<number[]>([])
 const confirmedTrips = ref<Trip[] | null>(null)
 
 // "Stock entreprise" (physically arrived, matches the dashboard total) plus
-// trips still in customs: a customer can already be assigned from CUSTOMS
-// (client request 2026-09-25). Narrowed to trips without a client, since
+// trips still on the way: a customer can already be assigned from BORDER
+// ("Douane", client request 2026-11-09; CUSTOMS = "Ts" since then). Narrowed to trips without a client, since
 // that's the only thing this picker is for.
-const ASSIGNABLE_STATUSES = ['CUSTOMS', 'ARRIVED_AT_COMPANY_STOCK', 'STOCKED']
+const ASSIGNABLE_STATUSES = ['BORDER', 'CUSTOMS', 'ARRIVED_AT_COMPANY_STOCK', 'STOCKED']
 
 async function openAssignModal() {
   showAssignModal.value = true

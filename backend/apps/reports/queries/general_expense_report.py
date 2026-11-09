@@ -11,6 +11,7 @@ from collections import defaultdict
 from decimal import Decimal
 
 from apps.finance.models import Expense
+from apps.finance.serializers import ExpenseSerializer
 from apps.finance.services import ControlledDebtPaymentService
 
 ZERO = Decimal("0.00")
@@ -26,6 +27,8 @@ FIELDS = [
     "paid_amount",
     "remaining_amount",
     "status",
+    "paid_by",
+    "paid_by_name",
 ]
 
 
@@ -36,6 +39,7 @@ class GeneralExpenseReportQuery:
     def run(cls, *, category=None, date_from=None, date_to=None) -> list[dict]:
         expenses = (
             Expense.objects.exclude(category__in=Expense.TRIP_FEE_CATEGORY_CODES)
+            .select_related("indirect_settlement_payment__customer")
             .prefetch_related("allocations__content_object")
             .order_by("-date", "-id")
         )
@@ -46,10 +50,14 @@ class GeneralExpenseReportQuery:
         if date_to:
             expenses = expenses.filter(date__lte=date_to)
 
+        payer_serializer = ExpenseSerializer()
         rows, recap = [], defaultdict(lambda: {"count": 0, "total": ZERO, "paid": ZERO, "remaining": ZERO})
         for expense in expenses:
             settlement = ControlledDebtPaymentService.describe_expense_settlement(expense)
             cancelled = expense.status == Expense.Status.CANCELLED
+            # Who paid it (bank / cash account, or a customer), as the
+            # "Dépenses générales" page shows it; empty while unpaid.
+            paid_by, paid_by_name = payer_serializer._payer(expense)
             rows.append(
                 {
                     "section": "expense",
@@ -61,6 +69,8 @@ class GeneralExpenseReportQuery:
                     "paid_amount": None if cancelled else settlement["paid_amount"],
                     "remaining_amount": None if cancelled else settlement["remaining_amount"],
                     "status": expense.status,
+                    "paid_by": paid_by,
+                    "paid_by_name": paid_by_name,
                 }
             )
             if not cancelled:

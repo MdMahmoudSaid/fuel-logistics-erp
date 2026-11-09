@@ -422,10 +422,13 @@ REPORT_SPECS = {
         "landscape",
         (
             TableSpec(
+                # No calculation-method column: a general expense is always
+                # "Manuel", and the room goes to the "Payé par" columns.
                 (("date", "date"), ("category", "enum", "expenseCategory"), ("notes", "text"),
-                 ("calculation_method", "enum", "expenseCalcMethod"), ("total_amount", "money"),
+                 ("total_amount", "money"),
                  ("paid_amount", "money"), ("remaining_amount", "money"),
-                 ("status", "status", "expenseStatus")),
+                 ("status", "status", "expenseStatus"), ("paid_by", "enum", "payerKind"),
+                 ("paid_by_name", "text")),
                 section="expense",
             ),
             TableSpec(
@@ -434,7 +437,7 @@ REPORT_SPECS = {
                 section="category_total",
             ),
         ),
-        _general_expense_summary,
+        _general_expense_summary, entity=("category", "category"),
     ),
     "trip-fee-debt-report": ReportSpec(
         "landscape",
@@ -567,6 +570,12 @@ def _resolve_entity(spec, params, slug, lang):
         return {"label": LABELS[lang]["entity.fee_type"], "name": name}
     if value in (None, ""):
         return None
+    if kind == "category":
+        from apps.finance.models import ExpenseCategory
+
+        category = ExpenseCategory.objects.filter(code=value).first()
+        name = LABELS[lang].get(f"enum.expenseCategory.{value}") or (category.name if category else str(value))
+        return {"label": LABELS[lang]["entity.category"], "name": name}
     from apps.customers.models import Customer
     from apps.finance.models import BankAccount, CashAccount, Shareholder
     from apps.suppliers.models import Supplier

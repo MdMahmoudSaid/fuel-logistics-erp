@@ -24,6 +24,7 @@ class QuotationLineSerializer(serializers.ModelSerializer):
             "description",
             "quantity",
             "unit",
+            "tax_mode",
             "unit_price",
             "line_total",
         ]

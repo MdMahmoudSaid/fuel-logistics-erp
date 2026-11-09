@@ -77,6 +77,10 @@ class QuotationLine(models.Model):
     catalogue), but at least one of product/description must be set so the
     row is never blank on the printed PDF (see the CheckConstraint)."""
 
+    class TaxMode(models.TextChoices):
+        HT = "HT", "HT"
+        TTC = "TTC", "TTC"
+
     quotation = models.ForeignKey(Quotation, on_delete=models.CASCADE, related_name="lines")
     product = models.ForeignKey(
         "core.Product",
@@ -88,6 +92,9 @@ class QuotationLine(models.Model):
     description = models.CharField(max_length=255, blank=True)
     quantity = models.DecimalField(max_digits=14, decimal_places=2)
     unit = models.CharField(max_length=20, blank=True)
+    # Printed in its own column next to the quantity on the proforma PDF
+    # (client request 2026-11-09): the line's price is hors taxe or toutes taxes.
+    tax_mode = models.CharField(max_length=3, choices=TaxMode.choices, default=TaxMode.HT)
     unit_price = models.DecimalField(max_digits=14, decimal_places=4)
     line_total = models.DecimalField(max_digits=16, decimal_places=2, editable=False)
 

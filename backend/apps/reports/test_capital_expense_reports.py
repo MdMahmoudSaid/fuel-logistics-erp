@@ -331,3 +331,58 @@ def test_general_expense_pdf_survives_hostile_and_huge_notes_and_arabic():
     text = "\n".join(pdf_pages(french.content)[1])
     assert "Rapport des dépenses générales" in text and "<b>bold</b>" in text
     assert "section" not in client.get("/api/reports/general-expense-report/").json()["fields"]
+
+
+# ---------------------------------------------------------------------------
+# 2026-11-09: "Payé par" columns, category filter + header, per-expense PDF
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_rows_carry_who_paid_and_stay_empty_while_unpaid():
+    unpaid = _expense(category="rent")
+    paid = _expense(category="salary", status=Expense.Status.PAID)
+    _pay(paid, "100000.00")
+
+    rows = {r["category"]: r for r in _expense_rows()}
+
+    assert (rows["salary"]["paid_by"], rows["salary"]["paid_by_name"]) == ("cash", "Caisse dépenses")
+    assert (rows["rent"]["paid_by"], rows["rent"]["paid_by_name"]) == (None, None)
+    assert unpaid.status == Expense.Status.UNPAID
+    assert {"paid_by", "paid_by_name"} <= set(GeneralExpenseReportQuery.FIELDS)
+
+
+@pytest.mark.django_db
+def test_category_filter_and_header_name_the_selected_category_in_every_language():
+    _expense(category="rent")
+    _expense(category="salary")
+
+    rows = GeneralExpenseReportQuery.run(category="rent")
+    assert {r["category"] for r in rows} == {"rent"}
+
+    expected = {"fr": "Loyer", "en": "Rent", "ar": "الإيجار"}
+    for lang, label in expected.items():
+        document = _document("general-expense-report", rows, lang, {"category": "rent"})
+        entity = [i for i in document["info"] if i["key"] == "entity"]
+        assert entity and entity[0]["value"] == label
+        fields = [c["field"] for c in document["tables"][0]["columns"]]
+        assert "paid_by" in fields and "paid_by_name" in fields
+
+    no_filter = _document("general-expense-report", GeneralExpenseReportQuery.run(), "fr", {})
+    assert not [i for i in no_filter["info"] if i["key"] == "entity"]
+
+
+@pytest.mark.django_db
+def test_expense_pdf_endpoint_returns_a_document_with_category_and_payer():
+    expense = _expense(category="rent", status=Expense.Status.PAID, notes="Loyer novembre")
+    _pay(expense, "100000.00")
+
+    client = _client("EXPPDF")
+    for lang in ("fr", "en", "ar"):
+        response = client.get(f"/api/expenses/{expense.id}/pdf/", {"lang": lang})
+        assert response.status_code == 200
+        assert response["Content-Type"] == "application/pdf"
+        assert response.content.startswith(b"%PDF")
+
+    text = "\n".join(pdf_pages(client.get(f"/api/expenses/{expense.id}/pdf/", {"lang": "fr"}).content)[1])
+    assert "Loyer" in text and "Caisse dépenses" in text and "Loyer novembre" in text

@@ -53,7 +53,8 @@ async function onSubmit() {
   } catch (e) {
     const response = (e as { response?: { status?: number; data?: { detail?: string } } })?.response
     if (response?.status === 422) lossRequired.value = true
-    error.value = translateApiError(response?.data?.detail) || t('trips.assignCustomer.quantityError')
+    error.value =
+      translateApiError(response?.data?.detail) || t('trips.assignCustomer.quantityError')
   } finally {
     saving.value = false
   }
@@ -96,7 +97,10 @@ async function onSubmit() {
         <PaymentAccountPicker v-model="payment" />
       </div>
 
-      <div v-if="lossRequired" class="border-critique bg-critique-tint space-y-2 rounded-lg border p-3">
+      <div
+        v-if="lossRequired"
+        class="border-critique bg-critique-tint space-y-2 rounded-lg border p-3"
+      >
         <p class="text-critique-texte text-sm font-medium">{{ t('trips.delivery.lossWarning') }}</p>
         <label class="text-critique-texte flex items-center gap-2 text-sm">
           <input

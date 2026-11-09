@@ -109,6 +109,40 @@ export async function exportLedgerPdf(
   downloadBlob(new Blob([response.data]), `${kind}-ledger-${id}.pdf`)
 }
 
+// GET /api/expenses/{id}/pdf/?lang=fr|en|ar (backend/apps/finance/views.py
+// ExpenseViewSet.pdf) - one expense as a document, downloaded or printed
+// ("Depenses generales" row buttons, client request 2026-11-09).
+async function fetchExpensePdf(id: number, lang: string): Promise<Blob> {
+  const response = await apiClient.get(`/expenses/${id}/pdf/`, {
+    params: { lang },
+    responseType: 'blob',
+  })
+  return new Blob([response.data], { type: 'application/pdf' })
+}
+
+export async function exportExpensePdf(id: number, lang: string): Promise<void> {
+  downloadBlob(await fetchExpensePdf(id, lang), `depense-${id}.pdf`)
+}
+
+// Loads the same PDF into a hidden iframe and opens the browser print dialog
+// on it, so the page itself is never printed.
+export async function printExpensePdf(id: number, lang: string): Promise<void> {
+  const url = window.URL.createObjectURL(await fetchExpensePdf(id, lang))
+  const frame = document.createElement('iframe')
+  frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;'
+  frame.src = url
+  frame.onload = () => {
+    frame.contentWindow?.focus()
+    frame.contentWindow?.print()
+    // Keep the document alive while the print dialog is open.
+    setTimeout(() => {
+      frame.remove()
+      window.URL.revokeObjectURL(url)
+    }, 60_000)
+  }
+  document.body.appendChild(frame)
+}
+
 // GET /api/transport-payments/{id}/pdf/?lang=fr|en|ar (backend/apps/
 // finance/views.py TransportPaymentViewSet.pdf) - per-trip "Reglement par
 // trajet" settlement PDF, Task 11.

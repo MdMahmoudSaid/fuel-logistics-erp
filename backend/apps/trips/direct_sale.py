@@ -24,6 +24,7 @@ from apps.trips.services import (
 
 # Same statuses the Ventes picker offers (SaleList.vue ASSIGNABLE_STATUSES).
 ASSIGNABLE_STATUSES = {
+    Trip.Status.BORDER,  # "Douane": a customer can be attributed from here
     Trip.Status.CUSTOMS,
     Trip.Status.ARRIVED_AT_COMPANY_STOCK,
     Trip.Status.STOCKED,

@@ -89,6 +89,7 @@ class QuotationViewSet(viewsets.ModelViewSet):
                             description=line.description,
                             quantity=line.quantity,
                             unit=line.unit,
+                            tax_mode=line.tax_mode,
                             unit_price=line.unit_price,
                         )
                     total = (

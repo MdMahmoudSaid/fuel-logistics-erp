@@ -27,6 +27,7 @@ function makeQuotation(overrides: Partial<Quotation> = {}): Quotation {
         description: '',
         quantity: '1000.00',
         unit: 'L',
+        tax_mode: 'HT',
         unit_price: '650.0000',
         line_total: '650000.00',
       },
@@ -37,6 +38,7 @@ function makeQuotation(overrides: Partial<Quotation> = {}): Quotation {
         description: 'Frais de livraison',
         quantity: '1.00',
         unit: 'forfait',
+        tax_mode: 'TTC',
         unit_price: '50000.0000',
         line_total: '50000.00',
       },
@@ -120,6 +122,10 @@ describe('QuotationForm', () => {
     await lineRows[0]!.find('input[type="number"][step="0.0001"]').setValue('650')
     await wrapper.find('#payment_terms').setValue('Avance de 30% obligatoire')
     await wrapper.find('#show_bank_accounts').setValue(false)
+    // each line is HT by default and can be switched to TTC (own column on the PDF)
+    const taxSelect = lineRows[0]!.find('[data-test="quotation-line-tax-mode"]')
+    expect((taxSelect.element as HTMLSelectElement).value).toBe('HT')
+    await taxSelect.setValue('TTC')
 
     await wrapper.find('form').trigger('submit.prevent')
     await flushPromises()
@@ -129,7 +135,7 @@ describe('QuotationForm', () => {
         customer_name: 'Prospect ABC',
         payment_terms: 'Avance de 30% obligatoire',
         show_bank_accounts: false,
-        lines: [expect.objectContaining({ quantity: '1000', unit_price: '650' })],
+        lines: [expect.objectContaining({ quantity: '1000', unit_price: '650', tax_mode: 'TTC' })],
       }),
     )
   })
@@ -180,6 +186,10 @@ describe('QuotationForm', () => {
 
     expect(wrapper.findAll('[data-test="quotation-line"]')).toHaveLength(2)
     expect(wrapper.text()).toContain('DEV-202609-0001')
+    const modes = wrapper
+      .findAll('[data-test="quotation-line-tax-mode"]')
+      .map((el) => (el.element as HTMLSelectElement).value)
+    expect(modes).toEqual(['HT', 'TTC'])
   })
 
   it('duplicates an existing quotation and navigates to the copy', async () => {

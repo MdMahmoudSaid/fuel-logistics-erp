@@ -115,7 +115,8 @@ const belowCostOnATrip = computed(
 )
 const lossRequired = ref(false)
 const isLoss = computed(
-  () => (benefit.value !== null && benefit.value < 0) || belowCostOnATrip.value || lossRequired.value,
+  () =>
+    (benefit.value !== null && benefit.value < 0) || belowCostOnATrip.value || lossRequired.value,
 )
 const lossConfirmed = ref(false)
 const resultText = computed(() => {
@@ -216,9 +217,7 @@ const inputClass =
           :aria-pressed="mode === option.key"
           class="h-10 rounded-md text-sm font-medium transition"
           :class="
-            mode === option.key
-              ? 'bg-white text-texte shadow-sm'
-              : 'text-texte-2 hover:text-texte'
+            mode === option.key ? 'bg-white text-texte shadow-sm' : 'text-texte-2 hover:text-texte'
           "
           @click="mode = option.key"
         >

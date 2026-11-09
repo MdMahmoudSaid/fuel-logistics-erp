@@ -234,7 +234,7 @@ describe('TripStatusBoard', () => {
     expect(wrapper.text()).toContain('TRIP-TRANSIT')
   })
 
-  it('shows the cession letter reference and this truck\'s load count under it', async () => {
+  it("shows the cession letter reference and this truck's load count under it", async () => {
     const { wrapper } = await mountAt('/trips')
 
     expect(wrapper.text()).toContain('CES-001')

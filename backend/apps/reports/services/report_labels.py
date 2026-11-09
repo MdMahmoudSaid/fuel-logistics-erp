@@ -117,6 +117,8 @@ FIELDS = {
     "count": ("Nombre", "Count", "العدد"),
     "general-expense-report.total_amount": ("Montant total", "Total amount", "المبلغ الإجمالي"),
     "fee_type": ("Type de frais", "Fee type", "نوع الرسوم"),
+    "paid_by": ("Payé par", "Paid by", "دفع بواسطة"),
+    "paid_by_name": ("Compte / payeur", "Account / payer", "الحساب / الدافع"),
     "trips": ("Trajets", "Trips", "الرحلات"),
     "line_type": ("Ligne", "Line", "البند"),
     "invoiced_amount": ("Facturé", "Invoiced", "المفوتر"),
@@ -221,6 +223,7 @@ ENTITY = {
     "bank_account": ("Compte bancaire", "Bank account", "الحساب البنكي"),
     "cash_account": ("Caisse", "Cash account", "الصندوق"),
     "shareholder": ("Associé", "Shareholder", "المساهم"),
+    "category": ("Catégorie", "Category", "الفئة"),
     "fee_type": ("Type de frais", "Fee type", "نوع الرسوم"),
 }
 
@@ -293,6 +296,11 @@ ENUMS = {
         "bank_charges": ("Frais bancaires", "Bank charges", "الرسوم البنكية"),
         "other": ("Autre", "Other", "آخر"),
     },
+    "payerKind": {
+        "bank": ("Banque", "Bank", "بنك"),
+        "cash": ("Caisse", "Cash", "صندوق"),
+        "customer": ("Client", "Customer", "عميل"),
+    },
     "expenseCalcMethod": {
         "FIXED": ("Fixe", "Fixed", "ثابت"),
         "PER_LITRE": ("Par litre", "Per litre", "لكل لتر"),
@@ -304,12 +312,12 @@ ENUMS = {
     "tripStatus": {
         "ASSIGNED": ("Affecté", "Assigned", "مُسنَد"),
         "SENT_FOR_LOADING": ("Envoyé au chargement", "Sent for loading", "أُرسل للتحميل"),
-        "LOADING": ("Chargement en cours", "Loading", "التحميل جارٍ"),
+        "LOADING": ("Chargement", "Loading", "التحميل"),
         "LOADED": ("Chargé", "Loaded", "محمَّل"),
-        "ROAD_TRANSIT": ("Transit routière", "Road transit", "عبور بري"),
-        "IN_TRANSIT": ("En transit", "In transit", "في الطريق"),
-        "BORDER": ("Frontière", "Border", "الحدود"),
-        "CUSTOMS": ("Douane", "Customs", "الجمارك"),
+        "ROAD_TRANSIT": ("Transit frontière", "Border transit", "عبور الحدود"),
+        "IN_TRANSIT": ("Transit BMK", "BMK transit", "عبور BMK"),
+        "BORDER": ("Douane", "Customs", "الجمارك"),
+        "CUSTOMS": ("Ts", "TS", "TS"),
         "GOING_TO_COMPANY_STOCK": ("En route vers stock entreprise", "Going to company stock", "في الطريق إلى مخزون الشركة"),
         "ARRIVED_AT_COMPANY_STOCK": ("Arrivé au stock entreprise", "Arrived at company stock", "وصل إلى مخزون الشركة"),
         "STOCKED": ("Stocké", "Stocked", "مخزّن"),

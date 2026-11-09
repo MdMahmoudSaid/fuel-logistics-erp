@@ -44,7 +44,12 @@ export const REPORT_TYPES: ReportTypeOption[] = [
   { value: 'loss-report', label: 'Loss report' },
   { value: 'margin-report', label: 'Margin report' },
   { value: 'capital-report', label: 'Capital report' },
-  { value: 'general-expense-report', label: 'General expense report' },
+  {
+    value: 'general-expense-report',
+    label: 'General expense report',
+    idParam: 'category',
+    idLabel: 'Category',
+  },
   {
     value: 'trip-fee-debt-report',
     label: 'Trip fee debt report',

@@ -202,7 +202,10 @@ describe('AssignCustomerForm (direct sale)', () => {
 
   it('emits cancel', async () => {
     const wrapper = await mountForm()
-    await wrapper.findAll('button').find((b) => b.text() === 'Annuler')!.trigger('click')
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Annuler')!
+      .trigger('click')
     expect(wrapper.emitted('cancel')).toBeTruthy()
   })
 

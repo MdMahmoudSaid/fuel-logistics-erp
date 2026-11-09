@@ -158,6 +158,33 @@ describe('SaleList', () => {
     expect(rows[0]!.text()).toContain('AA-111 / BB-222')
   })
 
+  it('offers a trip from "Douane" (BORDER) onward, but not before', async () => {
+    tripListMock.mockResolvedValue({
+      count: 3,
+      next: null,
+      previous: null,
+      results: [
+        makeTrip({ id: 31, reference: 'TRIP-031', status: 'BORDER' }),
+        makeTrip({ id: 32, reference: 'TRIP-032', status: 'CUSTOMS' }),
+        makeTrip({ id: 33, reference: 'TRIP-033', status: 'IN_TRANSIT' }),
+      ],
+    })
+    const { wrapper } = await mountAt()
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Attribuer un client')!
+      .trigger('click')
+    await flushPromises()
+
+    const text = wrapper
+      .findAll('[data-test="eligible-trip-row"]')
+      .map((r) => r.text())
+      .join(' ')
+    expect(text).toContain('TRIP-031')
+    expect(text).toContain('TRIP-032')
+    expect(text).not.toContain('TRIP-033')
+  })
+
   it('assigns the selected trip to a customer in one call and stays on Ventes', async () => {
     const { wrapper, router } = await mountAt()
     const pushSpy = vi.spyOn(router, 'push')

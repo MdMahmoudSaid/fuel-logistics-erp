@@ -3,7 +3,13 @@ from rest_framework import serializers
 
 from apps.accounts.serializers import UserSerializer
 
-from .models import CompanyBankAccount, CompanyProfile, LossToleranceConfig, Product
+from .models import (
+    CompanyBankAccount,
+    CompanyProfile,
+    LossToleranceConfig,
+    Product,
+    split_contact_values,
+)
 
 
 class ProductSerializer(serializers.ModelSerializer):
@@ -53,6 +59,27 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
             "name", "tagline", "tax_id", "trade_register", "address", "city",
             "phone", "email", "website", "bank_accounts",
         ]
+
+    MAX_CONTACT_VALUES = 10
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        # Older single-field spellings ("a / b") come back as one value per line.
+        data["phone"] = "\n".join(split_contact_values(data["phone"], phones=True))
+        data["email"] = "\n".join(split_contact_values(data["email"]))
+        return data
+
+    def _normalise(self, value, *, phones):
+        values = split_contact_values(value, phones=phones)
+        if len(values) > self.MAX_CONTACT_VALUES:
+            raise serializers.ValidationError(f"{self.MAX_CONTACT_VALUES} valeurs au maximum.")
+        return "\n".join(values)
+
+    def validate_phone(self, value):
+        return self._normalise(value, phones=True)
+
+    def validate_email(self, value):
+        return self._normalise(value, phones=False)
 
     @transaction.atomic
     def update(self, instance, validated_data):

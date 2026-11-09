@@ -4,16 +4,24 @@ import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { confirmDialog } from '@/composables/useConfirmDialog'
 import Button from '@/components/ui/Button.vue'
+import ActionMenu from '@/components/ui/ActionMenu.vue'
 import Modal from '@/components/ui/Modal.vue'
 import MonoValue from '@/components/ui/MonoValue.vue'
 import { translateApiError } from '@/i18n/apiErrors'
 import { formatMoney } from '@/utils/currency'
 import ExpenseForm from './ExpenseForm.vue'
 import { useExpenseCategoryLabel } from './expenseCategoryLabel'
-import { cancelExpense, expenseCategoryResource, expenseResource, fetchPayableDebts } from './api'
+import {
+  cancelExpense,
+  expenseCategoryResource,
+  expenseResource,
+  exportExpensePdf,
+  fetchPayableDebts,
+  printExpensePdf,
+} from './api'
 import type { DebtPaymentType, Expense, ExpenseCategoryOption, PayableDebt } from './types'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const localisedCategoryLabel = useExpenseCategoryLabel()
 
 const expenses = ref<Expense[]>([])
@@ -45,6 +53,55 @@ const editingExpense = ref<Expense | null>(null)
 const actionError = ref('')
 const cancellingId = ref<number | null>(null)
 const deletingId = ref<number | null>(null)
+
+// PDF / print of one expense (client request 2026-11-09).
+const documentBusyId = ref<number | null>(null)
+
+async function onExpenseDocument(expense: Expense, mode: 'pdf' | 'print') {
+  documentBusyId.value = expense.id
+  actionError.value = ''
+  try {
+    if (mode === 'pdf') await exportExpensePdf(expense.id, locale.value)
+    else await printExpensePdf(expense.id, locale.value)
+  } catch {
+    actionError.value = t('finance.expensesView.documentError')
+  } finally {
+    documentBusyId.value = null
+  }
+}
+
+// One "⋯" menu per row: PDF, print and - depending on the status - edit /
+// delete (unpaid) or cancel (paid).
+function rowActions(expense: Expense) {
+  const items = [
+    { key: 'pdf', label: t('finance.expensesView.pdf') },
+    { key: 'print', label: t('finance.expensesView.print') },
+  ]
+  if (expense.status === 'UNPAID') {
+    items.push({ key: 'edit', label: t('finance.expensesView.editExpense') }, {
+      key: 'delete',
+      label: t('finance.expensesView.deleteExpense'),
+      tone: 'text-critique',
+    } as {
+      key: string
+      label: string
+    })
+  } else if (expense.status === 'PAID' || expense.status === 'PARTIALLY_PAID') {
+    items.push({
+      key: 'cancel',
+      label: t('finance.expensesView.cancelExpense'),
+      tone: 'text-critique',
+    } as { key: string; label: string })
+  }
+  return items
+}
+
+function onRowAction(expense: Expense, key: string) {
+  if (key === 'pdf' || key === 'print') void onExpenseDocument(expense, key)
+  else if (key === 'edit') onEditExpense(expense)
+  else if (key === 'delete') void onDeleteExpense(expense)
+  else if (key === 'cancel') void onCancelExpenseRow(expense)
+}
 
 const monitoredDebtTypes = ['loading', 'road_transit', 'transit', 'border', 'customs'] as const
 
@@ -247,36 +304,11 @@ onMounted(load)
               <MonoValue :value="formatMoney(expense.amount)" />
             </td>
             <td class="px-2 py-1.5 text-center whitespace-nowrap">
-              <div v-if="expense.status === 'UNPAID'" class="flex justify-center gap-2">
-                <button
-                  type="button"
-                  data-test="edit-expense"
-                  class="text-bitume text-xs hover:brightness-90"
-                  @click="onEditExpense(expense)"
-                >
-                  {{ t('finance.expensesView.editExpense') }}
-                </button>
-                <button
-                  type="button"
-                  data-test="delete-expense"
-                  class="text-critique text-xs hover:brightness-90 disabled:opacity-50"
-                  :disabled="deletingId === expense.id"
-                  @click="onDeleteExpense(expense)"
-                >
-                  {{ t('finance.expensesView.deleteExpense') }}
-                </button>
-              </div>
-              <button
-                v-else-if="expense.status === 'PAID' || expense.status === 'PARTIALLY_PAID'"
-                type="button"
-                data-test="cancel-expense"
-                class="text-critique text-xs hover:brightness-90 disabled:opacity-50"
-                :disabled="cancellingId === expense.id"
-                @click="onCancelExpenseRow(expense)"
-              >
-                {{ t('finance.expensesView.cancelExpense') }}
-              </button>
-              <span v-else class="text-texte-3">-</span>
+              <ActionMenu
+                :label="t('finance.expensesView.table.actions')"
+                :items="rowActions(expense)"
+                @select="onRowAction(expense, $event)"
+              />
             </td>
           </tr>
           <tr v-if="filteredExpenses.length === 0">

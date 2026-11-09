@@ -52,7 +52,24 @@ function unpaidExpense(overrides: Record<string, unknown> = {}) {
 }
 
 function mountView() {
-  return mount(ExpensesView)
+  return mount(ExpensesView, { attachTo: document.body })
+}
+
+// Row actions live in a "⋯" menu teleported to <body>.
+async function pickAction(wrapper: ReturnType<typeof mountView>, label: string, row = 0) {
+  await wrapper.findAll('[aria-haspopup="menu"]')[row]!.trigger('click')
+  await flushPromises()
+  const item = Array.from(document.body.querySelectorAll('[role="menuitem"]')).find(
+    (el) => el.textContent?.trim() === label,
+  ) as HTMLElement | undefined
+  expect(item, `menu item ${label}`).toBeTruthy()
+  item!.click()
+  await flushPromises()
+}
+function menuLabels(): string[] {
+  return Array.from(document.body.querySelectorAll('[role="menuitem"]')).map((el) =>
+    (el.textContent ?? '').trim(),
+  )
 }
 
 describe('ExpensesView', () => {
@@ -68,7 +85,14 @@ describe('ExpensesView', () => {
       results: [
         // Backend seed ships system categories with an English name - the
         // table must render the localised expenseCategory.* label instead.
-        { id: 1, name: 'Customs', code: 'customs', is_system: true, is_active: true, display_order: 0 },
+        {
+          id: 1,
+          name: 'Customs',
+          code: 'customs',
+          is_system: true,
+          is_active: true,
+          display_order: 0,
+        },
         { id: 2, name: 'Rent', code: 'rent', is_system: true, is_active: true, display_order: 9 },
       ],
     })
@@ -168,9 +192,13 @@ describe('ExpensesView', () => {
     const wrapper = mountView()
     await flushPromises()
 
-    expect(wrapper.findAll('[data-test="edit-expense"]')).toHaveLength(1)
-    expect(wrapper.findAll('[data-test="delete-expense"]')).toHaveLength(1)
-    expect(wrapper.findAll('[data-test="cancel-expense"]')).toHaveLength(1)
+    await wrapper.findAll('[aria-haspopup="menu"]')[0]!.trigger('click')
+    await flushPromises()
+    expect(menuLabels()).toEqual(['PDF', 'Imprimer', 'Modifier', 'Supprimer'])
+    await wrapper.findAll('[aria-haspopup="menu"]')[0]!.trigger('click')
+    await wrapper.findAll('[aria-haspopup="menu"]')[1]!.trigger('click')
+    await flushPromises()
+    expect(menuLabels()).toEqual(['PDF', 'Imprimer', 'Annuler'])
   })
 
   it('opens the edit modal pre-filled when Modifier is clicked', async () => {
@@ -180,7 +208,7 @@ describe('ExpensesView', () => {
     const wrapper = mountView()
     await flushPromises()
 
-    await wrapper.find('[data-test="edit-expense"]').trigger('click')
+    await pickAction(wrapper, 'Modifier')
 
     const form = wrapper.findComponent({ name: 'ExpenseForm' })
     expect(form.exists()).toBe(true)
@@ -200,7 +228,7 @@ describe('ExpensesView', () => {
     await flushPromises()
     expenseList.mockClear()
 
-    await wrapper.find('[data-test="delete-expense"]').trigger('click')
+    await pickAction(wrapper, 'Supprimer')
     await flushPromises()
 
     expect(expenseRemove).toHaveBeenCalledWith(44)
@@ -219,7 +247,7 @@ describe('ExpensesView', () => {
     const wrapper = mountView()
     await flushPromises()
 
-    await wrapper.find('[data-test="delete-expense"]').trigger('click')
+    await pickAction(wrapper, 'Supprimer')
     await flushPromises()
 
     expect(expenseRemove).not.toHaveBeenCalled()
@@ -237,7 +265,7 @@ describe('ExpensesView', () => {
     await flushPromises()
     expenseList.mockClear()
 
-    await wrapper.find('[data-test="cancel-expense"]').trigger('click')
+    await pickAction(wrapper, 'Annuler')
     await flushPromises()
 
     expect(cancelExpense).toHaveBeenCalledWith(44)

@@ -79,6 +79,13 @@ _TEXT = {
     "net_amount": ("Montant net", "Net amount", "المبلغ الصافي"),
     "settled": ("Déjà payé", "Already paid", "المدفوع"),
     "empty": ("Aucune ligne.", "No line.", "لا توجد بنود."),
+    "expense": ("Dépense", "Expense", "مصروف"),
+    "category": ("Catégorie", "Category", "الفئة"),
+    "calculation": ("Méthode de calcul", "Calculation method", "طريقة الحساب"),
+    "paid_by": ("Payé par", "Paid by", "دفع بواسطة"),
+    "expense_detail": ("Détail de la dépense", "Expense detail", "تفاصيل المصروف"),
+    "designation": ("Désignation", "Description", "البيان"),
+    "total": ("Montant total", "Total amount", "المبلغ الإجمالي"),
 }
 
 _METHOD = {
@@ -451,12 +458,12 @@ def render_trip_settlement_pdf(payment, lang="fr") -> bytes:
 _TRIP_STATUS = {
     "ASSIGNED": ("Affecté", "Assigned", "مُسنَد"),
     "SENT_FOR_LOADING": ("Envoyé au chargement", "Sent for loading", "أُرسل للتحميل"),
-    "LOADING": ("Chargement en cours", "Loading", "التحميل جارٍ"),
+    "LOADING": ("Chargement", "Loading", "التحميل"),
     "LOADED": ("Chargé", "Loaded", "محمَّل"),
-    "ROAD_TRANSIT": ("Transit routière", "Road transit", "عبور بري"),
-    "IN_TRANSIT": ("En transit", "In transit", "في الطريق"),
-    "BORDER": ("Frontière", "Border", "الحدود"),
-    "CUSTOMS": ("Douane", "Customs", "الجمارك"),
+    "ROAD_TRANSIT": ("Transit frontière", "Border transit", "عبور الحدود"),
+    "IN_TRANSIT": ("Transit BMK", "BMK transit", "عبور BMK"),
+    "BORDER": ("Douane", "Customs", "الجمارك"),
+    "CUSTOMS": ("Ts", "TS", "TS"),
     "GOING_TO_COMPANY_STOCK": ("En route vers stock entreprise", "Going to company stock", "في الطريق إلى مخزون الشركة"),
     "ARRIVED_AT_COMPANY_STOCK": ("Arrivé au stock entreprise", "Arrived at company stock", "وصل إلى مخزون الشركة"),
     "STOCKED": ("Stocké", "Stocked", "مخزّن"),
@@ -468,3 +475,62 @@ _TRIP_STATUS = {
     "BLOCKED": ("Bloqué", "Blocked", "محظور"),
     "CANCELLED": ("Annulé", "Cancelled", "ملغى"),
 }
+
+
+# --- general expense --------------------------------------------------------
+
+
+def build_expense_document(expense, lang="fr"):
+    """One expense as a document (client request 2026-11-09: a PDF / print
+    button on every "Dépenses générales" row, same design as the other
+    per-record PDFs)."""
+    from apps.finance.models import ExpenseCategory
+    from apps.finance.serializers import ExpenseSerializer
+    from apps.finance.services import ControlledDebtPaymentService
+
+    lang = _lang(lang)
+    labels = REPORT_LABELS[lang]
+    category = labels.get(f"enum.expenseCategory.{expense.category}")
+    if not category:
+        row = ExpenseCategory.objects.filter(code=expense.category).first()
+        category = row.name if row else expense.category
+    settlement = ControlledDebtPaymentService.describe_expense_settlement(expense)
+    kind, payer_name = ExpenseSerializer()._payer(expense)
+    paid_by = " — ".join(
+        part for part in (labels.get(f"enum.payerKind.{kind}") if kind else "", payer_name) if part
+    )
+    cancelled = expense.status == "CANCELLED"
+
+    info = _info(
+        lang,
+        ("category", category),
+        ("date", _date(expense.date)),
+        ("reference", f"DEP-{expense.id}"),
+        ("status", labels.get(f"enum.expenseStatus.{expense.status}", expense.status)),
+        ("calculation", labels.get(f"enum.expenseCalcMethod.{expense.calculation_method}", "")),
+        ("paid_by", paid_by),
+        ("export_date", _date(datetime.date.today())),
+        ("currency", "XOF"),
+        ("notes", expense.notes),
+    )
+    rows = [{"designation": category, "notes": expense.notes or None, "amount": settlement["total_amount"]}]
+    columns = [
+        _column("designation", _t("designation", lang), "text"),
+        _column("notes", _t("notes", lang), "text"),
+        _column("amount", _t("amount", lang), "money", "end"),
+    ]
+    summary = [_money_line(_t("total", lang), settlement["total_amount"], emphasis=cancelled or not settlement["paid_amount"])]
+    if not cancelled:
+        summary += [
+            _money_line(_t("paid", lang), settlement["paid_amount"]),
+            _money_line(_t("remaining", lang), settlement["remaining_amount"], emphasis=True),
+        ]
+    document = _document(
+        lang, f"{_t('expense', lang)} — {category}", info,
+        [{"title": _t("expense_detail", lang), "columns": columns}], summary,
+    )
+    return document, rows
+
+
+def render_expense_pdf(expense, lang="fr") -> bytes:
+    return _render(*build_expense_document(expense, lang))

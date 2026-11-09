@@ -22,7 +22,7 @@ from apps.reports.services.ledger_pdf import (
     render_supplier_payment_pdf,
     render_trip_settlement_pdf,
 )
-from apps.reports.services.payment_pdf import render_advance_pdf
+from apps.reports.services.payment_pdf import render_advance_pdf, render_expense_pdf
 from apps.reports.queries.margin_report import MarginReportQuery
 from apps.reports.services.profit_pdf import render_profit_report_pdf
 from apps.suppliers.models import Supplier
@@ -502,6 +502,16 @@ class ExpenseViewSet(viewsets.ModelViewSet):
         except ExpenseCancellationError as exc:
             return Response({"detail": str(exc)}, status=http_status.HTTP_400_BAD_REQUEST)
         return Response(ExpenseSerializer(expense, context={"request": request}).data)
+
+    @action(detail=True, methods=["get"], url_path="pdf")
+    def pdf(self, request, pk=None):
+        """GET /api/expenses/{id}/pdf/?lang=fr|en|ar - one expense as a PDF
+        (same document style as the payment / advance PDFs)."""
+        expense = self.get_object()
+        pdf_bytes = render_expense_pdf(expense, lang=request.query_params.get("lang", "fr"))
+        response = HttpResponse(pdf_bytes, content_type="application/pdf")
+        response["Content-Disposition"] = f'attachment; filename="depense-{expense.id}.pdf"'
+        return response
 
     @action(detail=False, methods=["post"], url_path="record-indirect")
     def record_indirect(self, request):

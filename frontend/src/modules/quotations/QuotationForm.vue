@@ -33,7 +33,7 @@ const products = ref<ProductBrief[]>([])
 const quotation = ref<Quotation | null>(null)
 
 function emptyLine(): QuotationLineInput {
-  return { product: null, description: '', quantity: '', unit: '', unit_price: '' }
+  return { product: null, description: '', quantity: '', unit: '', tax_mode: 'HT', unit_price: '' }
 }
 
 const form = ref({
@@ -79,6 +79,7 @@ async function loadQuotation() {
       description: l.description,
       quantity: l.quantity,
       unit: l.unit,
+      tax_mode: l.tax_mode ?? 'HT',
       unit_price: l.unit_price,
     })),
   }
@@ -136,6 +137,7 @@ async function onSubmit() {
       // v-model alone without the .number modifier.
       quantity: String(line.quantity),
       unit: line.unit,
+      tax_mode: line.tax_mode,
       unit_price: String(line.unit_price),
     })),
   }
@@ -354,6 +356,15 @@ async function printQuotation() {
             :placeholder="t('quotations.form.quantity')"
             class="border-ligne-forte h-11 rounded-lg border bg-white px-3 text-sm"
           />
+          <select
+            v-model="line.tax_mode"
+            data-test="quotation-line-tax-mode"
+            :aria-label="t('quotations.form.taxMode')"
+            class="border-ligne-forte h-11 rounded-lg border bg-white px-3 text-sm"
+          >
+            <option value="HT">{{ t('quotations.form.taxHT') }}</option>
+            <option value="TTC">{{ t('quotations.form.taxTTC') }}</option>
+          </select>
           <input
             v-model="line.unit"
             type="text"

@@ -347,12 +347,12 @@
     "status": {
       "ASSIGNED": "Affecté",
       "SENT_FOR_LOADING": "Envoyé au chargement",
-      "LOADING": "Chargement en cours",
+      "LOADING": "Chargement",
       "LOADED": "Chargé",
-      "ROAD_TRANSIT": "Transit routière",
-      "IN_TRANSIT": "En transit",
-      "BORDER": "Frontière",
-      "CUSTOMS": "Douane",
+      "ROAD_TRANSIT": "Transit frontière",
+      "IN_TRANSIT": "Transit BMK",
+      "BORDER": "Douane",
+      "CUSTOMS": "Ts",
       "GOING_TO_COMPANY_STOCK": "En route vers stock entreprise",
       "ARRIVED_AT_COMPANY_STOCK": "Arrivé au stock entreprise",
       "STOCKED": "Stocké",
@@ -618,6 +618,29 @@
       "historyStock": "Refusé par {from} — remis au stock",
       "historyChange": "Refusé par {from} — attribué à {to}",
       "historyReleased": "{amount} rendus en avance"
+    },
+    "feeTable": {
+      "title": "Frais & étapes du trajet",
+      "open": "Saisir les frais du trajet",
+      "close": "Fermer le tableau",
+      "hint": "Saisissez le montant de chaque étape puis Entrée : le trajet passe à cette étape (le dernier frais saisi est son statut). Étape par étape, à des jours différents.",
+      "stage": "Étape / frais",
+      "state": "État",
+      "method": "Calcul",
+      "amount": "Montant",
+      "total": "Total",
+      "date": "Date",
+      "action": "Action",
+      "toEnter": "À saisir",
+      "entered": "Saisi",
+      "paid": "Payé",
+      "currentStatus": "Statut actuel du trajet",
+      "commissionHint": "Commission du transporteur",
+      "enter": "Saisir",
+      "edit": "Modifier",
+      "save": "Enregistrer",
+      "saving": "Enregistrement…",
+      "amountRequired": "Saisissez un montant supérieur à 0."
     }
   },
   "invoiceStatus": {
@@ -796,7 +819,10 @@
         "customer": "Client",
         "bank": "Banque",
         "cash": "Caisse"
-      }
+      },
+      "pdf": "PDF",
+      "print": "Imprimer",
+      "documentError": "Impossible de générer le document de cette dépense."
     },
     "transportPayment": {
       "title": "Frais de transport (au litre)",
@@ -1985,7 +2011,8 @@
         "label": "Rapport de capital"
       },
       "general-expense-report": {
-        "label": "Dépenses générales"
+        "label": "Dépenses générales",
+        "idLabel": "Catégorie"
       },
       "trip-fee-debt-report": {
         "label": "Dettes de frais de trajet",
@@ -2290,7 +2317,10 @@
       "saving": "Enregistrement…",
       "saved": "Informations enregistrées.",
       "loadError": "Impossible de charger les informations de l'entreprise.",
-      "saveError": "Impossible d'enregistrer — vérifiez les champs."
+      "saveError": "Impossible d'enregistrer — vérifiez les champs.",
+      "addPhone": "Ajouter un numéro",
+      "addEmail": "Ajouter un e-mail",
+      "removeValue": "Retirer"
     }
   },
   "errors": {
@@ -2350,7 +2380,10 @@
       "saveError": "Impossible d'enregistrer la proforma.",
       "paymentTerms": "Conditions de paiement",
       "paymentTermsPlaceholder": "Ex. : Avance de 30 % obligatoire",
-      "showBankAccounts": "Afficher les comptes bancaires sur le PDF"
+      "showBankAccounts": "Afficher les comptes bancaires sur le PDF",
+      "taxMode": "HT / TTC",
+      "taxHT": "HT (hors taxe)",
+      "taxTTC": "TTC (toutes taxes)"
     }
   },
   "documents": {

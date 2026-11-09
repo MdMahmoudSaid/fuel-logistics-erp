@@ -100,15 +100,28 @@ class LossToleranceConfig(TimeStampedModel):
         return config.tolerance_litres if config else cls.DEFAULT_TOLERANCE
 
 
+def split_contact_values(raw: str, *, phones: bool = False) -> list[str]:
+    """A contact field (several phone numbers / e-mails, one per line; the
+    older "a / b", "a, b", "a; b" spellings are still understood) -> clean
+    list, in order, without blanks or duplicates."""
+    pattern = r"[\n\r/,;]|\s{2,}" if phones else r"[\n\r/,;]"
+    values = []
+    for value in re.split(pattern, raw or ""):
+        value = value.strip(" .-" if phones else " ")
+        if value and value not in values:
+            values.append(value)
+    return values
+
+
 def format_phones(raw: str) -> str:
     """Phone field -> "(+223) 76202611 · (+223) 76680484": the field may hold
     several numbers (separated by / , ; or a wide gap); each one gets the
     country code in brackets unless it already carries its own."""
     from apps.core.brand import PHONE_COUNTRY_CODE
 
-    numbers = [n.strip(" .-") for n in re.split(r"[/,;]|\s{2,}", raw or "")]
+    numbers = split_contact_values(raw, phones=True)
     return " · ".join(
-        n if n.startswith(("+", "00", "(")) else f"({PHONE_COUNTRY_CODE}) {n}" for n in numbers if n
+        n if n.startswith(("+", "00", "(")) else f"({PHONE_COUNTRY_CODE}) {n}" for n in numbers
     )
 
 
@@ -123,8 +136,10 @@ class CompanyProfile(TimeStampedModel):
     trade_register = models.CharField(max_length=80, blank=True)
     address = models.CharField(max_length=255, blank=True)
     city = models.CharField(max_length=100, blank=True)
-    phone = models.CharField(max_length=60, blank=True)
-    email = models.CharField(max_length=150, blank=True)
+    # Several numbers / e-mails: stored one per line (CompanyProfileSerializer
+    # normalises them), printed one fact per line in the PDF letterhead.
+    phone = models.CharField(max_length=400, blank=True)
+    email = models.CharField(max_length=600, blank=True)
     website = models.CharField(max_length=150, blank=True)
     # Profit made before the app was used (the previous application's result,
     # client request 2026-10-17). It counts in the all-time net profit, hence in
@@ -151,17 +166,25 @@ class CompanyProfile(TimeStampedModel):
             return " · ".join(p for p in parts if p)
 
         phones = format_phones(self.phone)
+        emails = split_contact_values(self.email)
         lines = [
             join(self.address, self.city),
-            join(phones and f"Tél. : {phones}", self.email, self.website),
+            join(phones and f"Tél. : {phones}", *emails, self.website),
             join(self.tax_id and f"NIF : {self.tax_id}", self.trade_register and f"RC : {self.trade_register}"),
         ]
-        # One fact per line for the PDF letterhead: address, phones, e-mail,
-        # website, then the administrative identifiers.
+        # One fact per line for the PDF letterhead: address, phones (two per
+        # line), each e-mail on its own line, website, then the administrative
+        # identifiers.
+        numbers = [p.strip() for p in phones.split(" · ") if p.strip()]
+        phone_lines = [
+            " · ".join(numbers[i : i + 2]) for i in range(0, len(numbers), 2)
+        ]
+        if phone_lines:
+            phone_lines[0] = f"Tél. : {phone_lines[0]}"
         contact = [
             ", ".join(p for p in (self.address, self.city) if p),
-            phones and f"Tél. : {phones}",
-            self.email,
+            *phone_lines,
+            *emails,
             self.website,
             join(self.tax_id and f"NIF : {self.tax_id}", self.trade_register and f"RC : {self.trade_register}"),
         ]

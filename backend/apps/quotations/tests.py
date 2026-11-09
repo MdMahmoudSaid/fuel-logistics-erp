@@ -411,3 +411,53 @@ def test_duplicate_keeps_payment_terms_and_bank_choice():
     copy = client.post(f"/api/quotations/{created['id']}/duplicate/").data
     assert copy["payment_terms"] == "30%"
     assert copy["show_bank_accounts"] is False
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("lang", ["fr", "en", "ar"])
+def test_proforma_pdf_has_an_ht_ttc_column_right_after_the_quantity(lang):
+    from apps.reports.services.proforma_pdf import build_proforma_document
+
+    client, _ = _sales_client(f"PFTAX{lang}")
+    created = client.post(
+        "/api/quotations/",
+        {
+            "customer_name": "EDM", "issue_date": "2026-11-09",
+            "lines": [
+                {"description": "SAN", "quantity": "10", "unit": "L", "unit_price": "5", "tax_mode": "TTC"},
+                {"description": "SAN 2", "quantity": "10", "unit": "L", "unit_price": "5"},
+            ],
+        },
+        format="json",
+    )
+    assert created.status_code == 201, created.data
+    assert [l["tax_mode"] for l in created.data["lines"]] == ["TTC", "HT"]  # HT by default
+
+    quotation = Quotation.objects.get(pk=created.data["id"])
+    document, rows = build_proforma_document(quotation, lang)
+    fields = [c["field"] for c in document["tables"][0]["columns"]]
+    assert fields[fields.index("quantity") + 1] == "tax_mode"
+    assert [r["tax_mode"] for r in rows if r["section"] == "lines"] == ["TTC", "HT"]
+
+    copy = client.post(f"/api/quotations/{created.data['id']}/duplicate/").data
+    assert [l["tax_mode"] for l in copy["lines"]] == ["TTC", "HT"]
+
+    bad = client.post(
+        "/api/quotations/",
+        {"customer_name": "X", "issue_date": "2026-11-09",
+         "lines": [{"description": "a", "quantity": "1", "unit_price": "1", "tax_mode": "XX"}]},
+        format="json",
+    )
+    assert bad.status_code == 400
+
+
+@pytest.mark.django_db
+def test_purchase_order_pdf_keeps_its_columns_without_the_tax_column():
+    from apps.reports.services.proforma_pdf import build_priced_document
+
+    document, _ = build_priced_document(
+        title="BC", party_label="Fournisseur", party={"name": "F"}, info=[],
+        lines=[{"designation": "x", "quantity": 1, "unit": "L", "unit_price": 1, "amount": 1}],
+        total=1, currency="XOF", payment_terms="", notes="", lang="fr", banks=False, signatures=[],
+    )
+    assert "tax_mode" not in [c["field"] for c in document["tables"][0]["columns"]]

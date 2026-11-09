@@ -8,7 +8,9 @@ vi.mock('@/modules/settings/api', () => ({
 }))
 
 async function mountEstimate(loaded: string, received: string) {
-  const wrapper = mount(LossEstimate, { props: { quantityLoaded: loaded, receivedQuantity: received } })
+  const wrapper = mount(LossEstimate, {
+    props: { quantityLoaded: loaded, receivedQuantity: received },
+  })
   await flushPromises()
   return wrapper
 }

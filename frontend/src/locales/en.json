@@ -348,10 +348,10 @@
       "SENT_FOR_LOADING": "Sent for loading",
       "LOADING": "Loading",
       "LOADED": "Loaded",
-      "ROAD_TRANSIT": "Road transit",
-      "IN_TRANSIT": "In transit",
-      "BORDER": "Border",
-      "CUSTOMS": "Customs",
+      "ROAD_TRANSIT": "Border transit",
+      "IN_TRANSIT": "BMK transit",
+      "BORDER": "Customs",
+      "CUSTOMS": "TS",
       "GOING_TO_COMPANY_STOCK": "Going to company stock",
       "ARRIVED_AT_COMPANY_STOCK": "Arrived at company stock",
       "STOCKED": "Stocked",
@@ -616,6 +616,29 @@
       "historyStock": "Refused by {from} — returned to stock",
       "historyChange": "Refused by {from} — assigned to {to}",
       "historyReleased": "{amount} returned as an advance"
+    },
+    "feeTable": {
+      "title": "Trip fees & stages",
+      "open": "Enter trip fees",
+      "close": "Close table",
+      "hint": "Type each stage's amount then press Enter: the trip moves to that stage (the last fee entered is its status). One stage at a time, on different days.",
+      "stage": "Stage / fee",
+      "state": "State",
+      "method": "Calculation",
+      "amount": "Amount",
+      "total": "Total",
+      "date": "Date",
+      "action": "Action",
+      "toEnter": "To enter",
+      "entered": "Entered",
+      "paid": "Paid",
+      "currentStatus": "Current trip status",
+      "commissionHint": "Transporter commission",
+      "enter": "Enter",
+      "edit": "Edit",
+      "save": "Save",
+      "saving": "Saving…",
+      "amountRequired": "Enter an amount greater than 0."
     }
   },
   "invoiceStatus": {
@@ -794,7 +817,10 @@
         "customer": "Customer",
         "bank": "Bank",
         "cash": "Cash"
-      }
+      },
+      "pdf": "PDF",
+      "print": "Print",
+      "documentError": "Unable to generate this expense document."
     },
     "transportPayment": {
       "title": "Transport fee (per litre)",
@@ -1981,7 +2007,8 @@
         "label": "Capital report"
       },
       "general-expense-report": {
-        "label": "General expenses"
+        "label": "General expenses",
+        "idLabel": "Category"
       },
       "trip-fee-debt-report": {
         "label": "Trip fee debts",
@@ -2286,7 +2313,10 @@
       "saving": "Saving…",
       "saved": "Details saved.",
       "loadError": "Unable to load the company details.",
-      "saveError": "Unable to save — check the fields."
+      "saveError": "Unable to save — check the fields.",
+      "addPhone": "Add a phone number",
+      "addEmail": "Add an e-mail",
+      "removeValue": "Remove"
     }
   },
   "errors": {
@@ -2346,7 +2376,10 @@
       "saveError": "Unable to save the proforma.",
       "paymentTerms": "Payment terms",
       "paymentTermsPlaceholder": "E.g. 30% advance required",
-      "showBankAccounts": "Show bank accounts on the PDF"
+      "showBankAccounts": "Show bank accounts on the PDF",
+      "taxMode": "Excl. / incl. tax",
+      "taxHT": "Excl. tax (HT)",
+      "taxTTC": "Incl. tax (TTC)"
     }
   },
   "documents": {

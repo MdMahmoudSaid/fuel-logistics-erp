@@ -31,6 +31,7 @@ TEXT = {
     "designation": ("Libellé", "Description", "البيان"),
     "quantity": ("Quantité", "Quantity", "الكمية"),
     "unit": ("Unité", "Unit", "الوحدة"),
+    "tax_mode": ("HT / TTC", "Excl. / incl. tax", "قبل / بعد الضريبة"),
     "unit_price": ("Prix unitaire", "Unit price", "سعر الوحدة"),
     "amount": ("Montant", "Amount", "المبلغ"),
     "total_to_pay": ("Total à payer", "Total to pay", "المجموع المستحق"),
@@ -84,7 +85,7 @@ def column(field: str, label: str, kind: str, align: str = "start") -> dict:
 
 
 def build_priced_document(*, title, party_label, party, info, lines, total, currency, payment_terms,
-                          notes, lang, banks, signatures) -> tuple[dict, list[dict]]:
+                          notes, lang, banks, signatures, tax_column=False) -> tuple[dict, list[dict]]:
     """(document, rows) for a priced document. `party` = {"name", "address",
     "phone"}; `lines` = [{"designation", "quantity", "unit", "unit_price",
     "amount"}]; `banks` prints the company's bank accounts."""
@@ -101,6 +102,7 @@ def build_priced_document(*, title, party_label, party, info, lines, total, curr
         "columns": [
             column("designation", t("designation", lang), "text"),
             column("quantity", t("quantity", lang), "number", "end"),
+            *([column("tax_mode", t("tax_mode", lang), "text")] if tax_column else []),
             column("unit", t("unit", lang), "text"),
             column("unit_price", t("unit_price", lang), "number", "end"),
             {**column("amount", t("amount", lang), "money", "end"), "currency": currency},
@@ -148,6 +150,7 @@ def build_proforma_document(quotation, lang: str = "fr") -> tuple[dict, list[dic
             "designation": line.description or (line.product.name if line.product_id else ""),
             "quantity": line.quantity,
             "unit": line.unit,
+            "tax_mode": line.tax_mode,
             "unit_price": line.unit_price,
             "amount": line.line_total,
         }
@@ -158,7 +161,7 @@ def build_proforma_document(quotation, lang: str = "fr") -> tuple[dict, list[dic
         party_label=t("billed_to", lang), party=party, info=info, lines=lines,
         total=quotation.total_amount, currency=quotation.currency,
         payment_terms=quotation.payment_terms, notes=quotation.notes, lang=lang,
-        banks=quotation.show_bank_accounts, signatures=[],
+        banks=quotation.show_bank_accounts, signatures=[], tax_column=True,
     )
 
 
