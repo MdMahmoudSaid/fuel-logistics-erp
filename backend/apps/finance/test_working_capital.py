@@ -656,6 +656,40 @@ def test_sold_trip_stays_excluded_from_in_transit_and_company_stock():
     assert result["supplier_reliquat_value"] == Decimal("70000000.00")
 
 
+@pytest.mark.django_db
+def test_payment_settles_the_sold_fuel_before_any_unsold_fuel():
+    """Found on AZUR (2026-11-09): 33.75M paid on an order whose sold fuel cost
+    exactly 33.75M showed as "unsold fuel already paid". The sold part is
+    settled first; the unsold fuel stays unpaid (and covered by the debt)."""
+    admin_user, supplier, order = _make_supplier_order_with_status(
+        "WCORDER-SOLDFIRST", SupplierOrder.Status.CONFIRMED,
+        quantity=Decimal("100000.00"), unit_price=Decimal("1000.0000"),
+    )
+    transit_trip = _load_partial(order, Decimal("20000.00"), suffix="WCORDER-SOLDFIRST-TR")
+    sold_trip = _load_partial(order, Decimal("10000.00"), suffix="WCORDER-SOLDFIRST-SA")
+    Sale.objects.create(
+        trip=sold_trip, customer=Customer.objects.create(name="WC SoldFirst Customer"),
+        product=order.product, delivered_quantity=Decimal("10000.00"),
+        unit_selling_price=Decimal("1500.0000"),
+    )
+    cash = CashAccount.objects.create(
+        name="WC SoldFirst Cash", opening_balance=Decimal("500000000.00")
+    )
+
+    def pay(amount):
+        SupplierPayment.objects.create(
+            supplier=supplier, supplier_order=order, amount=amount,
+            payment_date="2026-08-19", method=SupplierPayment.Method.CASH,
+            cash_account=cash, recorded_by=admin_user,
+        )
+
+    pay(Decimal("10000000.00"))  # exactly the sold fuel
+    assert _three_lines(_paid_split()) == (Decimal("0.00"), Decimal("0.00"), Decimal("0.00"))
+
+    pay(Decimal("5000000.00"))  # 5M beyond the sold fuel -> en cours
+    assert _three_lines(_paid_split()) == (Decimal("0.00"), Decimal("5000000.00"), Decimal("0.00"))
+
+
 def _old_reliquat_first_breakdown():
     """Reference copy of the pre-2026-09-24 allocation (reliquat -> en cours
     -> company stock), used only to prove that the order is purely a

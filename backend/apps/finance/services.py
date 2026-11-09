@@ -3470,7 +3470,8 @@ class WorkingCapitalService:
         for why.
 
         Allocation order (client rule confirmed 2026-09-24, reversing the
-        2026-09-14 reliquat-first order): a payment first covers the fuel
+        2026-09-14 reliquat-first order; sold fuel first since 2026-11-09): a
+        payment first settles the fuel already sold, then covers the fuel
         already taken from the supplier - company stock, then en cours -
         and only then the reliquat still sitting at the supplier. The
         order only decides which of the three lines a payment lands in:
@@ -3486,6 +3487,19 @@ class WorkingCapitalService:
             paid_remaining = ControlledDebtPaymentService.describe_supplier_order(order)[
                 "paid_amount"
             ]
+            # Fuel already sold (or delivered) from this order is no longer an
+            # asset: its cost is in the profit. A payment settles that part
+            # FIRST (2026-11-09, found on AZUR: 33.75M paid against an order
+            # whose sold fuel cost exactly 33.75M showed as "unsold fuel already
+            # paid" while all the unsold fuel was still unpaid). Only what is
+            # left of the payment then covers the unsold fuel below.
+            consumed = max(
+                SupplierStockService.get_purchase_loaded_amount(order)
+                - SupplierStockService.get_purchase_in_transit_amount(order)
+                - SupplierStockService.get_purchase_company_stock_amount(order),
+                ZERO,
+            )
+            paid_remaining = max(paid_remaining - consumed, ZERO)
 
             company_stock_counted = min(
                 paid_remaining, SupplierStockService.get_purchase_company_stock_amount(order)

@@ -803,6 +803,17 @@ class ExpenseAllocationInputSerializer(serializers.Serializer):
     object_id = serializers.IntegerField(required=False, allow_null=True, default=None)
     allocated_amount = serializers.DecimalField(max_digits=16, decimal_places=2, min_value=Decimal("0.01"))
 
+    def validate(self, data):
+        # An allocation that points at nothing (or only half of a pointer) is
+        # invisible to every trip margin yet is not a general expense either:
+        # the money leaves the treasury but reaches no profit (found on AZUR
+        # 2026-11-09: a 10,000 loading fee with object_id=8, content_type=NULL).
+        if data.get("content_type") is None or data.get("object_id") is None:
+            raise serializers.ValidationError(
+                "Une allocation doit cibler une entite (type et identifiant)."
+            )
+        return data
+
 
 class ExpenseCategorySerializer(serializers.ModelSerializer):
     code = serializers.SlugField(max_length=30, required=False, allow_blank=True)
