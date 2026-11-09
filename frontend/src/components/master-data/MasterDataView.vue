@@ -46,10 +46,7 @@ const statusTab = ref<AccountStatus>('active')
 
 const columns = computed(() =>
   props.fields
-    .filter(
-      (f) =>
-        (f.type !== 'textarea' || f.showInList) && f.type !== 'password' && f.type !== 'pin',
-    )
+    .filter((f) => f.type !== 'textarea' && f.type !== 'password' && f.type !== 'pin')
     .map((f) => ({
       key: f.key,
       label: f.label,
@@ -59,6 +56,8 @@ const columns = computed(() =>
       falseLabel: f.falseLabel,
     })),
 )
+
+const subtitleKey = computed(() => props.fields.find((f) => f.subtitle)?.key)
 
 // With the Actifs / Anciens / Inactifs switch the status is changed from the
 // list, never from the form (a stale checkbox could fight the "Ancien" flag).
@@ -221,6 +220,7 @@ onMounted(load)
     <div class="border-ligne overflow-x-auto rounded-xl border bg-white">
       <DataTable
         :columns="columns"
+        :subtitle-key="subtitleKey"
         :rows="visibleRows"
         :active-toggle="hasActiveField"
         :legacy-support="legacySupport"

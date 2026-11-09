@@ -75,7 +75,7 @@ describe('MasterDataView', () => {
     expect(wrapper.text()).toContain('Total Senegal')
   })
 
-  it('shows a textarea field in the list only when it opts in with showInList', async () => {
+  it('shows a subtitle textarea under the first column, without adding a column', async () => {
     const rows = [{ id: 1, name: 'BDM', notes: 'Ajustement de depart', is_active: true }]
     const mountWith = (notesField: FieldSchema) =>
       mount(MasterDataView, {
@@ -91,9 +91,13 @@ describe('MasterDataView', () => {
     await flushPromises()
     expect(hidden.text()).not.toContain('Ajustement de depart')
 
-    const shown = mountWith({ key: 'notes', label: 'Note', type: 'textarea', showInList: true })
+    const shown = mountWith({ key: 'notes', label: 'Note', type: 'textarea', subtitle: true })
     await flushPromises()
-    expect(shown.text()).toContain('Ajustement de depart')
+    const subtitles = shown.findAll('[data-test="row-subtitle"]')
+    expect(subtitles.length).toBeGreaterThan(0)
+    expect(subtitles[0]!.text()).toBe('Ajustement de depart')
+    // Still no "Note" column header: the table does not get wider.
+    expect(shown.findAll('th').map((th) => th.text())).not.toContain('Note')
   })
 
   it('creates a new record through the Add flow', async () => {

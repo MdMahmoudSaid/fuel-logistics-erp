@@ -17,6 +17,8 @@ defineProps<{
     falseLabel?: string
   }[]
   rows: Record<string, unknown>[]
+  // Field whose text is shown in small muted type under the first column.
+  subtitleKey?: string
   activeToggle?: boolean
   // Customers / suppliers / transporters: a third "Ancien" state (no longer
   // trading, balance still open) next to active / inactive.
@@ -119,6 +121,13 @@ function onMenuSelect(row: Record<string, unknown>, key: string) {
         <p class="text-texte font-semibold break-words">
           {{ columns.length ? cellText(columns[0]!, row) : '' }}
         </p>
+        <p
+          v-if="subtitleKey && row[subtitleKey]"
+          class="text-texte-3 mt-1 text-xs break-words"
+          data-test="row-subtitle"
+        >
+          {{ row[subtitleKey] }}
+        </p>
         <dl class="mt-2 space-y-1.5 text-sm">
           <div
             v-for="col in columns.slice(1)"
@@ -205,6 +214,13 @@ function onMenuSelect(row: Record<string, unknown>, key: string) {
           >
             <MonoValue v-if="isNumericColumn(col.type)" :value="cellText(col, row)" />
             <span v-else :class="statusCellClass(col, row)">{{ cellText(col, row) }}</span>
+            <p
+              v-if="subtitleKey && col.key === columns[0]?.key && row[subtitleKey]"
+              class="text-texte-3 mt-0.5 max-w-xs text-xs font-normal whitespace-normal"
+              data-test="row-subtitle"
+            >
+              {{ row[subtitleKey] }}
+            </p>
           </td>
           <td class="px-3 py-2.5 text-end align-middle whitespace-nowrap">
             <span class="inline-flex items-center gap-3">
