@@ -20,7 +20,7 @@ export interface QuotationLine {
   description: string
   quantity: string
   unit: string
-  tax_mode: 'HT' | 'TTC'
+  tax_mode?: 'HT' | 'TTC'
   unit_price: string
   line_total: string
 }
@@ -34,7 +34,7 @@ export interface QuotationLineInput {
   description: string
   quantity: string
   unit: string
-  tax_mode: 'HT' | 'TTC'
+  tax_mode?: 'HT' | 'TTC'
   unit_price: string
 }
 
