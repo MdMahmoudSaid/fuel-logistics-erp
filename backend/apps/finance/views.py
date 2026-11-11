@@ -732,6 +732,7 @@ class TreasuryTransactionViewSet(viewsets.ModelViewSet):
                 debt_type=data["debt_type"],
                 debt_id=data["debt_id"],
                 bank_account_id=data["bank_account"],
+                cash_account_id=data["cash_account"],
                 amount=data["amount"],
                 date=data["date"],
                 reference=data["reference"],

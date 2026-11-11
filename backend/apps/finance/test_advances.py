@@ -1271,3 +1271,32 @@ def test_debt_payment_endpoint_accepts_confirmed_overpayment(advances_finance_cl
     accepted = advances_finance_client.post(url, {**payload, "surplus_as_advance": "true"})
     assert accepted.status_code == 201, accepted.data
     assert accepted.data["advance_amount"] == "300000.00"
+
+
+@pytest.mark.django_db
+def test_debt_payment_endpoint_can_pay_from_a_cash_account(advances_finance_client):
+    from apps.finance.models import CashAccount, TreasuryTransaction
+
+    _admin, supplier, _order, bank = _supplier_with_debt("CASH-API")
+    cash = CashAccount.objects.create(name="Caisse test", opening_balance=Decimal("500000.00"))
+    url = "/api/treasury-transactions/record-debt-payment/"
+    payload = {
+        "debt_type": "supplier", "debt_id": supplier.id, "cash_account": cash.id,
+        "amount": "200000.00", "date": "2026-10-09",
+    }
+
+    response = advances_finance_client.post(url, payload)
+    assert response.status_code == 201, response.data
+    txn = TreasuryTransaction.objects.get(cash_account=cash)
+    assert txn.bank_account_id is None and txn.amount == Decimal("200000.00")
+    assert SupplierPayment.objects.get(supplier=supplier).method == "CASH"
+    assert cash.current_balance == Decimal("300000.00")
+
+    too_much = advances_finance_client.post(url, {**payload, "amount": "400000.00"})
+    assert too_much.status_code == 400
+    assert "caisse" in too_much.data["detail"].lower()
+
+    neither = advances_finance_client.post(url, {k: v for k, v in payload.items() if k != "cash_account"})
+    assert neither.status_code == 400
+    both = advances_finance_client.post(url, {**payload, "bank_account": bank.id})
+    assert both.status_code == 400

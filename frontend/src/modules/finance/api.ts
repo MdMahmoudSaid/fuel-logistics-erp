@@ -337,7 +337,8 @@ export function fetchPayableDebts(debtType: DebtPaymentType): Promise<PayableDeb
 export function recordDebtPayment(payload: {
   debt_type: DebtPaymentType
   debt_id: number
-  bank_account: number
+  bank_account?: number
+  cash_account?: number
   amount: string
   date: string
   reference?: string

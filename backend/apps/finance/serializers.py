@@ -1200,7 +1200,7 @@ class TreasuryTransferRequestSerializer(serializers.Serializer):
 
 
 class ControlledDebtPaymentRequestSerializer(RejectInactiveMixin, serializers.Serializer):
-    reject_inactive_fields = ('bank_account',)
+    reject_inactive_fields = ('bank_account', 'cash_account')
     """Input for POST /api/treasury-transactions/record-debt-payment/.
 
     The serializer handles shape/type validation only; the cross-row
@@ -1211,7 +1211,9 @@ class ControlledDebtPaymentRequestSerializer(RejectInactiveMixin, serializers.Se
         choices=[(value, value) for value in ControlledDebtPaymentService.supported_debt_types()]
     )
     debt_id = serializers.IntegerField()
-    bank_account = serializers.IntegerField()
+    # Exactly one of bank_account / cash_account (checked in validate()).
+    bank_account = serializers.IntegerField(required=False, allow_null=True, default=None)
+    cash_account = serializers.IntegerField(required=False, allow_null=True, default=None)
     # Overpayment -> advance (2026-10-09): sent only after the user
     # confirmed the surplus popup; see ControlledDebtPaymentService.record_payment.
     surplus_as_advance = serializers.BooleanField(required=False, default=False)
@@ -1227,6 +1229,14 @@ class ControlledDebtPaymentRequestSerializer(RejectInactiveMixin, serializers.Se
         if value is None:
             return value
         return validate_image_upload(value)
+
+    def validate(self, data):
+        data = super().validate(data)
+        if bool(data.get("bank_account")) == bool(data.get("cash_account")):
+            raise serializers.ValidationError(
+                {"bank_account": "Choisissez soit un compte bancaire, soit une caisse."}
+            )
+        return data
 
 
 # ---------------------------------------------------------------------------

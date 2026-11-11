@@ -1614,11 +1614,12 @@ class ControlledDebtPaymentService:
         *,
         debt_type,
         debt_id,
-        bank_account_id,
         amount,
         date,
         reference,
         actor,
+        bank_account_id=None,
+        cash_account_id=None,
         note="",
         attachment=None,
         surplus_as_advance=False,
@@ -1627,12 +1628,27 @@ class ControlledDebtPaymentService:
         if amount <= ZERO:
             raise ControlledDebtPaymentError("Le montant a payer doit etre superieur a zero.")
 
-        bank_account = BankAccount.objects.select_for_update().get(pk=bank_account_id)
-        bank_balance = bank_account.current_balance
-        if amount > bank_balance:
+        # Source of the money: exactly one of a bank account or a cash
+        # account (caisse) - the cash/bank choice of the payment form.
+        if bool(bank_account_id) == bool(cash_account_id):
             raise ControlledDebtPaymentError(
-                "Solde bancaire insuffisant pour effectuer ce paiement."
+                "Choisissez soit un compte bancaire, soit une caisse."
             )
+        if bank_account_id:
+            bank_account = BankAccount.objects.select_for_update().get(pk=bank_account_id)
+            cash_account = None
+            source_account = bank_account
+            insufficient_msg = "Solde bancaire insuffisant pour effectuer ce paiement."
+        else:
+            bank_account = None
+            cash_account = CashAccount.objects.select_for_update().get(pk=cash_account_id)
+            source_account = cash_account
+            insufficient_msg = "Solde de caisse insuffisant pour effectuer ce paiement."
+        if not source_account.is_active:
+            raise ControlledDebtPaymentError("Ce compte est inactif.")
+        bank_balance = source_account.current_balance
+        if amount > bank_balance:
+            raise ControlledDebtPaymentError(insufficient_msg)
 
         # Overpayment -> advance (2026-10-09): only once the user confirmed
         # it in the UI (surplus_as_advance), a supplier/transporter payment
@@ -1661,6 +1677,7 @@ class ControlledDebtPaymentService:
             result = cls._record_supplier_payments(
                 debt_id=debt_id,
                 bank_account=bank_account,
+                cash_account=cash_account,
                 amount=amount,
                 date=date,
                 reference=reference,
@@ -1671,6 +1688,7 @@ class ControlledDebtPaymentService:
             result = cls._record_transport_payments(
                 debt_id=debt_id,
                 bank_account=bank_account,
+                cash_account=cash_account,
                 amount=amount,
                 date=date,
                 reference=reference,
@@ -1682,6 +1700,7 @@ class ControlledDebtPaymentService:
                 debt_type=debt_type,
                 debt_id=debt_id,
                 bank_account=bank_account,
+                cash_account=cash_account,
                 amount=amount,
                 date=date,
                 reference=reference,
@@ -1717,8 +1736,8 @@ class ControlledDebtPaymentService:
             party_field = "supplier_id" if debt_type == cls.SUPPLIER else "transporter_id"
             create_advance(
                 **{party_field: debt_id},
-                bank_account_id=bank_account.id,
-                cash_account_id=None,
+                bank_account_id=bank_account.id if bank_account else None,
+                cash_account_id=cash_account.id if cash_account else None,
                 amount=advance_amount,
                 date=date,
                 reference=reference,
@@ -1733,7 +1752,7 @@ class ControlledDebtPaymentService:
 
     @classmethod
     def _record_supplier_payments(
-        cls, *, debt_id, bank_account, amount, date, reference, actor, note=""
+        cls, *, debt_id, bank_account, amount, date, reference, actor, note="", cash_account=None
     ):
         supplier = Supplier.objects.select_for_update().get(pk=debt_id)
         debt = cls.describe_supplier(supplier)
@@ -1752,8 +1771,13 @@ class ControlledDebtPaymentService:
                 opening_debt=opening_debt,
                 amount=line_amount,
                 payment_date=date,
-                method=SupplierPayment.Method.BANK_TRANSFER,
+                method=(
+                    SupplierPayment.Method.CASH
+                    if cash_account
+                    else SupplierPayment.Method.BANK_TRANSFER
+                ),
                 bank_account=bank_account,
+                cash_account=cash_account,
                 is_advance=False,
                 reference=reference,
                 recorded_by=actor,
@@ -1777,8 +1801,13 @@ class ControlledDebtPaymentService:
                 supplier_order=order,
                 amount=line_amount,
                 payment_date=date,
-                method=SupplierPayment.Method.BANK_TRANSFER,
+                method=(
+                    SupplierPayment.Method.CASH
+                    if cash_account
+                    else SupplierPayment.Method.BANK_TRANSFER
+                ),
                 bank_account=bank_account,
+                cash_account=cash_account,
                 is_advance=False,
                 reference=reference,
                 recorded_by=actor,
@@ -1804,7 +1833,7 @@ class ControlledDebtPaymentService:
 
     @classmethod
     def _record_transport_payments(
-        cls, *, debt_id, bank_account, amount, date, reference, actor, note=""
+        cls, *, debt_id, bank_account, amount, date, reference, actor, note="", cash_account=None
     ):
         transporter = Transporter.objects.select_for_update().get(pk=debt_id)
         debt = cls.describe_transporter(transporter)
@@ -1821,6 +1850,7 @@ class ControlledDebtPaymentService:
                 cls._create_debt_transaction(
                     debt=opening_debt,
                     bank_account=bank_account,
+                    cash_account=cash_account,
                     amount=line_amount,
                     date=date,
                     reference=reference,
@@ -1839,6 +1869,7 @@ class ControlledDebtPaymentService:
             transaction_obj = cls._create_debt_transaction(
                 debt=payment,
                 bank_account=bank_account,
+                cash_account=cash_account,
                 amount=line_amount,
                 date=date,
                 reference=reference,
@@ -1861,7 +1892,7 @@ class ControlledDebtPaymentService:
 
     @classmethod
     def _record_expense_payments(
-        cls, *, debt_type, debt_id, bank_account, amount, date, reference, actor, note=""
+        cls, *, debt_type, debt_id, bank_account, amount, date, reference, actor, note="", cash_account=None
     ):
         if debt_id != 0:
             raise ControlledDebtPaymentError("Cette dette doit etre payee au niveau du groupe.")
@@ -1880,6 +1911,7 @@ class ControlledDebtPaymentService:
             transaction_obj = cls._create_debt_transaction(
                 debt=expense,
                 bank_account=bank_account,
+                cash_account=cash_account,
                 amount=line_amount,
                 date=date,
                 reference=reference,
@@ -1908,9 +1940,12 @@ class ControlledDebtPaymentService:
             )
 
     @staticmethod
-    def _create_debt_transaction(*, debt, bank_account, amount, date, reference, actor, note=""):
+    def _create_debt_transaction(
+        *, debt, bank_account, amount, date, reference, actor, note="", cash_account=None
+    ):
         return TreasuryTransaction.objects.create(
             bank_account=bank_account,
+            cash_account=cash_account,
             type=TreasuryTransaction.Type.MONEY_OUT,
             amount=amount,
             note=note,

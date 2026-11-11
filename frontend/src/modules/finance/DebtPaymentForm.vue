@@ -51,12 +51,15 @@ const DEBT_TYPES: { value: DebtPaymentType; labelKey: string }[] = [
 ]
 
 const bankAccountResource = createResourceApi<BankOption>('/bank-accounts/')
+const cashAccountResource = createResourceApi<BankOption>('/cash-accounts/')
 
 const debtType = ref<DebtPaymentType>(props.initialDebtType)
 const debtId = ref('')
+// Where the money comes from: a bank account or a cash account (caisse).
+const sourceType = ref<'bank' | 'cash'>('bank')
 const bankAccountId = ref('')
+const cashAccountId = ref('')
 const amount = ref('')
-const reference = ref('')
 const note = ref('')
 const attachment = ref<File | null>(null)
 const attachmentError = ref('')
@@ -76,6 +79,7 @@ function onAttachmentChange(event: Event) {
 }
 const debts = ref<PayableDebt[]>([])
 const banks = ref<BankOption[]>([])
+const cashAccounts = ref<BankOption[]>([])
 const loading = ref(true)
 const debtLoading = ref(false)
 const saving = ref(false)
@@ -85,8 +89,18 @@ const emptyDebtMessage = ref('')
 const selectedDebt = computed(
   () => debts.value.find((debt) => debt.id === Number(debtId.value)) ?? null,
 )
+const isCash = computed(() => sourceType.value === 'cash')
+const sourceOptions = computed(() => (isCash.value ? cashAccounts.value : banks.value))
+const sourceAccountId = computed({
+  get: () => (isCash.value ? cashAccountId.value : bankAccountId.value),
+  set: (value: string) => {
+    if (isCash.value) cashAccountId.value = value
+    else bankAccountId.value = value
+  },
+})
+// The chosen bank OR cash account (name kept "selectedBank" for the balance box).
 const selectedBank = computed(
-  () => banks.value.find((bank) => bank.id === Number(bankAccountId.value)) ?? null,
+  () => sourceOptions.value.find((acc) => acc.id === Number(sourceAccountId.value)) ?? null,
 )
 const amountNumber = computed(() => Number(amount.value || 0))
 const remainingAfterPayment = computed(() => {
@@ -146,12 +160,15 @@ async function loadDebts() {
 async function load() {
   loading.value = true
   try {
-    const [bankData] = await Promise.all([
+    const [bankData, cashData] = await Promise.all([
       bankAccountResource.list({ is_active: true }),
+      cashAccountResource.list({ is_active: true }),
       loadDebts(),
     ])
     banks.value = bankData.results
+    cashAccounts.value = cashData.results
     bankAccountId.value = banks.value[0]?.id ? String(banks.value[0].id) : ''
+    cashAccountId.value = cashAccounts.value[0]?.id ? String(cashAccounts.value[0].id) : ''
   } catch {
     error.value = t('finance.debtPayment.loadError')
   } finally {
@@ -166,7 +183,11 @@ function validate(): boolean {
     return false
   }
   if (!selectedBank.value) {
-    error.value = t('finance.debtPayment.errors.bankRequired')
+    error.value = t(
+      isCash.value
+        ? 'finance.debtPayment.errors.cashRequired'
+        : 'finance.debtPayment.errors.bankRequired',
+    )
     return false
   }
   if (amountNumber.value <= 0) {
@@ -181,7 +202,11 @@ function validate(): boolean {
     return false
   }
   if (amountNumber.value > Number(selectedBank.value.current_balance)) {
-    error.value = t('finance.debtPayment.errors.insufficientBank')
+    error.value = t(
+      isCash.value
+        ? 'finance.debtPayment.errors.insufficientCash'
+        : 'finance.debtPayment.errors.insufficientBank',
+    )
     return false
   }
   // Proof upload is optional (Task 14), but a file that WAS selected and
@@ -212,10 +237,11 @@ async function submit() {
     await recordDebtPayment({
       debt_type: debtType.value,
       debt_id: selectedDebt.value.id,
-      bank_account: selectedBank.value.id,
+      ...(isCash.value
+        ? { cash_account: selectedBank.value.id }
+        : { bank_account: selectedBank.value.id }),
       amount: amount.value,
       date: date.value,
-      reference: reference.value,
       note: note.value,
       attachment: attachment.value,
       surplus_as_advance: surplusAmount.value > 0,
@@ -327,13 +353,30 @@ onMounted(load)
 
       <div class="grid gap-x-4 gap-y-3 sm:grid-cols-3">
         <label class="space-y-1">
-          <span class="text-texte-2 text-sm font-medium">{{ t('finance.debtPayment.bank') }}</span>
+          <span class="text-texte-2 text-sm font-medium">{{
+            t('finance.debtPayment.source')
+          }}</span>
           <select
-            v-model="bankAccountId"
+            v-model="sourceType"
+            data-test="source-type"
             class="border-ligne h-11 w-full rounded-lg border px-3 text-sm"
           >
-            <option v-for="bank in banks" :key="bank.id" :value="String(bank.id)">
-              {{ bank.name }}
+            <option value="bank">{{ t('finance.debtPayment.sourceBank') }}</option>
+            <option value="cash">{{ t('finance.debtPayment.sourceCash') }}</option>
+          </select>
+        </label>
+
+        <label class="space-y-1">
+          <span class="text-texte-2 text-sm font-medium">{{
+            isCash ? t('finance.debtPayment.cash') : t('finance.debtPayment.bank')
+          }}</span>
+          <select
+            v-model="sourceAccountId"
+            data-test="source-account"
+            class="border-ligne h-11 w-full rounded-lg border px-3 text-sm"
+          >
+            <option v-for="acc in sourceOptions" :key="acc.id" :value="String(acc.id)">
+              {{ acc.name }}
             </option>
           </select>
         </label>
@@ -357,16 +400,6 @@ onMounted(load)
           <input
             v-model="date"
             type="date"
-            class="border-ligne h-11 w-full rounded-lg border px-3 text-sm"
-          />
-        </label>
-
-        <label class="space-y-1">
-          <span class="text-texte-2 text-sm font-medium">
-            {{ t('finance.debtPayment.reference') }}
-          </span>
-          <input
-            v-model="reference"
             class="border-ligne h-11 w-full rounded-lg border px-3 text-sm"
           />
         </label>
@@ -398,7 +431,9 @@ onMounted(load)
       <div class="border-ligne grid gap-3 rounded-lg border bg-sable p-3 text-sm sm:grid-cols-3">
         <div>
           <p class="text-texte-3 text-xs font-medium uppercase">
-            {{ t('finance.debtPayment.selectedBank') }}
+            {{
+              isCash ? t('finance.debtPayment.selectedCash') : t('finance.debtPayment.selectedBank')
+            }}
           </p>
           <p class="text-texte font-medium">{{ selectedBank?.name || '—' }}</p>
         </div>

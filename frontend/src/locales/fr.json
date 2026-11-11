@@ -1043,6 +1043,11 @@
       "remaining": "Reste à payer",
       "bank": "Banque",
       "selectedBank": "Banque sélectionnée",
+      "source": "Source du paiement",
+      "sourceBank": "Banque",
+      "sourceCash": "Caisse",
+      "cash": "Caisse",
+      "selectedCash": "Caisse sélectionnée",
       "availableBalance": "Solde disponible",
       "amount": "Montant à payer",
       "afterPayment": "Reste après paiement",
@@ -1067,9 +1072,11 @@
       "errors": {
         "debtRequired": "Choisissez une dette à payer.",
         "bankRequired": "Choisissez une banque.",
+        "cashRequired": "Choisissez une caisse.",
         "positiveAmount": "Le montant doit être supérieur à zéro.",
         "aboveRemaining": "Le montant dépasse le reste à payer.",
         "insufficientBank": "Solde bancaire insuffisant pour effectuer ce paiement.",
+        "insufficientCash": "Solde de caisse insuffisant pour effectuer ce paiement.",
         "debtNotFound": "Aucune dette à payer trouvée pour cette entité.",
         "noOpenDebts": "Aucune dette ouverte pour ce type."
       }

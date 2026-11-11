@@ -1041,6 +1041,11 @@
       "remaining": "المتبقي للدفع",
       "bank": "البنك",
       "selectedBank": "البنك المحدد",
+      "source": "مصدر الدفع",
+      "sourceBank": "البنك",
+      "sourceCash": "الصندوق",
+      "cash": "الصندوق",
+      "selectedCash": "الصندوق المحدد",
       "availableBalance": "الرصيد المتاح",
       "amount": "المبلغ المدفوع",
       "afterPayment": "المتبقي بعد الدفع",
@@ -1065,9 +1070,11 @@
       "errors": {
         "debtRequired": "اختر دينًا للدفع.",
         "bankRequired": "اختر بنكًا.",
+        "cashRequired": "اختر صندوقًا.",
         "positiveAmount": "يجب أن يكون المبلغ أكبر من صفر.",
         "aboveRemaining": "المبلغ يتجاوز المتبقي للدفع.",
         "insufficientBank": "الرصيد البنكي غير كافٍ لإجراء هذا الدفع.",
+        "insufficientCash": "رصيد الصندوق غير كافٍ لإجراء هذا الدفع.",
         "debtNotFound": "لم يتم العثور على دين قابل للدفع لهذه الجهة.",
         "noOpenDebts": "لا توجد ديون مفتوحة لهذا النوع."
       }

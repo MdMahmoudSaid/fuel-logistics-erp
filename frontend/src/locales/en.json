@@ -1041,6 +1041,11 @@
       "remaining": "Remaining",
       "bank": "Bank",
       "selectedBank": "Selected bank",
+      "source": "Payment source",
+      "sourceBank": "Bank",
+      "sourceCash": "Cash",
+      "cash": "Cash account",
+      "selectedCash": "Selected cash account",
       "availableBalance": "Available balance",
       "amount": "Amount to pay",
       "afterPayment": "Remaining after payment",
@@ -1065,9 +1070,11 @@
       "errors": {
         "debtRequired": "Choose a debt to pay.",
         "bankRequired": "Choose a bank.",
+        "cashRequired": "Choose a cash account.",
         "positiveAmount": "The amount must be greater than zero.",
         "aboveRemaining": "The amount exceeds the remaining debt.",
         "insufficientBank": "The bank balance is insufficient for this payment.",
+        "insufficientCash": "The cash balance is insufficient for this payment.",
         "debtNotFound": "No payable debt found for this entity.",
         "noOpenDebts": "No open debt for this type."
       }
