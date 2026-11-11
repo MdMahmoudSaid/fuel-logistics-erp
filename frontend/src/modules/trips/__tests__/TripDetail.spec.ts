@@ -1517,13 +1517,37 @@ describe('TripDetail expenses section', () => {
     )
   })
 
-  it('fee table: the transporter commission row opens the commission form', async () => {
+  it('fee table: the transporter commission is entered in place like the other fees', async () => {
+    setUser({ operations: ['view', 'edit'], finance: ['view', 'create'] })
+    tripResourceGet.mockResolvedValue(makeTrip({ status: 'ASSIGNED' }))
+    allowedStatusesToReturn = ['SENT_FOR_LOADING', 'LOADING', 'CANCELLED']
+    const wrapper = await mountAt()
+    const row = wrapper.find('[data-test="fee-row-SENT_FOR_LOADING"]')
+    // name on top, status name underneath
+    expect(row.text()).toContain('Commission du transporteur')
+    expect(row.text()).toContain('Envoyé au chargement')
+    expect(wrapper.find('[data-test="fee-method-SENT_FOR_LOADING"]').exists()).toBe(true)
+
+    await wrapper.find('[data-test="fee-amount-SENT_FOR_LOADING"]').setValue('12')
+    await wrapper
+      .find('[data-test="fee-amount-SENT_FOR_LOADING"]')
+      .trigger('keydown', { key: 'Enter' })
+    await flushPromises()
+    expect(createTransportPayment).toHaveBeenCalledWith(
+      expect.objectContaining({ calculation_method: 'PER_LITRE', unit_price_per_litre: '12' }),
+    )
+    expect(postTripStatus).toHaveBeenCalledWith(expect.anything(), 'SENT_FOR_LOADING', '')
+  })
+
+  it('fee table: a flat transporter commission is sent as FIXED', async () => {
     setUser({ operations: ['view', 'edit'], finance: ['view', 'create'] })
     tripResourceGet.mockResolvedValue(makeTrip({ status: 'ASSIGNED' }))
     const wrapper = await mountAt()
-    await wrapper.find('[data-test="fee-edit-SENT_FOR_LOADING"]').trigger('click')
-    await flushPromises()
-    expect(wrapper.find('#unit_price_per_litre').exists()).toBe(true)
+    await wrapper.find('[data-test="fee-method-SENT_FOR_LOADING"]').setValue('PER_TRUCK')
+    await enterFee(wrapper, 'SENT_FOR_LOADING', '500000')
+    expect(createTransportPayment).toHaveBeenCalledWith(
+      expect.objectContaining({ calculation_method: 'FIXED', base_amount: '500000' }),
+    )
   })
 
   it('fee table: no commission row once a payment exists is still shown as entered, and the card is hidden without finance create', async () => {

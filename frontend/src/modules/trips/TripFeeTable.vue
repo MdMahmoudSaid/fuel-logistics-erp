@@ -12,7 +12,11 @@ import AppAlert from '@/components/ui/AppAlert.vue'
 import Badge from '@/components/ui/Badge.vue'
 import Button from '@/components/ui/Button.vue'
 import MonoValue from '@/components/ui/MonoValue.vue'
-import { expenseResource, fetchAllocatableTypes } from '@/modules/finance/api'
+import {
+  expenseResource,
+  fetchAllocatableTypes,
+  transportPaymentResource,
+} from '@/modules/finance/api'
 import type { Expense, ExpenseCategory, TransportPayment } from '@/modules/finance/types'
 import { translateApiError } from '@/i18n/apiErrors'
 import { formatMoney, formatQuantity, formatUnitMoney } from '@/utils/currency'
@@ -27,7 +31,6 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{
   recorded: [status: TripStatus]
-  'open-commission': []
 }>()
 
 const { t } = useI18n()
@@ -114,7 +117,11 @@ onMounted(async () => {
 function methodOf(row: Row): Method {
   const edited = edits[row.status]?.method
   if (edited) return edited
-  return saved(row)?.method === 'PER_TRUCK' ? 'PER_TRUCK' : 'PER_LITRE'
+  return isFlat(saved(row)?.method) ? 'PER_TRUCK' : 'PER_LITRE'
+}
+// A commission stores a flat amount as FIXED, an expense as PER_TRUCK.
+function isFlat(method: string | undefined): boolean {
+  return method === 'PER_TRUCK' || method === 'FIXED'
 }
 function amountOf(row: Row): string {
   const edited = edits[row.status]?.amount
@@ -139,18 +146,42 @@ function isDirty(row: Row): boolean {
   const s = saved(row)
   const amount = Number(amountOf(row)) || 0
   if (!s) return amount > 0
-  const sameMethod = methodOf(row) === (s.method === 'PER_TRUCK' ? 'PER_TRUCK' : 'PER_LITRE')
+  const sameMethod = methodOf(row) === (isFlat(s.method) ? 'PER_TRUCK' : 'PER_LITRE')
   return amount > 0 && !(sameMethod && Number(s.amount) === amount)
 }
 function isEditable(row: Row): boolean {
-  return props.canManage && row.category !== null && !saved(row)?.paid
+  return props.canManage && !saved(row)?.paid
+}
+
+// Transporter commission = a TransportPayment (its own debt), not an Expense.
+// PER_LITRE: the backend derives base_amount from quantity_loaded x rate.
+async function saveCommission(row: Row) {
+  const amount = String(amountOf(row))
+  const payload =
+    methodOf(row) === 'PER_LITRE'
+      ? { calculation_method: 'PER_LITRE' as const, unit_price_per_litre: amount }
+      : { calculation_method: 'FIXED' as const, base_amount: amount, unit_price_per_litre: null }
+  const existing = commission()
+  if (existing) await transportPaymentResource.update(existing.id, payload)
+  else
+    await transportPaymentResource.create({
+      trip: props.trip.id,
+      transporter: props.trip.transporter!,
+      ...payload,
+    })
 }
 
 async function save(row: Row) {
-  if (row.category === null || !isDirty(row)) return
+  if (!isDirty(row)) return
   savingStatus.value = row.status
   error.value = ''
   try {
+    if (row.category === null) {
+      await saveCommission(row)
+      delete edits[row.status]
+      emit('recorded', row.status)
+      return
+    }
     const existing = expenseFor(row)
     const payload = {
       category: row.category,
@@ -214,7 +245,14 @@ const COLS = 'md:grid-cols-[minmax(0,1.4fr)_8rem_minmax(0,1fr)_minmax(0,1fr)_6.5
         >
           <!-- stage + state -->
           <div class="col-span-2 min-w-0 md:col-span-1">
-            <p class="text-texte font-medium">{{ statusLabel(row.status) }}</p>
+            <p class="text-texte font-medium">
+              {{
+                row.category === null ? t('trips.feeTable.commissionHint') : statusLabel(row.status)
+              }}
+            </p>
+            <p v-if="row.category === null" class="text-texte-3 text-xs">
+              {{ statusLabel(row.status) }}
+            </p>
             <div class="mt-1 flex flex-wrap items-center gap-1.5">
               <Badge v-if="saved(row)" :variant="saved(row)!.paid ? 'livre' : 'transit'">
                 {{ saved(row)!.paid ? t('trips.feeTable.paid') : t('trips.feeTable.entered') }}
@@ -223,34 +261,11 @@ const COLS = 'md:grid-cols-[minmax(0,1.4fr)_8rem_minmax(0,1fr)_minmax(0,1fr)_6.5
               <span v-if="trip.status === row.status" class="text-ecart-texte text-xs font-medium">
                 {{ t('trips.feeTable.currentStatus') }}
               </span>
-              <span v-if="row.category === null" class="text-texte-3 text-xs">
-                {{ t('trips.feeTable.commissionHint') }}
-              </span>
             </div>
           </div>
 
-          <!-- commission: its own form -->
-          <template v-if="row.category === null">
-            <div class="text-texte-3 hidden text-sm md:col-span-2 md:block">—</div>
-            <div class="text-end">
-              <MonoValue v-if="saved(row)" :value="formatMoney(saved(row)!.total)" />
-              <span v-else class="text-texte-3">—</span>
-            </div>
-            <div class="text-end">
-              <Button
-                v-if="canManage && !saved(row)?.paid"
-                :variant="saved(row) ? 'ghost' : 'primary'"
-                class="!h-10 !px-3"
-                :data-test="`fee-edit-${row.status}`"
-                @click="emit('open-commission')"
-              >
-                {{ saved(row) ? t('trips.feeTable.edit') : t('trips.feeTable.enter') }}
-              </Button>
-            </div>
-          </template>
-
           <!-- editable fee -->
-          <template v-else-if="isEditable(row)">
+          <template v-if="isEditable(row)">
             <select
               :value="methodOf(row)"
               class="border-ligne-forte h-10 w-full rounded-lg border bg-white px-2 text-sm"

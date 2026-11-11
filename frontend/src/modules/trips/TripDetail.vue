@@ -370,10 +370,7 @@ async function onTransportPaymentSaved() {
   transportPaymentFormMode.value = 'edit'
   showTransportPaymentForm.value = false
   automaticTransportTitle.value = null
-  const fromTable = commissionFromTable.value
-  commissionFromTable.value = false
-  if (fromTable) await advanceToStatus('SENT_FOR_LOADING')
-  else await Promise.all([loadExpenses(), loadMargin()])
+  await Promise.all([loadExpenses(), loadMargin()])
 }
 
 // TripProfitService.get_cost_breakdown (guide Section 9.1) - only
@@ -480,8 +477,6 @@ const visibleNextStatuses = computed(() => allowedStatuses.value as TripStatus[]
 // fee on a row moves the trip to that row's status when it is ahead of the
 // current one (the backend validates and records every traversed status), so
 // the last fee entered is the trip's current status.
-const commissionFromTable = ref(false)
-
 async function advanceToStatus(status: TripStatus) {
   await Promise.all([loadExpenses(), loadMargin()])
   if (!allowedStatuses.value.includes(status)) return
@@ -496,17 +491,6 @@ async function advanceToStatus(status: TripStatus) {
   }
 }
 
-function onOpenCommission() {
-  const existing = transportPayments.value.find((p) => p.status !== 'CANCELLED')
-  commissionFromTable.value = true
-  if (existing) {
-    onEditTransportPayment(existing)
-    return
-  }
-  automaticTransportTitle.value = t('trips.detail.autoExpense.transporterCommission')
-  showTransportPaymentForm.value = true
-}
-
 function onExpenseCancel() {
   showExpenseForm.value = false
   automaticExpense.value = null
@@ -518,7 +502,6 @@ function onTransportPaymentCancel() {
   automaticTransportTitle.value = null
   editingTransportPayment.value = null
   transportPaymentFormMode.value = 'edit'
-  commissionFromTable.value = false
 }
 
 async function onChangeStatus() {
@@ -597,7 +580,6 @@ const cessionProofUrl = computed(
           :transport-payments="transportPayments"
           :can-manage="canManageExpenses && canChangeStatus"
           @recorded="advanceToStatus"
-          @open-commission="onOpenCommission"
         />
       </Card>
 
