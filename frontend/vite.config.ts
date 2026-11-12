@@ -31,7 +31,7 @@ function brandPlugin(): Plugin {
     null,
     2,
   )
-  const images = ['favicon.png', 'pwa-icon-192.png', 'pwa-icon-512.png']
+  const images = ['favicon.png', 'apple-touch-icon.png', 'pwa-icon-192.png', 'pwa-icon-512.png']
   return {
     name: 'brand',
     transformIndexHtml: (html) => html.replaceAll('%BRAND_APP_NAME%', brandInfo.appName),
